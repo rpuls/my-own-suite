@@ -66,6 +66,15 @@ function resolveRuntimeConfig(env = process.env) {
   };
 }
 
+// The vault requirement every unit holding owner data carries, on every machine.
+// Without it a unit starts against the empty directory the vault mounts over,
+// which for Suite Manager means a fresh, empty store on the plaintext partition.
+// The gate exits 0 on a machine with no vault, so the requirement costs nothing
+// there and never has to be decided per machine.
+function vaultRequirement() {
+  return 'Requires=mos-vault.service\nAfter=mos-vault.service\n';
+}
+
 const runtimeConfig = resolveRuntimeConfig();
 const {
   frontDoor,
@@ -172,30 +181,30 @@ function ensureAgentGroup() {
   }
 }
 
-function installSocketDir(dirPath) {
-  installDir(dirPath, 0o2770);
-  if (!dryRun) {
-    run('chown', ['root:mos-agent', dirPath]);
-    fs.chmodSync(dirPath, 0o2770);
-  }
-}
-
 function unit(name, content) {
   writeFile(path.join('/etc/systemd/system', name), content, 0o644);
 }
 
-function agentUnit({ after, description, env, name, script, wants = 'network-online.target' }) {
+// Every agent's socket lives in a runtime directory named after its unit, and
+// systemd is told to make it rather than the agent making one whose group
+// ownership happens to come out right from `Group=` and `UMask=`. `/run` is
+// emptied on every boot, so the installer's one-time `install -d` never covered
+// any boot but its own, and a directory Suite Manager cannot enter is a socket
+// it cannot reach.
+function agentUnit({ after, description, env, gated = true, name, script, wants = 'network-online.target' }) {
   const envLines = Object.entries(env).map(([key, value]) => `Environment=${key}=${value}`).join('\n');
   return `[Unit]
 Description=${description}
 After=${after}
 Wants=${wants}
-
+${gated ? vaultRequirement() : ''}
 [Service]
 Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=${name.replace(/\.service$/u, '')}
+RuntimeDirectoryMode=2770
 WorkingDirectory=${mosRoot}
 Environment=NODE_ENV=production
 ${envLines}
@@ -208,12 +217,46 @@ WantedBy=multi-user.target
 `;
 }
 
+// The gate, and the agent that speaks for a locked machine. Both reach an
+// existing install through reconciliation, not only a fresh one: the Caddyfile
+// upgraded below gains the route the unlock page posts to, and a route pointing
+// at an agent that was never installed is a worse state than either end of it.
+//
+// On a machine that predates the vault the gate is a no-op by construction. It
+// creates nothing unless /etc/mos/vault-armed exists, which only the published
+// image's finalize writes, and a system partition that already fills its disk
+// has nowhere to put a vault anyway. What it does do is let the agent report
+// that plainly, so Suite Manager can say "app data on this machine is not
+// encrypted" instead of "unknown".
+function vaultGateUnit(config = runtimeConfig) {
+  return `[Unit]
+Description=MOS encrypted vault
+DefaultDependencies=no
+Requires=local-fs.target
+After=local-fs.target systemd-udevd.service mos-self-install.service
+Before=basic.target docker.service docker.socket shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node ${config.mosRoot}/system-agents/vault/open.cjs
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=sysinit.target
+`;
+}
+
 function suiteManagerUnit(config = runtimeConfig) {
   return `[Unit]
 Description=MOS Suite Manager
 After=mos-homepage.service network-online.target
 Wants=mos-homepage.service network-online.target
-
+${vaultRequirement()}
 [Service]
 Type=simple
 User=${config.runtimeUser}
@@ -296,6 +339,90 @@ function refreshBackupEngine() {
   }
 }
 
+// Every unit the reconciler owns, rendered before any is written, so one test
+// can hold the vault-gating rule over all of them at once.
+function renderUnits() {
+  return {
+    'mos-vault.service': vaultGateUnit(),
+    // The one MOS process that runs while the disk is locked, so the one unit
+    // that must never wait for it.
+    'mos-vault-agent.service': agentUnit({
+      after: 'network-online.target caddy.service',
+      description: 'MOS vault agent',
+      env: {
+        MOS_VAULT_AGENT_SOCKET: '/run/mos-vault-agent/agent.sock',
+        PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      },
+      gated: false,
+      name: 'mos-vault-agent.service',
+      script: 'system-agents/vault/agent.cjs',
+    }),
+    'mos-homepage.service': homepageUnit(),
+    'mos-suite-manager.service': suiteManagerUnit(),
+    'mos-https-agent.service': agentUnit({
+      after: 'network-online.target caddy.service',
+      description: 'MOS narrow HTTPS configuration agent',
+      env: { MOS_HTTPS_AGENT_SOCKET: '/run/mos-https-agent/agent.sock', MOS_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_SUITE_MANAGER_PORT: suiteManagerPort },
+      name: 'mos-https-agent.service',
+      script: 'system-agents/https/agent.cjs',
+    }),
+    'mos-homepage-agent.service': agentUnit({
+      after: 'network-online.target caddy.service mos-homepage.service',
+      description: 'MOS narrow Homepage configuration agent',
+      env: { MOS_HOMEPAGE_AGENT_SOCKET: '/run/mos-homepage-agent/agent.sock', MOS_HOMEPAGE_CONFIG_ROOT: `${stateRoot}/homepage/config`, MOS_HOMEPAGE_TRANSACTION_ROOT: `${stateRoot}/homepage-agent/transactions`, MOS_HOMEPAGE_HISTORY_ROOT: `${stateRoot}/homepage-agent/history` },
+      name: 'mos-homepage-agent.service',
+      script: 'system-agents/homepage/agent.cjs',
+    }),
+    'mos-app-agent.service': agentUnit({
+      after: 'network-online.target docker.service caddy.service',
+      description: 'MOS narrow app runtime agent',
+      env: { MOS_APP_AGENT_SOCKET: '/run/mos-app-agent/agent.sock', MOS_APP_PACKAGE_ROOT: `${stateRoot}/app-packages`, MOS_APPS_ROOT: `${mosRoot}/apps` },
+      name: 'mos-app-agent.service',
+      script: 'system-agents/apps/agent.cjs',
+      wants: 'network-online.target docker.service',
+    }),
+    'mos-backup-agent.service': agentUnit({
+      after: 'network-online.target docker.service',
+      description: 'MOS backup and restore agent',
+      // The update agent's socket, because a scheduled backup asks it whether an
+      // update is running before starting: an update restarts this agent partway
+      // through, so a backup begun underneath one would be cut off mid-write.
+      env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
+      name: 'mos-backup-agent.service',
+      script: 'system-agents/backup/agent.cjs',
+      wants: 'network-online.target docker.service',
+    }),
+    'mos-update-agent.service': agentUnit({
+      after: 'network-online.target docker.service',
+      description: 'MOS managed update agent',
+      // The backup agent's socket, because an update takes a backup of the whole
+      // suite through it before it applies anything.
+      env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
+      name: 'mos-update-agent.service',
+      script: 'system-agents/update/agent.cjs',
+      wants: 'network-online.target docker.service',
+    }),
+    'mos-diagnostics-agent.service': agentUnit({
+      after: 'network-online.target docker.service',
+      description: 'MOS read-only diagnostics collection agent',
+      // The state root, because the host patch state it reports on is written
+      // under it by the installer, this script and the post-patch check.
+      env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock', MOS_STATE_ROOT: stateRoot },
+      name: 'mos-diagnostics-agent.service',
+      script: 'system-agents/diagnostics/agent.cjs',
+      wants: 'network-online.target docker.service',
+    }),
+    'mos-lab-reset-agent.service': agentUnit({
+      after: 'network-online.target docker.service',
+      description: 'MOS lab reset agent',
+      env: { MOS_INSTALL_ROOT: path.dirname(repoRoot), MOS_LAB_RESET_AGENT_SOCKET: '/run/mos-lab-reset-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot },
+      name: 'mos-lab-reset-agent.service',
+      script: 'system-agents/lab-reset/agent.cjs',
+      wants: 'network-online.target docker.service',
+    }),
+  };
+}
+
 function main() {
   if (!fs.existsSync(path.join(mosRoot, 'package.json'))) {
     throw new Error(`${mosRoot} does not look like a MOS checkout.`);
@@ -313,6 +440,10 @@ function main() {
   installDir('/etc/mos/secrets', 0o750);
   installDir(`${stateRoot}/suite-manager`, 0o755);
   installDir(`${stateRoot}/homepage/config`, 0o755);
+  // Suite Manager records the suite's address here and the root agents read it,
+  // so the directory is the runtime user's and world-readable.
+  installDir(`${stateRoot}/suite-address`, 0o755);
+  if (!dryRun) run('chown', [`${runtimeUser}:${runtimeUser}`, `${stateRoot}/suite-address`]);
   installDir(`${stateRoot}/https-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/history`, 0o700);
@@ -331,10 +462,6 @@ function main() {
   // nothing in here is a secret, and a mode that hid it would only hide it from
   // the reader it exists for.
   installDir(`${stateRoot}/host-patches`, 0o755);
-
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset']) {
-    installSocketDir(`/run/mos-${socketDir}-agent`);
-  }
 
   // Rewritten on every managed update rather than only at install, because the
   // installer is the one path a machine that already exists never runs again.
@@ -371,69 +498,16 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
     if (!dryRun) fs.writeFileSync(homepageSeedMarker, '');
   }
 
-  unit('mos-homepage.service', homepageUnit());
-  unit('mos-suite-manager.service', suiteManagerUnit());
-  unit('mos-https-agent.service', agentUnit({
-    after: 'network-online.target caddy.service',
-    description: 'MOS narrow HTTPS configuration agent',
-    env: { MOS_HTTPS_AGENT_SOCKET: '/run/mos-https-agent/agent.sock', MOS_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_SUITE_MANAGER_PORT: suiteManagerPort },
-    name: 'mos-https-agent.service',
-    script: 'system-agents/https/agent.cjs',
-  }));
-  unit('mos-homepage-agent.service', agentUnit({
-    after: 'network-online.target caddy.service mos-homepage.service',
-    description: 'MOS narrow Homepage configuration agent',
-    env: { MOS_HOMEPAGE_AGENT_SOCKET: '/run/mos-homepage-agent/agent.sock', MOS_HOMEPAGE_CONFIG_ROOT: `${stateRoot}/homepage/config`, MOS_HOMEPAGE_TRANSACTION_ROOT: `${stateRoot}/homepage-agent/transactions`, MOS_HOMEPAGE_HISTORY_ROOT: `${stateRoot}/homepage-agent/history` },
-    name: 'mos-homepage-agent.service',
-    script: 'system-agents/homepage/agent.cjs',
-  }));
-  unit('mos-app-agent.service', agentUnit({
-    after: 'network-online.target docker.service caddy.service',
-    description: 'MOS narrow app runtime agent',
-    env: { MOS_APP_AGENT_SOCKET: '/run/mos-app-agent/agent.sock', MOS_APP_PACKAGE_ROOT: `${stateRoot}/app-packages`, MOS_APPS_ROOT: `${mosRoot}/apps` },
-    name: 'mos-app-agent.service',
-    script: 'system-agents/apps/agent.cjs',
-    wants: 'network-online.target docker.service',
-  }));
-  unit('mos-backup-agent.service', agentUnit({
-    after: 'network-online.target docker.service',
-    description: 'MOS backup and restore agent',
-    // The update agent's socket, because a scheduled backup asks it whether an
-    // update is running before starting: an update restarts this agent partway
-    // through, so a backup begun underneath one would be cut off mid-write.
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
-    name: 'mos-backup-agent.service',
-    script: 'system-agents/backup/agent.cjs',
-    wants: 'network-online.target docker.service',
-  }));
-  unit('mos-update-agent.service', agentUnit({
-    after: 'network-online.target docker.service',
-    description: 'MOS managed update agent',
-    // The backup agent's socket, because an update takes a backup of the whole
-    // suite through it before it applies anything.
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
-    name: 'mos-update-agent.service',
-    script: 'system-agents/update/agent.cjs',
-    wants: 'network-online.target docker.service',
-  }));
-  unit('mos-diagnostics-agent.service', agentUnit({
-    after: 'network-online.target docker.service',
-    description: 'MOS read-only diagnostics collection agent',
-    // The state root, because the host patch state it reports on is written
-    // under it by the installer, this script and the post-patch check.
-    env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock', MOS_STATE_ROOT: stateRoot },
-    name: 'mos-diagnostics-agent.service',
-    script: 'system-agents/diagnostics/agent.cjs',
-    wants: 'network-online.target docker.service',
-  }));
-  unit('mos-lab-reset-agent.service', agentUnit({
-    after: 'network-online.target docker.service',
-    description: 'MOS lab reset agent',
-    env: { MOS_INSTALL_ROOT: path.dirname(repoRoot), MOS_LAB_RESET_AGENT_SOCKET: '/run/mos-lab-reset-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot },
-    name: 'mos-lab-reset-agent.service',
-    script: 'system-agents/lab-reset/agent.cjs',
-    wants: 'network-online.target docker.service',
-  }));
+  // Docker's units are not MOS-owned, so its gate is a drop-in. The socket is
+  // gated as well as the service: it is socket-activated, so anything touching
+  // /var/run/docker.sock would otherwise start a dockerd whose /var/lib/docker
+  // is the empty directory the vault mounts over.
+  for (const dropIn of ['docker.service.d', 'docker.socket.d']) {
+    installDir(`/etc/systemd/system/${dropIn}`, 0o755);
+    writeFile(`/etc/systemd/system/${dropIn}/mos-vault.conf`, `[Unit]\n${vaultRequirement()}`, 0o644);
+  }
+
+  for (const [name, content] of Object.entries(renderUnits())) unit(name, content);
 
   if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
@@ -446,7 +520,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   addStatusHandlerToCaddyfile();
 
   run('systemctl', ['daemon-reload']);
-  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
+  run('systemctl', ['enable', 'mos-vault.service']);
+  run('systemctl', ['start', 'mos-vault.service'], { allowFailure: true });
+  for (const service of ['mos-vault-agent.service', 'mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }
@@ -470,6 +546,8 @@ module.exports = {
   homeHostFromContract,
   homepageUnit,
   parseEnvFile,
+  renderUnits,
   resolveRuntimeConfig,
   suiteManagerUnit,
+  vaultGateUnit,
 };

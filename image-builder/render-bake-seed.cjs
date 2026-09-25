@@ -11,31 +11,27 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
+const { loadSmokeConfig, renderSeed } = require('../scripts/installers/render-hyperv-usb-seed.cjs');
 const {
-  loadSmokeConfig,
-  renderSeed,
-} = require('../scripts/installers/render-hyperv-usb-seed.cjs');
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE,
+  CONSOLE_LOGIN_ISSUE_PATH,
+} = require('../shared/console-login-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const payloadDir = path.join(__dirname, 'payload');
 const outputDir = path.join(__dirname, '.work', 'seed');
 
-// Copied from render-hyperv-usb-seed.cjs, which does not export them. Asserted
-// against the rendered seed below, so a drift fails the build instead of
-// silently leaving the bake VM's login in the published image.
-const consoleIssueBeginMarker = '### My Own Suite server login (begin)';
-const consoleIssueEndMarker = '### My Own Suite server login (end)';
-
 // The console banner says a DNS override is needed and points here rather than
 // explaining hosts files on a login screen. Step 4 of that page is the override.
 const networkDocsUrl = 'https://myownsuite.org/docs/install/own-hardware/';
 
-// The banner stopped explaining DNS on a login screen, so this page carries what
-// it no longer says: that the second address is resolved by a My Own Suite
-// nameserver, that those lookups are not logged, and that the answer only ever
-// points back at the machine. Those are commitments in CHANGELOG.md and
-// docs/decisions.md — they moved here, they did not go away.
-const easyAddressDocsUrl = 'https://myownsuite.org/docs/install/easy-address/';
+// The console no longer links the Easy Door explainer itself — twenty rows do
+// not stretch to a second URL — but nothing was dropped: what that page carries
+// (the second address is resolved by a My Own Suite nameserver, those lookups
+// are not logged, the answer only ever points back at the machine) are
+// commitments in CHANGELOG.md and docs/decisions.md, and the own-hardware page
+// the banner does link to links on to it.
 
 // The MOTD is read by someone who already has a shell, so it points at the docs
 // root rather than at the install page the console banner links to.
@@ -44,7 +40,6 @@ const docsRootUrl = 'https://myownsuite.org/docs/';
 const payloadScripts = [
   'mos-image-finalize',
   'mos-self-install',
-  'mos-grow-root',
   'mos-first-boot',
 ];
 
@@ -59,7 +54,6 @@ const payloadUnits = [
   'mos-image-finalize.service',
   'mos-ssh-hostkeys.service',
   'mos-self-install.service',
-  'mos-grow-root.service',
   'mos-first-boot.service',
 ];
 
@@ -110,13 +104,22 @@ function main() {
   // the summary below records which profile was used.
   const profile = process.env.MOS_IMAGE_BAKE_DEBUG === '1' ? 'lab' : 'release';
 
-  const config = loadSmokeConfig();
-  const rendered = renderSeed(config, { profile, repoRef });
+  // The lab image's way in is an SSH key read from the git-ignored work folder:
+  // a release bake has nothing to read, and the renderer refuses a key anyway.
+  const debugKeyPath = path.join(__dirname, '.work', 'debug-ssh-key.pub');
+  const authorizedKeys = profile === 'lab' && fs.existsSync(debugKeyPath)
+    ? [fs.readFileSync(debugKeyPath, 'utf8').trim()]
+    : [];
 
-  if (!rendered.userData.includes(consoleIssueBeginMarker)) {
+  const config = loadSmokeConfig();
+  const rendered = renderSeed(config, { authorizedKeys, profile, repoRef });
+
+  // Asserted against the rendered seed, so a drift fails the build instead of
+  // silently leaving the bake VM's login on the console of the published image.
+  if (!rendered.userData.includes(CONSOLE_LOGIN_ISSUE_PATH)) {
     throw new Error(
-      `The rendered seed no longer contains '${consoleIssueBeginMarker}'. ` +
-      'The finalize step strips the console-login block by that marker; update image-builder to match.',
+      `The rendered seed no longer writes '${CONSOLE_LOGIN_ISSUE_PATH}'. ` +
+      'The finalize step removes the console login by that path; update image-builder to match.',
     );
   }
 
@@ -125,13 +128,14 @@ function main() {
   const stateDir = `${rendered.plan.config.stateRoot}/suite-manager`;
 
   const values = {
+    CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+    CONSOLE_LOGIN_HANDOVER_FILE,
     DOCS_ROOT_URL: docsRootUrl,
     DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
-    EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
-    ISSUE_BEGIN: consoleIssueBeginMarker,
-    ISSUE_END: consoleIssueEndMarker,
+    ISSUE_FILE: CONSOLE_LOGIN_ISSUE_PATH,
+    PROFILE: profile,
     REPO_REF: repoRef,
     STATE_DIR: stateDir,
     USERNAME: rendered.linuxUsername,
@@ -205,7 +209,9 @@ function main() {
   console.log(`[mos-image] Stealth-door URL baked into the banner: ${summary.home}`);
   console.log(`[mos-image] Seed: ${outputDir}`);
   if (profile === 'lab') {
-    console.log('[mos-image] WARNING: debug bake. This image carries a fixed password and must not be published.');
+    console.log(authorizedKeys.length > 0
+      ? `[mos-image] WARNING: debug bake. The key in ${debugKeyPath} logs in as ${rendered.linuxUsername}; this image must not be published.`
+      : `[mos-image] WARNING: debug bake with no way in. Put a public key at ${debugKeyPath} (ssh-keygen -t ed25519 -f ${path.join(__dirname, '.work', 'debug-ssh-key')}).`);
   }
 }
 

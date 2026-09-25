@@ -5,27 +5,17 @@
 // resolves to nothing.
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const test = require('node:test');
 
 const {
   EASY_DOOR_CADDY_MARKER,
   EASY_DOOR_HOME_HOST_REGEXP,
-  detectEasyDoorBase,
   easyDoorBaseDomain,
   easyDoorHomeHost,
-  easyDoorOpen,
   isPrivateIPv4,
+  runCli,
 } = require('../../shared/easy-door.cjs');
-const { renderCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
-
-function tempFile(contents) {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-easy-door-')), 'Caddyfile');
-  fs.writeFileSync(file, contents);
-  return file;
-}
+const { renderCaddyfile, renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 
 test('only RFC1918 addresses get an Easy Door name', () => {
   for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.123.45']) {
@@ -71,16 +61,19 @@ test('Caddy matches exactly the home names the nameserver answers', () => {
   }
 });
 
-test('the Easy Door is open only while the live Caddyfile serves it', () => {
-  const open = tempFile(renderCaddyfile());
-  const closed = tempFile('http://home.mos.example.com {\n  reverse_proxy 127.0.0.1:3100\n}\n');
-
+// A door is not an address: every LAN Caddyfile carries the Easy Door block,
+// before and after a domain is applied, so the marker is a fact about the
+// rendering and never a signal to read back.
+test('every LAN Caddyfile carries the Easy Door, whatever address the suite is on', () => {
   assert.equal(renderCaddyfile().includes(EASY_DOOR_CADDY_MARKER), true);
-  assert.equal(easyDoorOpen(open), true);
-  assert.equal(easyDoorOpen(closed), false);
-  assert.equal(easyDoorOpen(path.join(path.dirname(closed), 'absent')), false);
+  const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', bootstrapHost: 'home.mos.home', suiteManagerPort: '3100' });
+  assert.equal(https.includes(EASY_DOOR_CADDY_MARKER), true);
+});
 
-  assert.equal(detectEasyDoorBase({ caddyfilePath: open, serverAddress: '192.168.123.45' }), '192-168-123-45.local.myownsuite.org');
-  assert.equal(detectEasyDoorBase({ caddyfilePath: open, serverAddress: '203.0.113.9' }), null);
-  assert.equal(detectEasyDoorBase({ caddyfilePath: closed, serverAddress: '192.168.123.45' }), null);
+// The console banner prints the door for the address it is given, and an empty
+// line — never an error — when there is none.
+test('the CLI names the Easy Door for a private address and nothing for a public one', () => {
+  assert.equal(runCli(['home-host', '192.168.123.45']), 'home.192-168-123-45.local.myownsuite.org');
+  assert.equal(runCli(['home-host', '203.0.113.9']), '');
+  assert.throws(() => runCli(['nonsense']), /Unknown easy-door command/u);
 });

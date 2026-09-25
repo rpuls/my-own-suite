@@ -196,7 +196,15 @@ if ! command -v caddy >/dev/null 2>&1; then
 fi
 
 apt-get update
-apt-get install -y bzip2 ca-certificates curl docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates curl cryptsetup-bin docker.io git gnupg ufw
+# The TPM half is best effort: a machine without these still gets an encrypted
+# vault that its owner unlocks by hand, so failing the whole install over them
+# would be the wrong trade. On Ubuntu 24.04 systemd-cryptenroll and the TPM2
+# token plugin ship inside the systemd package, but the three tss2 libraries
+# systemd loads for them on demand are only Suggests, and a server install has
+# been seen with two of the three. tpm2-tools reads the chip's lockout counter.
+apt-get install -y libtss2-esys-3.0.2-0t64 libtss2-mu-4.0.1-0t64 libtss2-rc0t64 tpm2-tools \\
+  || echo '[mos] The TPM libraries did not install; this machine will ask for its recovery key after every restart unless a later update installs them.' >&2
 systemctl enable --now docker.service
 echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
@@ -219,7 +227,7 @@ if ! id -u "$MOS_RUNTIME_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$MOS_RUNTIME_USER"
 fi
 
-install -d -m 0755 "$MOS_INSTALL_ROOT" "$MOS_STATE_ROOT" "$MOS_STATE_ROOT/suite-manager" "$MOS_STATE_ROOT/homepage/config"
+install -d -m 0755 "$MOS_INSTALL_ROOT" "$MOS_STATE_ROOT" "$MOS_STATE_ROOT/suite-manager" "$MOS_STATE_ROOT/homepage/config" "$MOS_STATE_ROOT/suite-address"
 cat > "$MOS_STATE_ROOT/bootstrap-contract.env" <<MOS_BOOTSTRAP_ENV
 ${renderBootstrapEnv(config)}
 MOS_HOME_URL="$MOS_HOME_URL"
@@ -289,13 +297,10 @@ MOS_OWNER_CLAIM
   ufw allow 443/tcp >/dev/null
   ufw --force enable >/dev/null
 fi
-install -d -m 2770 -o root -g mos-agent /run/mos-https-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-homepage-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-app-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-backup-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-update-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-lab-reset-agent
+# The agents' /run directories are declared on their units, not made here: /run
+# is emptied on every boot, so a directory made at install time covered exactly
+# one of them and every boot after it relied on the agent making its own with
+# the right group by accident.
 install -d -m 0700 /var/lib/mos/https-agent/transactions
 install -d -m 0700 /var/lib/mos/homepage-agent/transactions /var/lib/mos/homepage-agent/history
 install -d -m 0700 /var/lib/mos/backup-agent
@@ -328,6 +333,79 @@ chown root:mos-agent "$MOS_STATE_ROOT/app-packages"
 chmod 2750 "$MOS_STATE_ROOT/app-packages"
 chmod 0700 "$MOS_STATE_ROOT/https-agent" "$MOS_STATE_ROOT/https-agent/transactions"
 
+# The gate. Every unit that holds owner data requires it, so while it has not
+# succeeded there is no dockerd, no Suite Manager and no agent — and while it
+# has, they start exactly as they always did. It runs early, before basic.target,
+# because on a machine's very first boot this is what claims the rest of the
+# disk, and nothing should be writing to a filesystem that is about to grow.
+cat > /etc/systemd/system/mos-vault.service <<MOS_VAULT_UNIT
+[Unit]
+Description=MOS encrypted vault
+DefaultDependencies=no
+Requires=local-fs.target
+After=local-fs.target systemd-udevd.service mos-self-install.service
+Before=basic.target docker.service docker.socket shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/vault/open.cjs
+StandardOutput=journal+console
+StandardError=journal+console
+# First boot copies the baked Docker images into the vault. Long enough for a
+# slow eMMC to finish, and bounded so a wedged copy is a failure rather than a
+# machine that hangs at boot forever.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=sysinit.target
+MOS_VAULT_UNIT
+
+# Deliberately not gated on the vault: this is the one MOS process that runs
+# while the disk is locked, and the only thing that can ask for the key.
+cat > /etc/systemd/system/mos-vault-agent.service <<MOS_VAULT_AGENT_UNIT
+[Unit]
+Description=MOS vault agent
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=mos-agent
+UMask=0007
+RuntimeDirectory=mos-vault-agent
+RuntimeDirectoryMode=2770
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
+Environment=NODE_ENV=production
+Environment=MOS_VAULT_AGENT_SOCKET=/run/mos-vault-agent/agent.sock
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/vault/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_VAULT_AGENT_UNIT
+
+# Docker's own units, which MOS does not own, reached through drop-ins. The
+# socket is gated as well as the service: it is socket-activated, so anything
+# touching /var/run/docker.sock would otherwise start a dockerd whose
+# /var/lib/docker is the empty directory the vault mounts over.
+install -d -m 0755 /etc/systemd/system/docker.service.d /etc/systemd/system/docker.socket.d
+cat > /etc/systemd/system/docker.service.d/mos-vault.conf <<'MOS_DOCKER_VAULT'
+[Unit]
+Requires=mos-vault.service
+After=mos-vault.service
+MOS_DOCKER_VAULT
+cat > /etc/systemd/system/docker.socket.d/mos-vault.conf <<'MOS_DOCKER_SOCKET_VAULT'
+[Unit]
+Requires=mos-vault.service
+After=mos-vault.service
+MOS_DOCKER_SOCKET_VAULT
+
 cat > /etc/systemd/system/mos-homepage.service <<MOS_HOMEPAGE_UNIT
 ${renderHomepageSystemdUnit()}
 MOS_HOMEPAGE_UNIT
@@ -335,7 +413,8 @@ MOS_HOMEPAGE_UNIT
 cat > /etc/systemd/system/mos-suite-manager.service <<MOS_SUITE_MANAGER_UNIT
 [Unit]
 Description=MOS Suite Manager
-After=mos-homepage.service network-online.target
+After=mos-homepage.service mos-vault.service network-online.target
+Requires=mos-vault.service
 Wants=mos-homepage.service network-online.target
 
 [Service]
@@ -370,7 +449,8 @@ MOS_SUITE_MANAGER_UNIT
 cat > /etc/systemd/system/mos-https-agent.service <<MOS_HTTPS_AGENT_UNIT
 [Unit]
 Description=MOS narrow HTTPS configuration agent
-After=network-online.target caddy.service
+After=network-online.target caddy.service mos-vault.service
+Requires=mos-vault.service
 Wants=network-online.target
 
 [Service]
@@ -378,6 +458,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-https-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
@@ -394,7 +476,8 @@ MOS_HTTPS_AGENT_UNIT
 cat > /etc/systemd/system/mos-homepage-agent.service <<MOS_HOMEPAGE_AGENT_UNIT
 [Unit]
 Description=MOS narrow Homepage configuration agent
-After=network-online.target caddy.service mos-homepage.service
+After=network-online.target caddy.service mos-homepage.service mos-vault.service
+Requires=mos-vault.service
 Wants=network-online.target
 
 [Service]
@@ -402,6 +485,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-homepage-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_HOMEPAGE_AGENT_SOCKET=/run/mos-homepage-agent/agent.sock
@@ -419,7 +504,8 @@ MOS_HOMEPAGE_AGENT_UNIT
 cat > /etc/systemd/system/mos-app-agent.service <<MOS_APP_AGENT_UNIT
 [Unit]
 Description=MOS narrow app runtime agent
-After=network-online.target docker.service caddy.service
+After=network-online.target docker.service caddy.service mos-vault.service
+Requires=mos-vault.service
 Requires=docker.service
 Wants=network-online.target
 
@@ -428,6 +514,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-app-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
@@ -444,7 +532,8 @@ MOS_APP_AGENT_UNIT
 cat > /etc/systemd/system/mos-backup-agent.service <<MOS_BACKUP_AGENT_UNIT
 [Unit]
 Description=MOS backup and restore agent
-After=network-online.target docker.service
+After=network-online.target docker.service mos-vault.service
+Requires=mos-vault.service
 Requires=docker.service
 Wants=network-online.target
 
@@ -453,6 +542,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-backup-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
@@ -472,7 +563,8 @@ MOS_BACKUP_AGENT_UNIT
 cat > /etc/systemd/system/mos-update-agent.service <<MOS_UPDATE_AGENT_UNIT
 [Unit]
 Description=MOS managed update agent
-After=network-online.target docker.service
+After=network-online.target docker.service mos-vault.service
+Requires=mos-vault.service
 Requires=docker.service
 Wants=network-online.target
 
@@ -481,6 +573,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-update-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
@@ -498,7 +592,8 @@ MOS_UPDATE_AGENT_UNIT
 cat > /etc/systemd/system/mos-diagnostics-agent.service <<MOS_DIAGNOSTICS_AGENT_UNIT
 [Unit]
 Description=MOS read-only diagnostics collection agent
-After=network-online.target docker.service
+After=network-online.target docker.service mos-vault.service
+Requires=mos-vault.service
 Wants=network-online.target docker.service
 
 [Service]
@@ -506,6 +601,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-diagnostics-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
@@ -521,8 +618,8 @@ MOS_DIAGNOSTICS_AGENT_UNIT
 cat > /etc/systemd/system/mos-lab-reset-agent.service <<MOS_LAB_RESET_AGENT_UNIT
 [Unit]
 Description=MOS lab reset agent
-After=network-online.target docker.service
-Requires=docker.service
+After=mos-vault.service network-online.target docker.service
+Requires=mos-vault.service docker.service
 Wants=network-online.target
 
 [Service]
@@ -530,6 +627,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-lab-reset-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
@@ -560,6 +659,9 @@ cat > /etc/caddy/mos-app-routes.caddy <<'MOS_APP_ROUTES'
 MOS_APP_ROUTES
 
 systemctl daemon-reload
+systemctl enable mos-vault.service
+systemctl enable mos-vault-agent.service
+systemctl restart mos-vault-agent.service
 if ! wait "$homepage_pull_pid"; then
   echo '[mos] Pulling the pinned Homepage image failed.' >&2
   exit 1
@@ -719,6 +821,7 @@ module.exports = {
   renderBootstrapShell,
   renderCloudInit,
   renderSshBootstrapCommand,
+  shellQuote,
   renderUsbSeedConfig,
   validateBootstrapInput,
 };

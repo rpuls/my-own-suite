@@ -47,6 +47,41 @@
 // compared before and after and not one changed, so the walkthrough recording
 // still shows what an install prints.
 
+// Moved 2026-09-17 for the encrypted vault (roadmap AL2): the installer installs
+// cryptsetup, writes the two vault units and the Docker drop-ins, and every unit
+// that holds owner data gained `Requires=mos-vault.service`. All five again. The
+// thirteen `echo` lines of every rendering were compared before and after and not
+// one changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved again 2026-09-18, on evidence from the first hardware install: the TPM
+// apt line now names the three tss2 libraries systemd loads on demand (Ubuntu
+// ships them as Suggests; the lab machine had two of three, and enrollment failed
+// with "TPM2 support is not installed") plus tpm2-tools, with a warning `echo`
+// that prints only when that run fails. A normal install prints exactly what it did.
+//
+// Moved once more the same day: the Homepage and lab-reset units gained
+// `Requires=mos-vault.service`, so every unit the installer writes now carries
+// the same requirement (test/unit/vault-gating.test.cjs holds that rule). No
+// `echo` line changed.
+//
+// Moved 2026-09-20 for the recorded suite address (roadmap A11): the installer
+// creates the `suite-address` directory Suite Manager records the address in.
+// One argument on one `install -d` line, in all five renderings; the thirteen
+// `echo` lines were compared before and after and not one changed.
+//
+// Moved 2026-09-22 for grouped restore progress: the status page lists the
+// job's groups rather than its stages, opens the one that is running, and
+// styles the parts inside it. Page markup, CSS and script only, in all five
+// renderings; the thirteen `echo` lines were compared before and after and not
+// one changed.
+//
+// Moved 2026-09-25: each agent unit now declares the `/run` directory its socket
+// lives in, and the eight `install -d` lines that made those directories once at
+// install time are gone — `/run` is emptied by every boot, so they covered the
+// install's own boot and nothing after it. Unit directives and one removed block
+// of `install -d`, in all five renderings; the thirteen `echo` lines were
+// compared before and after and not one changed.
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const test = require('node:test');
@@ -59,25 +94,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'bdb49864789424eb8b3c96b0b312993dc72e965542e5554184aed21dc853058a',
+    digest: '18c78355052ac018942b659a73458dfc3cf61263115df2514d1efad834877bcb',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '7edec74e323fa73686727d5dda3e93bc724917b5d54373a81975b02c66dd6421',
+    digest: '32669b888e28f244480baff1c41d4e4f2fd39647ba3982b3db7657e961d823bf',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '8c309ed0085ede5954eb44f963efd6fe9ccd2758761537d5e626a81d2d583daf',
+    digest: '055d263bd69b609dce26e193da83e079cf20a14b07861b7338bf71ec396e121c',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '8bb655f4a36015d85c5b4666ea50ef01723ebfc3472df02ae47718eeb3dcca2c',
+    digest: 'd50e6fe26caadb74bcb71f72459934292b5babf57807cd6a4d3d7a968433a2ab',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -87,7 +122,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '3fafb70c1e36bb5f449067dd1f570b3e2b0e06bbb273385be8f077099fbd7721',
+    digest: 'de773dca99c02b2e4c211b5def6a6b84b4dca399f77fed4c2ab0af3b5c538e92',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

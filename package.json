@@ -50,7 +50,7 @@
     "test": "node scripts/checks.cjs",
     "docs:claims": "node scripts/docs-claims-check.cjs",
     "installer:check": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npm run install:render -- --target json > .tmp/installer-contract.json",
-    "test:unit": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/apps/*.test.cjs system-agents/backup/*.test.cjs system-agents/backup/engines/*.test.cjs system-agents/diagnostics/*.test.cjs system-agents/https/*.test.cjs system-agents/lib/*.test.cjs system-agents/homepage/*.test.cjs system-agents/update/*.test.cjs test/unit/*.test.cjs test/unit/*.test.mjs",
+    "test:unit": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/apps/*.test.cjs system-agents/backup/*.test.cjs system-agents/backup/engines/*.test.cjs system-agents/diagnostics/*.test.cjs system-agents/https/*.test.cjs system-agents/lib/*.test.cjs system-agents/homepage/*.test.cjs system-agents/update/*.test.cjs system-agents/vault/*.test.cjs test/unit/*.test.cjs test/unit/*.test.mjs",
     "typecheck": "tsc --project suite-manager/tsconfig.json"
   },
   "dependencies": {

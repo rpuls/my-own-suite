@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { AppAgentCore, AppRuntimeError, renderAppRoutes } = require('./agent-core.cjs');
+const { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
 
 const request = {
   appHost: 'example-tool.mos.home',
@@ -516,23 +516,19 @@ test('no Easy Door means no alias, so a public or DNS-01 install serves one site
   assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 2);
 });
 
-test('a DNS-01 Caddyfile leaves no Easy Door alias in the routes the agent regenerates', async () => {
-  const fs = require('node:fs');
-  const os = require('node:os');
-  const path = require('node:path');
-  const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
-  const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
-
-  // App routes are regenerated on every apply, so unlike Suite Manager's own
-  // site block they do not stop carrying the alias by themselves. The signal is
-  // the live Caddyfile, which the HTTPS agent has already replaced by this point.
-  const caddyfilePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-app-routes-')), 'Caddyfile');
-  fs.writeFileSync(caddyfilePath, renderHttpsCaddyfile({
-    acmeEmail: 'owner@example.com',
-    baseDomain: 'mos.example.com',
-    bootstrapHost: 'home.mos.home',
-    suiteManagerPort: '3100',
-  }));
+// App routes are regenerated on every apply, so unlike Suite Manager's own site
+// block they do not stop carrying the alias by themselves. The signal is the
+// suite's recorded address: apps are single-addressed on a domain, and alias the
+// door on every other kind — the live Caddyfile carries the door either way.
+test('the Easy Door alias follows the recorded address, not the live Caddyfile', async () => {
+  const serverAddress = '192.168.123.45';
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }), null);
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.192-168-123-45.local.myownsuite.org', kind: 'easy-door', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  // No recorded address yet is a fresh machine, which is exactly where the door matters.
+  assert.equal(aliasedEasyDoorBase({ address: null, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  // A public address never gets the door, whatever is recorded.
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress: '203.0.113.9' }), null);
 
   const calls = [];
   const core = new AppAgentCore({
@@ -540,7 +536,7 @@ test('a DNS-01 Caddyfile leaves no Easy Door alias in the routes the agent regen
       calls.push(input);
       return { steps: ['built'] };
     },
-  }, { easyDoorBase: () => detectEasyDoorBase({ caddyfilePath, serverAddress: '192.168.123.45' }) });
+  }, { easyDoorBase: () => aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }) });
 
   await core.apply({
     ...request,

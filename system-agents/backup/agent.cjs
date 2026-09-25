@@ -12,8 +12,9 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, isRestorePointPath, RESTORE_ADDRESS_PLANS, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
-const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT, renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { BackupAgentCore, isRestorePointPath, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
+const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
+const { SuiteAddressFile, suiteAddressDir } = require('../../shared/suite-address.cjs');
 const { BUILD_TIMINGS_FILENAME, expectedBuildSeconds, readBuildTimings } = require('../lib/app-build-timings.cjs');
 const { checkExpectation, restoreExpectation, runningExpectation } = require('./expectations.cjs');
 const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSentence } = require('./progress.cjs');
@@ -25,9 +26,16 @@ const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegi
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
 const { GuestKeyStore } = require('./guest-keys.cjs');
-const { RecoveryKeyRecord, recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
+const { recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
+const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');
+const { rotateRecoveryKey: rotateKey } = require('./key-rotation.cjs');
+const { KnownDrives } = require('./known-drives.cjs');
+const { machineHasVault, readVaultDescriptor, vaultAsksForPassword } = require('../../shared/vault-contract.cjs');
+const { VaultAgentClient } = require('../../suite-manager/backend/src/settings/vault-agent-client.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
+const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
+const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
@@ -42,7 +50,9 @@ const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const installIdPath = path.join(agentStateDir, 'install-id');
-const caddyfilePath = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
+// The suite's one recorded address: read for the manifest and for the address
+// apps are rebuilt on, written only to offer a domain a restore carried.
+const suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRoot) });
 // Where Caddy serves the busy page from, which is where the progress file
 // goes: the one place an owner can still read while Suite Manager is down.
 const statusDir = process.env.MOS_STATUS_DIR || UNAVAILABLE_PAGE_ROOT;
@@ -175,7 +185,7 @@ function logReclaimed(reclaimed) {
   for (const entry of reclaimed) process.stdout.write(`[mos-backup-agent] reclaimed ${entry.bytes} bytes an interrupted backup left under ${entry.path}\n`);
 }
 async function listDestinations() {
-  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS']);
+  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
   const candidates = new Map();
   function add(destination) { if (destination.id) candidates.set(destination.id, destination); }
   function visit(device, inheritedExternal = false) {
@@ -189,11 +199,11 @@ async function listDestinations() {
       if (!mountPath) continue;
       mounted = true;
       const externalMount = external || mountPath.startsWith('/media/');
-      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
+      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
     if (!mounted && (device.type !== 'disk' || isWholeDiskFilesystem(device))) {
       const blocked = mountBlockReason(device);
-      add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
+      add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
     }
     for (const child of device.children || []) visit(child, external);
   }
@@ -420,7 +430,7 @@ function expectationInputs({ apps, sizeBytes }) {
 }
 function summarizeJob(job) {
   if (!job) return null;
-  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -438,8 +448,6 @@ function createJob(kind, payload) {
   const destinationId = kind === 'backup' ? normalizeDestinationId(payload.destinationId) : null;
   const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupLocator(payload.backupPath) : null;
   const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
-  const address = kind === 'restore' && payload.address !== undefined && payload.address !== null ? String(payload.address) : null;
-  if (address !== null && !RESTORE_ADDRESS_PLANS.includes(address)) throw new Error('Choose whether to move the address to this machine or to restore as a copy.');
   if (kind === 'backup' && !destinationId) throw new Error('Choose a connected drive or a storage connection to back up to.');
   if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from a connected destination.');
   // A leftover backup in the retired tar format can be deleted but never read,
@@ -448,7 +456,7 @@ function createJob(kind, payload) {
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
   const initiator = payload.initiator === 'schedule' || payload.initiator === 'update' ? payload.initiator : 'owner';
   const updateTarget = kind === 'backup' && initiator === 'update' ? String(payload.updateTarget || '').trim().slice(0, 60) : '';
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator, kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(address ? { address } : {}), ...(updateTarget ? { updateTarget } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator, kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(updateTarget ? { updateTarget } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -588,7 +596,15 @@ function refreshProgress(job, now, count) {
 }
 function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new Date().toISOString(), message }); }); }
 function stage(file, name) {
-  updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.status = 'running'; }, { count: null });
+  updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.substage = null; job.status = 'running'; }, { count: null });
+  log(file, name);
+}
+// Which part of a long stage is running. It is not a stage: it opens no
+// timeline entry, because the estimates are read off whole stages and a stage
+// that suddenly measures as three would make this machine's history
+// unreadable.
+function substage(file, name) {
+  updateJob(file, (job) => { job.substage = name; });
   log(file, name);
 }
 // Which item of how many the current stage is on. The engine names the app by
@@ -637,33 +653,15 @@ function installedAppInstances() {
     store.close();
   }
 }
-function readBootstrapContract() {
-  if (!fs.existsSync(bootstrapContractPath)) return {};
-  return Object.fromEntries(fs.readFileSync(bootstrapContractPath, 'utf8').split(/\r?\n/u).map((line) => {
-    const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
-    if (!match) return null;
-    return [match[1], match[2].trim().replace(/^['"]|['"]$/gu, '')];
-  }).filter(Boolean));
+// The address apps are rebuilt on during a restore: this machine's recorded
+// address, whatever the backup was written on. Nothing here derives it.
+function restoreBaseUrl() {
+  const address = suiteAddress.read();
+  return { homeHost: address.host, scheme: address.scheme };
 }
-// Derived from the restored database first (see restorePublicIdentity): the
-// owner's applied HTTPS domain must win over this machine's install-time env,
-// which is what answers when no domain has been applied.
-function restoreBaseUrl(store) {
-  let httpsSettings = null;
-  try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}
-  return restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env, httpsSettings });
-}
-function withStore(work) {
-  const store = new SuiteManagerStore(stateDir);
-  try {
-    return work(store);
-  } finally {
-    store.close();
-  }
-}
-function appliedDomain(store) {
-  const settings = store.getHttpsSettings();
-  return settings?.tlsMode === 'cloudflare-dns01' && settings.baseDomain ? settings.baseDomain : null;
+function recordedDomain() {
+  const address = suiteAddress.readOrNull();
+  return address?.kind === 'domain' ? address : null;
 }
 // Generated once, on this machine's first agent start, and kept beside the
 // engine key where nothing backs it up: the one fact a restore point can carry
@@ -678,58 +676,76 @@ function installId() {
   fs.writeFileSync(installIdPath, `${id}\n`, 'utf8');
   return id;
 }
-// Who this machine is, and the two things a restore can do with a domain the
-// backup carried. Parking keeps the domain in the restored settings as pending
-// and switches HTTPS off, so apps are rebuilt on this machine's own address and
-// the Settings form offers the domain back. Serving rewrites the restored
-// Caddyfile for this machine's own bootstrap name; the certificate follows from
-// the restored token once Caddy starts, and pointing the name here is the
-// owner's step, as it is after any HTTPS apply.
+// Who this machine is, and what a restore does about the address: nothing. The
+// address lives in a machine-local file the restore never touches, so the apps
+// come back on whatever door the owner came in through — the Easy Door, the
+// install-time name, or a domain this machine was already serving. The name the
+// backup carried becomes an offer in Settings instead, and serving it is the
+// domain module's job and happens nowhere else. A restore that wrote its own
+// TLS config was how a machine came back serving a name its own Suite Manager
+// refused.
 const identity = {
+  acmeEmail: () => recordedDomain()?.acmeEmail || null,
   // A restore that takes another machine's place makes that machine's key this
   // machine's own, and the borrowed copy is dropped: the two are now one server
-  // with one key. Nothing is written to the archive to do it.
+  // with one key. Nothing is written to the archive to do it — adding this
+  // machine's key there instead would leave every test restore's key able to
+  // open it for good.
+  //
+  // On a machine with a vault that means the disk too, and the disk goes first.
+  // Adopting the key for the backups alone would leave an owner holding a card
+  // that opens their archive and not their server, and they would find out at
+  // the one moment they need it. A rekey that fails therefore abandons the
+  // whole adoption: the archive stays readable with the borrowed key, which is
+  // a state the screen already explains.
   assumeArchiveKey: async (destinationId) => {
     const key = guestKeys.keyFor(destinationId);
     if (!key) return false;
+
+    try {
+      const rekeyed = await vaultAgent.rekey(key);
+      if (!rekeyed.ok) return { ok: false, reason: rekeyed.reason || 'rekey-failed' };
+    } catch (error) {
+      return { ok: false, reason: error?.code === 'VAULT_AGENT_UNAVAILABLE' ? 'vault-agent-unavailable' : 'rekey-failed' };
+    }
+
     engine.adoptRecoveryKey(key);
-    recoveryRecord.adopt(recoveryKeyFingerprint(key));
+    keyStore.adopt(recoveryKeyFingerprint(key));
     guestKeys.forget(destinationId);
     destinationResolver.forgetAll();
     return true;
   },
-  domain: () => { try { return withStore(appliedDomain); } catch { return null; } },
+  domain: () => recordedDomain()?.baseDomain || null,
   hostname: () => os.hostname(),
   installId,
-  parkRestoredDomain: async () => withStore((store) => {
-    const domain = appliedDomain(store);
-    if (domain) store.parkHttpsDomain(new Date().toISOString());
-    return domain;
-  }),
-  serveRestoredDomain: async () => withStore((store) => {
-    const domain = appliedDomain(store);
-    if (!domain) return null;
-    const { homeHost } = restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env });
-    fs.writeFileSync(caddyfilePath, renderHttpsCaddyfile({
-      acmeEmail: store.getHttpsSettings().acmeEmail,
-      baseDomain: domain,
-      bootstrapHost: homeHost,
-      suiteManagerPort: process.env.MOS_SUITE_MANAGER_PORT || '3100',
-    }), { encoding: 'utf8', mode: 0o644 });
-    return domain;
-  }),
+  offerAddress: async ({ acmeEmail = null, baseDomain }) => suiteAddress.writeOffer({ acmeEmail, baseDomain, from: 'restore' }),
 };
-function restoreRequestContext(packageId, store) {
-  const { homeHost, scheme } = restoreBaseUrl(store);
+function restoreRequestContext(packageId) {
+  const { homeHost, scheme } = restoreBaseUrl();
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${packageId}.${baseHost}`;
   return {
     appHost,
     baseHost,
     publicUrl: `${scheme}://${appHost}/`,
-    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId, store),
+    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId),
     scheme,
   };
+}
+// Homepage's services projection and its Caddy routes, re-rendered from the
+// restored config on this machine's address. The managed app tiles need their
+// widget endpoints re-derived the same way an address change does it.
+async function rebuildRestoredHomepage(logMessage) {
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    const appPackages = new AppPackageService({ agent: new AppAgentClient(), appsDir: path.join(repoDir, 'apps'), store });
+    const homepageService = new HomepageService({ agent: new HomepageAgentClient(), store, suiteAddress });
+    const result = await appPackages.reconcileHomepageUrls(homepageService, { publicUrlFor: (packageId) => restoreRequestContext(packageId) });
+    if (result.homepage?.status === 'failed') throw new Error(result.homepage.errorCode || 'HOMEPAGE_PUBLIC_URL_RECONCILE_FAILED');
+    logMessage('Homepage re-rendered on this machine\'s address');
+  } finally {
+    store.close();
+  }
 }
 async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
   const store = new SuiteManagerStore(stateDir);
@@ -748,7 +764,7 @@ async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
       const displayName = instance.displayNameSnapshot || displayNameOf(instance.packageId);
       onProgress({ displayName, done: index, packageId: instance.packageId, total: instances.length, unit: 'apps' });
       logMessage(`Restoring ${displayName}`);
-      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId, store));
+      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
     }
   } finally {
     store.close();
@@ -766,13 +782,13 @@ const RECOVERY_KEY_GATED_ROUTES = Object.freeze(['/v1/backups', '/v1/schedule'])
 // Enforced by the agent as well as by the screen, so a page left open from
 // before the key existed cannot get past it.
 function assertRecoveryKeyAcknowledged(pathname, body = {}) {
-  if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || recoveryRecord.acknowledged()) return;
+  if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || keyStore.acknowledged()) return;
   if (pathname === '/v1/schedule' && body.enabled !== true) return;
   throw Object.assign(new Error(RECOVERY_KEY_UNACKNOWLEDGED), { code: 'RECOVERY_KEY_UNACKNOWLEDGED' });
 }
 
 function recoveryKeyStatus() {
-  const record = recoveryRecord.read();
+  const record = keyStore.readRecord();
   return {
     acknowledged: Boolean(record.acknowledgedAt),
     acknowledgedAt: record.acknowledgedAt,
@@ -816,7 +832,19 @@ async function recoveryKit(key) {
   const hostname = os.hostname();
   const now = new Date();
   return {
-    kit: recoveryKitText({ destinations, homeAddress: homeAddress(), hostname, key, now }),
+    // Read from the descriptor rather than asked of the vault agent: this runs
+    // while composing a kit an owner may be printing because their machine is in
+    // trouble, and one more socket that can be down is one more way for the
+    // sheet to come out wrong.
+    kit: recoveryKitText({
+      asksForPassword: vaultAsksForPassword(readVaultDescriptor()),
+      destinations,
+      encryptedDisk: machineHasVault(),
+      homeAddress: homeAddress(),
+      hostname,
+      key,
+      now,
+    }),
     kitFilename: recoveryKitFilename({ hostname, now }),
   };
 }
@@ -824,6 +852,39 @@ async function recoveryKit(key) {
 async function revealRecoveryKey() {
   const key = engine.recoveryKey();
   return { key, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(key) };
+}
+
+// What a rotation can reach right now: the drives that are plugged in and the
+// buckets that are configured. A drive in a drawer is deliberately not here —
+// it is the reason a rotation reports what it could not finish, rather than
+// claiming a key change that a copy in a drawer knows nothing about.
+async function attachedDestinations() {
+  const mounted = (await listDestinations())
+    .filter((entry) => entry.kind === 'disk' && entry.mountState === 'mounted')
+    .map((entry) => destinationResolver.resolve(entry.id));
+  return [...mounted, ...destinationResolver.objectDestinations()];
+}
+
+// Replacing this machine's recovery key with a new one. The disk half is the
+// vault agent's, over the same socket a takeover uses, and it goes first so a
+// vault that will not follow stops the whole thing before anything moves.
+async function rotateRecoveryKey() {
+  const rotated = await rotateKey({
+    attached: attachedDestinations,
+    destinations: destinationResolver,
+    engine,
+    record: keyStore,
+    rekeyDisk: async (nextKey) => {
+      try {
+        const result = await vaultAgent.rekey(nextKey);
+        return result.ok === false ? { ok: false, reason: result.reason || 'rekey-failed' } : { ok: true };
+      } catch (error) {
+        return { ok: false, reason: error?.code === 'VAULT_AGENT_UNAVAILABLE' ? 'vault-agent-unavailable' : 'rekey-failed' };
+      }
+    },
+  });
+  if (!rotated.ok) return rotated;
+  return { ...rotated, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(rotated.key) };
 }
 
 // Opening backups another server wrote, without changing them. The entered key
@@ -922,12 +983,16 @@ async function scheduledRestorePoints(destinationId) {
   return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, initiator: point.initiator, path: point.locator }));
 }
 
-const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
+const keyStore = new RecoveryKeyStore({ stateDir: agentStateDir });
+const knownDrives = new KnownDrives({ agentStateDir });
 const progressPublisher = new ProgressPublisher({ dir: statusDir, filename: PROGRESS_FILENAME });
-const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
+const engine = createEngine({ agentStateDir, keys: keyStore, onKeyUsed: () => keyStore.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const guestKeys = new GuestKeyStore({ agentStateDir });
+// Only ever asked to rekey the disk at the end of a takeover restore. A machine
+// with no vault answers that there was nothing to do.
+const vaultAgent = new VaultAgentClient({ socketPath: process.env.MOS_VAULT_AGENT_SOCKET || '/run/mos-vault-agent/agent.sock' });
 const destinationResolver = new DestinationResolver({ agentStateDir, engine, guestKeys, objectRegistry, system: backupSystem });
 // Both agents run as root under the same unit template, so this agent can ask
 // the update agent what it is doing over its socket the way Suite Manager does.
@@ -975,8 +1040,9 @@ const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
   destinations: destinationResolver,
   engine,
+  homepage: { rebuild: rebuildRestoredHomepage },
   identity,
-  jobs: { log, progress, stage, update: updateJob },
+  jobs: { log, progress, stage, substage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
   system: backupSystem,
@@ -1016,12 +1082,38 @@ if (require.main === module && process.argv[2] === '--worker') {
     try {
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/v1/status') {
-        const destinations = (await listDestinations()).map((destination) => (
+        const attached = (await listDestinations()).map((destination) => (
           destination.mountPath ? { ...destination, repository: repositoryUsage(destination.mountPath) } : destination
         ));
+        const backups = await listBackups(attached);
+        // A drive that is not plugged in is the one backup an attacker on this
+        // machine cannot reach, so it is worth more said than unsaid. It is
+        // listed from what MOS recorded while it was here, and it is the only
+        // entry in this list that describes something MOS cannot currently see.
+        const away = knownDrives.reconcile({
+          attached: attached.filter((destination) => destination.kind === 'disk'),
+          lastBackupAt: (id) => backups.find((backup) => backup.destinationId === id)?.createdAt || null,
+        }).map((drive) => ({
+          availableBytes: null,
+          fsUuid: drive.fsUuid,
+          id: drive.id,
+          kind: 'disk',
+          label: drive.label,
+          lastBackupAt: drive.lastBackupAt,
+          lastSeenAt: drive.lastSeenAt,
+          locked: false,
+          mountPath: null,
+          mountState: 'away',
+          notReadyReason: 'This drive is not plugged in.',
+          ready: false,
+          sizeBytes: null,
+          storageKind: 'external',
+          writable: false,
+        }));
+        const destinations = [...attached, ...away];
         respond(response, 200, {
-          backups: await listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          backups,
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'forget-drive', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'rotate', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           // Named so the screen can say which machine wrote a restore point, and
@@ -1096,8 +1188,15 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, await revealRecoveryKey());
         return;
       }
+      // Answered 200 with `ok: false` when the vault refused, because a
+      // rotation that stopped early is a state to explain rather than a
+      // failure: the key the owner already has still opens everything.
+      if (request.method === 'POST' && url.pathname === '/v1/recovery-key/rotate') {
+        respond(response, 200, await rotateRecoveryKey());
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/recovery-key/acknowledge') {
-        recoveryRecord.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
+        keyStore.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
         respond(response, 200, { recoveryKey: recoveryKeyStatus() });
         return;
       }
@@ -1111,6 +1210,15 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/keys/remove') {
         respond(response, 200, { result: await removeArchiveKey(await readBody(request)) });
+        return;
+      }
+      // A drive the owner has finished with. Only the memory of it goes: MOS
+      // never writes to a drive that is not here, so nothing on the drive
+      // itself changes and plugging it back in lists it again.
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/forget-drive') {
+        const body = await readBody(request);
+        knownDrives.forget(String(body.fsUuid || ''));
+        respond(response, 200, { forgotten: true });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/forget-key') {

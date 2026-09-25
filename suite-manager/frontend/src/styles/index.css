@@ -339,53 +339,31 @@
   gap: var(--mos-space-4);
 }
 
-/* The one-time server-login handover. Accented rather than alarming: it is a
-   task the owner must finish, not a failure, and it disappears for good once
-   they do. */
-.suite-console-login-card {
+/* The server login on the handover page: a label column beside each value. The
+   password itself is the shared secret control. */
+.suite-handover-login {
   display: grid;
-  gap: var(--mos-space-3);
-  border-left: 3px solid var(--mos-color-accent);
-}
-
-.suite-console-login-card p {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mos-space-2) var(--mos-space-4);
   margin: 0;
 }
 
-.suite-console-login-secret {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--mos-space-2) var(--mos-space-4);
-  margin: var(--mos-space-4) 0;
-  padding: var(--mos-space-4);
-  border: var(--mos-border-subtle);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface);
-}
-
-.suite-console-login-secret dt {
+.suite-handover-login dt {
   color: var(--mos-color-text-muted);
   font-size: 0.9rem;
 }
 
-.suite-console-login-secret dd {
+.suite-handover-login dd {
   margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--mos-color-text-strong);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 1.05rem;
-  /* Selectable by design: copy-to-clipboard fails on a page served over plain
-     HTTP, which is exactly how an own-hardware install starts out. */
-  user-select: all;
+  min-width: 0;
 }
 
-/* The mask is decoration standing in for a value, so it is not selectable:
-   dragging across it would put a row of dots on the clipboard. */
-.suite-console-login-secret dd.suite-console-login-masked {
-  color: var(--mos-color-text-muted);
-  letter-spacing: 0.18em;
-  user-select: none;
+.suite-handover-login code {
+  color: var(--mos-color-text-strong);
+  font-family: var(--mos-font-mono);
+  font-size: var(--mos-text-body-lg);
+  user-select: all;
 }
 
 .suite-status-card {
@@ -476,13 +454,16 @@
   .suite-nav .suite-nav-edit { opacity: 1; }
 }
 
-/* The terms gate carries the beta warning and the terms card, so it needs more
-   room than the sign-in stage it otherwise reuses. */
-.suite-terms-stage {
+/* The terms gate carries the beta warning and the terms card, and the handover
+   page two secrets with their warnings, so both need more room than the
+   sign-in stage they otherwise reuse. */
+.suite-terms-stage,
+.suite-handover-stage {
   width: min(100%, 680px);
 }
 
 .suite-terms-card,
+.suite-handover-card,
 .suite-community-card {
   display: grid;
   gap: var(--mos-space-3);
@@ -490,8 +471,16 @@
 }
 
 .suite-terms-card p,
+.suite-handover-card p,
 .suite-community-card p {
   margin: 0;
+}
+
+.suite-handover-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  justify-content: center;
 }
 
 .suite-terms-card p a {
@@ -3553,17 +3542,85 @@
   max-width: 24rem;
 }
 
-/* The restore's plan, one row per stage: done, now, and still to come. */
+/* The restore's plan, one row per group of stages: done, now, and still to
+   come. The row holds its own inset, because the group opens into the stages
+   it is made of and those sit under its line rather than beside it. */
 .suite-bk-step {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: var(--mos-space-4) var(--mos-panel-pad);
   color: var(--mos-color-text-muted);
 }
 
 .suite-bk-step.is-now {
   color: var(--mos-color-text);
   font-weight: 700;
+}
+
+/* The group's line, whether or not it opens: the same row either way, so a
+   plan does not shift sideways between a group that has parts and one that
+   does not. */
+.suite-bk-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.suite-bk-group {
+  cursor: pointer;
+}
+
+.suite-bk-group-mark {
+  display: inline-flex;
+  color: var(--mos-color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.suite-bk-group-mark.is-open {
+  transform: rotate(90deg);
+}
+
+.suite-bk-group-mark svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* The stages inside the group that is running. Quieter than the group line
+   and indented under it, so the eye reads the groups first. */
+.suite-bk-substeps {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.1rem 0 0.15rem;
+  padding: 0 0 0 1.2rem;
+  list-style: none;
+  color: var(--mos-color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.suite-bk-substeps li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.suite-bk-substeps li.is-now {
+  color: var(--mos-color-text);
+  font-weight: 700;
+}
+
+.suite-bk-substeps .suite-bk-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: 0;
 }
 
 @media (max-width: 47.9375rem) {

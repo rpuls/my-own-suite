@@ -11,6 +11,12 @@ const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
 const PROGRESS_FILENAME = 'progress.json';
 const PROGRESS_ROUTE = `/mos-status/${PROGRESS_FILENAME}`;
 const PROGRESS_STALE_MINUTES = 30;
+// The vault agent, which is the only thing listening on a machine whose disk
+// has not been unlocked yet. Suite Manager, every app and every secret are
+// inside the vault, so the page that asks for the recovery key cannot come from
+// any of them and its form cannot post to any of them.
+const VAULT_AGENT_PORT = 3300;
+const VAULT_UNLOCK_ROUTE = '/mos-unlock';
 
 // The one path Caddy answers itself while Suite Manager is down: the progress
 // file the status page polls. It is its own route, matched before anything is
@@ -37,6 +43,27 @@ function progressRoute(indent = '  ') {
     '  }',
     '}',
   ].map((line) => `${indent}${line}`).join('\n');
+}
+
+// The form on the locked page posts here. It is a route of its own, ordered
+// before the proxy for the same reason the progress file is: everything that
+// errors is rewritten to the status page, so a POST that fell through to a
+// stopped Suite Manager would come back as HTML and the owner's key would go
+// nowhere. The agent answers with a page either way, which is what lets the
+// whole exchange work in a browser with no JavaScript.
+function unlockRoute(indent = '  ') {
+  return [
+    `handle ${VAULT_UNLOCK_ROUTE} {`,
+    `  reverse_proxy 127.0.0.1:${VAULT_AGENT_PORT}`,
+    '}',
+  ].map((line) => `${indent}${line}`).join('\n');
+}
+
+// The routes Caddy answers while the control plane is down, in the order it
+// evaluates them. Rendered as one unit so a future third route is added here
+// rather than in each of the six site blocks below.
+function statusRoutes(indent = '  ') {
+  return [progressRoute(indent), unlockRoute(indent)].join('\n');
 }
 
 // Suite Manager is deliberately stopped for the whole middle of a restore, so
@@ -106,6 +133,17 @@ function withUnavailableHandler(caddyfile) {
         ...updated.slice(0, block.end),
         ...unavailableHandler().split('\n'),
         ...updated.slice(block.end),
+      ];
+    }
+    // Each route is checked on its own, because a machine installed before the
+    // vault existed has the progress route and not the unlock one, and an
+    // all-or-nothing test would leave exactly those machines unable to serve the
+    // only screen that can open their disk.
+    if (!body.includes(VAULT_UNLOCK_ROUTE)) {
+      updated = [
+        ...updated.slice(0, block.start + 1),
+        ...unlockRoute().split('\n'),
+        ...updated.slice(block.start + 1),
       ];
     }
     if (!body.includes(PROGRESS_ROUTE)) {
@@ -178,7 +216,7 @@ function renderUnavailablePage() {
     overflow: hidden;
   }
   #mos-progress-fill { background: #1c9e6d; border-radius: 999px; display: block; height: 100%; width: 0; }
-  #mos-progress-plan { list-style: none; margin: 0 0 0.75rem; padding: 0; }
+  #mos-progress-plan, #mos-progress-plan ul { list-style: none; margin: 0 0 0.75rem; padding: 0; }
   #mos-progress-plan li { padding: 0.15rem 0 0.15rem 1.4rem; position: relative; }
   #mos-progress-plan li::before {
     background: rgba(9, 30, 54, 0.14);
@@ -195,6 +233,26 @@ function renderUnavailablePage() {
   #mos-progress-plan li.is-now { font-weight: 600; }
   #mos-progress-plan li.is-now::before { background: #1c9e6d; box-shadow: 0 0 0 3px rgba(40, 188, 132, 0.24); }
   #mos-progress-plan li.is-next { color: #4a6076; }
+  /* The group's own parts: one indent in, smaller, and only worth reading
+     while that group is the one running — which is when it opens itself. */
+  #mos-progress-plan summary { cursor: pointer; list-style: none; }
+  #mos-progress-plan summary::-webkit-details-marker { display: none; }
+  #mos-progress-plan summary::after {
+    border-bottom: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    content: "";
+    display: inline-block;
+    height: 0.32rem;
+    margin: 0 0 0.12rem 0.45rem;
+    opacity: 0.5;
+    transform: rotate(45deg);
+    width: 0.32rem;
+  }
+  #mos-progress-plan details[open] summary::after { margin-bottom: -0.05rem; transform: rotate(-135deg); }
+  #mos-progress-plan ul { font-size: 0.9rem; margin: 0.1rem 0 0.3rem; }
+  #mos-progress-plan ul li { font-weight: 400; padding-left: 1.1rem; }
+  #mos-progress-plan ul li::before { height: 0.35rem; left: 0.33rem; top: 0.6rem; width: 0.35rem; }
+  #mos-progress-plan ul li.is-now { font-weight: 600; }
   @media (prefers-color-scheme: dark) {
     body { background: #061526; color: #eef4ff; }
     .meta { color: #b8c9de; }
@@ -255,6 +313,65 @@ function renderUnavailablePageScript() {
     if (minutes < 1) return 'Started under a minute ago.';
     return 'Started ' + (minutes === 1 ? 'a minute' : minutes + ' minutes') + ' ago.';
   }
+  function stateWord(value) { return value === 'done' || value === 'now' ? value : 'next'; }
+  function lines(entry) { return Array.isArray(entry.steps) ? entry.steps.filter(function (line) { return line && typeof line.sentence === 'string'; }) : []; }
+  // The groups are built once and then only repainted, because the owner may
+  // have opened a finished group to read it and a rebuild every few seconds
+  // would close it under them.
+  var groups = [];
+  var built = '';
+  function buildPlan(list, plan) {
+    while (list.firstChild) list.removeChild(list.firstChild);
+    groups = [];
+    for (var i = 0; i < plan.length; i += 1) {
+      var entry = plan[i];
+      var item = document.createElement('li');
+      var steps = lines(entry);
+      var detail = null;
+      var rows = [];
+      if (steps.length) {
+        detail = document.createElement('details');
+        var summary = document.createElement('summary');
+        summary.textContent = entry.sentence;
+        detail.appendChild(summary);
+        var sub = document.createElement('ul');
+        for (var j = 0; j < steps.length; j += 1) {
+          var row = document.createElement('li');
+          row.textContent = steps[j].sentence;
+          sub.appendChild(row);
+          rows.push(row);
+        }
+        detail.appendChild(sub);
+        item.appendChild(detail);
+      } else {
+        item.textContent = entry.sentence;
+      }
+      list.appendChild(item);
+      groups.push({ detail: detail, item: item, rows: rows, state: '' });
+    }
+  }
+  function paintPlan(list, plan) {
+    var usable = [];
+    for (var i = 0; i < plan.length; i += 1) {
+      if (plan[i] && typeof plan[i].sentence === 'string') usable.push(plan[i]);
+    }
+    var shape = [];
+    for (i = 0; i < usable.length; i += 1) shape.push(usable[i].sentence + '/' + lines(usable[i]).length);
+    var key = shape.join('|');
+    if (key !== built) { buildPlan(list, usable); built = key; }
+    for (i = 0; i < usable.length; i += 1) {
+      var group = groups[i];
+      var state = stateWord(usable[i].state);
+      group.item.className = 'is-' + state;
+      // The running group opens itself and folds away when it is done — but
+      // only as it changes, so a group the owner opened stays open.
+      if (group.detail && state !== group.state) group.detail.open = state === 'now';
+      group.state = state;
+      var steps = lines(usable[i]);
+      for (var j = 0; j < group.rows.length; j += 1) group.rows[j].className = 'is-' + stateWord(steps[j] && steps[j].state);
+    }
+    list.hidden = !list.firstChild;
+  }
   function render(data, now) {
     if (!data || typeof data !== 'object' || typeof data.headline !== 'string' || typeof data.sentence !== 'string' || !Array.isArray(data.plan)) { hide(); return false; }
     var updated = Date.parse(data.updatedAt);
@@ -271,18 +388,7 @@ function renderUnavailablePageScript() {
     if (bar) bar.hidden = share === null;
     if (fill) fill.style.width = (share === null ? 0 : Math.round(share * 100)) + '%';
     var list = el('mos-progress-plan');
-    if (list) {
-      while (list.firstChild) list.removeChild(list.firstChild);
-      for (var i = 0; i < data.plan.length; i += 1) {
-        var entry = data.plan[i];
-        if (!entry || typeof entry.sentence !== 'string') continue;
-        var item = document.createElement('li');
-        item.className = 'is-' + (entry.state === 'done' || entry.state === 'now' ? entry.state : 'next');
-        item.textContent = entry.sentence;
-        list.appendChild(item);
-      }
-      list.hidden = !list.firstChild;
-    }
+    if (list) paintPlan(list, data.plan);
     var started = Date.parse(data.startedAt);
     var timing = [];
     if (data.expect && typeof data.expect.sentence === 'string') timing.push(data.expect.sentence);
@@ -314,29 +420,33 @@ function renderUnavailablePageScript() {
 // The fallback keeps the 404 an unmatched site address already returned, so a
 // request to the bare address still says nothing about what runs here.
 //
-// Nothing closes this door explicitly: applying a real domain with DNS-01
-// replaces this whole file with `renderHttpsCaddyfile()` output, which has no
-// Easy Door block, and plain HTTP on a globally resolvable name stops being
-// served the moment there is a better address.
-function renderCaddyfile() {
-  return `http://$MOS_HOME_HOST {
-${progressRoute()}
-  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
-${unavailableHandler()}
-}
-
-${EASY_DOOR_CADDY_MARKER}
+// Nothing closes this door, ever: a door is not an address. Applying a real
+// domain changes where apps and Homepage are published, and the HTTPS Caddyfile
+// keeps this block so Suite Manager itself still answers on the name the owner
+// may be standing on when the change lands.
+function easyDoorSiteBlock(suiteManagerPort = '$MOS_SUITE_MANAGER_PORT') {
+  return `${EASY_DOOR_CADDY_MARKER}
 http:// {
-${progressRoute()}
+${statusRoutes()}
   @mos-easy-door header_regexp Host ${EASY_DOOR_HOME_HOST_REGEXP}
   handle @mos-easy-door {
-    reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
+    reverse_proxy 127.0.0.1:${suiteManagerPort}
   }
   handle {
     respond 404
   }
 ${unavailableHandler()}
+}`;
 }
+
+function renderCaddyfile() {
+  return `http://$MOS_HOME_HOST {
+${statusRoutes()}
+  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
+${unavailableHandler()}
+}
+
+${easyDoorSiteBlock()}
 
 import /etc/caddy/mos-homepage-routes.caddy
 import /etc/caddy/mos-app-routes.caddy
@@ -345,13 +455,13 @@ import /etc/caddy/mos-app-routes.caddy
 
 function renderPublicCloudCaddyfile() {
   return `http://$MOS_HOME_HOST {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 ${unavailableHandler()}
 }
 
 https://$MOS_HOME_HOST {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 ${unavailableHandler()}
 }
@@ -361,6 +471,10 @@ import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
+// The install-time name and the Easy Door stay open for Suite Manager beside the
+// domain: an owner who applied HTTPS from either door keeps a working page while
+// their devices learn the new name, and the apps — single-addressed on the
+// domain — are what the door does not carry.
 function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_SUITE_MANAGER_PORT' }) {
   const homeHost = `home.${baseDomain}`;
   return `{
@@ -369,17 +483,19 @@ function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManag
 }
 
 http://${bootstrapHost} {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
+
+${easyDoorSiteBlock(suiteManagerPort)}
 
 http://${homeHost} {
   redir https://${homeHost}{uri} permanent
 }
 
 https://${homeHost} {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
@@ -425,8 +541,8 @@ function renderHomepageSystemdUnit({
 } = {}) {
   return `[Unit]
 Description=MOS Homepage dashboard
-After=docker.service network-online.target
-Requires=docker.service
+After=mos-vault.service docker.service network-online.target
+Requires=mos-vault.service docker.service
 Wants=network-online.target
 
 [Service]
@@ -445,6 +561,8 @@ WantedBy=multi-user.target
 module.exports = {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
+  VAULT_AGENT_PORT,
+  VAULT_UNLOCK_ROUTE,
   JOURNALD_CONFIG_PATH,
   PROGRESS_FILENAME,
   PROGRESS_ROUTE,
@@ -454,6 +572,8 @@ module.exports = {
   renderCaddyfile,
   renderUnavailablePage,
   renderUnavailablePageScript,
+  statusRoutes,
+  unlockRoute,
   withUnavailableHandler,
   renderJournaldConfig,
   renderHttpsCaddyfile,

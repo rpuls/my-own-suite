@@ -1,5 +1,16 @@
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
+const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
+
+// The Easy Door base app routes are aliased on, or null. Apps are
+// single-addressed on a domain, so the alias stops the moment the suite's
+// recorded address is one; until then it follows the machine's live address,
+// which is what the door itself does. Decided from the recorded address rather
+// than from the live Caddyfile because every LAN Caddyfile carries the door now.
+function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), serverAddress = detectServerAddress() } = {}) {
+  if (address?.kind === 'domain') return null;
+  return easyDoorBaseDomain(serverAddress);
+}
 
 class AppRuntimeError extends Error {
   constructor(code, message, statusCode = 400) {
@@ -351,7 +362,7 @@ ${bridge}
 // is reachable from the same door the owner reached Suite Manager through. Unlike
 // Suite Manager's own block, which Caddy matches by pattern, an app route names
 // one exact host and so has to be re-derived here on every apply — which is also
-// what closes it: the base is null whenever this box is not serving the door.
+// what stops it: the base is null once the suite is published on a domain.
 function renderAppRoutes({ appHost, easyDoorBase = null, internalIcalBridge = null, reverseProxy, routes = null, scheme = 'http' }) {
   if (Array.isArray(routes)) {
     const baseDomain = appHost.split('.').slice(1).join('.');
@@ -367,7 +378,7 @@ function renderAppRoutes({ appHost, easyDoorBase = null, internalIcalBridge = nu
 }
 
 class AppAgentCore {
-  constructor(adapter, { easyDoorBase = detectEasyDoorBase } = {}) {
+  constructor(adapter, { easyDoorBase = aliasedEasyDoorBase } = {}) {
     this.adapter = adapter;
     this.easyDoorBase = easyDoorBase;
   }
@@ -510,4 +521,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, packageImageTag, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, packageImageTag, renderAppRoutes, resolveEnvironment };

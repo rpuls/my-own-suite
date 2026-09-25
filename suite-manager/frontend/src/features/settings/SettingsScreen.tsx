@@ -1,23 +1,64 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { AdvancedPanel, Checkbox, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
+import { readVaultView, type VaultView } from '../../lib/vault';
 
-type HttpsStatus = {
-  acmeEmail: string | null;
-  activeHomeUrl: string;
-  agentAvailable: boolean;
-  baseDomain: string | null;
-  bootstrapUrl: string;
-  installContext: string;
-  lastApply: { at: string | null; diagnostics: string | null; errorCode: string | null; status: string };
-  parkedBaseDomain?: string | null;
-  privateHttpsAvailable: boolean;
-  provider: string | null;
-  serverAddress: string | null;
-  tlsMode: string;
-  tokenConfigured: boolean;
+// The suite's one recorded address: where apps and Homepage are published.
+type SuiteAddress = {
+  acmeEmail?: string | null;
+  baseDomain?: string | null;
+  host: string;
+  kind: 'domain' | 'easy-door' | 'lan-name';
+  // Whether the name points at this machine right now; null when DNS could not
+  // be asked, or for a door, which needs no DNS.
+  resolvesHere: boolean | null;
+  scheme: 'http' | 'https';
+  url: string;
 };
+
+type AddressChange = {
+  at: string | null;
+  diagnostics: string | null;
+  errorCode: string | null;
+  result: AppReconciliationResult | null;
+  stage: string | null;
+  stages: string[];
+  status: 'applied' | 'applying' | 'failed' | 'never';
+  target: { host: string; kind: string; scheme: string } | null;
+};
+
+type AddressStatus = {
+  address: SuiteAddress;
+  agentAvailable: boolean;
+  bootstrapUrl: string;
+  // The recorded Easy Door name no longer matches the live one: the machine's
+  // address moved under it.
+  drifted: { from: string; to: string } | null;
+  easyDoorUrl: string | null;
+  installContext: string;
+  lastChange: AddressChange;
+  // The domain a restored backup was set up for, waiting to be served here.
+  offered: { acmeEmail: string | null; baseDomain: string } | null;
+  privateHttpsAvailable: boolean;
+  serverAddress: string | null;
+};
+
+const CHANGE_STAGE_SENTENCES: Record<string, string> = {
+  apps: 'Rebuilding your apps and Homepage on the new address.',
+  caddy: 'Configuring the web server and waiting for the certificate. This can take a minute or two.',
+  recorded: 'Recording the new address.',
+};
+
+const ADDRESS_KIND_SENTENCES: Record<SuiteAddress['kind'], string> = {
+  domain: 'Your own domain, with a trusted certificate.',
+  'easy-door': 'The Easy Door: the name MOS answers on with nothing configured on your network.',
+  'lan-name': 'The name this server was installed with. Your network has to know where it lives.',
+};
+
+// Where a poll of the address status ended. Signed out and refused are answers;
+// unreachable is the web server restarting under this connection.
+type Contact = 'ok' | 'refused' | 'signed-out' | 'unreachable';
 
 type SecurityEventSummary = {
   byType: Array<{ eventCount: number; eventType: string; lastSeenAt: string | null; subjectCount: number }>;
@@ -35,18 +76,9 @@ type AppReconciliationResult = {
   status?: string;
 };
 
-type ApplyResult = {
-  appReconciliation?: AppReconciliationResult;
-  appliedAt: string;
-  bootstrapUrl: string;
-  homeUrl: string;
-  status: string;
-};
-
-
 function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; serverAddress: string }) {
   return <>
-    <p>MOS can now serve HTTPS at <strong>{homeHost}</strong>, but your devices or local network may still need to learn where that name lives.</p>
+    <p>MOS serves HTTPS at <strong>{homeHost}</strong>, but your devices or local network still have to learn where that name lives.</p>
     <p>Create a local DNS override that sends this hostname to this server IP:</p>
     <pre className="suite-command-block">{`${serverAddress} ${homeHost}`}</pre>
     <p>The right place to do that depends on your setup: your router, local DNS server, AdGuard Home, Unbound, Pi-hole, or an operating-system hosts file can all be valid options.</p>
@@ -54,22 +86,21 @@ function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; s
 }
 
 // The one panel on this screen that renders in both contexts: diagnostics when
-// an HTTPS apply failed, and ambient detail when it did not. Composing the
-// shared panel rather than repeating it keeps the two call sites below —
-// provider-managed HTTPS and private LAN HTTPS — showing the same facts.
-function HttpsDiagnostics({ status }: { status: HttpsStatus }) {
+// a change of address failed, and ambient detail when it did not.
+function AddressDiagnostics({ status }: { status: AddressStatus }) {
+  const change = status.lastChange;
   return <AdvancedPanel facts={[
-    { label: 'Bootstrap recovery URL', value: status.bootstrapUrl },
-    { label: 'Active Home URL', value: status.activeHomeUrl },
+    { label: 'Recorded address', value: `${status.address.url} (${status.address.kind})` },
+    { label: 'Install-time URL', value: status.bootstrapUrl },
+    { label: 'Easy Door URL', value: status.easyDoorUrl || 'None: this server is not on a private network' },
+    { label: 'Name points here', value: status.address.resolvesHere === null ? 'Not checked' : status.address.resolvesHere ? 'Yes' : 'No' },
     { label: 'Install context', value: status.installContext },
     { label: 'Detected server IP', value: status.serverAddress || 'Not detected' },
-    { label: 'TLS mode', value: status.tlsMode },
-    { label: 'Provider', value: status.provider || 'Not configured' },
-    { label: 'Last apply', value: `${status.lastApply.status || 'never'}${status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}${status.lastApply.at ? ` at ${status.lastApply.at}` : ''}` },
-  ]} output={status.lastApply.diagnostics || undefined} reveal={status.lastApply.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
+    { label: 'Last change', value: `${change.status}${change.target ? ` to ${change.target.host}` : ''}${change.stage ? ` (${change.stage})` : ''}${change.errorCode ? ` (${change.errorCode})` : ''}${change.at ? ` at ${change.at}` : ''}` },
+  ]} output={change.diagnostics || undefined} reveal={change.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
 }
 
-function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult }) {
+function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult | null }) {
   if (!reconciliation || reconciliation.skipped || !['failed', 'partial'].includes(String(reconciliation.status || ''))) return null;
   const failedRuntime = (reconciliation.runtime || []).filter((item) => item.status === 'failed');
   const failedEntries = reconciliation.homepageEntryFailures || [];
@@ -80,8 +111,8 @@ function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppRecon
     failedPackages.length ? `Apps: ${failedPackages.join(', ')}` : '',
   ].filter(Boolean).join(' | ');
 
-  return <Notice title="HTTPS applied, but app URL reconciliation needs attention" variant="warning">
-    <p>Your Home URL was updated. Some app routes or MOS-managed Homepage entries may still need to be reapplied from the Apps or Customize screens.</p>
+  return <Notice title="The address changed, but some apps did not follow it" variant="warning">
+    <p>Your suite is on its new address. The apps named below could not be rebuilt on it; open them under Apps and apply their runtime again.</p>
     {details ? <p className="suite-meta">{details}</p> : null}
   </Notice>;
 }
@@ -283,6 +314,148 @@ function EmailRelayPanel() {
 
 const MIN_PASSWORD_LENGTH = 12;
 
+// Turning startup protection on or off is confirmed with the owner password
+// rather than a checkbox, because the password is not only the confirmation —
+// it is the secret being enrolled. This dialog is the one moment MOS holds it
+// for that purpose outside a password change and a sign-in.
+function StartupProtectionDialog({ enabling, onClose, onDone }: {
+  enabling: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!password || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/settings/vault/startup-password', {
+        body: JSON.stringify({ enabled: enabling, password }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'How this server starts could not be changed.');
+      setPassword('');
+      onDone();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'How this server starts could not be changed.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <Dialog
+    footer={<>
+      <button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={!password || saving} form="startup-protection" type="submit">
+        {saving ? 'Saving...' : enabling ? 'Ask for my password' : 'Open by itself'}
+      </button>
+    </>}
+    onClose={onClose}
+    title={enabling ? 'Ask for your password at startup' : 'Let this server open itself'}
+  >
+    {enabling ? <>
+      <p>From now on, this server waits for your password after every restart — including a power cut — and your apps stay off until you type it. If you are away and cannot reach this page, they stay off until you can.</p>
+      <p>In exchange, a stolen server gives up nothing: without your password its disk stays closed, and so do the backups whose key is inside it.</p>
+    </> : <>
+      <p>This server will open its own disk when it starts, so a power cut needs nothing from you and your apps come back on their own.</p>
+      <p>The trade is that someone who takes the whole machine and knows Linux can get into it. A disk pulled out on its own, or this machine sold, still gives up nothing.</p>
+    </>}
+    <form id="startup-protection" onSubmit={(event) => void submit(event)}>
+      <TextInput
+        autoComplete="current-password"
+        autoFocus
+        helperText="The password you sign in to Suite Manager with. It is what your server's security chip will ask for."
+        label="Your password"
+        onChange={(event) => { setPassword(event.target.value); setError(''); }}
+        type="password"
+        value={password}
+      />
+    </form>
+    {error ? <Notice title="Nothing was changed" variant="error"><p>{error}</p></Notice> : null}
+  </Dialog>;
+}
+
+/**
+ * The standing answer to "is my data encrypted, and what happens when this
+ * thing restarts" — the question an owner has months after the setup screen
+ * that showed them their recovery key.
+ *
+ * It says what is true of this machine in this mode and never more than that.
+ * Each mode protects something different, and the one claim MOS must never make
+ * is the blanket one: only a machine with startup protection on is useless to
+ * someone who walks off with it.
+ */
+function EncryptionPanel() {
+  const [view, setView] = useState<VaultView | null>(null);
+  const [asking, setAsking] = useState<'off' | 'on' | null>(null);
+
+  async function load() {
+    try {
+      setView(await readVaultView());
+    } catch {
+      // A panel that cannot read its own state says nothing rather than
+      // guessing, in either direction.
+      setView(null);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  if (!view) return null;
+
+  const hasChip = Boolean(view.vault.tpm);
+  const asksForPassword = view.asksForPassword;
+  // `unknown` is the agent not answering, never "not encrypted": the machine
+  // still has whatever disk it had a minute ago.
+  const unencryptedSentence = view.vault.state === 'unknown'
+    ? 'MOS could not read how this server\'s disk is set up just now. Reload in a moment.'
+    : view.vault.sentence || 'This server keeps its app data on an unencrypted disk. Your backups are still encrypted with your recovery key.';
+
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div>
+      <h2 className="mos-card-title">Disk encryption</h2>
+      {view.encrypted
+        ? <p className="suite-meta">Your apps' data, your Suite Manager settings and your apps' secrets are all held on an encrypted part of this server's disk. Everything below is about when it opens.</p>
+        : <p className="suite-meta">{unencryptedSentence}</p>}
+    </div>
+
+    {view.encrypted ? <>
+      {view.chipNeedsRepair ? <Notice title="This server will ask for your recovery key after a restart" variant="warning">
+        <p>Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit.</p>
+      </Notice> : null}
+
+      {!hasChip ? <p>This machine has no security chip, so it cannot open its own disk. It asks for your recovery key on a web page after every restart, and your apps start once you enter it.</p>
+        : asksForPassword
+          ? <p>This server asks for your password after every restart, including a power cut, and opens your data once you type it on its own web page. If it is stolen, nobody gets in: the disk stays closed, and so do the backups whose key is inside it.</p>
+          : <p>This server opens its own disk when it starts, so a power cut needs nothing from you. A disk pulled out and read elsewhere, moved into another machine, or sold with this one gives up nothing — but a thief who takes the whole machine, switches it on and knows Linux can get into it.</p>}
+
+      {hasChip ? <Switch
+        checked={asksForPassword}
+        description={asksForPassword
+          ? 'Your apps stay off after a restart until you type your password. Turning this off means the server opens itself again, and a stolen machine can be got into.'
+          : 'The only thing that makes this machine useless to someone who steals it. The cost is that your apps stay off after every restart, including a power cut, until you are somewhere you can type your password.'}
+        label="Ask for my password when this server starts"
+        onChange={(event) => setAsking(event.currentTarget.checked ? 'on' : 'off')}
+      /> : null}
+
+      <p className="suite-meta">Your recovery key opens this disk and your backups whatever happens to the chip, and it is the only way in if you forget your password. It is under Backup &amp; Restore, where you can see it again and print a new kit.</p>
+    </> : null}
+
+    {asking ? <StartupProtectionDialog
+      enabling={asking === 'on'}
+      // Reloaded on cancel as well: a refused switch may have left the chip
+      // slot wiped and the mode changed, and the panel must show that state
+      // rather than the one the owner started from.
+      onClose={() => { setAsking(null); void load(); }}
+      onDone={() => { setAsking(null); void load(); }}
+    /> : null}
+  </div>;
+}
+
 // Rotating the owner password matters most on the installs where it was created
 // over plain HTTP — a local or own-hardware suite that had no certificate yet.
 // The first password travelled the LAN in the clear; this is how it stops being
@@ -294,6 +467,11 @@ function OwnerAccountPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [changed, setChanged] = useState(false);
+  // Why the chip did not follow the change, when it did not. The two reasons
+  // leave the machine in different states and the owner has to be told which:
+  // a chip that refused now holds nothing, an agent that was unreachable was
+  // never told and the chip may still hold the previous password.
+  const [chipFailed, setChipFailed] = useState<'refused' | 'unreachable' | null>(null);
 
   const tooShort = newPassword.length > 0 && newPassword.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -306,7 +484,10 @@ function OwnerAccountPanel() {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await jsonResponse(await fetch('/suite-manager/api/settings/owner/password', {
+      // The change always goes through, so the only thing the answer can add is
+      // whether the disk followed it. It reports that rather than hiding it: the
+      // owner has to know which password their server will want after a restart.
+      const result = await jsonResponse<{ startupProtection?: { ok: boolean; reason?: string | null } | null }>(await fetch('/suite-manager/api/settings/owner/password', {
         body: JSON.stringify({ currentPassword, newPassword }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
@@ -314,6 +495,8 @@ function OwnerAccountPanel() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      const protection = result.startupProtection;
+      setChipFailed(!protection || protection.ok ? null : protection.reason === 'vault-agent-unavailable' ? 'unreachable' : 'refused');
       setChanged(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Your password could not be changed.');
@@ -330,6 +513,14 @@ function OwnerAccountPanel() {
       <TextInput autoComplete="new-password" helperText={mismatch ? "Those passwords don't match." : 'Retype it to catch typos.'} label="Confirm new password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setConfirmPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={confirmPassword} />
       {error ? <Notice title="Your password was not changed" variant="error"><p>{error}</p></Notice> : null}
       {changed ? <Notice title="Password changed" variant="success"><p>Your new password is active. Every other signed-in browser was signed out; this one stays signed in.</p></Notice> : null}
+      {chipFailed === 'refused' ? <Notice title="Your server's chip did not follow the change" variant="warning">
+        <p>Your password changed, and your old one no longer opens anything. But this server's security chip would not take the new one, so it now opens nothing on its own: after a restart it asks for the recovery key from your recovery kit instead of your password.</p>
+        <p>MOS tries again the next time you sign in, so signing out and back in is usually the whole fix.</p>
+      </Notice> : null}
+      {chipFailed === 'unreachable' ? <Notice title="Your server's chip was not told about the change" variant="warning">
+        <p>Your password changed, but the part of MOS that manages this server's disk was not answering, so its security chip was not taught the new one. If this server is set to ask for your password when it starts, it may still want your previous password after a restart; your recovery key opens it either way.</p>
+        <p>Once MOS is answering again, turning <strong>Ask for my password when this server starts</strong> off and on in Disk encryption teaches the chip your current password.</p>
+      </Notice> : null}
       <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
     </form>
   </div>;
@@ -443,52 +634,89 @@ function GetHelpPanel() {
 }
 
 export function SettingsScreen() {
-  const [status, setStatus] = useState<HttpsStatus | null>(null);
+  const [status, setStatus] = useState<AddressStatus | null>(null);
   const [loadError, setLoadError] = useState('');
+  const [contact, setContact] = useState<Contact>('ok');
   const [baseDomain, setBaseDomain] = useState('');
   const [acmeEmail, setAcmeEmail] = useState('');
   const [token, setToken] = useState('');
   const [formError, setFormError] = useState('');
-  const [applying, setApplying] = useState(false);
-  const [result, setResult] = useState<ApplyResult | null>(null);
+  const [busy, setBusy] = useState<'' | 'change' | 'dismiss'>('');
+  // The change this screen started, so its outcome is shown once and the
+  // history of an earlier one is not mistaken for it.
+  const [startedAt, setStartedAt] = useState<string | null>(null);
   const [securitySummary, setSecuritySummary] = useState<SecurityEventSummary | null>(null);
   const [securityError, setSecurityError] = useState('');
 
-  async function load(): Promise<HttpsStatus | null> {
+  // One read of the address status, and the screen is told where it ended:
+  // signed out, refused at this address, unreachable, or answered. A domain
+  // change restarts the web server under this connection, so a poll that fails
+  // is expected for a while and is never rendered as anything it did not see.
+  async function load(): Promise<AddressStatus | null> {
+    let response: Response;
     try {
-      const next = await jsonResponse<HttpsStatus>(await fetch('/suite-manager/api/settings/https'), 'Unable to load HTTPS settings.');
-      setStatus(next);
-      setBaseDomain(next.baseDomain || next.parkedBaseDomain || '');
-      setAcmeEmail(next.acmeEmail || '');
-      setLoadError('');
-      return next;
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Unable to load HTTPS settings.');
+      response = await fetch('/suite-manager/api/settings/address', { cache: 'no-store' });
+    } catch {
+      setContact('unreachable');
       return null;
     }
-  }
-
-  async function loadAfterRestart(): Promise<HttpsStatus | null> {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const next = await load();
-      if (next) return next;
+    if (response.status === 401) { setContact('signed-out'); return null; }
+    if (response.status === 421) { setContact('refused'); return null; }
+    if (!response.ok) {
+      setContact('unreachable');
+      if (!status) setLoadError((await response.json().catch(() => ({}))).error || 'Unable to load the suite address.');
+      return null;
     }
-    return null;
+    const next = await jsonResponse<AddressStatus>(response, 'Unable to load the suite address.');
+    setContact('ok');
+    setLoadError('');
+    setStatus(next);
+    return next;
   }
 
   useEffect(() => {
-    void load();
+    void load().then((next) => {
+      if (!next) return;
+      setBaseDomain(next.address.baseDomain || next.offered?.baseDomain || '');
+      setAcmeEmail(next.address.acmeEmail || next.offered?.acmeEmail || '');
+    });
     void fetch('/suite-manager/api/settings/security-events')
       .then((response) => jsonResponse<SecurityEventSummary>(response, 'Unable to load recent security activity.'))
       .then((summary) => { setSecuritySummary(summary); setSecurityError(''); })
       .catch((error) => setSecurityError(error instanceof Error ? error.message : 'Unable to load recent security activity.'));
   }, []);
 
+  const applying = status?.lastChange.status === 'applying';
+  // While a change runs the screen polls, through whatever the web server
+  // answers on, until the change has an outcome.
+  useEffect(() => {
+    if (!applying && contact !== 'unreachable') return undefined;
+    const timer = window.setInterval(() => { void load(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [applying, contact]);
+
+  // Every way of moving the suite is the same request with a different body,
+  // and every one of them is answered before it finishes.
+  async function startChange(body: Record<string, unknown>) {
+    setFormError('');
+    setBusy('change');
+    try {
+      const started = await jsonResponse<{ startedAt: string }>(await fetch('/suite-manager/api/settings/address/change', {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'The address could not be changed.');
+      setStartedAt(started.startedAt);
+      await load();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'The address could not be changed.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setFormError('');
-    setResult(null);
     const normalizedDomain = baseDomain.trim().toLowerCase().replace(/\.$/u, '');
     if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(normalizedDomain)) {
       setFormError('Enter a valid Cloudflare-managed base domain.'); return;
@@ -502,70 +730,94 @@ export function SettingsScreen() {
     if (!status?.agentAvailable) {
       setFormError('The HTTPS system agent is unavailable. Update or repair the MOS control plane, then try again.'); return;
     }
-
     const submittedToken = token.trim();
     setToken('');
-    setApplying(true);
+    await startChange({ acmeEmail: acmeEmail.trim(), baseDomain: normalizedDomain, cloudflareApiToken: submittedToken, kind: 'domain' });
+  }
+
+  // The offered domain is served with the credential the restore kept for it,
+  // so this needs no token. An offer that came without a contact address takes
+  // the one in the form.
+  async function useOffered() {
+    if (!status?.offered) return;
+    const email = (status.offered.acmeEmail || acmeEmail).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) { setFormError('Enter a valid ACME contact email address for the offered domain.'); return; }
+    await startChange({ acmeEmail: email, kind: 'domain', useOffered: true });
+  }
+
+  async function dismissOffer() {
+    setFormError('');
+    setBusy('dismiss');
     try {
-      const applied = await jsonResponse<ApplyResult>(await fetch('/suite-manager/api/settings/https/apply', {
-        body: JSON.stringify({ acmeEmail: acmeEmail.trim(), baseDomain: normalizedDomain, cloudflareApiToken: submittedToken }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'HTTPS could not be applied.');
-      setResult(applied);
+      await jsonResponse(await fetch('/suite-manager/api/settings/address/offer/dismiss', { method: 'POST' }), 'The offer could not be dismissed.');
       await load();
     } catch (error) {
-      const recovered = await loadAfterRestart();
-      if (recovered?.lastApply.status === 'applied' && recovered.baseDomain === normalizedDomain) {
-        setResult({
-          appliedAt: recovered.lastApply.at || new Date().toISOString(),
-          bootstrapUrl: recovered.bootstrapUrl,
-          homeUrl: recovered.activeHomeUrl,
-          status: 'applied',
-        });
-        return;
-      }
-      setFormError(error instanceof Error ? error.message : 'HTTPS could not be applied.');
+      setFormError(error instanceof Error ? error.message : 'The offer could not be dismissed.');
     } finally {
-      setApplying(false);
+      setBusy('');
     }
   }
 
-  const activeHomeHost = status?.baseDomain ? `home.${status.baseDomain}` : '';
+  const address = status?.address;
+  const change = status?.lastChange;
   const dnsAddress = status?.serverAddress || '<server-ip>';
-  const canApplyHttps = Boolean(
-    status?.agentAvailable &&
-    baseDomain.trim() &&
-    acmeEmail.trim() &&
-    token.trim() &&
-    !applying,
-  );
+  // The outcome of the change this screen started, shown until the next one.
+  const outcome = change && startedAt && change.at && change.at >= startedAt && change.status !== 'applying' ? change : null;
+  const canApplyHttps = Boolean(status?.agentAvailable && baseDomain.trim() && acmeEmail.trim() && token.trim() && !busy && !applying);
 
   return <section className="mos-shell mos-page">
     <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser, and the owner account that controls it.</p></div>
     <GetHelpPanel />
-    {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
-    {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
+    {loadError && !status ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
+    {contact === 'signed-out' ? <Notice title="Your session ended" variant="warning"><p>Sign in again to see where the address change ended up.</p><a className="mos-btn mos-btn-primary" href="/suite-manager/">Sign in</a></Notice> : null}
+    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${change.target.scheme}://${change.target.host}/suite-manager/settings`}>{`${change.target.scheme}://${change.target.host}/`}</a>.</p></Notice> : null}
+    {status && address && change ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
       <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider's custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>
-      <HttpsDiagnostics status={status} />
+      <AddressDiagnostics status={status} />
     </div> : <div className="mos-panel suite-card suite-settings-panel">
-      <div><h2 className="mos-card-title">Private LAN HTTPS with Cloudflare DNS</h2><p className="suite-meta">Use DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access.</p></div>
+      <div>
+        <h2 className="mos-card-title">Where your suite lives</h2>
+        <p className="suite-meta">Your suite is published at <a href={address.url}><strong>{address.url}</strong></a>. {ADDRESS_KIND_SENTENCES[address.kind]} Every app and your Homepage use this address; MOS itself also keeps answering on the Easy Door and the name it was installed with, so you can always get back here.</p>
+      </div>
+      {applying ? <Notice title={`Moving your suite to ${change.target?.host || 'its new address'}`} variant="info">
+        <p>{CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.'}</p>
+        {contact === 'unreachable' ? <p className="suite-meta">The web server is restarting, so this page has no answer for a moment. It keeps asking.</p> : null}
+      </Notice> : null}
+      {outcome?.status === 'applied' ? <Notice title="Your suite moved" variant="success">
+        <p>It is now published at <a href={address.url}>{address.url}</a>.</p>
+        {address.kind === 'domain' && address.resolvesHere !== true ? <LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /> : null}
+        <a className="mos-btn mos-btn-primary" href={address.url}>Open {address.host}</a>
+      </Notice> : null}
+      {outcome?.status === 'applied' ? <AppReconciliationNotice reconciliation={outcome.result} /> : null}
+      {outcome?.status === 'failed' ? <Notice title="The address was not changed" variant="error"><p>Your suite is still at <a href={address.url}>{address.url}</a>. The reason is in the details below.</p></Notice> : null}
+      {!outcome && !applying && address.kind === 'domain' && address.resolvesHere === false ? <Notice title={`${address.host} does not point at this server`} variant="warning"><LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /></Notice> : null}
+      {status.drifted && !applying ? <Notice title="This server's address changed" variant="warning">
+        <p>Your suite was set up on <strong>{status.drifted.from}</strong>, but this server now answers on <strong>{status.drifted.to}</strong>. Your apps still name the old address until the suite follows. A fixed address for this server on your router prevents this.</p>
+        <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void startChange({ kind: 'easy-door' })} type="button">{busy === 'change' ? 'Moving...' : `Move to ${status.drifted.to}`}</button>
+      </Notice> : null}
+      {status.offered && !applying ? <Notice title={`This backup was set up for ${status.offered.baseDomain}`} variant="info">
+        <p>This machine serves <strong>{address.host}</strong>. Anything set up against <strong>home.{status.offered.baseDomain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points here and this server serves it. MOS kept that domain's credential from the backup, so serving it here needs no token; pointing the name at this server is the part MOS cannot do for you.</p>
+        {!status.offered.acmeEmail ? <TextInput autoComplete="email" helperText="The backup did not carry one." label="ACME contact email for the offered domain" onChange={(event) => setAcmeEmail(event.target.value)} type="email" value={acmeEmail} /> : null}
+        <p>
+          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy) || !status.agentAvailable} onClick={() => void useOffered()} type="button">{busy === 'change' ? 'Moving...' : `Serve ${status.offered.baseDomain} from here`}</button>
+          {' '}
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void dismissOffer()} type="button">{busy === 'dismiss' ? 'Dismissing...' : 'Not on this server'}</button>
+        </p>
+      </Notice> : null}
+      <div><h3 className="mos-card-title">{address.kind === 'domain' ? 'Change or renew your domain' : 'Use your own domain with HTTPS'}</h3><p className="suite-meta">MOS uses Cloudflare DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access. Your apps move to the new address with it.</p></div>
       {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
-      {status.parkedBaseDomain && !result ? <Notice title={`${status.parkedBaseDomain} is not served from this machine`} variant="info"><p>That address came with the backup this machine was restored from, as a copy, so MOS answers on this machine's own address for now. To make this the machine behind <strong>home.{status.parkedBaseDomain}</strong>, apply HTTPS below with your Cloudflare API token, then point that name at this server.</p></Notice> : null}
       <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
         <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="MOS base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
         <TextInput autoComplete="email" helperText="Used by the ACME certificate authority for account notices." label="ACME contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />
-        <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The saved token is never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={status.tokenConfigured ? 'Paste a replacement token to reapply' : 'Paste token once'} type="password" value={token} />
-        {formError ? <Notice title="HTTPS was not applied" variant="error"><p>{formError}</p></Notice> : null}
-        {result ? <Notice title="HTTPS configuration applied" variant="success"><p>Your new Home URL is <a href={result.homeUrl}>{result.homeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /><a className="mos-btn mos-btn-primary" href={result.homeUrl}>Open HTTPS Home</a></Notice> : null}
-        {result ? <AppReconciliationNotice reconciliation={result.appReconciliation} /> : null}
-        <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
+        <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The token is used once and never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={address.kind === 'domain' ? 'Paste a token to apply again' : 'Paste token once'} type="password" value={token} />
+        {formError ? <Notice title="The address was not changed" variant="error"><p>{formError}</p></Notice> : null}
+        <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Moving...' : 'Move my suite to this domain'}</button>
       </form>
-      {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
-      <HttpsDiagnostics status={status} />
-    </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
+      <AddressDiagnostics status={status} />
+    </div> : contact === 'ok' && !loadError ? <p className="suite-meta">Loading the suite address...</p> : null}
     <EmailRelayPanel />
+    <EncryptionPanel />
     <TechnicalControlsPanel />
     <OwnerAccountPanel />
     <SecurityActivity error={securityError} summary={securitySummary} />

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { KNOWN_BROWSER_MAX_AGE_MS, SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { HandoverService } = require('../setup/handover-service.cjs');
 const { LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../auth/login-throttle.cjs');
 const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
 const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
@@ -13,7 +14,8 @@ const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
+const { SuiteAddressService } = require('../address/suite-address-service.cjs');
+const { SuiteAddressFile, baseHostOf, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
@@ -21,6 +23,13 @@ const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
+const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
+const {
+  VAULT_TPM_MODES,
+  vaultAsksForPassword,
+  vaultChipNeedsRepair,
+  vaultIsPresent,
+} = require('../../../../shared/vault-contract.cjs');
 const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
@@ -43,6 +52,16 @@ const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
+// Front doors whose install-time name is served over HTTPS from the first boot.
+const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
+
+// The directory the machine-local state lives under. Suite Manager's own state
+// is one directory inside it, so the root is that directory's parent unless the
+// environment names it outright.
+function stateRootOf(stateDir) {
+  if (process.env.MOS_STATE_ROOT) return process.env.MOS_STATE_ROOT;
+  return path.dirname(path.resolve(stateDir));
+}
 
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -274,13 +293,14 @@ function appHostLabelFor(packageId, hostFor) {
   return typeof host === 'string' && host ? host : packageId;
 }
 
-function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = null) {
-  const appliedDomain = typeof httpsSettings?.appliedBaseDomain === 'function' ? httpsSettings.appliedBaseDomain() : null;
-  const homeHost = appliedDomain ? `home.${appliedDomain}` : normalizedHost(request);
-  const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
+// An app's public URL is built from the suite's one recorded address and nothing
+// else — not the request's Host, not a settings row — so a request through any
+// door, a reconcile at boot and a restore with no browser in hand all name the
+// same place.
+function appPublicUrlFor(address, packageId, hostFor = null) {
+  const baseHost = baseHostOf(address);
   const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
-  const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
-  const scheme = httpsSettings?.publicUrlSchemeForHost(homeHost, fallbackScheme) || fallbackScheme;
+  const scheme = address.scheme === 'https' ? 'https' : 'http';
   return {
     appHost,
     baseHost,
@@ -289,33 +309,8 @@ function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = nul
   };
 }
 
-function appPublicUrlResolver(request, httpsSettings = null, hostFor = null) {
-  return (packageId) => appPublicUrlFor(request, packageId, httpsSettings, hostFor);
-}
-
-function appPublicUrlResolverForBase(baseHost, scheme = 'http', hostFor = null) {
-  const normalizedBase = String(baseHost || '').trim().toLowerCase();
-  const normalizedScheme = scheme === 'https' ? 'https' : 'http';
-  return (packageId) => {
-    const appHost = `${appHostLabelFor(packageId, hostFor)}.${normalizedBase}`;
-    return {
-      appHost,
-      baseHost: normalizedBase,
-      publicUrl: `${normalizedScheme}://${appHost}/`,
-      scheme: normalizedScheme,
-    };
-  };
-}
-
-// The same resolver for work that runs without a request to derive a host from
-// — startup recovery. The configured home host stands in for the Host header,
-// and the scheme comes from the stored HTTPS settings exactly as it does for a
-// real request, so a reconcile at boot cannot rewrite a public URL back to http
-// on an HTTPS install.
-function appPublicUrlResolverAtBoot(homeHost, httpsSettings = null) {
-  const normalizedHome = String(homeHost || '').toLowerCase().replace(/:\d+$/u, '');
-  const baseHost = normalizedHome.startsWith('home.') ? normalizedHome.slice(5) : normalizedHome;
-  return appPublicUrlResolverForBase(baseHost, httpsSettings?.publicUrlSchemeForHost(normalizedHome, 'http') || 'http');
+function appPublicUrlResolver(address, hostFor = null) {
+  return (packageId) => appPublicUrlFor(address, packageId, hostFor);
 }
 
 function isSignedIn(setup, sessionToken) {
@@ -370,6 +365,7 @@ function createMOSServer({
   httpsAgent = new HttpsAgentClient(),
   labResetAgent = new LabResetAgentClient(),
   updateAgent = new UpdateAgentClient(),
+  vaultAgent = new VaultAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
@@ -382,6 +378,7 @@ function createMOSServer({
   securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
+  suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRootOf(stateDir)) }),
   officialCatalog = null,
   externalSources = null,
 } = {}) {
@@ -393,31 +390,58 @@ function createMOSServer({
   // source serving a package the gate refused, and a catalog that cannot refresh
   // are all counted in the same durable place.
   const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
-  const httpsSettings = new HttpsSettingsService({
-    agent: httpsAgent,
-    bootstrapHost: homeHost,
-    frontDoor,
-    store: setup.store,
-  });
   const consoleLogin = new ConsoleLoginService({ stateDir });
-  // The console handover lives in the state a backup carries and a restore
-  // replaces, so a backup taken before it is saved ships this machine's server
-  // password, and a restore over it deletes the only copy. Both wait until the
-  // owner has saved it; installs that never had a handover are never waited on.
-  const serverLoginUnsaved = () => {
-    const status = consoleLogin.status();
-    return status.pending === true || status.unreadable === true;
-  };
-  const refuseUntilServerLoginSaved = (response) => {
-    if (!serverLoginUnsaved()) return false;
-    jsonResponse(response, 409, { code: 'SERVER_LOGIN_UNSAVED', error: 'Save this machine\'s server login from the Home page first. A backup would carry it and a restore would delete it.' });
-    return true;
-  };
+  // The whole of Suite Manager waits on the handover, so no route gates itself.
+  const handover = new HandoverService({ consoleLogin, logger, vaultAgent });
+  /**
+   * The chip's side of the owner password, in the two places MOS holds that
+   * password in plaintext for a moment: a password change and a sign-in.
+   *
+   * Nothing here can refuse either of them. On a machine in the default mode it
+   * does nothing at all, because the chip has no password to be taught. On a
+   * machine that asks for one it re-enrolls, and a chip that would not take it
+   * ends up holding nothing rather than holding the password the owner has just
+   * replaced — which costs one recovery-key entry after the next restart and is
+   * reported in those words.
+   */
+  async function teachChipOwnerPassword(password) {
+    try {
+      const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
+      // Nothing to report when there was nothing to do — a machine with no
+      // vault, no chip, or one that opens itself. The screen says something
+      // about the disk only when the disk had something to say.
+      if (enrolled.ok) return enrolled.unchanged || enrolled.vault === false ? null : { mode: enrolled.mode, ok: true };
+      return { mode: enrolled.mode || null, ok: false, reason: enrolled.reason || 'tpm-refused' };
+    } catch (error) {
+      logger.warn('vault-chip-enroll-failed', { error });
+      return { mode: null, ok: false, reason: 'vault-agent-unavailable' };
+    }
+  }
+
+  // A sign-in is the only moment MOS holds the password of an account it did not
+  // just create, which makes it the only chance to finish a chip enrollment that
+  // did not. Whatever the mode: an automatic-mode slot needs no password to be
+  // repaired and the agent ignores the one sent. Not awaited: the owner is
+  // waiting on a session, and the next sign-in tries again if this one does not
+  // land.
+  function repairChipOnSignIn(password) {
+    void (async () => {
+      try {
+        const vault = await vaultAgent.status();
+        if (!vaultChipNeedsRepair(vault)) return;
+        const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
+        logger.info('vault-chip-repair', { ok: Boolean(enrolled.ok), reason: enrolled.reason || null });
+      } catch (error) {
+        logger.warn('vault-chip-repair-failed', { error });
+      }
+    })();
+  }
+
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
-    bootstrapHost: homeHost,
     store: setup.store,
+    suiteAddress,
   });
   // One limiter for every app package operation on this host. The bounds are only
   // meaningful shared: two services each allowing their own three concurrent
@@ -498,6 +522,21 @@ function createMOSServer({
   // Resolves an installed app's real host label, so every public URL this layer
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
+  // Where the suite is published, and the one transaction that moves it. Built
+  // after the app and Homepage services because a move re-bakes both.
+  const addressService = new SuiteAddressService({
+    agent: httpsAgent,
+    bootstrapHost: homeHost,
+    bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
+    frontDoor,
+    logger,
+    rebake: (address) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, appHostFor) }),
+    store: setup.store,
+    suiteAddress,
+  });
+  addressService.start();
+  const publicUrls = () => appPublicUrlResolver(suiteAddress.read(), appHostFor);
+  const publicUrlOf = (packageId) => publicUrls()(packageId);
   const externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -520,14 +559,19 @@ function createMOSServer({
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
-      if (!httpsSettings.allowedHosts().has(requestHost)) {
+      if (!addressService.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
         return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
+        const status = setup.status(sessionToken);
         jsonResponse(response, 200, {
-          ...setup.status(sessionToken),
+          ...status,
+          // Only a signed-in caller is told what the machine still holds for its
+          // owner, and it rides on the bootstrap payload for the same reason the
+          // terms do: the gate has to be up before the first screen paints.
+          ...(status.status === 'signed-in' ? { handover: await handover.state() } : {}),
           ownerClaimRequired: Boolean(ownerClaimToken),
           secureTransport: isHttpsRequest(request),
         });
@@ -585,6 +629,14 @@ function createMOSServer({
           return;
         }
         const result = await setup.createOwner(body);
+        // The owner finished setup through this door, so this is where the suite
+        // is published from now on. Recorded after the owner exists so a refused
+        // attempt from another door cannot move the address.
+        try {
+          addressService.recordDoor(requestHost, { scheme: isHttpsRequest(request) ? 'https' : 'http' });
+        } catch (error) {
+          logger.error('suite-address-record-failed', { error, host: requestHost });
+        }
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -636,6 +688,10 @@ function createMOSServer({
           throw error;
         }
         throttle.recordSuccess(attempt);
+        // The one moment MOS holds this password without being asked to change
+        // it, and therefore the only chance to finish a chip enrollment that
+        // failed earlier. Nothing about the sign-in depends on it.
+        repairChipOnSignIn(body.password);
         const secure = isHttpsRequest(request);
         const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
         if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
@@ -660,11 +716,13 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
           return;
         }
-        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024), {
+          beforeCommit: teachChipOwnerPassword,
+        });
         // Every known browser was forgotten with the old password; the one that
         // proved it is remembered again, like the session it keeps.
         const secure = isHttpsRequest(request);
-        jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
+        jsonResponse(response, 200, { owner: result.owner, startupProtection: result.startupProtection, status: result.status }, {
           'Set-Cookie': [sessionCookie(result.sessionToken, secure), knownBrowserCookie(setup.rememberBrowser(), secure)],
         });
         return;
@@ -702,17 +760,9 @@ function createMOSServer({
       }
 
       // The machine's own console/SSH login, generated by this machine on first
-      // boot. It is handed to the owner once and then deleted, so these three
-      // routes are the whole lifecycle of a credential MOS holds but does not own.
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/console-login`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review the server login.' });
-          return;
-        }
-        jsonResponse(response, 200, consoleLogin.status());
-        return;
-      }
-
+      // boot. Whether one is waiting rides on the setup status; these two routes
+      // show it once and delete it, the whole lifecycle of a credential MOS
+      // holds but does not own.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/console-login/reveal`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to see the server login.' });
@@ -741,39 +791,125 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https`) {
+      // What this machine's vault is doing, in the predicates the screens need.
+      // An unavailable vault agent answers 200 with `state: 'unknown'` rather
+      // than failing the request, so the encryption panel can say MOS could not
+      // tell instead of rendering nothing — and `unknown` is never "not
+      // encrypted".
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault`) {
         if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review this server\'s encryption.' });
           return;
         }
-        jsonResponse(response, 200, await httpsSettings.status());
+        let vault = { state: 'unknown' };
+        try {
+          vault = await vaultAgent.status();
+        } catch (error) {
+          logger.warn('vault-agent-unavailable', { error });
+        }
+        // `encrypted` is the answer, not the state string. A screen that decided
+        // for itself which states count as encrypted would be a fifth copy of
+        // one predicate, and the fifth copy is the one that gets it wrong. The
+        // same goes for the two startup questions, which the encryption
+        // statement, the restart dialog and the handover page all ask and none
+        // of them re-derives.
+        jsonResponse(response, 200, {
+          asksForPassword: vaultAsksForPassword(vault),
+          chipNeedsRepair: vaultChipNeedsRepair(vault),
+          encrypted: vaultIsPresent(vault),
+          vault,
+        });
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https/apply`) {
+      // Startup protection: whether this machine's chip requires the owner's
+      // password before it opens the disk. The current password is the
+      // confirmation and the secret in one — it is what gets enrolled — so this
+      // route is the only place MOS sends that password to the vault agent
+      // outside a password change and a sign-in repair.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault/startup-password`) {
         if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change how this server starts.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const wanted = body.enabled === true;
+        if (!await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        let enrolled;
+        try {
+          // A password the owner may forget must not become the only way in
+          // before they hold the key that is the other way in — and while the
+          // key is still escrowed on the plaintext side, the switch would
+          // protect nothing anyway.
+          if (wanted && (await vaultAgent.status()).handover === 'pending') {
+            jsonResponse(response, 409, {
+              code: 'VAULT_KEY_UNSAVED',
+              error: 'Save your recovery key first. It is the only way back in if you forget your password.',
+            });
+            return;
+          }
+          enrolled = await vaultAgent.enrollChip({
+            mode: wanted ? VAULT_TPM_MODES.PASSWORD : VAULT_TPM_MODES.AUTOMATIC,
+            pin: wanted ? String(body.password) : null,
+          });
+        } catch (error) {
+          logger.warn('vault-agent-unavailable', { error });
+          jsonResponse(response, 503, {
+            code: 'VAULT_AGENT_UNAVAILABLE',
+            error: 'This server\'s vault agent is not answering, so how it starts was not changed.',
+          });
+          return;
+        }
+        if (!enrolled.ok) {
+          // Reported rather than hidden, and the state it left behind is named:
+          // the recovery key opens this machine whatever the chip is doing.
+          jsonResponse(response, 409, {
+            code: 'VAULT_TPM_REFUSED',
+            error: enrolled.reason === 'no-tpm'
+              ? 'This machine has no security chip, so it always asks for your recovery key after a restart.'
+              : 'This machine\'s security chip would not take the change, so it now opens nothing on its own and this server asks for your recovery key after a restart. Try again, and use your recovery key if it restarts first.',
+            reason: enrolled.reason || null,
+          });
+          return;
+        }
+        jsonResponse(response, 200, {
+          asksForPassword: enrolled.mode === VAULT_TPM_MODES.PASSWORD,
+          vault: await vaultAgent.status().catch(() => ({ state: 'unknown' })),
+        });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
+          return;
+        }
+        jsonResponse(response, 200, await addressService.status());
+        return;
+      }
+
+      // Answers 202 before the change runs: for a domain the web server restarts
+      // under this very connection, so the screen polls the status above rather
+      // than waiting for a reply that cannot arrive.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/change`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
           return;
         }
         const body = await readJsonBody(request, 16 * 1024);
-        const applied = await httpsSettings.apply(body);
-        let appReconciliation = { skipped: true };
-        try {
-          const baseDomain = new URL(applied.homeUrl).hostname.replace(/^home\./u, '');
-          appReconciliation = await appPackages.reconcilePublicUrls(homepageConfig, {
-            publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https', appHostFor),
-          });
-        } catch (error) {
-          // The owner is handed a code and the apply still reports success, so
-          // without this the reason every app kept its old address is gone.
-          logger.error('app-public-url-reconcile-failed', { error });
-          appReconciliation = {
-            errorCode: error.code || 'APP_PUBLIC_URL_RECONCILE_FAILED',
-            skipped: false,
-            status: 'failed',
-          };
+        jsonResponse(response, 202, await addressService.change(body));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/offer/dismiss`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
+          return;
         }
-        jsonResponse(response, 200, { ...applied, appReconciliation });
+        jsonResponse(response, 200, await addressService.dismissOffer());
         return;
       }
 
@@ -889,7 +1025,6 @@ function createMOSServer({
             ...agentStatus,
             inventory: backupInventory.inventory(),
             ...restoreGuaranteeFor(agentStatus),
-            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: true,
           });
         } catch (error) {
@@ -907,7 +1042,6 @@ function createMOSServer({
             lastJob: null,
             recoveryKey: null,
             ...restoreGuaranteeFor(null),
-            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: false,
           });
         }
@@ -944,6 +1078,24 @@ function createMOSServer({
           return;
         }
         jsonResponse(response, 200, await backupAgent.revealRecoveryKey());
+        return;
+      }
+
+      // Replacing the key. The password is always asked for, unlike the reveal,
+      // because this one changes what opens the disk and the archives rather
+      // than showing what already does — and because the answer carries the new
+      // key, so it is the same "still the owner at this keyboard" question.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/rotate`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your recovery key.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        if (!await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.rotateRecoveryKey(), { 'Cache-Control': 'no-store' });
         return;
       }
 
@@ -1003,6 +1155,19 @@ function createMOSServer({
         return;
       }
 
+      // Forgetting a drive MOS is not holding. It only removes the entry that
+      // says a copy of the owner's data is out there on that drive, which is a
+      // thing to stop claiming once it is no longer true.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-drive`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.forgetDrive(String(body.fsUuid || '')));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/mount`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
@@ -1053,7 +1218,6 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
-        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
         return;
@@ -1067,7 +1231,6 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
-        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 4 * 1024);
         jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
           destinationId: body.destinationId === null ? null : String(body.destinationId || ''),
@@ -1084,7 +1247,6 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
-        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.setSchedule({
           enabled: body.enabled === true,
@@ -1113,10 +1275,8 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
           return;
         }
-        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
-          ...(body.address ? { address: String(body.address) } : {}),
           backupPath: String(body.backupPath || ''),
           confirmation: String(body.confirmation || ''),
         }));
@@ -1168,10 +1328,11 @@ function createMOSServer({
           appAgent,
           catalogStatus: catalogService.status(),
           frontDoor,
-          homeHost,
+          homeHost: suiteAddress.readOrNull()?.host || homeHost,
           platformVersion: catalogService.platformVersion,
           secretDir: appPackages.secretDir,
           store: setup.store,
+          suiteAddress: suiteAddress.readOrNull(),
           updateStatus: await updates.status().catch(() => null),
         });
         response.writeHead(200, {
@@ -1332,9 +1493,9 @@ function createMOSServer({
         const body = await readJsonBody(request, 4 * 1024);
         const packageId = decodeURIComponent(appStageUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
-          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
+          ...publicUrlOf(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1347,9 +1508,9 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRecoverUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
-          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
+          ...publicUrlOf(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1371,7 +1532,7 @@ function createMOSServer({
           return;
         }
         const packageId = decodeURIComponent(appHomepageMatch[1]);
-        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId, httpsSettings, appHostFor)));
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, publicUrlOf(packageId)));
         return;
       }
 
@@ -1383,8 +1544,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1399,7 +1560,7 @@ function createMOSServer({
           consumerPackageId: String(body.consumerPackageId || ''),
           providerCapabilityId: String(body.providerCapabilityId || ''),
           providerPackageId: String(body.providerPackageId || ''),
-          requestContext: { publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor) },
+          requestContext: { publicUrlFor: publicUrls() },
           slotId: String(body.slotId || ''),
         }));
         return;
@@ -1435,8 +1596,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1449,8 +1610,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRestartMatch[1]);
         jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1464,8 +1625,8 @@ function createMOSServer({
         const packageId = decodeURIComponent(appEnvMatch[1]);
         const body = await readJsonBody(request, 64 * 1024);
         jsonResponse(response, 200, await appPackages.savePackageEnvironment(packageId, body, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1529,7 +1690,7 @@ function createMOSServer({
         }
         response.writeHead(302, {
           'Cache-Control': 'no-store',
-          Location: appPublicUrlFor(request, packageId, httpsSettings, appHostFor).publicUrl,
+          Location: publicUrlOf(packageId).publicUrl,
         });
         response.end();
         return;
@@ -1603,7 +1764,7 @@ function createMOSServer({
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
-    if (!httpsSettings.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
+    if (!addressService.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       return;
     }
@@ -1619,7 +1780,7 @@ function createMOSServer({
   server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
-    publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
+    publicUrlFor: publicUrls(),
   });
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is

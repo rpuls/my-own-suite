@@ -52,6 +52,12 @@ all of it, and a replacement machine can take over a destination the original wr
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
+- **A10 — Let a replacement machine take the address of the server it replaces.** The recovery route
+  that needs nothing outside MOS: when the old machine is off and its address is on a network this
+  one is on, taking that address makes every phone, laptop and sync client work again with no DNS
+  change and no provider involved. Wants an occupancy probe before it is offered, the subnet check
+  that makes it honest, and a drill; it is the strongest card in the dead-server-at-3am case and the
+  only one that survives the domain module being rewritten. *(Medium)*
 
 ### B. Trust claims that survive DevTools
 
@@ -114,7 +120,8 @@ act on.
   "on the way". Hosting must respect the page's own privacy claim — self-hosted file or a no-cookie
   embed, not a plain YouTube iframe. *(Owner-run)*
 - **C6 — Record the own-hardware install walkthrough.** The second video: download → Etcher → boot →
-  choose 1 and confirm → save the server login → owner account. Unblocked — the disk image is the flow we intend
+  pick the disk and type ERASE → owner account → terms → the handover page with the server login and
+  the recovery key. Unblocked — the disk image is the flow we intend
   to keep — but it needs a release first, because the walkthrough films a published download and not a
   branch. *(Owner-run)*
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with
@@ -207,12 +214,46 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL2 — Full-disk encryption for own-hardware installs.** `#278`. The installer uses a plain disk layout, so
-  the "safe in your own house" claim currently survives everything except someone carrying the safe
-  out of the house. Needs a decision on the unlock model for a headless machine — passphrase at boot,
-  TPM-backed, or network-bound — before it is buildable. The published image narrows the options: it
-  can carry no key material, so whatever unlocks the disk has to be derived or entered on the machine.
-  *(Large — needs a decision first)*
+- **AL2 — Encryption at rest for own-hardware installs.** `#278`. Decided and built
+  (`docs/decisions.md`, 2026-09-18): a plaintext system partition, everything of the owner's in a
+  TPM-sealed LUKS2 vault, the key handed over at setup beside the server login, a page that asks for
+  it when the chip refuses, and an optional switch that makes the chip demand the owner's password
+  after every restart. Open until the lab drills pass: first boot on a machine with a TPM and one
+  without, a power cut in each mode, a wrong key, a wrong password until the chip locks out, a
+  password change in password mode, the disk moved to another machine, a takeover restore onto a
+  machine that has a vault, a firmware setting changed so the chip refuses and the machine re-seals
+  itself after one key entry, the locked page served over HTTPS with a 40-character password accepted
+  end to end, and the two that prove the theft claim — boot a signed live USB, and edit the plaintext
+  root offline and boot it back, in both modes, recording that both succeed in the default one so the
+  claim made there is written from evidence. *(Small)*
+- **AL13 — The five owner-facing decisions the vault slice left open.** Each one is a small change
+  whose shape is a choice rather than a fix, raised by the 2026-09-25 branch review and deliberately
+  not built with it. (a) The handover page currently offers Ubuntu recovery mode as the way back
+  from a lost server login, which is the screwdriver fallback the product forbids: either cut the
+  sentence and offer nothing, or build a product path back. (b) The startup-protection control is a
+  switch that opens a password dialog and only moves when the password is accepted, which is neither
+  of the two controls `AGENTS.md` names — decide whether a password-gated setting is a button or a
+  third named control before the next screen invents a fourth. (c) There is no way to leave a domain
+  on purpose: `change({ kind: 'easy-door' })` exists on the backend and is offered only inside the
+  drift notice, so an owner whose domain expired has no button. (d) A drive that catches up with a
+  rotated key on plug-in says so nowhere, so the owner keeps the superseded kit forever; an activity
+  line at that moment is the candidate. (e) A key rotation interrupted between the disk and the key
+  file now leaves the new key staged and finishes on the next rotation — decide whether the machine
+  should instead finish it unprompted at startup, which hands an owner a new key for a rotation they
+  were told had failed. *(Small each)*
+- **AL11 — Encrypt the system half too, opened in early boot.** The vault leaves Ubuntu, the kernel
+  and the MOS checkout in the clear, and nothing measures them, so a thief with the machine in hand
+  edits that half offline and boots it back with every PCR unchanged. Password-protected startup
+  closes that for the owners who turn it on; closing it for everyone means an early-boot stage that
+  can open a disk and, when the chip refuses, bring up the network and ask — which is also the only
+  place where measuring the kernel and the bootloader protects something that cannot be edited.
+  Replaces AL10, whose PCR 4+7+9 re-sealing design was dropped for the reasons in the decision
+  record. *(Large)*
+- **AL12 — A locked server that can tell its owner.** A machine waiting for its password cannot say
+  so: the relay credentials are inside the vault it is waiting to open. For an owner away from home
+  that turns a power cut into days of downtime rather than a message and one visit to a page. Wants
+  either a plaintext-side copy of one notification channel or a status something else can poll, and
+  weighed against putting anything of the owner's on the plaintext side. *(Medium)*
 
 ### AL-C — Storage
 
@@ -374,6 +415,31 @@ left out: the card is the scanning surface and already carries category, status 
 
 Owner decisions. Future agents and reviews should not resurface these.
 
+- **Forcing password-protected startup on every install, or asking about it during setup** —
+  declined. It locks an absent owner out of their own apps after a power cut, for a threat most of
+  them do not face, and setup is the moment an owner understands the trade least. It is one switch
+  in settings with the cost stated beside it.
+- **A separate PIN for the disk, chosen by the owner** — declined. It is a fourth secret to keep, and
+  it buys nothing: the owner password already unlocks everything on a running machine, so someone who
+  knows it and holds the machine could sign in and download the data anyway.
+- **Password-only unlock on a machine with no security chip** — declined. Without the chip's lockout
+  a password is an offline-attackable disk key, and owners choose short ones. Machines with no chip
+  keep asking for the recovery key after every restart.
+- **Refusing a password change when the chip will not follow it** — declined. The owner may be
+  changing the password because it leaked. The change completes, the chip slot is wiped so the old
+  password stops opening the disk, and the state is reported and repaired at the next sign-in.
+- **Owner-chosen recovery keys** — declined. It destroys the 140 bits of entropy and the checksum
+  that makes a mistyped key say which kind of mistake it was.
+- **A network-bound unlock service we operate** — declined on principle, not on merit. A stolen
+  machine that never reaches the owner's network would never get its key, which is the strongest
+  answer available, and it makes every owner's data depend on us being alive and honest. That is the
+  sovereignty promise, so it is out.
+- **TPM PIN entry at the console** — declined. Same headless problem as full-disk encryption: a
+  machine with no keyboard and no monitor cannot be asked anything before it boots.
+- **Claiming immutability MOS can enforce on a remote destination** — declined. Any protection MOS
+  can undo from the server, ransomware with root on that server can undo. Object lock configured by
+  the owner at their provider is a bonus MOS reports; it is never the architecture, and MOS must never
+  imply protection the owner does not have.
 - **Password recovery / owner account lifecycle** — post-beta; not part of early testing.
 - **Reaching apps by path or by port** (`server/seafile`, `server:8001`) — declined. Subdomains are
   separate browser origins, so collapsing apps onto one makes any single app's XSS everyone's problem,

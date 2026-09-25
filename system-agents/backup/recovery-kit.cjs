@@ -1,79 +1,11 @@
-// What this machine remembers about its recovery key, and the sheet of paper an
-// owner keeps.
-//
-// The record holds no key: a fingerprint says whether two machines hold the same
-// one, `acknowledgedAt` says the owner has been shown it once, and `firstUsedAt`
-// says this machine's key has already created or opened a repository — which is
-// what decides whether a machine taking over someone else's backups adopts the
-// entered key or adds its own beside it. Like everything else in the agent state
-// directory it is root-only and machine-local, and never backed up.
+// The sheet of paper an owner keeps. What the machine remembers about its key
+// lives in `system-agents/lib/recovery-key-store.cjs`, with the key itself.
 //
 // The kit is plain text on purpose. A PDF would be a dependency, and the file's
 // whole job is to survive being printed, photographed, or copied onto paper by
 // hand. It names the destinations so an owner who has lost the server still
 // knows which bucket to point a new one at, and it never carries a storage
 // credential: the provider's console is the credential's home.
-
-const fs = require('node:fs');
-const path = require('node:path');
-
-const RECORD_FILENAME = 'recovery-key.json';
-const RECORD_VERSION = 1;
-
-class RecoveryKeyRecord {
-  constructor({ agentStateDir, recordPath } = {}) {
-    this.recordPath = recordPath || path.join(agentStateDir || '.', RECORD_FILENAME);
-  }
-
-  read() {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(this.recordPath, 'utf8'));
-      return {
-        acknowledgedAt: parsed.acknowledgedAt || null,
-        adoptedAt: parsed.adoptedAt || null,
-        fingerprint: parsed.fingerprint || null,
-        firstUsedAt: parsed.firstUsedAt || null,
-      };
-    } catch {
-      return { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null };
-    }
-  }
-
-  // The mode is reasserted after the write, because writeFileSync's mode only
-  // applies to a file it creates.
-  write(next) {
-    const record = { ...this.read(), ...next };
-    fs.mkdirSync(path.dirname(this.recordPath), { recursive: true });
-    fs.writeFileSync(this.recordPath, `${JSON.stringify({ ...record, version: RECORD_VERSION }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    fs.chmodSync(this.recordPath, 0o600);
-    return record;
-  }
-
-  acknowledged() { return Boolean(this.read().acknowledgedAt); }
-
-  // Once acknowledged the gate never returns, so an owner is asked to save their
-  // key exactly once and never interrupted by it again.
-  acknowledge(fingerprint, now = new Date()) {
-    const current = this.read();
-    if (current.acknowledgedAt && current.fingerprint === fingerprint) return current;
-    return this.write({ acknowledgedAt: current.acknowledgedAt || now.toISOString(), fingerprint });
-  }
-
-  // Recorded the first time this machine's key creates or opens a repository.
-  // Before that, a machine has nothing of its own to lose, which is what makes
-  // adopting an entered key the right answer for a cold standby.
-  noteFirstUse(now = new Date()) {
-    if (this.read().firstUsedAt) return this.read();
-    return this.write({ firstUsedAt: now.toISOString() });
-  }
-
-  // Taking over another server's backups on a machine that has never used its
-  // own key: the entered key becomes this machine's, and the owner has plainly
-  // just read it off their kit, so it counts as acknowledged.
-  adopt(fingerprint, now = new Date()) {
-    return this.write({ acknowledgedAt: now.toISOString(), adoptedAt: now.toISOString(), fingerprint, firstUsedAt: now.toISOString() });
-  }
-}
 
 function kitDate(now) {
   return now.toISOString().slice(0, 10);
@@ -95,7 +27,7 @@ function recoveryKitFilename({ hostname, now = new Date() }) {
   return `mos-recovery-kit-${safeHost}-${kitDate(now)}.txt`;
 }
 
-function recoveryKitText({ destinations = [], homeAddress, hostname, key, now = new Date() }) {
+function recoveryKitText({ asksForPassword = false, destinations = [], encryptedDisk = false, homeAddress, hostname, key, now = new Date() }) {
   return [
     'My Own Suite — recovery kit',
     '',
@@ -109,6 +41,20 @@ function recoveryKitText({ destinations = [], homeAddress, hostname, key, now = 
     '',
     'Anyone who has this key and can reach your backups can read them. Keep it somewhere safe, and not only on this server.',
     '',
+    ...(encryptedDisk ? [
+      'This key also opens the encrypted disk in this server.',
+      '',
+      ...(asksForPassword ? [
+        'That server is set to ask for your Suite Manager password after every restart before it opens that disk, so',
+        'day to day you type your password and never this key. If you forget that password, or the security chip stops',
+        'answering, the page at the address above takes the key above instead. Nothing is lost while it waits.',
+      ] : [
+        'The server normally opens its own disk using its security chip and never asks you for anything. If it ever',
+        'cannot — after a firmware change, or if the disk is moved to another machine — it still starts, and the page',
+        'at the address above asks for the key above instead of showing your apps. Nothing is lost while it waits.',
+      ]),
+      '',
+    ] : []),
     'Backup destinations MOS knows right now:',
     ...(destinations.length ? destinations.map(describeDestination) : ['  (none connected yet)']),
     '',
@@ -123,4 +69,4 @@ function recoveryKitText({ destinations = [], homeAddress, hostname, key, now = 
   ].join('\n');
 }
 
-module.exports = { RECORD_FILENAME, RecoveryKeyRecord, recoveryKitFilename, recoveryKitText };
+module.exports = { recoveryKitFilename, recoveryKitText };

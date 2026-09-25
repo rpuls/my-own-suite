@@ -7,7 +7,9 @@ const test = require('node:test');
 const {
   homepageUnit,
   resolveRuntimeConfig,
+  renderUnits,
   suiteManagerUnit,
+  vaultGateUnit,
 } = require('../../scripts/reconcile-system.cjs');
 const { JOURNALD_CONFIG_PATH, PROGRESS_ROUTE, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
@@ -169,9 +171,57 @@ ${page}MOS_UNAVAILABLE_PAGE`),
 test('the diagnostics agent socket is owned by root and reachable only through mos-agent', () => {
   const installer = renderBootstrapPlan({}).sshBootstrap;
 
-  assert.ok(installer.includes('install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent'));
   const unit = installer.slice(installer.indexOf('mos-diagnostics-agent.service <<'), installer.indexOf('MOS_DIAGNOSTICS_AGENT_UNIT\n\n'));
   assert.match(unit, /^User=root$/mu);
   assert.match(unit, /^Group=mos-agent$/mu);
   assert.match(unit, /^UMask=0007$/mu);
+  // The directory the socket lives in is systemd's to make, on every boot, with
+  // this mode. /run is emptied by each one, so an install-time mkdir covered the
+  // install's own boot and nothing after it.
+  assert.match(unit, /^RuntimeDirectory=mos-diagnostics-agent$/mu);
+  assert.match(unit, /^RuntimeDirectoryMode=2770$/mu);
+});
+
+// AGENTS.md rule 7: a managed update may not leave a machine running half of a
+// change. The reconciler writes its own unit definitions rather than the
+// installer's, so the vault reaching an existing install is not implied by the
+// installer carrying it — and the Caddyfile that same reconcile upgrades now
+// contains a route that posts to the vault agent. A machine that got the route
+// and not the agent is the state this test exists to prevent.
+test('reconciliation gives an existing machine the vault gate the new Caddy route needs', () => {
+  const gate = vaultGateUnit({ mosRoot: '/opt/mos/repo' });
+
+  assert.match(gate, /ExecStart=\/usr\/bin\/node \/opt\/mos\/repo\/system-agents\/vault\/open\.cjs/u);
+  assert.match(gate, /Type=oneshot/u);
+  assert.match(gate, /RemainAfterExit=yes/u);
+  // Ahead of dockerd and its socket, which is what stops a socket-activated
+  // daemon from starting against the directory the vault mounts over.
+  assert.match(gate, /Before=basic\.target docker\.service docker\.socket/u);
+  // Never before the installer: mos-self-install copies this filesystem onto
+  // the internal disk, so anything written ahead of it travels in that copy.
+  assert.match(gate, /After=.*mos-self-install\.service/u);
+
+  const units = renderUnits();
+  assert.equal(units['mos-vault.service'], vaultGateUnit());
+  assert.ok(units['mos-vault-agent.service']);
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.match(reconciler, /docker\.socket\.d/u);
+  // The one unit that speaks for a locked machine must never wait for it.
+  assert.doesNotMatch(units['mos-vault-agent.service'], /mos-vault\.service/u);
+});
+
+// The installer writes `Requires=mos-vault.service` into Suite Manager and every
+// agent; the reconciler rewrites those same units on every platform update. If
+// its renderers left the requirement out, the first update after install would
+// let Suite Manager start against the empty directory the vault mounts over and
+// initialise a fresh store on the plaintext partition. The requirement is not
+// decided per machine: the gate exits 0 where there is no vault, so every unit
+// carries it everywhere, and the whole rule is held in one place — see
+// test/unit/vault-gating.test.cjs for the rule over every unit source.
+test('reconciled units always wait for the vault gate', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-vault-'));
+  const config = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir });
+  assert.equal('vault' in config, false, 'nothing about the units depends on reading the disk');
+  assert.match(suiteManagerUnit(config), /^Requires=mos-vault\.service$/mu);
+  assert.match(suiteManagerUnit(config), /^After=mos-vault\.service$/mu);
 });

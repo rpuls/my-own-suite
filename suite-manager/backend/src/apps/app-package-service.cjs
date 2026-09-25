@@ -1577,8 +1577,50 @@ class AppPackageService {
     };
   }
 
+  // Everything that baked the suite's address in, rebuilt on the current one:
+  // Homepage's managed entries and routes first, then every installed app's
+  // runtime. Per-app failures are reported, never thrown, because the address
+  // has already changed and each app is one retry away.
   async reconcilePublicUrls(homepageService, requestContext = {}) {
+    const { homepage, homepageEntryFailures } = await this.reconcileHomepageUrls(homepageService, requestContext);
     const runtime = [];
+
+    for (const instance of this.store.getAppInstances()) {
+      if (instance.status !== 'installed') continue;
+      const packageContext = requestContextForPackage(instance.packageId, requestContext);
+      try {
+        const result = await this.applyPackageRuntime(instance.packageId, packageContext);
+        runtime.push({
+          appHost: result.appHost || packageContext.appHost,
+          packageId: instance.packageId,
+          publicUrl: result.publicUrl || packageContext.publicUrl,
+          status: result.status || 'applied',
+        });
+      } catch (error) {
+        runtime.push({
+          appHost: packageContext.appHost,
+          errorCode: error.code || 'APP_RUNTIME_PUBLIC_URL_REAPPLY_FAILED',
+          packageId: instance.packageId,
+          publicUrl: packageContext.publicUrl,
+          status: 'failed',
+        });
+      }
+    }
+
+    const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
+    const runtimeFailed = runtime.some((item) => item.status === 'failed');
+    return {
+      homepage,
+      homepageEntryFailures,
+      runtime,
+      status: homepageFailed || runtimeFailed ? 'partial' : 'applied',
+    };
+  }
+
+  // The Homepage half alone: the restore calls it after it has rebuilt each app
+  // runtime itself, so the dashboard and its home-service routes come back from
+  // the restored config rather than from whatever the receiving machine had.
+  async reconcileHomepageUrls(homepageService, requestContext = {}) {
     const homepageEntries = [];
     const homepageEntryFailures = [];
     for (const instance of this.store.getAppInstances()) {
@@ -1617,39 +1659,7 @@ class AppPackageService {
         status: 'failed',
       };
     }
-
-    for (const instance of this.store.getAppInstances()) {
-      if (instance.status !== 'installed') continue;
-      const packageContext = requestContextForPackage(instance.packageId, requestContext);
-      try {
-        const result = await this.applyPackageRuntime(instance.packageId, packageContext);
-        runtime.push({
-          appHost: result.appHost || packageContext.appHost,
-          packageId: instance.packageId,
-          publicUrl: result.publicUrl || packageContext.publicUrl,
-          status: result.status || 'applied',
-        });
-      } catch (error) {
-        runtime.push({
-          appHost: packageContext.appHost,
-          errorCode: error.code || 'APP_RUNTIME_PUBLIC_URL_REAPPLY_FAILED',
-          packageId: instance.packageId,
-          publicUrl: packageContext.publicUrl,
-          status: 'failed',
-        });
-      }
-    }
-
-    const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
-    const runtimeFailed = runtime.some((item) => item.status === 'failed');
-    const status = homepageFailed || runtimeFailed ? 'partial' : 'applied';
-
-    return {
-      homepage,
-      homepageEntryFailures,
-      runtime,
-      status,
-    };
+    return { homepage, homepageEntryFailures };
   }
 
   async removePackageFromHomepage(instance, homepageService) {

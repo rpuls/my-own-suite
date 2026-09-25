@@ -37,7 +37,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 stage 'Installing the tools the first-boot units need'
 apt-get update
-apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted efibootmgr
+apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted efibootmgr dosfstools
 
 stage 'Rebuilding the initramfs with the full driver set'
 if grep -q '^MODULES=' /etc/initramfs-tools/initramfs.conf; then
@@ -64,10 +64,33 @@ if [ -d "$esp/EFI/ubuntu" ]; then
 fi
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/' /etc/default/grub
 sed -i 's/\bconsole=ttyS0[^ "]*//g' /etc/default/grub
+# The console is the only screen this machine has, and the banner mos-first-boot
+# paints on it is the whole of the install instructions. Ubuntu leaves the kernel
+# at loglevel 7, so a link-up, a USB enumeration or an EXT4 line lands on top of
+# that banner minutes after it was painted, and a console has no scrollback to
+# recover it from. loglevel=3 still prints errors, which are the only kernel
+# messages worth interrupting those instructions for.
+cmdline='quiet loglevel=3'
+if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+  sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$cmdline\"/" /etc/default/grub
+else
+  printf 'GRUB_CMDLINE_LINUX_DEFAULT="%s"\n' "$cmdline" >> /etc/default/grub
+fi
 update-grub
 
 stage 'Making the network configuration hardware-independent'
 # The bake VM's NIC name is not the target machine's NIC name.
+#
+# `dhcp-identifier: mac` is the whole reason this suite keeps its address. The
+# default identifies the machine to the router by a DUID derived from
+# /etc/machine-id, which mos-self-install clears so every install makes its
+# own — so every reinstall, and anything else that remakes that id, arrives at
+# the router as a machine it has never seen and is given a new address. The
+# suite is published at a name that spells out that address, so a new address
+# means every app's name is wrong and the owner has to notice and fix it. The
+# MAC is what the router already knows this machine by, it is unique without
+# being remade, and it is the only identifier an owner who cannot open their
+# router can rely on.
 rm -f /etc/netplan/*.yaml
 cat > /etc/netplan/01-mos.yaml <<'NETPLAN'
 network:
@@ -78,10 +101,25 @@ network:
         name: "e*"
       dhcp4: true
       dhcp6: false
+      dhcp-identifier: mac
       optional: true
 NETPLAN
 chmod 0600 /etc/netplan/01-mos.yaml
 netplan generate
+
+# And the other half, where the base has it: a lease this machine cannot
+# remember is one it cannot ask for again. systemd-networkd keeps leases under
+# /run, which a shutdown empties, so a machine that reboots asks for any address
+# rather than the one it had. Persistent storage lets the lease survive, and the
+# boot asks the router for the same address back. systemd 256 introduced it and
+# the pinned base is 255, which has no persistent lease storage to enable at
+# all — so it is taken where it exists and the log says which of the two this
+# image got, rather than the bake dying on a unit this base never shipped.
+if [ -f /usr/lib/systemd/system/systemd-networkd-persistent-storage.service ]; then
+  systemctl enable systemd-networkd-persistent-storage.service
+else
+  log 'No systemd-networkd-persistent-storage.service on this base; the address is kept by dhcp-identifier: mac alone.'
+fi
 
 stage 'Replacing the login message'
 # `00-mos` was written by cloud-init on the previous boot; everything else in
@@ -126,18 +164,13 @@ touch /etc/cloud/cloud-init.disabled
 rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/data
 
 stage 'Resetting the server login so every machine generates its own'
-rm -f "$state_dir/console-login.json" "$state_dir/console-login.acknowledged"
+rm -f "$state_dir/@@CONSOLE_LOGIN_HANDOVER_FILE@@" "$state_dir/@@CONSOLE_LOGIN_ACKNOWLEDGED_FILE@@"
 usermod -p '!' "$username"
-if [ -f /etc/issue ]; then
-  awk -v b='@@ISSUE_BEGIN@@' -v e='@@ISSUE_END@@' \
-    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' /etc/issue > /etc/issue.next
-  mv /etc/issue.next /etc/issue
-  chmod 0644 /etc/issue
-fi
+rm -f '@@ISSUE_FILE@@'
 
 stage 'Arming the first-boot units'
 systemctl daemon-reload
-systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-grow-root.service mos-first-boot.service
+systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-console-login.service mos-first-boot.service
 systemctl disable mos-image-finalize.service
 
 stage 'Pruning container build cache'
@@ -207,10 +240,38 @@ rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 
+stage 'Checking no vault was created during the bake'
+# A vault created in here would be written to every machine that downloads this
+# image, all of them sharing one key that is also sitting in the image. The gate
+# refuses to create one until armed, and this is the second lock on that door:
+# it is release-stopping rather than best effort, because the failure is
+# invisible from outside and unfixable afterwards.
+#
+# `false` rather than `exit`: the ERR trap is what records the failed stage and
+# powers the VM off, and an `exit` here would stop the release for a reason the
+# build never gets to read, waiting on a machine that is never coming back.
+if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ] || [ -e /etc/mos/vault-recovery-key ]; then
+  log 'FATAL: this bake has vault state on it.'
+  false
+fi
+if lsblk -no FSTYPE 2>/dev/null | grep -q crypto_LUKS; then
+  log 'FATAL: this bake has an encrypted partition on it.'
+  false
+fi
+
+stage 'Arming the vault for the machine this image lands on'
+# The last thing written, deliberately. Everything before this point runs inside
+# the bake VM, where creating a vault would bake one key into every download;
+# everything after it runs on somebody's own machine, where the vault is created
+# on first boot with a key only that machine has ever held.
+install -d -m 0750 /etc/mos
+: > /etc/mos/vault-armed
+chmod 0644 /etc/mos/vault-armed
+
 stage 'Zeroing free space so the image compresses'
 fstrim -av || true
 
-printf '{"ok":true,"builtAt":"%s","repoRef":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '@@REPO_REF@@' > "$esp/mos-image.json"
+printf '{"ok":true,"builtAt":"%s","repoRef":"%s","profile":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '@@REPO_REF@@' '@@PROFILE@@' > "$esp/mos-image.json"
 cp -f "$esp/mos-image.json" "$status_dir/mos-image.json" 2>/dev/null || true
 log 'Image finalized. Powering off.'
 sync

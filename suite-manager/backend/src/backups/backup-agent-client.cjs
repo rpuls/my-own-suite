@@ -69,8 +69,15 @@ class BackupAgentClient {
   recoveryKeyStatus() { return this.request('GET', '/v1/recovery-key'); }
   acknowledgeRecoveryKey() { return this.request('POST', '/v1/recovery-key/acknowledge', {}); }
   revealRecoveryKey() { return this.request('POST', '/v1/recovery-key/reveal', {}); }
+  // Replaces the key on this server's disk and on every archive it can reach,
+  // and hands back the new one exactly once, the same way the first one was
+  // handed over.
+  rotateRecoveryKey() { return this.request('POST', '/v1/recovery-key/rotate', {}); }
   unlockDestination(input) { return this.request('POST', '/v1/destinations/unlock', input); }
   forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
+  // Stops MOS remembering a drive it is not holding. Nothing on the drive is
+  // touched: it is not here.
+  forgetDrive(fsUuid) { return this.request('POST', '/v1/destinations/forget-drive', { fsUuid }); }
   archiveKeys(input) { return this.request('POST', '/v1/destinations/keys', input); }
   removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
 }

@@ -30,6 +30,14 @@ echo "[mos-image] Filesystem shrunk to $((minimum_blocks * block_size / 1024 / 1
 resize2fs "$loop" "${target_blocks}" >/dev/null
 e2fsck -fy "$loop" >/dev/null 2>&1 || true
 
+# Free blocks still hold whatever the bake deleted: pruned build cache, apt
+# lists, the layers resize2fs moved. xz cannot compress that and it differs per
+# bake, so the download swung between 2.2 and 2.9 GB for the same contents;
+# zeroed, the same image was 1.8 GB. Only free blocks are written, so the files
+# and the checksums of what is on the disk are untouched.
+echo "[mos-image] Zeroing free blocks so the download carries only what is on the disk."
+zerofree "$loop"
+
 losetup -d "$loop"
 trap - EXIT
 

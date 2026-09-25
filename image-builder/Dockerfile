@@ -9,14 +9,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV MTOOLS_SKIP_CHECK=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils \
+  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils zerofree \
   && rm -rf /var/lib/apt/lists/*
 
+COPY check-image-payload.sh /usr/local/bin/check-image-payload.sh
 COPY check-target.sh /usr/local/bin/check-target.sh
 COPY extract-image.sh /usr/local/bin/extract-image.sh
 COPY inspect-image.sh /usr/local/bin/inspect-image.sh
 COPY shrink-image.sh /usr/local/bin/shrink-image.sh
-RUN chmod +x /usr/local/bin/check-target.sh /usr/local/bin/extract-image.sh \
-  /usr/local/bin/inspect-image.sh /usr/local/bin/shrink-image.sh
+RUN chmod +x /usr/local/bin/check-image-payload.sh /usr/local/bin/check-target.sh \
+  /usr/local/bin/extract-image.sh /usr/local/bin/inspect-image.sh /usr/local/bin/shrink-image.sh
 
 WORKDIR /work

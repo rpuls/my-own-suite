@@ -42,7 +42,10 @@ test('the Easy Door serves Suite Manager without changing what an unmatched host
   assert.match(caddyfile, /handle \{\n {4}respond 404\n {2}\}/u);
 });
 
-test('the Easy Door closes when a real domain takes over, and never opens on a cloud install', () => {
+// A door is not an address. An owner who applied HTTPS while standing on the
+// Easy Door or the install-time name keeps a working Suite Manager page there;
+// only the apps move to the domain. A cloud install never had the door.
+test('the Easy Door and the install-time name stay open for Suite Manager under a domain, and never open on a cloud install', () => {
   const https = renderHttpsCaddyfile({
     acmeEmail: 'owner@example.com',
     baseDomain: 'mos.example.com',
@@ -50,7 +53,14 @@ test('the Easy Door closes when a real domain takes over, and never opens on a c
     suiteManagerPort: '3100',
   });
 
-  assert.doesNotMatch(https, /mos-easy-door|myownsuite\.org/u);
+  assert.match(https, /# mos-easy-door\nhttp:\/\/ \{/u);
+  assert.match(https, /@mos-easy-door header_regexp Host \^home\\\./u);
+  assert.match(https, /http:\/\/home\.mos\.home \{/u);
+  assert.match(https, /https:\/\/home\.mos\.example\.com \{/u);
+  // Three site blocks proxy to the one Suite Manager: the install-time name, the
+  // Easy Door and the domain; the port is the resolved one throughout.
+  assert.equal((https.match(/reverse_proxy 127\.0\.0\.1:3100/gu) || []).length, 3);
+  assert.doesNotMatch(https, /\$MOS_SUITE_MANAGER_PORT/u);
   assert.doesNotMatch(renderPublicCloudCaddyfile(), /mos-easy-door|myownsuite\.org/u);
 });
 
@@ -166,10 +176,10 @@ test('every Suite Manager entrance answers a control-plane outage with the statu
   assert.equal(cloud.match(/handle_errors/gu).length, 2);
   assert.match(cloud, expected);
 
-  // On HTTPS, the two proxying blocks get it; the plain-HTTP redirect has no
+  // On HTTPS, the three proxying blocks get it; the plain-HTTP redirect has no
   // upstream to fail, so it stays a redirect.
   const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' });
-  assert.equal(https.match(/handle_errors/gu).length, 2);
+  assert.equal(https.match(/handle_errors/gu).length, 3);
   assert.match(https, expected);
   assert.match(https, /http:\/\/home\.example\.com \{\s*redir https:\/\/home\.example\.com\{uri\} permanent\s*\}/u);
 });
@@ -210,7 +220,7 @@ test('the progress file has its own route in every proxying block, ahead of the 
   };
   for (const [name, rendered] of Object.entries(renderings)) {
     assert.match(rendered, route, `${name}: the route is rendered in full`);
-    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, 2, `${name}: one route per proxying block`);
+    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, name === 'https' ? 3 : 2, `${name}: one route per proxying block`);
     for (const block of siteBlocks(rendered)) {
       const proxies = /reverse_proxy\s+127\.0\.0\.1:/u.test(block);
       const routeAt = block.indexOf(`handle ${PROGRESS_ROUTE} {`);
@@ -282,6 +292,23 @@ function runPageScript(responder) {
   return { nodes, timers };
 }
 
+// The plan as the page drew it: one row per group, with the lines inside the
+// groups that are open. A group with no parts is a row with text and nothing
+// to open.
+function planRows(list) {
+  return list.children.map((item) => {
+    const detail = item.children[0];
+    if (!detail) return { open: null, state: item.className, steps: [], title: item.textContent };
+    const [summary, sub] = detail.children;
+    return {
+      open: detail.open === true,
+      state: item.className,
+      steps: sub.children.map((row) => [row.className, row.textContent]),
+      title: summary.textContent,
+    };
+  });
+}
+
 function response({ body = '', ok = true, status = 200, type = 'application/json' }) {
   return { headers: { get: () => type }, json: async () => JSON.parse(body), ok, status };
 }
@@ -294,11 +321,15 @@ function freshProgress(overrides = {}) {
     count: { current: 'ONLYOFFICE', done: 2, note: 'ONLYOFFICE usually takes 6 minutes on this machine.', sentence: 'ONLYOFFICE — 3 of 6 apps', total: 6 },
     expect: { sentence: 'On this machine this usually takes about 19 minutes.' },
     headline: 'Restoring your backup',
-    plan: [{ sentence: 'Reading the backup', state: 'done' }, { sentence: 'Building your apps again', state: 'now' }, { sentence: 'Checking the result against the backup', state: 'next' }],
+    plan: [
+      { sentence: 'Reading the backup', state: 'done', steps: [{ sentence: 'Checking nothing in it is damaged', state: 'done' }, { sentence: 'Reading your settings and accounts', state: 'done' }] },
+      { sentence: 'Putting your suite back', state: 'now', steps: [{ sentence: 'Putting your app data back', state: 'done' }, { sentence: 'Building your apps again', state: 'now' }] },
+      { sentence: 'Checking it and starting it', state: 'next', steps: [] },
+    ],
     sentence: 'Building your apps again',
     startedAt: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
-    step: 7,
-    steps: 9,
+    step: 3,
+    steps: 4,
     updatedAt: now,
     ...overrides,
   };
@@ -326,28 +357,74 @@ test('the status page shows the stage, the counts, the plan and the expectation 
   await settle();
   assert.equal(nodes.get('mos-progress').hidden, false);
   assert.equal(nodes.get('mos-progress-headline').textContent, 'Restoring your backup');
-  assert.equal(nodes.get('mos-progress-now').textContent, 'Building your apps again — step 7 of 9');
+  assert.equal(nodes.get('mos-progress-now').textContent, 'Building your apps again — step 3 of 4');
   assert.equal(nodes.get('mos-progress-count').textContent, 'ONLYOFFICE — 3 of 6 apps');
   assert.equal(nodes.get('mos-progress-count').hidden, false);
   assert.equal(nodes.get('mos-progress-note').textContent, 'ONLYOFFICE usually takes 6 minutes on this machine.');
   assert.equal(nodes.get('mos-progress-bar').hidden, false);
   assert.equal(nodes.get('mos-progress-fill').style.width, '33%');
-  assert.deepEqual(nodes.get('mos-progress-plan').children.map((item) => [item.className, item.textContent]), [
-    ['is-done', 'Reading the backup'],
-    ['is-now', 'Building your apps again'],
-    ['is-next', 'Checking the result against the backup'],
+  // The group that is running is open; the one that is done is not, and the
+  // one that has not started has nothing to open yet.
+  assert.deepEqual(planRows(nodes.get('mos-progress-plan')), [
+    {
+      open: false,
+      state: 'is-done',
+      steps: [['is-done', 'Checking nothing in it is damaged'], ['is-done', 'Reading your settings and accounts']],
+      title: 'Reading the backup',
+    },
+    {
+      open: true,
+      state: 'is-now',
+      steps: [['is-done', 'Putting your app data back'], ['is-now', 'Building your apps again']],
+      title: 'Putting your suite back',
+    },
+    { open: null, state: 'is-next', steps: [], title: 'Checking it and starting it' },
   ]);
   assert.equal(nodes.get('mos-progress-expect').textContent, 'On this machine this usually takes about 19 minutes. Started 9 minutes ago.');
   // It keeps asking, and a single-step job says no step count.
   assert.equal(timers.length, 1);
   assert.equal(timers[0].ms, 5000);
 
-  const single = runPageScript(() => response({ body: JSON.stringify(freshProgress({ count: null, expect: null, headline: 'Checking a backup', plan: [{ sentence: 'Reading the backup', state: 'now' }], sentence: 'Reading the backup', step: 1, steps: 1 })) }));
+  const single = runPageScript(() => response({ body: JSON.stringify(freshProgress({ count: null, expect: null, headline: 'Checking a backup', plan: [{ sentence: 'Reading the backup', state: 'now', steps: [] }], sentence: 'Reading the backup', step: 1, steps: 1 })) }));
   await settle();
   assert.equal(single.nodes.get('mos-progress-now').textContent, 'Reading the backup');
   assert.equal(single.nodes.get('mos-progress-bar').hidden, true);
   assert.equal(single.nodes.get('mos-progress-count').hidden, true);
   assert.equal(single.nodes.get('mos-progress-fill').style.width, '0%');
+});
+
+// The page re-reads the file every few seconds. Rebuilding the list each time
+// would shut a group the owner opened to read, so the rows are kept and only
+// a group that has actually moved is opened or folded away.
+test('the running group opens itself, and a group opened by hand survives the next poll', async () => {
+  const moved = (states) => freshProgress({
+    plan: [
+      { sentence: 'Reading the backup', state: states[0], steps: [{ sentence: 'Checking nothing in it is damaged', state: 'done' }] },
+      { sentence: 'Putting your suite back', state: states[1], steps: [{ sentence: 'Building your apps again', state: states[1] === 'done' ? 'done' : 'now' }] },
+      { sentence: 'Checking it and starting it', state: states[2], steps: [{ sentence: 'Starting the restored server', state: states[2] === 'now' ? 'now' : 'next' }] },
+    ],
+  });
+  const answers = [moved(['done', 'now', 'next']), moved(['done', 'now', 'next']), moved(['done', 'done', 'now'])];
+  let poll = 0;
+  const { nodes, timers } = runPageScript(() => response({ body: JSON.stringify(answers[Math.min(poll++, answers.length - 1)]) }));
+  await settle();
+  const list = nodes.get('mos-progress-plan');
+  assert.deepEqual(planRows(list).map((row) => row.open), [false, true, false]);
+
+  // Opened by hand, then a poll that changes nothing.
+  const rows = list.children;
+  rows[0].children[0].open = true;
+  timers[0].callback();
+  await settle();
+  assert.deepEqual(planRows(list).map((row) => row.open), [true, true, false], 'a poll that changes nothing leaves the rows alone');
+  assert.equal(list.children[0], rows[0], 'the rows are the same nodes, not rebuilt ones');
+
+  // The job moves on: the group that finished folds away and the next opens,
+  // whatever the owner had done to them.
+  timers[0].callback();
+  await settle();
+  assert.deepEqual(planRows(list).map((row) => row.open), [true, false, true]);
+  assert.deepEqual(planRows(list).map((row) => row.state), ['is-done', 'is-done', 'is-now']);
 });
 
 test('a progress file a dead worker left behind does not make the page claim a job is running', async () => {

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, Panel, PanelItem, PanelList, SecretText, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { RecoveryKeySecret, type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
+import { type VaultStartup } from '../../lib/vault';
 import {
   RETENTION_OPTIONS,
   WEEKDAY_NAMES,
@@ -9,8 +11,7 @@ import {
   clockValue,
   archiveKeyLine,
   destinationIconName,
-  downloadKit,
-  needsAddressChoice,
+  carriedDomain,
   whenWords,
   writtenElsewhere,
   type ArchiveKey,
@@ -20,7 +21,7 @@ import {
   type DestinationView,
   type ObjectDraft,
   type RecoveryKeyState,
-  type RevealedRecoveryKey,
+  type RotationResult,
 } from './model';
 
 // Taking a backup by hand. The destination is stated rather than asked: it was
@@ -165,26 +166,32 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
 // before the key appears, which is why they are not two dialogs. What it opens
 // is listed by name, because one key for the whole server is only reassuring
 // once you can see which places that covers.
-export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, revealed, views }: {
+export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup, views }: {
   busy: string;
   error: string;
   keyState: RecoveryKeyState | null;
-  mode: 'reveal' | 'save';
+  mode: 'reveal' | 'rotate' | 'save';
   onAcknowledge: () => void;
   onClose: () => void;
   onReveal: (password: string) => void;
+  onRotate: (password: string) => void;
+  onStartRotation: () => void;
   revealed: RevealedRecoveryKey | null;
+  rotation: RotationResult | null;
+  startup: VaultStartup;
   views: DestinationView[];
 }) {
   const [password, setPassword] = useState('');
   const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
   const locked = Boolean(busy);
   const opens = views.filter((view) => !view.destination.locked);
   const missing = views.filter((view) => view.destination.locked);
+  // A rotation ends in the same place a first handover does: a key on screen
+  // that has to be saved before the dialog is done with.
+  const confirming = mode === 'save' || (mode === 'rotate' && Boolean(rotation));
 
   return <Dialog
-    footer={mode === 'save'
+    footer={confirming
       ? <>
           <button className="mos-btn mos-btn-primary" disabled={!saved || !revealed || locked} onClick={onAcknowledge} type="button">
             {busy === 'recovery-acknowledge' ? <><Spinner />Saving</> : 'Done'}
@@ -192,9 +199,25 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
         </>
       : <button className="mos-btn mos-btn-secondary" disabled={locked} onClick={onClose} type="button">Close</button>}
     onClose={() => { if (!locked) onClose(); }}
-    title="Your recovery key"
+    title={mode === 'rotate' && !rotation ? 'Change your recovery key' : 'Your recovery key'}
   >
-    <p>This key is the only thing that opens your backups on a new machine. If this server is lost and the key is lost, the backups cannot be read &mdash; not by us, not by anyone.</p>
+    {mode === 'rotate' && !rotation ? <>
+      <p>MOS makes a new key, changes this server's disk over to it, and changes every backup it can reach over to it. The key you have now stops opening them.</p>
+      <p>You are shown the new key once here, with a new recovery kit to download. Nothing else about your backups changes and none of them are rewritten.</p>
+      <TextInput
+        autoFocus
+        disabled={locked}
+        helperText="Checked on this server. The new key is shown as soon as it is made."
+        label="Enter your password to change the key"
+        onChange={(event) => setPassword(event.currentTarget.value)}
+        onKeyDown={(event) => { if (event.key === 'Enter' && password && !locked) onRotate(password); }}
+        type="password"
+        value={password}
+      />
+      <button className="mos-btn mos-btn-primary" disabled={!password || locked} onClick={() => onRotate(password)} type="button">
+        {busy === 'recovery-rotate' ? <><Spinner />Changing the key</> : 'Change my recovery key'}
+      </button>
+    </> : null}
 
     {mode === 'reveal' && !revealed ? <TextInput
       autoFocus
@@ -210,17 +233,20 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
       {busy === 'recovery-reveal' ? <><Spinner />Checking</> : 'Show recovery key'}
     </button> : null}
 
-    {revealed ? <>
-      <SecretText label="recovery key" value={revealed.key} />
-      <div className="suite-bk-key-actions">
-        <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => {
-          void navigator.clipboard?.writeText(revealed.key).then(() => setCopied(true)).catch(() => setCopied(false));
-        }} type="button"><Icon name="copy" />{copied ? 'Copied' : 'Copy'}</button>
-        <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => downloadKit(revealed)} type="button">
-          <Icon name="upload" />Download recovery kit
-        </button>
-      </div>
-      <p className="suite-meta">The kit is a plain text file with the key, where your backups are kept, and the steps to get everything back. It holds no access key or password for your storage provider.</p>
+    {revealed ? <RecoveryKeySecret revealed={revealed} startup={startup} /> : null}
+
+    {rotation ? <>
+      {/* Said without hedging, because it is the one thing rotation does not
+          fix and the owner is the only one who can decide what to do about it.
+          The disk half has no equivalent: reaching what is under a LUKS
+          passphrase needs the disk in hand, and at that point the data is
+          already gone. */}
+      <Notice title="What changing the key does not undo" variant="warning">
+        <p>Your disk and every backup from now on need the new key. Anyone who already had the old key <strong>and</strong> a copy of your bucket or drive can still read the backups that existed before today. If you think that happened, start a fresh archive rather than trusting this one.</p>
+      </Notice>
+      {rotation.pending.length ? <Notice title="Some copies still open with your old key" variant="info">
+        <p>{rotation.pending.map((entry) => entry.label).join(', ')} {rotation.pending.length === 1 ? 'was' : 'were'} not attached, so {rotation.pending.length === 1 ? 'it keeps' : 'they keep'} the old key until next plugged in. MOS finishes the change by itself then; keep your old kit until it has.</p>
+      </Notice> : null}
     </> : null}
 
     <p className="suite-meta">{keyState?.adoptedAt
@@ -236,9 +262,18 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
       {missing.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>Needs the recovery key of the server that wrote it</span></p>)}
     </div> : null}
 
-    {mode === 'save' && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
+    {confirming && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
       I have saved this recovery key somewhere I can still reach if this server is gone.
     </Checkbox> : null}
+
+    {mode === 'reveal' && revealed ? <>
+      <p className="suite-meta">If you think someone else has seen this key, change it. MOS makes a new one and moves this server's disk and every backup it can reach over to it.</p>
+      <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={locked} onClick={onStartRotation} type="button">
+        <Icon name="key" />
+        Change recovery key
+      </button>
+    </> : null}
+
 
     {error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null}
 
@@ -324,28 +359,27 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
 }
 
 // Putting a backup back. Everything that cannot be undone is said before the
-// confirmation field, and the one question a restore onto another machine has
-// to ask — which machine answers for the address — is asked as a choice, before
-// anything is touched.
-export function RestoreDialog({ backup, busy, address, confirmation, onCancel, onAddress, onConfirmation, onStart, status }: {
-  address: '' | 'copy' | 'move';
+// confirmation field, and a restore onto another machine states what will
+// happen to the address the backup carried rather than asking. The question it
+// used to ask was answered blind — the consequences only became visible twenty
+// minutes later, on a screen the answer could take away.
+export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart, status }: {
   backup: BackupEntry;
   busy: string;
   confirmation: string;
-  onAddress: (next: 'copy' | 'move') => void;
   onCancel: () => void;
   onConfirmation: (next: string) => void;
   onStart: () => void;
   status: BackupStatus;
 }) {
   const elsewhere = writtenElsewhere(backup, status);
-  const asksAddress = needsAddressChoice(backup, status);
+  const domain = carriedDomain(backup, status);
 
   return <Dialog
     footer={<>
       <button
         className="mos-btn mos-btn-primary"
-        disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || (asksAddress && !address) || Boolean(busy)}
+        disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || Boolean(busy)}
         onClick={onStart}
         type="button"
       >{busy === 'restore' ? <><Spinner />Starting</> : 'Restore'}</button>
@@ -368,25 +402,11 @@ export function RestoreDialog({ backup, busy, address, confirmation, onCancel, o
       <p>This machine will become that server. After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
     </Notice> : null}
 
-    {asksAddress ? <>
-      <p>This backup carries the address <strong>{backup.sourceDomain}</strong>. A name can point at one machine at a time, so choose before anything is touched:</p>
-      <div role="radiogroup" aria-label="What to do with the address">
-        <Choice
-          checked={address === 'move'}
-          description={`Apps answer at their old addresses again, so links, phone apps and browser extensions keep working. You point the name at this machine yourself afterwards, as after any address change.`}
-          name="restore-address"
-          onChange={() => onAddress('move')}
-          value="move"
-        >Move the address here</Choice>
-        <Choice
-          checked={address === 'copy'}
-          description="Keep this machine's own address. The old machine keeps answering for that name, so links and connected devices still point at it. You can move the address here later under Settings."
-          name="restore-address"
-          onChange={() => onAddress('copy')}
-          value="copy"
-        >Restore as a copy</Choice>
-      </div>
-    </> : null}
+    {domain ? <Notice title={`${domain} does not come with it`} variant="info">
+      <p>That is the address of the server this backup was written on, and a name points at one machine at a time. Your suite comes back on <strong>this machine&rsquo;s own address</strong> — the one you are reading this on — so you can sign in and use it as soon as the restore finishes.</p>
+      <p>Anything set up against the old address keeps failing until that name points here: phone apps, desktop sync clients, browser extensions. Afterwards <strong>Settings</strong> offers <strong>{domain}</strong> back, and Backup &amp; Restore says what is left to do.</p>
+      <p className="suite-meta">If the server that wrote this backup is still running, turn it off before pointing the name here. Two machines answering for one suite means two copies of your data drifting apart.</p>
+    </Notice> : null}
 
     <TextInput
       autoFocus

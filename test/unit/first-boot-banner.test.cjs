@@ -1,8 +1,9 @@
 // The console banner is the last screen of a self-host install and the only one
 // that cannot be corrected afterwards by someone who cannot reach the machine.
-// Three of its constraints are invisible in the source: the Linux console font
-// carries 256 glyphs, a console can be 80x25, and the Easy Door name it prints
-// has to be the one Suite Manager's host gate admits.
+// Three of its constraints are invisible in the source: the console font is
+// ASCII and nothing more, the whole screen is 25 rows and the banner does not
+// own all of them, and the Easy Door name it prints has to be the one Suite
+// Manager's host gate admits.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,6 +14,7 @@ const { execFileSync } = require('node:child_process');
 
 const { easyDoorHomeHost } = require('../../shared/easy-door.cjs');
 const { renderCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { renderConsoleLoginInitScript } = require('../../scripts/installers/console-login.cjs');
 
 const easyDoorModule = path.resolve(__dirname, '..', '..', 'shared', 'easy-door.cjs');
 const script = fs.readFileSync(
@@ -21,36 +23,65 @@ const script = fs.readFileSync(
 ).replace(/\r\n/gu, '\n');
 
 // The longest value each substitution can carry on a real machine. The Easy Door
-// name is longest inside 172.16/12 and 192.168/16, and the docs URL is the one
-// `render-bake-seed.cjs` bakes in.
+// name is longest inside 172.16/12 and 192.168/16, and the docs URL and the
+// domain are the ones `render-bake-seed.cjs` bakes in. The domain is a ceiling
+// and not just a default: this screen only ever exists on a machine installed
+// from the published image, which is built with exactly this one.
 const WIDEST = {
   docs_url: 'https://myownsuite.org/docs/install/own-hardware/',
   domain: 'mos.home',
-  easy_docs_url: 'https://myownsuite.org/docs/install/easy-address/',
   easy_host: 'home.192-168-255-255.local.myownsuite.org',
   home_url: 'http://home.mos.home/',
   lan_ip: '255.255.255.255',
 };
 
-// Latin-1 is not the whole console font. The VGA-derived fonts Linux ships also
-// carry the CP437 box and block drawing the logo and the rules are made of, so
-// an allow-list of the exact glyphs used is the honest rule — a codepoint ceiling
-// would either reject the logo or wave through characters that render blank.
-// ✓ (U+2713), ▸ (U+25B8) and an em dash (U+2014) are outside both sets.
-const CONSOLE_BOX_GLYPHS = new Set([...'█╗═║╔╝╚─']);
+// Latin-1 is not the whole console font, and neither is CP437. The honest rule
+// is an allow-list of glyphs seen on a physical console: the block and
+// double-line box drawing the logo is made of render, and that is the whole of
+// what is known to. The single-line ─ does not, though it sits beside ═ in the
+// same Unicode block - it came off a real machine as a row of `?` under a logo
+// that rendered perfectly, which is why the rules it drew are gone. A codepoint
+// ceiling would either reject the logo or wave that back in.
+const CONSOLE_GLYPHS = new Set([...'█╗║╔╝╚═']);
+
+// agetty paints the address banner, then the server login as its own file, then
+// the prompt, all into one 80x25 screen with no scrollback. The three budgets
+// are one budget, so the login block is measured here rather than trusted to
+// stay small somewhere else.
+const CONSOLE_ROWS = 25;
+const PROMPT_ROWS = 1;
 
 function bannerLines() {
   const block = script.split('banner=/etc/issue.d/10-mos-address.issue')[1];
   return block.split('} > "$banner"')[0].split('\n');
 }
 
+// The rows of /etc/issue.d/20-mos-server-login.issue, which agetty prints below
+// the banner. Rendered with the widest realistic substitutions, since the file
+// is a heredoc the generator expands on the machine.
+function loginBlockLines() {
+  const rendered = renderConsoleLoginInitScript({
+    runtimeUser: 'mos',
+    setupUrl: 'http://home.mos.home/suite-manager/',
+    stateDir: '/var/lib/mos/suite-manager',
+    username: 'mos',
+  });
+  return rendered
+    .split('<<MOS_CONSOLE_ISSUE\n')[1]
+    .split('\nMOS_CONSOLE_ISSUE')[0]
+    .split('\n')
+    .map((line) => line.replace('$username', 'mos').replace('$password', 'abcde-fghij-klmno'));
+}
+
 // Widest rendered width of one printf, with ANSI escapes removed: they move the
-// cursor without consuming a column.
+// cursor without consuming a column, and with `\\` collapsed to the one column
+// the backslashes in the logo actually take.
 function renderedWidth(line) {
   const format = line.match(/^\s*printf\s+'([^']*)'/u)[1];
   const args = [...line.matchAll(/"\$([a-z_]+)"/gu)].map((match) => match[1]);
   let index = 0;
   return format
+    .replace(/\\\\/gu, '\\')
     .replace(/\\033\[[0-9;]*[A-Za-z]/gu, '')
     .replace(/\\n$/u, '')
     .replace(/%(-?\d+)?s/gu, (_match, width) => {
@@ -88,7 +119,7 @@ function tallestPath(lines, start = 0) {
   return { count, next: index };
 }
 
-test('the banner fits a framebuffer console and stays inside the console font', () => {
+test('the banner fits an 80x25 console and stays inside the console font', () => {
   const lines = bannerLines();
   const printfs = lines.filter((line) => line.trim().startsWith('printf '));
   assert.ok(printfs.length > 10, 'the banner block was not found');
@@ -100,19 +131,28 @@ test('the banner fits a framebuffer console and stays inside the console font', 
     assert.ok(renderedWidth(line) <= 80, `wider than an 80-column console: ${format}`);
     for (const character of format) {
       assert.ok(
-        character.codePointAt(0) <= 0xff || CONSOLE_BOX_GLYPHS.has(character),
+        character.codePointAt(0) <= 0xff || CONSOLE_GLYPHS.has(character),
         `outside the console font and blank on screen: ${character}`,
       );
     }
   }
 
-  // 80x25 was the old budget and it is a text-mode number. A UEFI machine paints
-  // the console on the framebuffer at the panel's resolution, so the floor is
-  // 1024x768 with an 8x16 font — 48 rows — of which agetty spends some on
-  // /etc/issue and the login prompt. A machine that does fall back to text mode
-  // scrolls the logo off the top and keeps the addresses, which is the right way
-  // round for it to degrade.
-  assert.ok(tallestPath(lines).count <= 45, 'the tallest banner path no longer fits above the login prompt');
+  // 48 rows was the old budget, taken from a 1024x768 framebuffer and an 8x16
+  // font. Firmware is under no obligation to hand the kernel a framebuffer, and
+  // the first hardware install got an 80x25 text mode: the banner and the login
+  // block came to 54 rows between them, so the logo, the state headline and the
+  // whole of the first address scrolled away before agetty finished painting.
+  // Nothing about that was visible to the machine - it had already succeeded.
+  const login = loginBlockLines();
+  for (const line of login) {
+    assert.ok(line.length <= 80, `wider than an 80-column console: ${line}`);
+    assert.ok([...line].every((character) => character.codePointAt(0) <= 0x7e), line);
+  }
+  const banner = tallestPath(lines).count;
+  assert.ok(
+    banner + login.length + PROMPT_ROWS <= CONSOLE_ROWS,
+    `the screen is ${banner} banner rows plus ${login.length} login rows plus the prompt, over ${CONSOLE_ROWS}`,
+  );
 });
 
 test('the banner derives the Easy Door name rather than reimplementing it', () => {
@@ -149,24 +189,35 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
   assert.match(withAddress, /only from inside your own network/u);
 });
 
+// The door is always open on a LAN machine — a domain does not close it — so the
+// banner prints it for any private address without reading the Caddyfile.
 test('the Easy Door CLI answers with the name the host gate admits', () => {
-  const caddyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-first-boot-'));
-  const open = path.join(caddyDir, 'Caddyfile');
-  const closed = path.join(caddyDir, 'Caddyfile.https');
-  fs.writeFileSync(open, renderCaddyfile());
-  fs.writeFileSync(closed, 'http://home.mos.example.com {\n  reverse_proxy 127.0.0.1:3100\n}\n');
-
-  const cli = (args, caddyfilePath) => execFileSync(process.execPath, [easyDoorModule, ...args], {
-    encoding: 'utf8',
-    env: { ...process.env, MOS_CADDYFILE_PATH: caddyfilePath },
-  }).trim();
+  const cli = (args) => execFileSync(process.execPath, [easyDoorModule, ...args], { encoding: 'utf8' }).trim();
 
   for (const address of ['192.168.123.45', '10.0.0.5', '172.16.0.1']) {
-    assert.equal(cli(['home-host', address], open), easyDoorHomeHost(address));
+    assert.equal(cli(['home-host', address]), easyDoorHomeHost(address));
   }
   // A public address has no Easy Door: the nameserver refuses those names, so
   // the banner must print the first door alone rather than a dead second one.
-  assert.equal(cli(['home-host', '203.0.113.9'], open), '');
-  assert.equal(cli(['home-host', '192.168.123.45'], closed), '');
-  assert.equal(cli(['home-host', ''], closed), '');
+  assert.equal(cli(['home-host', '203.0.113.9']), '');
+  assert.equal(renderCaddyfile().includes('# mos-easy-door'), true);
+});
+
+// The banner runs on every boot whether the vault opened or not, so it may read
+// nothing the vault protects, it may not run the login generator (which waits
+// for the vault and writes its own file after this one), and it has to say
+// "locked" when the gate failed rather than "running" over a suite that is not.
+test('the banner is vault-independent, runs no generator, and never claims a locked machine is running', () => {
+  assert.doesNotMatch(script, /mos-console-login-init|chpasswd|\/var\/lib\/mos\b|\/var\/lib\/docker|\/etc\/mos\/secrets/u);
+  // Nothing runs from the stick any more, so the banner has no second shape to
+  // choose between and asks no question about the medium it is printed on.
+  assert.doesNotMatch(script, /lsblk|findmnt|\/sys\/block|installer-media|USB STICK/u);
+  // Nothing is stripped out of /etc/issue, because nothing is written into it.
+  assert.doesNotMatch(script, /awk -v b=/u);
+
+  assert.match(script, /systemctl is-failed --quiet mos-vault\.service/u);
+  const locked = script.split('if [ "$vault_locked" = yes ]; then')[1].split('else')[0];
+  assert.match(locked, /Locked\./u);
+  assert.match(locked, /recovery key/u);
+  assert.doesNotMatch(locked, /Installed and running/u);
 });

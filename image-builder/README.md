@@ -87,8 +87,15 @@ Output lands in `image-builder/.work/out/`, which is git-ignored.
    removable-media fallback path, cloud-init disabled, SSH host keys and
    machine-id removed, server login reset so each machine generates its own.
 4. It powers off. The host converts the disk with `qemu-img`, shrinks the
-   filesystem and root partition to the actual contents, truncates the file, and
-   compresses it with `xz`. The target grows the filesystem back on first boot.
+   filesystem and root partition to the actual contents, zeroes the free blocks,
+   truncates the file, and compresses it with `xz`. The target grows the
+   filesystem back on first boot.
+
+Everything under `payload/` is read out of the working tree at seed time, and
+nothing else in the repo runs it. **A payload edit is not done until a bake has
+said so**: unit tests cannot tell whether a line works on the base image, and a
+commit that breaks a bake or the verify looks exactly like one that does not
+until an image is built from it. Commit the bake, not the edit.
 
 ## What verify proves
 
@@ -102,15 +109,27 @@ runs `check-target.sh` over the disk it leaves behind. That second half exists
 because the interesting parts of a first boot are sized against a disk the build
 cannot know, so they are not checkable on the artifact:
 
-- the root filesystem grew to fill the disk
+- the system partition grew to its cap — 15% of the disk between a 12 GiB floor
+  and a 24 GiB ceiling — and not past it
+- the rest of the disk is a third partition that `blkid` reports as
+  `crypto_LUKS`, and `/etc/mos/vault.json` records a TPM keyslot, so the sealed
+  unlock is exercised on every release rather than assumed
 - at least 2 GB is still free afterwards
-- a swapfile exists and is in `fstab`
+- no swapfile sits on the plaintext system partition, and nothing mounts swap
+  from `fstab`
 - cloud-init stayed disabled, and the machine generated its own SSH host keys
 
-The free-space check is not hypothetical. The first version of `mos-grow-root`
-created a flat 2 GB swapfile regardless of what was left, filled the root
+The verify VM is given a virtual TPM for this — `swtpm` under QEMU,
+`Enable-VMTPM` under Hyper-V. Without one the published image comes up locked,
+Suite Manager never answers, and the run fails for a reason that has nothing to
+do with the image. `bake.sh` refuses to start the verify stage if `swtpm` is not
+installed rather than producing that failure.
+
+The free-space check is not hypothetical. The first version of the grow-to-fill
+step created a flat 2 GB swapfile regardless of what was left, filled the root
 filesystem to 100%, and still booted and served traffic for a few minutes before
-returning 502.
+returning 502. The vault gate owns that arithmetic now, and the swapfile lives
+inside the vault.
 
 ## Size
 
@@ -122,9 +141,16 @@ Measured on the first bake, before any of this was done: 16 GB file, 8.0 GB used
 `/opt/mos` 182 MB, and 6.3 GB of empty space that existed only because the bake
 disk was 16 GB.
 
-So the build now removes the swapfile (`mos-grow-root` makes a new one on the
-target, sized to a disk the build cannot know), prunes the container build cache,
-shrinks to contents plus `-SlackMB` headroom, and ships `.img.xz`.
+So the build now removes the swapfile (the vault gate makes a new one on the
+target on first boot, sized to a disk the build cannot know), prunes the
+container build cache, shrinks to contents plus `-SlackMB` headroom, zeroes the
+free blocks left inside that filesystem, and ships `.img.xz`.
+
+The zeroing is worth a gigabyte. Free blocks keep whatever the bake deleted —
+pruned build cache, apt lists, the blocks `resize2fs` moved — and `xz` cannot
+compress that, so the download had swung between 2.2 and 2.9 GB for the same
+contents. Measured on one bake on 2026-09-19: 2.86 GB with the free blocks as the
+bake left them, 1.80 GB with them zeroed.
 
 For comparison, Home Assistant OS is a few hundred MB because it is a Buildroot
 appliance rather than a distro, **and** because it downloads its application on
@@ -139,21 +165,42 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   internal disk big enough, in kernel-name order so the numbers do not move
   between boots, each annotated with what it already holds — a picker that printed
   only NAME/SIZE/MODEL would trade a safe refusal for a confident mistake. The
-  last option declines. A number then `ERASE` copies the image over, expands it to
-  fill the disk, and asks you to remove the stick and reboot. Anything it does not
-  recognise asks again —
+  last option declines. A number then `ERASE` freezes the stick's filesystem,
+  copies it over, gives the copy its own identity, and restarts on Enter; you
+  pull the stick as the screen goes dark, never before, because the running
+  system is on it. Every step after the copy reports its failure on screen and
+  waits, rather than continuing to a disk that is not a finished install.
+  Anything it does not recognise asks again —
   **not installing has to be chosen, never arrived at.** The prompt this replaced
   compared the answer to `YES` exactly, so a lowercase `yes` cancelled, the suite
   came up on the stick looking installed, and the machine stopped booting the
   moment the stick came out.
 - On the internal disk it sees non-removable media and does nothing, so the same
   image is both the installer and the installed system.
-- `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
-  identity, its full disk, and its own server login. `mos-grow-root` skips
-  removable media, so choosing not to install leaves the stick a working installer
-  rather than expanding it to fill itself.
-- Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
-  STICK** and says nothing is installed, instead of the completion banner below.
+- `mos-ssh-hostkeys` gives the machine its own identity, and `mos-console-login`
+  its own server login. The installer clears the stick's host keys, machine-id
+  and journal from the copy it makes, and gives the copy its own disk and
+  partition GUIDs and filesystem UUIDs (`sgdisk -G`, `tune2fs -U random`,
+  `fatlabel -i`), rewriting fstab and the three GRUB configs to match — a
+  byte-for-byte twin of the stick is what the firmware, GRUB and the kernel all
+  resolved to the internal disk, so a stick left in booted the disk and the
+  installer never asked again. Nothing of the stick's identity reaches the disk,
+  and every step after the copy fails on screen rather than silently. The disk
+  itself belongs to `mos-vault.service`, which fits the copied
+  partition table to the disk it landed on, grows the system partition to its
+  cap and gives the rest to the encrypted vault; the installer lays out nothing,
+  so the same first boot happens whether the image arrived by stick or was
+  written straight to the disk, which is what the release verify does. It
+  refuses outright on removable media: nothing runs from the stick, so reaching
+  the gate there means the install never happened, and laying a vault out would
+  partition the installer somebody is still holding.
+- `mos-console-login` and its watcher both wait for the vault, because the
+  record they read and write lives inside it. It writes the login as its own
+  file under `/etc/issue.d/`, after the banner, where it stays until the owner
+  confirms it in Suite Manager.
+- `mos-first-boot` leads with **Locked.** on an installed machine whose vault
+  did not open, and says where to enter the key; only a machine whose gate
+  succeeded reads **Installed and running.**
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
   the address reservation both doors need, then offers each door in one line, and
   points at the docs for the rest; a login screen is the wrong place for a guide.

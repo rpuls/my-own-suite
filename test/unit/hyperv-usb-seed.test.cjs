@@ -7,9 +7,12 @@ const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
 const {
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE,
+  CONSOLE_LOGIN_ISSUE_PATH,
+} = require('../../shared/console-login-contract.cjs');
+const {
   assertSmokeRepoRefIsPushed,
-  consoleLoginAcknowledgedFileName,
-  consoleLoginFileName,
   labLinuxPassword,
   loadSmokeConfig,
   renderSeed,
@@ -98,9 +101,9 @@ test('first boot generates the console password on the installed machine', () =>
   assert.match(init.content, /\/dev\/urandom/u);
   assert.match(init.content, /chpasswd/u);
   assert.match(init.content, /state_dir='\/var\/lib\/mos\/suite-manager'/u);
-  assert.match(init.content, new RegExp(`handover="\\$state_dir/${consoleLoginFileName}"`, 'u'));
+  assert.match(init.content, new RegExp(`handover="\\$state_dir/${CONSOLE_LOGIN_HANDOVER_FILE}"`, 'u'));
   // Idempotent, so a re-run cannot rotate a password the owner already saved.
-  assert.match(init.content, new RegExp(consoleLoginAcknowledgedFileName, 'u'));
+  assert.match(init.content, new RegExp(CONSOLE_LOGIN_ACKNOWLEDGED_FILE, 'u'));
   // Ahead of the control-plane bootstrap: a machine whose install failed must
   // still be reachable, or a failed boot is an unrecoverable brick.
   const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
@@ -110,17 +113,57 @@ test('first boot generates the console password on the installed machine', () =>
   );
 });
 
+// The login is its own file under /etc/issue.d, after the address banner. The
+// banner clears the screen before it paints, so a block appended to /etc/issue
+// is painted and wiped in the same instant — the first hardware install hid its
+// own login that way. One file, replaced by its writer and removed by its
+// remover, cannot stack and cannot be hidden.
+test('the server login is its own console file, written after the banner and never appended', () => {
+  const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
+  const init = fileAt(rendered, '/usr/local/sbin/mos-console-login-init');
+
+  assert.equal(CONSOLE_LOGIN_ISSUE_PATH, '/etc/issue.d/20-mos-server-login.issue');
+  assert.match(init.content, new RegExp(`cat > ${CONSOLE_LOGIN_ISSUE_PATH} <<`, 'u'));
+  assert.doesNotMatch(init.content, />> \/etc\/issue\b/u, 'nothing is appended to /etc/issue');
+  assert.ok('20-mos-server-login' > '10-mos-address', 'sorted after the address banner, which clears the screen');
+});
+
+// On the image path the generator is a unit of its own, and it waits for the
+// vault: its run-once record lives inside it, so a locked boot would otherwise
+// find the empty directory the vault mounts over and set a password the owner
+// has never seen. The first hardware install rotated its login twice that way.
+test('the login generator and its watcher both wait for the vault', () => {
+  const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
+  const unit = fileAt(rendered, '/etc/systemd/system/mos-console-login.service');
+  const firstBoot = YAML.parse(rendered.userData).autoinstall['user-data'];
+
+  assert.ok(unit);
+  assert.match(unit.content, /^Requires=mos-vault\.service$/mu);
+  assert.match(unit.content, /^After=mos-vault\.service$/mu);
+  // The watcher too, and for a reason of its own: started on a locked boot it
+  // would set its inotify watch on the plaintext directory and hold it there
+  // after the vault mounts over, so the acknowledgement would never reach it.
+  const watcher = fileAt(rendered, '/etc/systemd/system/mos-console-login-clear.path');
+  assert.ok(watcher);
+  assert.match(watcher.content, /^Requires=mos-vault\.service$/mu);
+  assert.match(watcher.content, /^After=mos-vault\.service$/mu);
+  assert.match(unit.content, /ExecStart=\/usr\/local\/sbin\/mos-console-login-init/u);
+  const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
+  assert.ok(commands.some((entry) => entry === 'systemctl enable mos-console-login.service'));
+});
+
 test('the console banner clears itself once the owner confirms', () => {
   const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
   const clear = fileAt(rendered, '/usr/local/sbin/mos-console-login-clear');
   const pathUnit = fileAt(rendered, '/etc/systemd/system/mos-console-login-clear.path');
 
   assert.ok(clear && pathUnit);
-  assert.match(clear.content, /\/etc\/issue/u);
-  assert.match(clear.content, new RegExp(`rm -f .*${consoleLoginFileName}`, 'u'));
+  assert.match(clear.content, new RegExp(`rm -f ${CONSOLE_LOGIN_ISSUE_PATH}`, 'u'));
+  assert.doesNotMatch(clear.content, /awk/u, 'nothing is edited out of /etc/issue, because nothing was put in it');
+  assert.match(clear.content, new RegExp(`rm -f .*${CONSOLE_LOGIN_HANDOVER_FILE}`, 'u'));
   // Suite Manager runs unprivileged and cannot edit /etc/issue, so the sentinel
   // it can write is what triggers the root-side cleanup.
-  assert.match(pathUnit.content, new RegExp(`PathExists=/var/lib/mos/suite-manager/${consoleLoginAcknowledgedFileName}`, 'u'));
+  assert.match(pathUnit.content, new RegExp(`PathExists=/var/lib/mos/suite-manager/${CONSOLE_LOGIN_ACKNOWLEDGED_FILE}`, 'u'));
   assert.match(pathUnit.content, /Unit=mos-console-login-clear\.service/u);
 });
 
@@ -226,4 +269,29 @@ test('ambient shell HOSTNAME cannot leak the build machine name into the seed', 
       else process.env[key] = value;
     }
   }
+});
+
+test('only a lab seed carries the development SSH key', () => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholderPlaceholderPl mos-debug-bake';
+  const lab = YAML.parse(renderSeed({}, { authorizedKeys: [key], profile: 'lab', repoRef: 'staging' }).userData).autoinstall.ssh;
+  assert.deepEqual(lab['authorized-keys'], [key]);
+
+  const release = YAML.parse(renderSeed({}, { profile: 'release', repoRef: 'staging' }).userData).autoinstall.ssh;
+  assert.equal(release['authorized-keys'], undefined);
+
+  assert.throws(() => renderSeed({}, { authorizedKeys: [key], profile: 'release', repoRef: 'staging' }), /lab profile/u);
+});
+
+test('passwordless sudo ships with the development key and never without it', () => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholderPlaceholderPl mos-debug-bake';
+  const sudoersOf = (options) => YAML.parse(renderSeed({}, options).userData)
+    .autoinstall['user-data'].write_files
+    .find((file) => file.path === '/etc/sudoers.d/90-mos-debug');
+
+  const lab = sudoersOf({ authorizedKeys: [key], profile: 'lab', repoRef: 'staging' });
+  assert.match(lab.content, /^mos ALL=\(ALL\) NOPASSWD:ALL$/mu);
+  assert.equal(lab.permissions, '0440');
+
+  assert.equal(sudoersOf({ profile: 'lab', repoRef: 'staging' }), undefined);
+  assert.equal(sudoersOf({ profile: 'release', repoRef: 'staging' }), undefined);
 });

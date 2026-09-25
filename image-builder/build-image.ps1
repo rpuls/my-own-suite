@@ -29,10 +29,11 @@ param(
   [int]$BakeTimeoutMinutes = 120,
   # Free space at the end of the filesystem is unwritten, so it compresses to
   # nothing and costs the download almost nothing. Being stingy here only buys a
-  # brick if mos-grow-root ever fails to expand on the target.
+  # brick if the vault gate ever fails to grow the system partition on the target.
   [int]$SlackMB = 1024,
   # Deliberately larger than the image: nobody installs onto a disk exactly the
-  # size of the download, and the difference is what mos-grow-root is judged on.
+  # size of the download, and the difference is what the first boot's layout is
+  # judged on.
   [int]$VerifyDiskGB = 40,
   [string]$RepoRef = 'staging',
   [switch]$DebugBake
@@ -127,7 +128,10 @@ function Invoke-Bake {
   Assert-HyperV
   if (-not (Test-Path $IsoPath)) { Fail 'No bake ISO found. Run the iso stage first.' }
 
+  # Both VMs, because the verify VM holds the disk this is about to delete and a
+  # verify run that was interrupted leaves it attached and running.
   Remove-BakeVm $VmName
+  Remove-BakeVm $VerifyVmName
   foreach ($stale in @($BakeDiskPath, $VerifyDiskPath)) {
     if (Test-Path $stale) { Remove-Item $stale -Force }
   }
@@ -216,6 +220,51 @@ function Get-SuiteManagerStatus([string]$Address, [string]$HomeHost) {
   catch { return 0 }
 }
 
+# Suite Manager reaches every system agent through a unix socket, and one it
+# cannot reach reads as a machine MOS knows nothing about rather than a broken
+# one: a vault agent that is running and answers root still leaves the handover
+# page waiting for a recovery key it cannot be told. The first boot this VM has
+# just done - make the vault, teach the chip the key - is the boot where that
+# goes wrong, so it is asked here instead of on hardware.
+function Assert-AgentSocketsReachable([string]$Address) {
+  $key = Join-Path $WorkRoot 'debug-ssh-key'
+  if (-not (Test-Path $key)) {
+    Say 'Skipped the agent socket check: this bake has no debug key to log in with.'
+    return
+  }
+  $hostsFile = Join-Path $WorkRoot 'verify-known-hosts'
+  Remove-Item $hostsFile -Force -ErrorAction SilentlyContinue
+  $probe = @'
+# Asked of the units rather than of a glob: the paths are read as root, from
+# the same environment the agents were told to listen on, because a glob run
+# as the unprivileged user silently drops the one directory it cannot list -
+# which is exactly the fault being looked for.
+user="$(systemctl show mos-suite-manager -p User --value)"
+units="$(systemctl list-units --all --no-legend --plain 'mos-*-agent.service' | awk '{print $1}')"
+[ -n "$units" ] || { echo "NO-AGENTS this image has no agent units to check"; exit 0; }
+socks="$(for unit in $units; do systemctl show "$unit" -p Environment --value | tr ' ' '\n'; done \
+  | sed -n 's/^MOS_[A-Z_]*_AGENT_SOCKET=//p' | sort -u)"
+bad=0
+for sock in $socks; do
+  sudo test -S "$sock" || { echo "MISSING $sock"; bad=1; continue; }
+  sudo -u "$user" test -w "$sock" || { echo "UNREACHABLE $sock"; bad=1; }
+done
+[ "$bad" = 0 ] && echo "SOCKETS-OK all $(echo "$socks" | wc -l) agent sockets reachable as $user"
+'@
+  # Sent as base64 rather than on stdin: PowerShell puts a byte-order mark in
+  # front of what it pipes to a native command, and bash reads it as the first
+  # word of the first line. Unix line endings for the same reason - a CR would
+  # otherwise be part of every command in the script.
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($probe.Replace("`r`n", "`n")))
+  $output = & ssh.exe -i $key -o StrictHostKeyChecking=no -o UserKnownHostsFile=$hostsFile `
+    -o BatchMode=yes -o ConnectTimeout=20 -o LogLevel=ERROR "mos@$Address" `
+    "echo $encoded | base64 -d | bash" 2>&1
+  Remove-Item $hostsFile -Force -ErrorAction SilentlyContinue
+  $ok = @($output | Where-Object { $_ -match 'SOCKETS-OK' })
+  if ($ok.Count -gt 0) { Say ([string]$ok[0]); return }
+  Fail ("Suite Manager cannot reach every system agent socket on the booted image. " + (($output | ForEach-Object { [string]$_ }) -join ' | '))
+}
+
 function Invoke-Verify {
   Assert-HyperV
   $imageName = "my-own-suite-$RepoRef.img"
@@ -250,6 +299,13 @@ function Invoke-Verify {
   Set-VMProcessor -VMName $VerifyVmName -Count 2
   Set-VM -Name $VerifyVmName -AutomaticCheckpointsEnabled $false
   Set-VMFirmware -VMName $VerifyVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
+  # A published image creates an encrypted vault on its first boot and seals the
+  # key to this machine's TPM. Without a virtual one the verify VM comes up
+  # locked, Suite Manager never answers, and the run fails for a reason that has
+  # nothing to do with the image. Hyper-V needs a key protector before a vTPM can
+  # be enabled, and a local one is what an ordinary machine's firmware provides.
+  Set-VMKeyProtector -VMName $VerifyVmName -NewLocalKeyProtector
+  Enable-VMTPM -VMName $VerifyVmName
   Start-VM -Name $VerifyVmName
 
   Say 'Waiting for it to take an address (up to 5 minutes).'
@@ -284,6 +340,8 @@ function Invoke-Verify {
     Fail "Suite Manager never answered on the published image (last status '$status'). Look at the console: vmconnect.exe localhost $VerifyVmName"
   }
   Say "Suite Manager answered 200 at http://$address/suite-manager/ (Host: $homeHost)."
+
+  Assert-AgentSocketsReachable $address
 
   # Shut it down rather than turning it off, so the filesystem it is about to be
   # judged on is consistent.
@@ -334,11 +392,18 @@ function Invoke-Convert {
       shrink-image.sh "/work/out/$imageName" $SlackMB
   }
 
+  # An image built before an edit landed looks exactly like one built after it,
+  # so the finished file is asked what it carries rather than the checkout.
+  Invoke-Native 'The image does not carry what this checkout says it should.' {
+    & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
+      check-image-payload.sh "/work/out/$imageName"
+  }
+
   Say ''
   Say "Image ready: $(Join-Path $OutputDir $imageName)"
   Say ''
-  Say 'Write it to a USB stick with Rufus (DD mode) or balenaEtcher, boot the target'
-  Say 'machine from it, and type YES when it asks which disk to erase.'
+  Say 'Write the .img.xz to a USB stick with balenaEtcher or Rufus (both read it as it is),'
+  Say 'boot the target machine from it, pick the disk by number and type ERASE when it asks.'
 }
 
 function Invoke-Inspect {

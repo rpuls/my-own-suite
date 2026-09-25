@@ -1135,6 +1135,14 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   user-select: all;
 }
 
+/* The mask stands in for a value, so it is not selectable: dragging across it
+   would put a row of dots on the clipboard. */
+.mos-secret-value.mos-secret-masked {
+  color: var(--mos-color-text-muted);
+  letter-spacing: 0.18em;
+  user-select: none;
+}
+
 .mos-secret-actions {
   display: flex;
   align-items: center;

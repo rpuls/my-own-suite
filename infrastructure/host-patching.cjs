@@ -113,7 +113,8 @@ APT::Periodic::AutocleanInterval "7";
 function renderPostPatchUnit(repoRoot, stateRoot = '/var/lib/mos') {
   return `[Unit]
 Description=MOS post-patch health check
-After=network-online.target docker.service apt-daily-upgrade.service
+Requires=mos-vault.service
+After=mos-vault.service network-online.target docker.service apt-daily-upgrade.service
 Documentation=https://myownsuite.org/docs/guides/updates/
 
 [Service]
@@ -278,6 +279,7 @@ module.exports = {
   STOCK_CONFIG_PATH,
   UNATTENDED_BINARY_PATH,
   applyHostPatching,
+  renderPostPatchUnit,
   detectOwnerManagedConfig,
   healthStatePath,
   ownerManagedReason,

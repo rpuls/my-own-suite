@@ -46,7 +46,11 @@ function installedLabel(host: HostPatches, formatDate: (value: string | null) =>
 // suite, so it is confirmed rather than clicked. The checkbox is the shared
 // acknowledgement primitive: the same shape as every other "I know what this
 // does" in Suite Manager.
-function RestartDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
+function RestartDialog({ asksForPassword, onClose, onConfirm }: {
+  asksForPassword: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   const [confirmed, setConfirmed] = useState(false);
   return <Dialog
     footer={<>
@@ -57,7 +61,9 @@ function RestartDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm:
     title="Restart this server"
   >
     <p>A patch is installed but does not take effect until the server restarts. This is usually a kernel fix.</p>
-    <p>Every app stops for a minute or two, and anything anyone is in the middle of — an upload, a sync, a document — is cut off. Everything comes back on its own once the server is up.</p>
+    <p>Every app stops for a minute or two, and anything anyone is in the middle of — an upload, a sync, a document — is cut off. {asksForPassword
+      ? 'This server is set to ask for your password before it opens your data, so your apps stay off until you open its address and type it.'
+      : 'Everything comes back on its own once the server is up.'}</p>
     <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.currentTarget.checked)}>
       I understand the suite will be offline for a few minutes.
     </Checkbox>
@@ -67,7 +73,8 @@ function RestartDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm:
 // Ubuntu's own patch state, beside the MOS and app updates rather than on a
 // screen of its own: an owner asking whether their server is current is asking
 // one question, not three.
-export function HostPatchesPanel({ busy, formatDate, host, onRestart, restarting }: {
+export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRestart, restarting }: {
+  asksForPassword: boolean;
   busy: string;
   formatDate: (value: string | null) => string;
   host: HostPatches;
@@ -155,6 +162,7 @@ export function HostPatchesPanel({ busy, formatDate, host, onRestart, restarting
     </Panel>
 
     {asking ? <RestartDialog
+      asksForPassword={asksForPassword}
       onClose={() => setAsking(false)}
       onConfirm={() => { setAsking(false); onRestart(); }}
     /> : null}

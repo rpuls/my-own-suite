@@ -11,16 +11,23 @@ export type BackupDestination = {
   checkedAt?: string | null;
   endpoint?: string;
   folder?: string;
+  // How a drive stays the same drive across being unplugged: where it is
+  // mounted is a fact about this boot, the filesystem on it is not.
+  fsUuid?: string | null;
   id: string;
   kind?: 'disk' | 'object';
   label: string;
+  lastBackupAt?: string | null;
+  lastSeenAt?: string | null;
   // Reached, and holding backups written with another server's key. Neither
   // usable nor broken: one recovery key away from both.
   borrowedKey?: boolean;
   locked?: boolean;
   mountBlockedReason?: string | null;
   mountPath: string | null;
-  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
+  // `away` is the only state describing something MOS cannot see: a drive it
+  // has backed up to before and that is not plugged in now.
+  mountState?: 'away' | 'mounted' | 'unmounted' | 'unsupported-mount';
   notReadyReason?: string | null;
   ready?: boolean;
   region?: string;
@@ -63,12 +70,15 @@ export type JobCount = { current: string | null; done: number; note: string | nu
 // sequence, so the step count and the plan are facts it reports, not a guess
 // this screen keeps beside it; the busy page Caddy serves reads the same
 // record, so the two never drift.
+export type PlanState = 'done' | 'next' | 'now';
+
 export type JobProgress = {
   count: JobCount | null;
   expect: { sentence: string } | null;
   headline: string;
   kind: string | null;
-  plan: Array<{ sentence: string; state: 'done' | 'next' | 'now' }>;
+  // One entry per group of stages, each carrying the stages it is made of.
+  plan: Array<{ sentence: string; state: PlanState; steps: Array<{ sentence: string; state: PlanState }> }>;
   sentence: string;
   stage: string | null;
   startedAt: string | null;
@@ -83,9 +93,13 @@ export type JobProgress = {
 export type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
 
 export type BackupJob = {
-  // What a restore did about the domain the backup carried: `same` on the
-  // machine that wrote it, otherwise the owner's `move` or `copy`.
-  address?: { domain: string | null; plan: 'copy' | 'move' | 'same' } | null;
+  // The domain the backup carried and the restore set aside, or null when the
+  // backup came from this machine and there was nothing to set aside.
+  address?: { domain: string | null } | null;
+  // Whether the restored routes went live. A web server that refused the new
+  // config keeps serving the old one, so this is the difference between a
+  // restored suite and a restored suite its owner can reach.
+  controlPlane?: { detail: string | null; routesLive: boolean } | null;
   error: string | null;
   id: string;
   kind: string | null;
@@ -194,7 +208,6 @@ export type RecoveryKeyState = {
   legacyKeyPresent?: boolean;
 };
 
-export type RevealedRecoveryKey = { key: string; kit: string; kitFilename: string };
 
 export type BackupStatus = {
   backups: BackupEntry[];
@@ -214,9 +227,6 @@ export type BackupStatus = {
   recoveryKey?: RecoveryKeyState | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
-  // This machine's console login is still waiting to be saved. It lives in the
-  // state a backup carries and a restore replaces, so the screen waits with it.
-  serverLoginUnsaved?: boolean;
   schedule?: BackupSchedule | null;
   serviceAvailable: boolean;
 };
@@ -345,11 +355,14 @@ export function writtenElsewhere(backup: BackupEntry, status: BackupStatus | nul
   return backup.sourceHostname || 'another server';
 }
 
-// The one question a restore onto another machine has to ask: a domain can
-// point at one machine at a time. Asked when the backup carries one, and when
-// it is too old to say; never when it is known to carry none.
-export function needsAddressChoice(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  return Boolean(writtenElsewhere(backup, status)) && Boolean(backup.sourceDomain);
+// The domain a restore onto this machine will set aside, or null. It used to be
+// a question — move the name here, or keep this machine's own address — asked
+// before a restore and acted on in the middle of one, which is the stretch
+// where Suite Manager is down and no screen can report what happened. It is a
+// statement now: the suite comes back on this machine's own address, and the
+// name is offered back afterwards, in the open.
+export function carriedDomain(backup: BackupEntry, status: BackupStatus | null | undefined) {
+  return writtenElsewhere(backup, status) ? backup.sourceDomain || null : null;
 }
 
 // Which server's backups a destination holds, when it is not this one. Read off
@@ -379,12 +392,17 @@ export type DestinationView = {
   action: DestinationAction;
   actionLabel: string;
   address: string | null;
+  away: boolean;
   detail: string;
   destination: BackupDestination;
   foreign: string | null;
   id: string;
   keyLine: string;
   keyTone: Tone;
+  // Whether someone who breaks into this server could erase this copy. MOS may
+  // decline to enforce good practice, but it must never imply protection the
+  // owner does not have.
+  reachLine: string;
   kindLabel: string;
   label: string;
   present: boolean;
@@ -437,6 +455,12 @@ export function destinationView(destination: BackupDestination, status: BackupSt
     tone = 'warning';
     line = 'MOS can read this drive but cannot write to it';
     detail = 'It may be locked by a switch on the drive itself.';
+  } else if (destination.mountState === 'away') {
+    // Not a problem to fix. This is the copy that survives the thing every
+    // other copy does not, and the row says so rather than reading as an error.
+    tone = 'muted';
+    line = destination.lastBackupAt ? `Unplugged · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : 'Unplugged';
+    detail = 'Plug it in to bring it up to date.';
   } else if (!present) {
     tone = selected ? 'warning' : 'muted';
     line = 'Not connected';
@@ -460,16 +484,19 @@ export function destinationView(destination: BackupDestination, status: BackupSt
   }
 
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
+  const away = destination.mountState === 'away';
   return {
     action,
     actionLabel,
     address: destinationAddress(destination),
+    away,
     detail,
     destination,
     foreign,
     id: destination.id,
     keyLine,
     keyTone,
+    reachLine: reachOf(destination),
     kindLabel: destinationKindLabel(destination),
     label: destination.label,
     present,
@@ -479,6 +506,24 @@ export function destinationView(destination: BackupDestination, status: BackupSt
     status: line,
     tone,
   };
+}
+
+/**
+ * Whether this copy is within reach of someone who gets into the server.
+ *
+ * It is the one thing MOS must always be able to say. Ransomware runs on an
+ * unlocked machine with the owner's own credentials, so anything MOS can write
+ * to, it can also delete, and anything MOS can undo an attacker with root can
+ * undo. No setting on this screen changes that: only a drive that is not
+ * plugged in is out of reach, which is why unplugging is worth saying out loud
+ * rather than leaving as something the owner is supposed to infer.
+ */
+function reachOf(destination: BackupDestination) {
+  if (destination.mountState === 'away') return 'Unplugged, so nothing that gets into this server can reach it.';
+  if (destination.locked) return '';
+  if (destination.kind === 'object') return 'Anything that gets into this server can erase this copy.';
+  if (destination.mountState === 'mounted') return 'Plugged in, so anything that gets into this server can erase this copy.';
+  return '';
 }
 
 // The list the page draws, in the order it draws it: the selected place first,
@@ -505,24 +550,6 @@ export function destinationViews(status: BackupStatus | null | undefined): Desti
   return withAbsent
     .map((destination) => destinationView(destination, status, selectedId))
     .sort((left, right) => rank(left) - rank(right));
-}
-
-// What the recovery key opens, said as one sentence beside the list it
-// describes. Before the first backup it is the only thing on the row that
-// matters; afterwards it is a quiet fact with the exceptions named.
-export function keyCoverage(views: DestinationView[]) {
-  const names = (list: DestinationView[]) => {
-    const labels = list.map((view) => view.label);
-    return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] || '';
-  };
-
-  const guests = views.filter((view) => view.destination.borrowedKey === true);
-  const strangers = views.filter((view) => view.destination.locked);
-  const detail = [
-    guests.length ? `${names(guests)} opens with the key of the server that wrote it, kept here.` : '',
-    strangers.length ? `${names(strangers)} still needs the key of the server that wrote it.` : '',
-  ].filter(Boolean).join(' ');
-  return { detail, summary: 'One recovery key opens everything this server made.' };
 }
 
 export type ArchiveKey = {
@@ -569,6 +596,19 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
   }
   if (age !== null && age > 3) {
     return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' as Tone };
+  }
+  // The end of the rotation, said once, at the only moment it is useful: a
+  // drive that has just been written to and is not where automatic backups go
+  // is a drive on its way back to a drawer, and it is only out of reach once it
+  // is unplugged. Never said about the chosen destination — unplugging that one
+  // would break the schedule the owner set up.
+  const writtenTo = views.find((view) => view.id === newest.destinationId) || null;
+  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.mountState === 'mounted') {
+    return {
+      detail: `Backed up to ${writtenTo.label}. Unplug it and keep it somewhere else: a drive that stays plugged in can be erased by anything that gets into this server.`,
+      title: 'Your backups are up to date.',
+      tone: 'ready' as Tone,
+    };
   }
   return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' as Tone };
 }
@@ -676,22 +716,35 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
   return `Backup finished${at}${job.note ? `, with your note "${job.note}"` : ''}.`;
 }
 
-export function restoreAddressNote(job: BackupJob | null) {
-  if (job?.kind !== 'restore' || job.status !== 'succeeded' || !job.address?.domain) return null;
-  if (job.address.plan === 'copy') return `This machine was restored as a copy. Apps answer on this machine's own address, and ${job.address.domain} still points at the machine that wrote the backup; Settings offers to move it here.`;
-  if (job.address.plan === 'move') return `This machine now serves ${job.address.domain}. To finish the move, point that name at this machine's address; Settings shows how.`;
-  return null;
+// What is left over after a restore that worked. A restore onto new hardware
+// finishes with the suite reachable and some of its owner's world still
+// pointing at the machine they came from, and a screen that answers "done" to
+// that is the failure this reports around: the phone apps keep saying error
+// while the browser says everything is fine.
+export type RestoreAftermath = {
+  // The name the backup carried, set aside and offered back under Settings.
+  domain: string | null;
+  routesDetail: string | null;
+  routesLive: boolean;
+};
+
+export function restoreAftermath(job: BackupJob | null | undefined): RestoreAftermath | null {
+  if (job?.kind !== 'restore' || job.status !== 'succeeded') return null;
+  const domain = job.address?.domain || null;
+  const routesLive = job.controlPlane ? job.controlPlane.routesLive : true;
+  if (!domain && routesLive) return null;
+  return { domain, routesDetail: job.controlPlane?.detail || null, routesLive };
 }
 
 // The kit is text the browser saves, not a file the server serves: it holds the
 // recovery key, and a URL that returns one is a URL that can be requested again.
-export function downloadKit(revealed: RevealedRecoveryKey) {
-  const url = URL.createObjectURL(new Blob([revealed.kit], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.download = revealed.kitFilename || 'mos-recovery-kit.txt';
-  link.href = url;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+
+// What a rotation reached, and what it could not. A copy that was not attached
+// is not a failure: it carries the previous key until it is next plugged in,
+// and MOS finishes the change itself at that moment.
+export type RotationResult = {
+  destinations: Array<{ id: string; label: string; state: 'foreign' | 'pending' | 'rotated' }>;
+  ok?: boolean;
+  pending: Array<{ id: string; label: string }>;
+  sentence?: string;
+};

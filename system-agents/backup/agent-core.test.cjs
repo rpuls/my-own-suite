@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { BackupAgentCore, restoreAddressPlan, restorePublicIdentity, sha256 } = require('./agent-core.cjs');
+const { BackupAgentCore, carriedAddress, sha256 } = require('./agent-core.cjs');
 const { DestinationResolver } = require('./destinations.cjs');
 const { ObjectDestinationRegistry } = require('./object-destinations.cjs');
 const { appVolumeLabels, appVolumeName, classifyVolumes, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
@@ -83,6 +83,7 @@ class FakeSystem {
   }
 
   async removeTree(target) { fs.rmSync(target, { force: true, recursive: true }); }
+  async writeFile(target, content) { this.events.push(['writeFile', target]); ensureDir(path.dirname(target)); fs.writeFileSync(target, content); }
   async availableBytes(dir) { return this.freeBytes.has(dir) ? this.freeBytes.get(dir) : 10 ** 15; }
   async destinationMounted() { return this.destinationMountedResult ?? true; }
 
@@ -292,7 +293,8 @@ class FakeWorld {
       jobs: {
         log: (file, message) => this.updateJob(file, (job) => { job.logs.push({ message }); }),
         progress: (file, count) => { this.progressCalls.push({ ...count, stage: readJson(file).stage }); },
-        stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.status = 'running'; job.logs.push({ message: name }); }),
+        stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.substage = null; job.status = 'running'; job.logs.push({ message: name }); }),
+        substage: (file, name) => this.updateJob(file, (job) => { job.substage = name; job.logs.push({ message: name }); }),
         update: (file, mutator) => this.updateJob(file, mutator),
       },
       packages: {
@@ -939,23 +941,20 @@ test('a restore point with a tampered manifest is refused before any mutation', 
 // from the restored database, not this machine's install-time address: on a
 // USB install MOS_HOME_HOST stays the LAN name forever, and deriving from it
 // rewrote every app route off its HTTPS address.
-// Only a domain travels between machines. Nothing is asked of a restore onto the
-// machine that wrote the backup, or of one whose backup is known to carry no
-// domain; a backup from another machine that carries one is refused without
-// the owner's answer, before anything is touched.
-test('restoreAddressPlan asks exactly when another machine\'s backup carries a domain', () => {
+// Only a domain travels between machines, and a restore no longer decides
+// anything about it: it reports what the backup carried and sets it aside. A
+// backup from the machine that wrote it carries nothing to set aside, because
+// that domain is already this machine's own.
+test('carriedAddress reports a domain to set aside only when the backup came from elsewhere', () => {
   const here = { hostname: 'standby', installId: 'install-b' };
   const own = { source: { domain: 'mos.example.com', hostname: 'other-name', installId: 'install-b' } };
-  assert.deepEqual(restoreAddressPlan({ current: here, manifest: own }), { domain: 'mos.example.com', foreign: false, plan: 'same' });
+  assert.deepEqual(carriedAddress({ current: here, manifest: own }), { domain: null, foreign: false });
   const foreignNoDomain = { source: { domain: null, hostname: 'home', installId: 'install-a' } };
-  assert.deepEqual(restoreAddressPlan({ current: here, manifest: foreignNoDomain, requested: 'move' }), { domain: null, foreign: true, plan: 'same' });
+  assert.deepEqual(carriedAddress({ current: here, manifest: foreignNoDomain }), { domain: null, foreign: true });
   const foreignDomain = { source: { domain: 'mos.example.com', hostname: 'home', installId: 'install-a' } };
-  assert.throws(() => restoreAddressPlan({ current: here, manifest: foreignDomain }), /carries the address mos\.example\.com.*move.*copy/u);
-  assert.throws(() => restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'keep' }), /move.*copy/u);
-  assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'copy' }).plan, 'copy');
-  assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'move' }).plan, 'move');
+  assert.deepEqual(carriedAddress({ current: here, manifest: foreignDomain }), { domain: 'mos.example.com', foreign: true });
   // A standby named like the original is still another machine.
-  assert.equal(restoreAddressPlan({ current: { hostname: 'home', installId: 'install-b' }, manifest: foreignDomain, requested: 'copy' }).foreign, true);
+  assert.equal(carriedAddress({ current: { hostname: 'home', installId: 'install-b' }, manifest: foreignDomain }).foreign, true);
 });
 
 test('a restore point records the machine and domain it came from, and the check compares install ids', async () => {
@@ -977,78 +976,138 @@ test('a restore point records the machine and domain it came from, and the check
   assert.equal(source.currentInstallId, 'install-b');
 });
 
-test('a foreign restore that carries a domain is refused before any mutation unless the owner chose', async () => {
-  const w = await world();
-  await w.installApp(STIRLING);
-  const backupJob = w.createJob('backup', { destinationId: w.destination() });
-  await w.core({ domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
-  const standby = w.core({ installId: () => 'install-b' });
-  const eventsBefore = w.system.events.length;
-  await assert.rejects(standby.restore(w.createJob('restore', { backupPath: restorePointOf(backupJob) })), /carries the address mos\.example\.com/u);
-  assert.ok(!w.system.events.slice(eventsBefore).some(([event]) => event === 'stopService' || event === 'removeContainer'));
-  assert.equal(standby.interruptedRestore(), null);
-});
-
-test('a copy restore keeps this machine\'s Caddy files and parks the domain; a move serves it from here', async () => {
+// A backup never changes the address the machine is on. Its Caddy files are its
+// own, its provider token is its own, and the settings it serves from are read
+// before the restore overwrites them and written back after. A machine that came
+// back serving a name it could not reach — and refusing the one it could — is
+// what this replaced, so each of the three is asserted directly rather than left
+// to the address record.
+test('a restore offers the carried domain and never reaches the address this machine is on', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   fs.writeFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'caddy-of-the-original\n');
+  fs.writeFileSync(path.join(w.root, 'etc-secrets', 'caddy-cloudflare.env'), 'CF_TOKEN=of-the-original\n');
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
-  await w.core({ domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
+  await w.core({ acmeEmail: () => 'owner@example.com', domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
+  assert.equal(restorePointManifest(backupJob).source.acmeEmail, 'owner@example.com');
   fs.writeFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'caddy-of-the-standby\n');
+  fs.writeFileSync(path.join(w.root, 'etc-secrets', 'caddy-cloudflare.env'), 'CF_TOKEN=of-the-standby\n');
+  // The address is machine-local state the restore never touches: it is not in
+  // the state tree the restore replaces, and the engine has no code for it.
+  const addressDir = path.join(w.paths.stateRoot, 'suite-address');
+  ensureDir(addressDir);
+  fs.writeFileSync(path.join(addressDir, 'address.json'), '{"host":"home.192-168-30-104.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
 
-  const calls = [];
+  const offers = [];
   const standby = w.core({
     installId: () => 'install-b',
-    parkRestoredDomain: async () => { calls.push('park'); return 'mos.example.com'; },
-    serveRestoredDomain: async () => { calls.push('serve'); return 'mos.example.com'; },
+    offerAddress: async (offer) => { offers.push(offer); },
   });
-  const copyJob = w.createJob('restore', { address: 'copy', backupPath: restorePointOf(backupJob) });
-  await standby.restore(copyJob);
-  const copied = readJson(copyJob);
-  assert.equal(copied.status, 'succeeded');
-  assert.deepEqual(copied.address, { domain: 'mos.example.com', plan: 'copy' });
+  const job = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await standby.restore(job);
+  const restored = readJson(job);
+  assert.equal(restored.status, 'succeeded');
+  assert.deepEqual(restored.address, { domain: 'mos.example.com' });
   assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-of-the-standby\n');
-  assert.deepEqual(calls, ['park']);
-  assert.ok(copied.logs.some((entry) => /Kept the address mos\.example\.com aside/u.test(entry.message)));
+  assert.equal(fs.readFileSync(path.join(addressDir, 'address.json'), 'utf8'), '{"host":"home.192-168-30-104.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
+  // The live token is what Caddy read when it started, so the restore carries
+  // the backup's alongside it rather than over it.
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-secrets', 'caddy-cloudflare.env'), 'utf8'), 'CF_TOKEN=of-the-standby\n');
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-secrets', 'caddy-cloudflare.env.parked'), 'utf8'), 'CF_TOKEN=of-the-original\n');
+  // The carried name is an offer with the contact that issued its certificate.
+  assert.deepEqual(offers, [{ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com' }]);
+  assert.ok(restored.logs.some((entry) => /Set mos\.example\.com aside/u.test(entry.message)));
 
-  const moveJob = w.createJob('restore', { address: 'move', backupPath: restorePointOf(backupJob) });
-  await standby.restore(moveJob);
-  const moved = readJson(moveJob);
-  assert.equal(moved.status, 'succeeded');
-  assert.deepEqual(moved.address, { domain: 'mos.example.com', plan: 'move' });
-  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-of-the-original\n');
-  assert.deepEqual(calls, ['park', 'serve']);
-
-  // The machine that wrote the backup restores it without being asked.
+  // Nothing is offered on the machine that wrote the backup: that domain is
+  // already its own.
   const homeJob = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
-  await w.core({ installId: () => 'install-a', parkRestoredDomain: async () => { calls.push('park'); }, serveRestoredDomain: async () => { calls.push('serve'); } }).restore(homeJob);
-  assert.deepEqual(readJson(homeJob).address, { domain: 'mos.example.com', plan: 'same' });
-  assert.deepEqual(calls, ['park', 'serve']);
+  await w.core({ installId: () => 'install-a', offerAddress: async (offer) => { offers.push(offer); } }).restore(homeJob);
+  const home = readJson(homeJob);
+  assert.deepEqual(home.address, { domain: null });
+  assert.equal(offers.length, 1);
+  assert.ok(!home.logs.some((entry) => /aside/u.test(entry.message)));
 });
 
-test('restorePublicIdentity prefers the restored HTTPS settings over install-time env', () => {
-  const environment = { MOS_HOME_HOST: 'home.mos.home' };
-  const bootstrapContract = { MOS_HOME_URL: 'http://home.mos.home/' };
+// The route fragments are projections of the restored database and Homepage
+// config. A receiving machine's own routes used to survive a restore beside the
+// backup's, because the apps agent merges its block into whatever the file held.
+test('a restore resets the route fragments before rebuilding them, and re-renders Homepage afterwards', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core().backup(backupJob);
+  fs.writeFileSync(path.join(w.root, 'etc-caddy', 'mos-app-routes.caddy'), '# mos-app-route:start stale\nhttp://stale.mos.home {\n}\n# mos-app-route:end stale\n');
+  fs.writeFileSync(path.join(w.root, 'etc-caddy', 'mos-homepage-routes.caddy'), 'http://printer.mos.home {\n}\n');
 
-  assert.deepEqual(
-    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: { baseDomain: 'mos.example.net', tlsMode: 'cloudflare-dns01' } }),
-    { homeHost: 'home.mos.example.net', scheme: 'https' },
-  );
-  // A domain merely pending (apply began, never completed) must not win.
-  assert.deepEqual(
-    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: { baseDomain: null, pendingBaseDomain: 'mos.example.net', tlsMode: null } }),
-    { homeHost: 'home.mos.home', scheme: 'http' },
-  );
-  assert.deepEqual(
-    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: null }),
-    { homeHost: 'home.mos.home', scheme: 'http' },
-  );
-  assert.deepEqual(
-    restorePublicIdentity({ bootstrapContract: { MOS_HOME_URL: 'https://home.mos.cloud.example/' }, environment: {}, httpsSettings: null }),
-    { homeHost: 'home.mos.cloud.example', scheme: 'https' },
-  );
-  assert.deepEqual(restorePublicIdentity({}), { homeHost: 'home.mos.home', scheme: 'http' });
+  const order = [];
+  const core = new BackupAgentCore({
+    ...w.core().constructor === BackupAgentCore ? {} : {},
+    apps: { installedInstances: () => w.readDb().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })), reconcile: async () => { order.push('apps'); } },
+    destinations: w.core().destinations,
+    engine: w.engine,
+    homepage: { rebuild: async (log) => { order.push('homepage'); log('Homepage re-rendered'); } },
+    jobs: w.core().jobs,
+    packages: w.core().packages,
+    paths: w.paths,
+    system: w.system,
+  });
+  const job = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await core.restore(job);
+  assert.equal(readJson(job).status, 'succeeded');
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'mos-app-routes.caddy'), 'utf8'), '# No app runtime routes.\n');
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'mos-homepage-routes.caddy'), 'utf8'), '# No user-managed Homepage routes.\n');
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-base\n');
+  assert.deepEqual(order, ['apps', 'homepage']);
+  const resets = w.system.events.filter(([name]) => name === 'writeFile').map(([, target]) => path.basename(target)).sort();
+  assert.deepEqual(resets, ['mos-app-routes.caddy', 'mos-homepage-routes.caddy']);
+  const reconcileAt = w.system.events.findIndex(([name]) => name === 'restoreStateOwnership');
+  assert.ok(w.system.events.findIndex(([name]) => name === 'writeFile') < reconcileAt, 'the fragments are reset before the apps are rebuilt');
+
+  // A Homepage that cannot be re-rendered is reported on the job, not a failed restore.
+  const failing = new BackupAgentCore({
+    apps: { installedInstances: () => w.readDb().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })), reconcile: async () => {} },
+    destinations: w.core().destinations,
+    engine: w.engine,
+    homepage: { rebuild: async () => { throw new Error('homepage agent unavailable'); } },
+    jobs: w.core().jobs,
+    packages: w.core().packages,
+    paths: w.paths,
+    system: w.system,
+  });
+  const second = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await failing.restore(second);
+  assert.equal(readJson(second).status, 'succeeded');
+  assert.ok(readJson(second).logs.some((entry) => /Homepage could not be re-rendered after the restore: homepage agent unavailable/u.test(entry.message)));
+});
+
+// A reload Caddy refused leaves the machine on its pre-restore routes. The data
+// is back, so the restore succeeds — but it says so on the job, because the
+// silent version of this is a suite nobody can reach reporting success.
+test('routes that did not go live are recorded on the job rather than swallowed', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core().backup(backupJob);
+
+  w.system.reloadCaddy = async () => ({ detail: 'API token \'\' appears invalid', ok: false });
+  const job = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await w.core().restore(job);
+  const restored = readJson(job);
+  assert.equal(restored.status, 'succeeded');
+  assert.deepEqual(restored.controlPlane, { detail: 'API token \'\' appears invalid', routesLive: false });
+  assert.ok(restored.logs.some((entry) => /still serving the routes it had before the restore/u.test(entry.message)));
+
+  w.system.reloadCaddy = async () => ({ ok: true });
+  const second = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await w.core().restore(second);
+  assert.deepEqual(readJson(second).controlPlane, { detail: null, routesLive: true });
+});
+
+// The engine has no address code left: nothing in it reads a settings row, an
+// environment variable or a Caddyfile to decide where the suite is.
+test('the restore engine derives no address', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'agent-core.cjs'), 'utf8');
+  assert.doesNotMatch(source, /MOS_HOME_HOST|servedAddress|captureAddress|settleAddress|getHttpsSettings|easyDoor/u);
 });
 
 // A backup whose worker was killed never runs its own cleanup, so the packs it
@@ -1135,7 +1194,11 @@ test('a backup still succeeds when the leftover data cannot be collected', async
 // this machine may make that server's key its own is the moment it takes that
 // server's place — a successful restore that is not a copy. A copy stays a
 // second machine and keeps borrowing the key.
-test('taking another server\'s place adopts its key; restoring as a copy does not', async () => {
+// The key follows the data, not the address: a machine holding another
+// machine's suite takes on its key whatever it ends up answering on. Deciding
+// this from the address plan is what used to leave a restored machine with its
+// own key for the disk and a borrowed one for the archive.
+test('a restore from another server adopts its key; restoring this machine\'s own backup does not', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
@@ -1145,17 +1208,12 @@ test('taking another server\'s place adopts its key; restoring as a copy does no
   const standby = w.core({
     assumeArchiveKey: async (destinationId) => { assumed.push(destinationId); return true; },
     installId: () => 'install-b',
-    parkRestoredDomain: async () => 'mos.example.com',
-    serveRestoredDomain: async () => 'mos.example.com',
   });
 
-  await standby.restore(w.createJob('restore', { address: 'copy', backupPath: restorePointOf(backupJob) }));
-  assert.deepEqual(assumed, [], 'a copy keeps its own key');
-
-  const moveJob = w.createJob('restore', { address: 'move', backupPath: restorePointOf(backupJob) });
-  await standby.restore(moveJob);
+  const job = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await standby.restore(job);
   assert.deepEqual(assumed, [w.destination()]);
-  assert.ok(readJson(moveJob).logs.some((entry) => /now uses the recovery key of the server it restored from/u.test(entry.message)));
+  assert.ok(readJson(job).logs.some((entry) => /now uses the recovery key of the server it restored from/u.test(entry.message)));
 
   // The machine that wrote the backup has nothing to take on.
   await w.core({ assumeArchiveKey: async (id) => { assumed.push(id); return true; }, installId: () => 'install-a' })
@@ -1203,4 +1261,37 @@ test('a check and a restore record what they work on, and count through volumes 
   assert.deepEqual(byStage('Rebuilding app runtime'), [[0, 2, 'apps', 'STIRLING-PDF'], [1, 2, 'apps', 'SEAFILE']]);
   // Nothing about a volume reaches a count but the app it belongs to.
   for (const call of w.progressCalls) assert.equal(call.name, undefined);
+});
+
+// The half of adoption that used to be silent, and the one that matters most on
+// a machine with an encrypted disk: the takeover rekeys the disk before it
+// changes any bookkeeping, so a rekey that could not happen must abandon the
+// whole adoption. The alternative is a machine whose backups and whose disk
+// answer to different keys, discovered by its owner at the one moment they need
+// either — and the restore itself succeeded, so the words must not suggest
+// otherwise.
+test('a takeover whose disk rekey fails adopts nothing and says what still opens what', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core({ installId: () => 'install-a' }).backup(backupJob);
+
+  const standby = w.core({
+    assumeArchiveKey: async () => ({ ok: false, reason: 'vault-agent-unavailable' }),
+    installId: () => 'install-b',
+  });
+  const takeoverJob = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await standby.restore(takeoverJob);
+
+  const logs = readJson(takeoverJob).logs.map((entry) => entry.message);
+  assert.ok(
+    !logs.some((line) => /now uses the recovery key of the server it restored from/u.test(line)),
+    'a refused rekey must never be reported as an adopted key',
+  );
+  const refusal = logs.find((line) => /could not change its disk over/u.test(line));
+  assert.ok(refusal, 'the refusal is reported');
+  assert.match(refusal, /not answering/u, 'and names what stopped it');
+  assert.match(refusal, /nothing is lost/u, 'and that the restore itself is complete');
+  assert.match(refusal, /still open with the key you entered/u);
+  assert.equal(readJson(takeoverJob).status, 'succeeded', 'the restore is not failed by a key it could not change');
 });
