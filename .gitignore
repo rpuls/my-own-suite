@@ -6,6 +6,9 @@
 # temporary files
 .tmp/
 .local-tools/
+# Lab hardware that exists on one machine: the KVM wired to the dev server, and
+# the procedure for driving it. Nothing a fork can use.
+.claude/skills/lab-kvm/
 .mos-smoke/
 .playwright-mcp/
 playwright-mcp
@@ -54,4 +57,3 @@ infrastructure/self-host/autoinstall/*.avhdx
 infrastructure/self-host/autoinstall/installer-config/*
 !infrastructure/self-host/autoinstall/installer-config/.gitkeep
 !infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template
-infrastructure/self-host/output/

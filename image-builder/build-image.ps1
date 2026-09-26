@@ -227,8 +227,15 @@ function Get-SuiteManagerStatus([string]$Address, [string]$HomeHost) {
 # just done - make the vault, teach the chip the key - is the boot where that
 # goes wrong, so it is asked here instead of on hardware.
 function Assert-AgentSocketsReachable([string]$Address) {
+  # The seed summary decides whether there is a login to use, not the key file.
+  # A key from an earlier debug bake outlives the bake that made it, and a release
+  # bake then failed the verify trying to log in with a credential it never
+  # installed — reported as an unreachable agent socket, which it was not.
   $key = Join-Path $WorkRoot 'debug-ssh-key'
-  if (-not (Test-Path $key)) {
+  $summary = Join-Path $SeedDir 'bake-summary.json'
+  $isDebugBake = (Test-Path $summary) -and
+    ((Get-Content $summary -Raw | ConvertFrom-Json).profile -ne 'release')
+  if (-not $isDebugBake -or -not (Test-Path $key)) {
     Say 'Skipped the agent socket check: this bake has no debug key to log in with.'
     return
   }
