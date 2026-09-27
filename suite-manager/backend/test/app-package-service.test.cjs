@@ -257,6 +257,123 @@ test('apps an added source offers join the package list and take part in compati
   store.close();
 });
 
+test('an app installed from an added source is offered the newer version its source already published', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  let published = '1.0.0';
+  const card = () => ({
+    appVersion: null,
+    capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+    external: true,
+    id: 'x-abcdef01-community-notes',
+    installStatus: 'external-available',
+    minimumMosVersion: '0.1.0',
+    name: 'Community Notes',
+    packageDigest: `sha256:${'1'.repeat(64)}`,
+    source: { checkedAt: '2026-09-27T09:00:00.000Z', id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+    version: published,
+  });
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [card()],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const current = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(current.catalogUpdate.status, 'external-source');
+  assert.equal(current.catalogUpdate.available, null);
+  assert.equal(current.catalogUpdate.sourceCheckedAt, '2026-09-27T09:00:00.000Z');
+
+  published = '1.1.0';
+  const offered = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(offered.catalogUpdate.status, 'update-available');
+  assert.equal(offered.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.equal(offered.catalogUpdate.installed.packageVersion, '1.0.0');
+  assert.equal(offered.catalogUpdate.available.sourceChannel, 'added-source');
+  assert.equal(offered.catalogUpdate.available.sourceRevision, 'c'.repeat(40));
+  assert.equal(offered.catalogUpdate.available.privacy.status, 'not-assessed');
+  assert.equal(service.listPackages().filter((item) => item.id === 'x-abcdef01-community-notes').length, 1);
+  store.close();
+});
+
+test('a published package MOS refuses is never offered as an update to the app installed from it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-unavailable',
+      name: 'Community Notes',
+      packageErrors: ['manifest.routes[0].host is required.'],
+      source: { checkedAt: '2026-09-27T09:00:00.000Z', id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+      version: '2.0.0',
+    }],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.catalogUpdate.status, 'external-source');
+  assert.equal(listed.catalogUpdate.available, null);
+  store.close();
+});
+
+test('an app whose newer package would provide a capability is reported as an update to do first', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [{ id: 'documentArchive', type: 'document-archive' }], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-available',
+      name: 'Community Notes',
+      source: { checkedAt: null, id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+      version: '1.1.0',
+    }],
+    store,
+  });
+  // Installed at 1.0.0, whose manifest exports nothing.
+  await service.installExternalPackage({ candidate });
+
+  const peers = service.capabilityPeersFor('some-other-app');
+  assert.equal(peers.providedTypes.includes('document-archive'), false);
+  // Paperless publishes the same capability in this box's checkout, uninstalled.
+  assert.deepEqual(peers.providersByType['document-archive'].map((item) => [item.action, item.id]), [
+    ['install', 'paperless-ngx'],
+    ['update', 'x-abcdef01-community-notes'],
+  ]);
+  assert.equal(peers.providersByType['document-archive'].find((item) => item.id === 'x-abcdef01-community-notes').version, '1.1.0');
+  assert.deepEqual(peers.providersByType['document-editor'].map((item) => [item.action, item.id]), [['install', 'onlyoffice']]);
+  store.close();
+});
+
+test('a capability an installed app already exports is reported as provided, never as something to install', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root, {
+    exports: { documentArchive: { interfaceVersion: 1, internalBaseUrl: 'http://notes:8080', protocol: 'notes-rest', title: 'Notes archive', type: 'document-archive' } },
+  });
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+  await service.installExternalPackage({ candidate });
+
+  const peers = service.capabilityPeersFor('some-other-app');
+  assert.equal(peers.providedTypes.includes('document-archive'), true);
+  assert.equal(peers.providersByType['document-archive'], undefined);
+  store.close();
+});
+
 // An installed external app already has its own row, built from its snapshot. The
 // offered card for the same package must not add a second one.
 test('an installed external app is not listed twice when its source still offers it', async () => {

@@ -278,7 +278,9 @@ test('an added source caches its package list and serves it to the Apps list wit
   assert.equal(listings, 1); // reading the catalog never touches the network
 
   // A probe that finds the same commit must not pay for the archive again.
-  assert.equal((await svc.refreshSource(added.id, { force: true })).packageCount, 2);
+  const probe = await svc.refreshSource(added.id, { force: true });
+  assert.equal(probe.catalog.packageCount, 2);
+  assert.equal(probe.outcome, 'unchanged');
   assert.equal(listings, 1);
   store.close();
 });
@@ -340,14 +342,15 @@ test('an unreachable source keeps serving its cached packages and records what t
   const svc = service(store, client);
   const added = await svc.addSource({ repository, trust: 'unverified' });
   fail = true;
-  const status = await svc.refreshSource(added.id, { force: true });
+  const { catalog: status, outcome } = await svc.refreshSource(added.id, { force: true });
+  assert.equal(outcome, 'failed');
   assert.equal(status.error.code, 'SOURCE_NOT_VISIBLE');
   assert.equal(status.error.failures, 1);
   assert.equal(status.packageCount, 1); // the previously published package is still offered
   assert.deepEqual(svc.catalogPackages().map((card) => card.packageId), ['community-notes']);
   // Consecutive failures stretch the wait rather than spending the hour's quota on
   // a repository that is gone.
-  const second = await svc.refreshSource(added.id, { force: true });
+  const { catalog: second } = await svc.refreshSource(added.id, { force: true });
   assert.equal(second.error.failures, 2);
   assert.ok(Date.parse(second.nextCheckAt) > Date.parse(status.nextCheckAt));
   store.close();
@@ -465,5 +468,56 @@ test('removing a source orphans its installs but never uninstalls them or breaks
   assert.equal(store.getAppProjections(orphaned.id).length, 1);
   // The unrelated official install is completely unaffected.
   assert.equal(store.getAppInstanceByPackageId('immich').status, 'installed');
+  store.close();
+});
+
+test('a forced refresh reports whether the source moved, was already current, or could not be reached', async () => {
+  const store = await tempStore();
+  let head = revision;
+  let version = '1.0.0';
+  let failure = null;
+  const client = fakeClient({
+    async resolveRevision(record) {
+      if (failure) throw new ExternalSourceError(failure, 'The git host will not show this repository to an anonymous request.');
+      return { ...record, revision: head };
+    },
+    async listPackages(record) {
+      const entry = fakePackage(record, 'community-notes');
+      return { cleanup: () => {}, packages: [{ ...entry, manifest: { ...entry.manifest, version } }] };
+    },
+  });
+  const svc = service(store, client);
+  const added = await svc.addSource({ repository, trust: 'unverified' });
+
+  assert.equal((await svc.refreshSource(added.id, { force: true })).outcome, 'unchanged');
+
+  head = 'c'.repeat(40);
+  version = '1.1.0';
+  const moved = await svc.refreshSource(added.id, { force: true });
+  assert.equal(moved.outcome, 'moved');
+  assert.equal(moved.catalog.revision, head);
+  assert.equal(svc.catalogPackages()[0].version, '1.1.0');
+
+  failure = 'SOURCE_NOT_VISIBLE';
+  const failed = await svc.refreshSource(added.id, { force: true });
+  assert.equal(failed.outcome, 'failed');
+  assert.equal(failed.catalog.error.code, 'SOURCE_NOT_VISIBLE');
+
+  // Nothing happened is not the same answer as nothing changed.
+  failure = null;
+  svc.setSourceStatus(added.id, 'unavailable', 'Paused by the owner.');
+  assert.equal((await svc.refreshSource(added.id, { force: true })).outcome, 'not-active');
+  store.close();
+});
+
+test('a cached card carries the commit its list was read from and when MOS last confirmed it', async () => {
+  const store = await tempStore();
+  const svc = service(store);
+  const added = await svc.addSource({ repository, trust: 'unverified' });
+
+  const [card] = svc.catalogPackages();
+  assert.equal(card.source.revision, revision);
+  assert.equal(card.source.checkedAt, now().toISOString());
+  assert.equal(card.source.id, added.id);
   store.close();
 });

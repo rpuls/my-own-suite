@@ -906,6 +906,10 @@
 .suite-app-update-summary .suite-app-update-unchanged { grid-column: 1 / -1; }
 .suite-app-update-summary .suite-app-update-unchanged small { color: var(--mos-color-text-muted); }
 .suite-app-update-dialog { display: grid; gap: var(--mos-space-4); }
+/* Two groups of change lines, told apart by their label rather than by a box. */
+.suite-app-update-changes { display: grid; gap: var(--mos-space-2); }
+.suite-app-update-changes > p { margin: 0; color: var(--mos-color-text-muted); font-size: var(--mos-text-section-aside); }
+.suite-app-update-changes > ul { display: grid; gap: var(--mos-space-1); margin: 0; padding-inline-start: 1.25rem; }
 .suite-app-update-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); margin: 0; }
 .suite-app-update-dialog dd { margin: 0; }
 .suite-app-update-dialog pre { overflow: auto; max-height: 18rem; white-space: pre-wrap; }

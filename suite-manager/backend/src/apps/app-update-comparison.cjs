@@ -60,14 +60,24 @@ function describeAgentBlocker(reported, requiredByPackage) {
   return null;
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, hostArchitecture = null }) {
+// `requiresOneOf` is satisfied by any one of its types, so one installed provider
+// clears the whole list.
+function unmetRequirements(manifest, peers) {
+  const required = manifest.usefulness?.requiresOneOf || [];
+  if (!peers || !required.length) return [];
+  const provided = new Set(peers.providedTypes || []);
+  if (required.some((type) => provided.has(type))) return [];
+  return required.map((type) => ({ providers: peers.providersByType?.[type] || [], type }));
+}
+
+function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, hostArchitecture = null, peers = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
   const candidateFields = fields(candidate.manifest);
   for (const [id, field] of installedFields) {
     const next = candidateFields.get(id);
-    if (!next && field.required) { breakingAreas.add('setup'); changes.push({ area: 'setup', classification: 'operator-action-required', summary: `Required setup field ${id} was removed.` }); }
+    if (!next && field.required) { breakingAreas.add('setup'); changes.push({ area: 'setup', classification: 'operator-action-required', summary: `${field.label || id} is no longer asked for. The value you entered stays stored and the new version will not use it.` }); }
     else if (next && (field.secret !== next.secret || field.type !== next.type)) { breakingAreas.add('setup'); changes.push({ area: 'setup', classification: 'operator-action-required', summary: `Setup field ${id} changed storage or input type.` }); }
   }
   const requiredInput = [];
@@ -129,8 +139,13 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   const installedPrivacy = privacyFor(installed.packageDir, installed.manifest, installed.packageDigest, installed.source);
   const candidatePrivacy = privacyFor(candidate.packageDir, candidate.manifest, candidate.packageDigest, candidate.source);
   if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: installedPrivacy.posture === candidatePrivacy.posture ? 'The privacy assessment changes without changing the overall posture.' : `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
+  // A candidate needing a capability nothing provides still builds and goes healthy,
+  // with nothing to talk to. Flags rather than blocks, and only if the update caused it.
+  const requirements = unmetRequirements(candidate.manifest, peers);
+  const introducesUnmetRequirement = requirements.length > 0 && unmetRequirements(installed.manifest, peers).length === 0;
   const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length;
-  const ownerAction = requiredInput.length || changes.some((change) => ['migration-required', 'operator-action-required'].includes(change.classification));
+  const ownerAction = requiredInput.length || introducesUnmetRequirement
+    || changes.some((change) => ['migration-required', 'operator-action-required'].includes(change.classification));
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';
   const identity = `${installed.packageDigest}:${candidate.packageDigest}`;
   return {
@@ -149,6 +164,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
     packageId: candidate.manifest.id,
     permissions: { added: addedPermissions, candidate: candidatePermissions, installed: installedPermissions, removed: removedPermissions },
     requiredInput,
+    requirements,
     schemaVersion: 1,
     updateStatus,
     validation: {

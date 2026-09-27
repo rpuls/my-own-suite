@@ -7,7 +7,7 @@ import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import { isNotAssessed, type PrivacyAdvisory, type PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 import { jsonResponse } from '../../lib/api';
-import { appSourceLabel } from '../../lib/app-sources';
+import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 
 // What one service needs. The resting pair is always present when the package
 // declares anything; the peaks are stated only where a service has a heavy job
@@ -28,14 +28,14 @@ type CatalogMetadata = {
 };
 type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; ref: string | null; repository: string; revision: string | null };
 type CatalogUpdate = {
-  // `sourceChannel` says which of the two channels offered this: the published
-  // catalog, or the packages this MOS version shipped with. A checkout candidate
-  // has no fetched revision of its own, so `sourceRevision` is null there.
-  available: { appVersion: string; compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'catalog' | 'checkout'; sourceRevision: string | null } | null;
+  // A checkout candidate has no fetched revision of its own, so `sourceRevision` is
+  // null there.
+  available: { appVersion: string; compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'added-source' | 'catalog' | 'checkout'; sourceRevision: string | null } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
-  // `external-source` means the app came from a pasted repository rather than the
-  // reviewed catalog, so only that repository knows whether a newer package
-  // exists and the owner checks on demand.
+  // When MOS last read the added source's listing; null on every other channel.
+  sourceCheckedAt?: string | null;
+  // `external-source` means the app came from a pasted repository and its source's
+  // last listing offers nothing newer than what is installed.
   status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
@@ -51,6 +51,8 @@ type UpdateComparison = {
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
+  // Capabilities the candidate needs that nothing here provides, with what would.
+  requirements: Array<{ providers: Array<{ action: 'install' | 'update'; id: string; name: string; version: string }>; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { errors: string[] };
 };
@@ -614,6 +616,13 @@ function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
     { label: 'Volumes', value: app.services.flatMap((service) => service.volumes).join(', ') || 'None' },
     { label: 'Health', value: app.health ? `${app.health.type}: ${app.health.url}` : 'None' },
     { label: 'Projections', value: projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install' },
+    ...(app.catalogUpdate?.available?.sourceChannel === 'added-source'
+      ? [{
+        code: true,
+        label: 'Offered from commit',
+        value: `${app.catalogUpdate.available.sourceRevision?.slice(0, 12) || 'unresolved'} · read ${sourceCheckedLabel(app.catalogUpdate.sourceCheckedAt)}`,
+      }]
+      : []),
     ...(app.instance?.config?.length
       ? [{ label: 'Config', value: app.instance.config.map((item) => `${item.key}: ${item.secret ? item.redactedLabel || 'secret stored' : item.value}`).join(', ') }]
       : []),
@@ -727,6 +736,8 @@ function AppDetail({
     && comparison!.compatibility !== 'unsupported'
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
     && !applying;
+  const ownerChanges = comparison ? comparison.changes.filter((change) => change.classification !== 'automatically-handled') : [];
+  const handledChanges = comparison ? comparison.changes.filter((change) => change.classification === 'automatically-handled') : [];
   const connections = app.compatibility?.connections || [];
   const connectedBy = app.compatibility?.connectedBy || [];
   const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
@@ -818,6 +829,8 @@ function AppDetail({
   // an update they never notice is an update they never apply. Opening the app
   // stays one button away.
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
+  // Null means no listing at all — removed, paused, never reached — not an unticked clock.
+  const sourceReadAt = app.catalogUpdate?.sourceCheckedAt || null;
   const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
   const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
@@ -953,7 +966,13 @@ function AppDetail({
         </Notice> : null}
 
         {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
-          {app.appVersion === app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
+          {/* An added source's package need not declare appVersion, and the MOS
+              package number is never shown to an owner. */}
+          {!app.appVersion || !app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
+            <span>{app.name}</span>
+            <strong>A newer version is available</strong>
+            <small>Its publisher does not state a version number, so MOS has none to show. Reviewing the update lists what changes.</small>
+          </div> : app.appVersion === app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
             <span>{app.name} version</span>
             <strong>{app.appVersion}</strong>
             <small>Stays the same. This update changes how MOS runs it, not the app itself.</small>
@@ -962,6 +981,9 @@ function AppDetail({
             <div><span>Available</span><strong>{app.catalogUpdate.available.appVersion}</strong></div>
           </>}
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
+          {app.catalogUpdate.available.sourceChannel === 'added-source' ? <p>
+            {`A source you added publishes this${sourceReadAt ? `, as MOS read its list ${sourceCheckedLabel(sourceReadAt)}` : ''}. MOS re-reads each source every few hours, and reviewing the update asks the repository directly. Nothing here has been reviewed by MOS.`}
+          </p> : null}
           {updateWaiting ? null : <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>}
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
@@ -971,7 +993,9 @@ function AppDetail({
         {app.instance && app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
           {app.appVersion ? <div><span>Installed</span><strong>{app.appVersion}</strong></div> : null}
           <div><span>Source</span><strong>A source you added</strong></div>
-          <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
+          <p>{sourceReadAt
+            ? `MOS read what this source publishes ${sourceCheckedLabel(sourceReadAt)}, and it offers nothing newer than what you have. Checking asks its repository directly, right now.`
+            : 'MOS has no current list of what this source publishes, so it cannot say whether a newer version exists — the source may have been removed or paused, or it may no longer publish this app. Checking asks its repository directly, right now.'}</p>
           <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking...' : 'Check for updates'}</button>
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
@@ -1195,6 +1219,17 @@ function AppDetail({
         {app.external && comparison.updateStatus === 'update-available' ? <Notice title="Updating runs the publisher's build" variant="warning">
           <p>Updating rebuilds this package&apos;s Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before MOS&apos;s runtime restrictions apply. Update only if you still trust the repository this app came from.</p>
         </Notice> : null}
+        {comparison.requirements.length ? <Notice title="This version needs another app first" variant="warning">
+          <p>{`${app.name} declares that it cannot do its job without ${comparison.requirements.length === 1 ? 'an app providing' : 'an app providing one of'} ${comparison.requirements.map((item) => capabilityLabel(item.type)).join(' or ')}. Nothing installed provides that today, so updating now leaves ${app.name} running with nothing to hand its work to.`}</p>
+          {comparison.requirements.flatMap((item) => item.providers).length ? <>
+            <p>Do this first:</p>
+            <ul>{comparison.requirements.flatMap((item) => item.providers.map((provider) => <li key={`${item.type}-${provider.id}`}>
+              <strong>{provider.action === 'update' ? `Update ${provider.name}` : `Install ${provider.name}`}</strong>
+              {provider.version ? ` (${provider.version})` : ''}
+              {provider.action === 'update' ? ' — it is installed, but the version you have does not provide this yet.' : ' — it provides what this update needs.'}
+            </li>))}</ul>
+          </> : <p className="suite-meta">No app available on this server provides it, so there is nothing to install first. Updating is still allowed; {app.name} will simply have nothing to work with until one exists.</p>}
+        </Notice> : null}
         {comparison.permissions.added.length ? <Notice title="This update asks for more access" variant="warning">
           <p>The installed version does not have this access today. Updating grants it.</p>
           <ul className="suite-app-permission-list">
@@ -1209,7 +1244,16 @@ function AppDetail({
           ? null
           : <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />}
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
-        {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
+        {comparison.changes.length ? <>
+          {ownerChanges.length ? <div className="suite-app-update-changes">
+            <p>What this changes for you</p>
+            <ul>{ownerChanges.map((change, index) => <li key={`owner-${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul>
+          </div> : null}
+          {handledChanges.length ? <div className="suite-app-update-changes">
+            <p>MOS applies these for you</p>
+            <ul>{handledChanges.map((change, index) => <li key={`auto-${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul>
+          </div> : null}
+        </> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
@@ -1242,6 +1286,11 @@ function updateNoticeTitle(comparison: UpdateComparison): string {
   if (comparison.updateStatus === 'installed-newer') return 'The source offers an older version';
   if (comparison.compatibility === 'unsupported') return 'This update cannot be applied safely';
   return comparison.compatibility === 'owner-action-required' ? 'Review this before updating' : 'Ready to update';
+}
+
+// The app that would carry a human title is by definition not installed.
+function capabilityLabel(type: string): string {
+  return type.replace(/[-_]+/gu, ' ').trim() || type;
 }
 
 // Plain-language explanation of one requested permission key, so an owner can see

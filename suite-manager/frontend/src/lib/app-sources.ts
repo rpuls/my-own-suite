@@ -14,3 +14,17 @@ export function appSourceLabel(repository: string) {
     return repository;
   }
 }
+
+// Shared so the Settings row and the app card cannot round the same instant apart.
+export function sourceCheckedLabel(at: string | null | undefined) {
+  if (!at) return 'never';
+  const parsed = Date.parse(at);
+  if (Number.isNaN(parsed)) return 'never';
+  const minutes = Math.round((Date.now() - parsed) / 60_000);
+  if (minutes < 2) return 'just now';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+}

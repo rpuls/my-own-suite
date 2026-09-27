@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
-import { appSourceLabel } from '../../lib/app-sources';
+import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 
 // What MOS last learned from a source, and when it may ask again.
 type SourceCatalog = {
@@ -32,18 +32,9 @@ type AppSource = {
   updatedAt: string;
 };
 
-function whenLabel(at: string | null) {
-  if (!at) return 'never';
-  const parsed = Date.parse(at);
-  if (Number.isNaN(parsed)) return 'never';
-  const minutes = Math.round((Date.now() - parsed) / 60_000);
-  if (minutes < 2) return 'just now';
-  if (minutes < 60) return `${minutes} minutes ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  const days = Math.round(hours / 24);
-  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-}
+// A refresh answers 200 even when the host refused, so only this says what happened.
+// `not-due` is unreachable here: the owner asking directly always forces the check.
+type RefreshOutcome = 'failed' | 'moved' | 'not-active' | 'unchanged';
 
 // Plain language for what the git host actually answered, because the answers need
 // opposite responses from the owner. A repository that has gone private is theirs to
@@ -66,6 +57,44 @@ function failureCopy(error: NonNullable<SourceCatalog['error']>): { detail: stri
   return { detail: error.message, title: 'MOS could not check this source' };
 }
 
+type RefreshReport = { icon: 'check' | 'refresh'; note: string; title: string; tone: 'info' | 'warning' };
+
+function refreshCopy(label: string, result: { catalog: SourceCatalog; outcome: RefreshOutcome }): RefreshReport {
+  if (result.outcome === 'failed' && result.catalog.error) {
+    // The row above already carries the failure; verbatim here reads as two failures.
+    return {
+      icon: 'refresh',
+      note: `${failureCopy(result.catalog.error).title}. The reason is on its row above, and the apps it last published stay listed.`,
+      title: `MOS could not re-read ${label}`,
+      tone: 'warning',
+    };
+  }
+  if (result.outcome === 'not-active') {
+    return {
+      icon: 'refresh',
+      note: `MOS does not read ${label} while the source is not active. Anything you installed from it keeps running.`,
+      title: 'This source is not active',
+      tone: 'warning',
+    };
+  }
+  const count = result.catalog.packageCount;
+  const apps = count === null ? 'no apps' : `${count} ${count === 1 ? 'app' : 'apps'}`;
+  if (result.outcome === 'moved') {
+    return {
+      icon: 'check',
+      note: `${label} has new commits. MOS re-read what it publishes: ${apps}. If one of them is an app you installed, the Apps page now shows whether its version changed.`,
+      title: 'Source re-read',
+      tone: 'info',
+    };
+  }
+  return {
+    icon: 'check',
+    note: `${label} is at the same commit MOS last read, so nothing it publishes has changed. It offers ${apps}.`,
+    title: 'Already up to date',
+    tone: 'info',
+  };
+}
+
 function SourceRow({ busy, onRefresh, onRemove, source }: {
   busy: boolean;
   onRefresh: () => void;
@@ -81,7 +110,7 @@ function SourceRow({ busy, onRefresh, onRemove, source }: {
         <span className="suite-meta">
           {count === null ? 'No apps read from this source yet' : `${count} ${count === 1 ? 'app' : 'apps'}`}
           {' · '}
-          {source.status === 'active' ? `checked ${whenLabel(source.catalog.checkedAt)}` : source.statusReason || source.status}
+          {source.status === 'active' ? `checked ${sourceCheckedLabel(source.catalog.checkedAt)}` : source.statusReason || source.status}
         </span>
       </div>
       <span className="suite-source-trailing">
@@ -115,6 +144,8 @@ export function AppSourcesPanel() {
   const [removing, setRemoving] = useState<AppSource | null>(null);
   const [removeError, setRemoveError] = useState('');
   const [orphaned, setOrphaned] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState<AppSource | null>(null);
+  const [refreshed, setRefreshed] = useState<RefreshReport | null>(null);
 
   async function load() {
     try {
@@ -132,18 +163,28 @@ export function AppSourcesPanel() {
 
   useEffect(() => { void load(); }, []);
 
+  // Only a transport failure reaches the catch; anything the host answered is an outcome.
   async function refresh(source: AppSource) {
     setBusyId(source.id);
+    setRefreshing(source);
+    setRefreshed(null);
     try {
-      await jsonResponse<{ catalog: SourceCatalog }>(
+      const result = await jsonResponse<{ catalog: SourceCatalog; outcome: RefreshOutcome }>(
         await fetch(`/suite-manager/api/apps/sources/${encodeURIComponent(source.id)}/refresh`, { method: 'POST' }),
         'Unable to check that source.',
       );
+      setRefreshed(refreshCopy(appSourceLabel(source.repository), result));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to check that source.');
+      setRefreshed({
+        icon: 'refresh',
+        note: `${caught instanceof Error ? caught.message : 'Unable to check that source.'} Nothing about this source changed.`,
+        title: 'The check did not run',
+        tone: 'warning',
+      });
     } finally {
       setBusyId('');
+      setRefreshing(null);
     }
   }
 
@@ -186,6 +227,21 @@ export function AppSourcesPanel() {
         <p className="suite-meta">A source is a public GitHub repository publishing one app, or a catalog of them, in a <code>.mos</code> folder. Paste its URL into the search box on the Apps page to see what it offers before adding it. MOS does not review these apps and cannot vouch for them.</p>
       </PanelBody> : null}
       {error ? <PanelBody><Notice title="Your app sources could not be loaded" variant="warning"><p>{error}</p></Notice></PanelBody> : null}
+      {/* The action menu has closed by now, so the panel is what reports the check. */}
+      {refreshing ? <PanelBand
+        busy
+        note="Asking the repository which commit it is at, and re-reading its apps if it has moved."
+        title={`Checking ${appSourceLabel(refreshing.repository)}`}
+        tone="info"
+      /> : null}
+      {!refreshing && refreshed ? <PanelBand
+        icon={refreshed.icon}
+        note={refreshed.note}
+        title={refreshed.title}
+        tone={refreshed.tone}
+      >
+        <button className="mos-btn mos-btn-ghost" onClick={() => setRefreshed(null)} type="button">Dismiss</button>
+      </PanelBand> : null}
       {orphaned !== null ? <PanelBand
         icon="check"
         title="Source removed"
@@ -197,6 +253,7 @@ export function AppSourcesPanel() {
         <button className="mos-btn mos-btn-ghost" onClick={() => setOrphaned(null)} type="button">Dismiss</button>
       </PanelBand> : null}
       {sources.length ? <PanelBody>
+        <p className="suite-meta">Refreshing re-reads the apps a source publishes. That listing is what the Apps page offers, and what tells an app you installed from the source that a newer version exists — applying it happens on that app&apos;s own page under Apps.</p>
         <AdvancedPanel facts={sources.map((source) => ({
           code: true,
           label: appSourceLabel(source.repository),

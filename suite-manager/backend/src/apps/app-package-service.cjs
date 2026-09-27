@@ -983,19 +983,10 @@ class AppPackageService {
     return this.catalogService?.advisoriesFor(packageId, version) || [];
   }
 
-  // How an installed package compares to what its source offers. An external app
-  // is not in the reviewed catalog and cached catalog metadata can say nothing
-  // about it: only its own repository knows whether a newer package exists, and
-  // finding out costs a network round trip. Report that honestly instead of
-  // "not in catalog", which reads as a fault, and let the owner check on demand
-  // through the ordinary update preview.
-  packageUpdateStatusFor(instance, packageId, checkoutSummary = null) {
+  // How an installed package compares to what its source offers.
+  packageUpdateStatusFor(instance, packageId, checkoutSummary = null, externalCards = null) {
     if (instance?.sourceKind === 'external-git') {
-      return {
-        available: null,
-        installed: { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion },
-        status: 'external-source',
-      };
+      return this.externalUpdateStatusFor(instance, externalCards || this.externalCatalog());
     }
     const catalogStatus = this.catalogService?.updateFor(packageId, instance) || null;
     const checkout = this.checkoutCandidateSummaryFor(packageId, instance, {
@@ -1064,6 +1055,34 @@ class AppPackageService {
     };
   }
 
+  // Read from the source sweep's cached listing, so no network call and no new
+  // polling. That listing is only as new as the last fetch, hence `sourceCheckedAt`:
+  // a weaker promise than the reviewed catalog, and reviewing re-downloads anyway.
+  externalUpdateStatusFor(instance, cards) {
+    const installed = { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion };
+    const card = cards.find((entry) => entry.id === instance.packageId && entry.installStatus === 'external-available');
+    if (!card?.version || compareSemver(card.version, instance.packageVersion) <= 0) {
+      return { available: null, installed, sourceCheckedAt: card?.source?.checkedAt || null, status: 'external-source' };
+    }
+    const minimumMosVersion = card.minimumMosVersion || '0.0.0';
+    return {
+      available: {
+        appVersion: card.appVersion,
+        compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+        minimumMosVersion: card.minimumMosVersion || '',
+        packageDigest: card.packageDigest,
+        packageVersion: card.version,
+        // Its own privacy file is never read as a review (see packagePrivacyFor).
+        privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' },
+        sourceChannel: 'added-source',
+        sourceRevision: card.source?.revision || null,
+      },
+      installed,
+      sourceCheckedAt: card.source?.checkedAt || null,
+      status: 'update-available',
+    };
+  }
+
   // Candidate bytes from this box's own checkout, in the shape every update
   // transaction already consumes. Copied into a candidate directory rather than
   // handed to the agent in place: a platform update landing mid-transaction would
@@ -1106,6 +1125,7 @@ class AppPackageService {
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
+    const externalCards = this.externalCatalog();
     const candidatesByPackage = new Map(inspectAppPackages(this.appsDir).map((summary) => [summary.id, summary]));
     const packageIds = new Set([...candidatesByPackage.keys(), ...instancesByPackage.keys()]);
     const packages = [...packageIds].sort().map((packageId) => {
@@ -1139,7 +1159,7 @@ class AppPackageService {
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
-        catalogUpdate: this.packageUpdateStatusFor(instance, packageId, candidatesByPackage.get(packageId)),
+        catalogUpdate: this.packageUpdateStatusFor(instance, packageId, candidatesByPackage.get(packageId), externalCards),
         external: instance?.sourceKind === 'external-git',
         // The installed identity wins over the id the manifest claims: an
         // external package is managed under its source-namespaced id, and every
@@ -1166,7 +1186,7 @@ class AppPackageService {
     // still only an offer. An installed external app already has a row above, so it
     // is never listed twice.
     const listed = new Set(packages.map((app) => app.id));
-    const external = this.externalCatalog().filter((card) => card.id && !listed.has(card.id));
+    const external = externalCards.filter((card) => card.id && !listed.has(card.id));
     return this.withCompatibility([...packages, ...external], integrations);
   }
 
@@ -1225,6 +1245,42 @@ class AppPackageService {
         : [];
       return { ...app, compatibility: { connectedBy, connections, missingUsefulPeers } };
     });
+  }
+
+  // `providedTypes` is what installed versions export — what an app can talk to the
+  // moment its update finishes. `providersByType` is what would provide a missing one.
+  capabilityPeersFor(packageId) {
+    const providedTypes = new Set();
+    const providersByType = new Map();
+    const instances = this.store.getAppInstances().filter((instance) => instance.status !== 'uninstalled');
+    for (const instance of instances) {
+      if (instance.packageId === packageId || instance.snapshotState !== 'installed') continue;
+      let manifest;
+      try { ({ manifest } = this.installedPackageFor(instance)); } catch { continue; }
+      for (const exported of Object.values(manifest.exports || {})) {
+        if (exported?.type) providedTypes.add(exported.type);
+      }
+    }
+    const instancesByPackage = new Map(instances.map((instance) => [instance.packageId, instance]));
+    const offers = [...inspectAppPackages(this.appsDir), ...this.externalCatalog()];
+    for (const offer of offers) {
+      if (!offer.id || offer.id === packageId || offer.validation?.valid === false) continue;
+      const instance = instancesByPackage.get(offer.id);
+      if (instance && (!offer.version || compareSemver(offer.version, instance.packageVersion) <= 0)) continue;
+      for (const exported of offer.capabilities?.exports || []) {
+        if (providedTypes.has(exported.type)) continue;
+        const providers = providersByType.get(exported.type) || [];
+        if (providers.some((item) => item.id === offer.id)) continue;
+        providers.push({
+          action: instance ? 'update' : 'install',
+          id: offer.id,
+          name: offer.name,
+          version: offer.appVersion || offer.version || '',
+        });
+        providersByType.set(exported.type, providers);
+      }
+    }
+    return { providedTypes: [...providedTypes], providersByType: Object.fromEntries(providersByType) };
   }
 
   iconPath(packageId) {

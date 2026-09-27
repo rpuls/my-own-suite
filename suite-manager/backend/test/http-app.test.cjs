@@ -2681,6 +2681,11 @@ test('an owner adds, previews, lists, and removes an external package source', a
     const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
     assert.deepEqual(listed.json().sources.map((item) => item.id), [source.id]);
 
+    const refreshed = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/refresh`, { headers, method: 'POST' });
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.json().outcome, 'unchanged');
+    assert.equal(refreshed.json().catalog.revision, 'b'.repeat(40));
+
     const preview = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/preview`, { headers, method: 'POST' });
     assert.equal(preview.status, 200);
     assert.deepEqual(preview.json().candidate.permissions, ['route:notes', 'volume:notes-data']);

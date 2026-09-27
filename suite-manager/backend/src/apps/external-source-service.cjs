@@ -110,11 +110,19 @@ class ExternalSourceService {
     const cards = [];
     for (const record of this.store.listAppSources()) {
       if (!sourceInstallable(record)) continue;
-      for (const card of this.cache.get(record.id)?.packages || []) {
+      const entry = this.cache.get(record.id);
+      for (const card of entry?.packages || []) {
         cards.push({
           ...card,
           ...this.mosOwnedCardFields(),
-          source: { id: record.id, publisher: record.publisher, repository: record.repository },
+          // The version on a card is only true as of this commit and this check.
+          source: {
+            checkedAt: entry?.checkedAt || null,
+            id: record.id,
+            publisher: record.publisher,
+            repository: record.repository,
+            revision: entry?.revision || null,
+          },
           trust: record.trust,
         });
       }
@@ -148,13 +156,12 @@ class ExternalSourceService {
   // a failing row is exactly what prompts the click, so making the click wait out
   // the back-off would strand the owner in front of the problem they came to fix.
   //
-  // Never throws. A source that cannot be reached records why and keeps serving
-  // the packages it last published, because a host MOS cannot reach today has not
-  // retracted what it published yesterday.
+  // Never throws: a source it cannot reach records why and keeps serving its last
+  // list, so callers read the `outcome` rather than the absence of an exception.
   async refreshSource(id, { force = false } = {}) {
     const record = this.requireSource(id);
-    if (!sourceInstallable(record)) return this.cache.status(id);
-    if (!force && !this.cache.due(id)) return this.cache.status(id);
+    if (!sourceInstallable(record)) return { catalog: this.cache.status(id), outcome: 'not-active' };
+    if (!force && !this.cache.due(id)) return { catalog: this.cache.status(id), outcome: 'not-due' };
     try {
       const resolved = await this.client.resolveRevision(record);
       if (resolved.revision !== record.revision) {
@@ -167,7 +174,7 @@ class ExternalSourceService {
       const cached = this.cache.get(id);
       if (cached?.revision === resolved.revision && cached.packages.length) {
         this.cache.markUnchanged(id);
-        return this.cache.status(id);
+        return { catalog: this.cache.status(id), outcome: 'unchanged' };
       }
       const listing = await this.client.listPackages(resolved);
       try {
@@ -175,10 +182,10 @@ class ExternalSourceService {
       } finally {
         listing.cleanup();
       }
-      return this.cache.status(id);
+      return { catalog: this.cache.status(id), outcome: 'moved' };
     } catch (error) {
       this.cache.markFailed(id, { code: error?.code, message: error?.message, retryAt: error?.retryAt || null });
-      return this.cache.status(id);
+      return { catalog: this.cache.status(id), outcome: 'failed' };
     }
   }
 

@@ -1454,7 +1454,7 @@ function createMOSServer({
         // what prompts the click, so making the click wait would strand them.
         if (request.method === 'POST' && sourceRefreshMatch) {
           const id = decodeURIComponent(sourceRefreshMatch[1]);
-          jsonResponse(response, 200, { catalog: await externalSourceService.refreshSource(id, { force: true }) });
+          jsonResponse(response, 200, await externalSourceService.refreshSource(id, { force: true }));
           return;
         }
         if (request.method === 'POST' && sourceStatusMatch) {

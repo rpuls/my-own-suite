@@ -201,7 +201,8 @@ export function PanelHead({ actions, children, title }: {
 // One centred line: the fact, then the qualification, then at most one quiet
 // action. It is deliberately not a Notice — a notice interrupts, a band
 // annotates, and this one is read every visit.
-export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
+export function PanelBand({ busy = false, children, icon, note, title, tone = 'neutral' }: {
+  busy?: boolean;
   // A trailing action. Keep it ghost-quiet: the band is not what the owner
   // came to the page to do.
   children?: ReactNode;
@@ -210,8 +211,8 @@ export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
   title: ReactNode;
   tone?: 'accent' | 'info' | 'neutral' | 'warning';
 }) {
-  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`}>
-    {icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`} aria-busy={busy || undefined}>
+    {busy ? <span className="mos-panel-band-icon"><Spinner /></span> : icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
     <span className="mos-panel-band-title">{title}</span>
     {note ? <span className="mos-panel-band-note">{note}</span> : null}
     {children}

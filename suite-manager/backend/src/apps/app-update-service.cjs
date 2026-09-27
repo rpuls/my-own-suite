@@ -428,6 +428,7 @@ class AppUpdateService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
+        peers: this.apps.capabilityPeersFor(instance.packageId),
         platformVersion: this.platformVersion,
       });
     } catch (error) {
@@ -493,6 +494,7 @@ class AppUpdateService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
+        peers: this.apps.capabilityPeersFor(instance.packageId),
         platformVersion: this.platformVersion,
       });
       if (comparison.confirmationToken !== input.confirmationToken) {

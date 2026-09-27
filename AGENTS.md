@@ -59,6 +59,7 @@ Before making edits, agents should confirm:
 - Current branch is **not** `main`.
 - If the change is intended for fast platform testing, target **`staging` first** rather than `main`.
 - If the work changes updater-facing software behavior, `CHANGELOG.md` contains or will contain an `Unreleased` entry; docs-only and public-site-only work does not require one.
+- Comments in the change are the leftovers after naming and structure, not a commentary beside them (see **Code as Documentation**).
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked and every branch push runs the workspace checks first.
 - If the work is release-related, confirm `VERSION`, `releases/stable.json`, and any Suite Manager release metadata will stay in sync with the intended tag.
@@ -97,6 +98,19 @@ Maintenance rules:
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
 - Keep runbooks close to the thing they operate unless they become broad project policy.
 - Do not move `README.md`, `CHANGELOG.md`, `RELEASING.md`, or `AGENTS.md` into `docs/`; these are intentionally root-level convention files.
+
+## Code as Documentation
+
+The code is the documentation. A comment is what is left over when naming and structure cannot carry the meaning, not a running commentary beside them.
+
+- **Write the code so it does not need the comment.** Reach for a clearer name, a named intermediate value, or a small extracted function before reaching for a comment. A comment that restates what the line already says is noise the next reader has to skip.
+- **A comment earns its place only by saying something the code cannot**: why an obvious approach was rejected, a non-obvious external constraint, a contract another file depends on, or the reason something looks odd. "What it does" is the code's job.
+- **Keep it to one or two lines.** Three is a maximum and needs a real reason. Nobody reads a paragraph above a one-line function, so a paragraph there is the same as no comment at all — with the cost of pushing the code off the screen.
+- **Never comment a parameter, field, flag, or boolean whose name already says it.** `busy`, `disabled`, `count` need no explanation.
+- **Do not narrate inside a function body.** A summary above a function is welcome; per-statement commentary is not. If a body needs narration to follow, split it.
+- **Judge comment volume across the whole diff, not line by line.** If added comment lines approach a tenth of added code lines, the diff is over-commented — cut, or improve the code until they are unnecessary.
+- The same applies to tests: the test name is the sentence. Add a comment only for a non-obvious fixture fact or an assertion whose point is not visible.
+- Prefer modular, single-purpose functions and honest names over explanation. Long functions held together by comments are the thing to fix.
 
 ## Branding Workflow
 
