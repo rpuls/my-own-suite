@@ -434,31 +434,35 @@ test('app network connect accepts only package and service ids', async () => {
     },
   });
 
-  const result = await core.connectNetwork({
-    consumerPackageId: 'seafile',
-    providerPackageId: 'onlyoffice',
-    providerServiceCount: 1,
-    providerServices: ['onlyoffice'],
-  });
+  const request = {
+    holderPackageId: 'seafile',
+    holderServiceCount: 3,
+    holderServices: ['seafile', 'mysql', 'memcached'],
+    joinerPackageId: 'onlyoffice',
+    joinerServiceCount: 1,
+    joinerServices: ['onlyoffice'],
+  };
+  const result = await core.connectNetwork({ ...request });
 
   assert.equal(result.status, 'connected');
-  assert.deepEqual(calls, [{
+  assert.deepEqual(calls, [request]);
+  await assert.rejects(() => core.connectNetwork({ ...request, holderPackageId: '../seafile' }), AppRuntimeError);
+  await assert.rejects(() => core.connectNetwork({ ...request, joinerServices: ['bad/service'] }), AppRuntimeError);
+  // Both sides are held to the same shape, because each names containers to attach
+  // rather than only the network to attach them to.
+  await assert.rejects(() => core.connectNetwork({ ...request, holderServices: ['bad/service'] }), AppRuntimeError);
+  await assert.rejects(() => core.connectNetwork({ ...request, holderServiceCount: 0 }), AppRuntimeError);
+  const { holderServices, ...withoutHolderServices } = request;
+  await assert.rejects(() => core.connectNetwork(withoutHolderServices), AppRuntimeError);
+  // The old field names are not a second spelling of the same request: a caller
+  // that still sends them has not decided which side holds the network.
+  await assert.rejects(() => core.connectNetwork({
     consumerPackageId: 'seafile',
+    consumerServiceCount: 3,
+    consumerServices: ['seafile', 'mysql', 'memcached'],
     providerPackageId: 'onlyoffice',
     providerServiceCount: 1,
     providerServices: ['onlyoffice'],
-  }]);
-  await assert.rejects(() => core.connectNetwork({
-    consumerPackageId: '../seafile',
-    providerPackageId: 'onlyoffice',
-    providerServiceCount: 1,
-    providerServices: ['onlyoffice'],
-  }), AppRuntimeError);
-  await assert.rejects(() => core.connectNetwork({
-    consumerPackageId: 'seafile',
-    providerPackageId: 'onlyoffice',
-    providerServiceCount: 1,
-    providerServices: ['bad/service'],
   }), AppRuntimeError);
 });
 

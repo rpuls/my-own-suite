@@ -1105,11 +1105,17 @@ test('app integration connect materializes provider exports into consumer runtim
     assert.equal(connected.status, 200);
     assert.equal(connectedBody.integration.status, 'active');
     assert.equal(seafileApply.packageId, 'seafile');
+    // OnlyOffice is the plugin here even though it is the side exporting the
+    // capability: it declares that it needs a document platform before it is
+    // useful at all, so it joins Seafile's network rather than holding the one the
+    // two meet on.
     assert.deepEqual(calls.at(-1), ['connectNetwork', {
-      consumerPackageId: 'seafile',
-      providerPackageId: 'onlyoffice',
-      providerServiceCount: 1,
-      providerServices: ['onlyoffice'],
+      holderPackageId: 'seafile',
+      holderServiceCount: 3,
+      holderServices: ['seafile-mysql', 'seafile-valkey', 'seafile'],
+      joinerPackageId: 'onlyoffice',
+      joinerServiceCount: 1,
+      joinerServices: ['onlyoffice'],
     }]);
     assert.equal(seafileService.environment.ONLYOFFICE_APIJS_URL, 'https://onlyoffice.test/web-apps/apps/api/documents/api.js');
     assert.equal(seafileService.environment.ONLYOFFICE_INTERNAL_SEAFILE_URL, 'http://seafile');
@@ -1123,6 +1129,12 @@ test('app integration connect materializes provider exports into consumer runtim
     assert.doesNotMatch(after.body, new RegExp(jwtSecret, 'u'));
     const afterSeafile = after.json().packages.find((entry) => entry.id === 'seafile');
     assert.equal(afterSeafile.compatibility.connections.find((entry) => entry.provider.id === 'onlyoffice').relationship.status, 'active');
+    // Only Seafile declares the slot, so only Seafile's card would show this
+    // connection. The app that was connected to says so too, or an owner opening
+    // it has nowhere to see what shares its network.
+    const afterOnlyoffice = after.json().packages.find((entry) => entry.id === 'onlyoffice');
+    assert.deepEqual(afterOnlyoffice.compatibility.connectedBy, [{ id: 'seafile', name: 'Seafile', status: 'active' }]);
+    assert.deepEqual(afterSeafile.compatibility.connectedBy, []);
   }, { appAgent, homeHost: 'home.test' });
 });
 

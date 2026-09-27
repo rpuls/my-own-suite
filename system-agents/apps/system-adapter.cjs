@@ -511,12 +511,14 @@ class SystemAppAdapter {
     }
   }
 
+  // Every package gets its own network, whether it runs one service or ten. A
+  // package left on Docker's default bridge is reachable by every other package
+  // there, which is access no owner granted: connecting two apps is what joins
+  // them, and nothing else should.
   async startPackageContainers({ instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const serviceCount = services.length;
     const networkName = this.networkName(packageId);
-    if (serviceCount > 1) {
-      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
-    }
+    await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
     await this.ensureAppVolumes({ instanceId, packageId, services });
     for (const service of services) {
       const volumeArgs = [];
@@ -527,7 +529,7 @@ class SystemAppAdapter {
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
         ...CONTAINER_LOG_ARGS,
-        ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+        '--network', networkName, '--network-alias', service.id,
         ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
         '--label', `mos.package=${packageId}`,
         '--label', `mos.service=${service.id}`,
@@ -852,9 +854,7 @@ class SystemAppAdapter {
       activity = STAGE_ACTIVITY.run;
       await this.removePackageContainers({ packageId, serviceIds: services.map((service) => service.id), serviceCount });
       const networkName = this.networkName(packageId);
-      if (serviceCount > 1) {
-        await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
-      }
+      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
 
       await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
@@ -873,7 +873,7 @@ class SystemAppAdapter {
           '--name', containerName,
           '--restart', 'unless-stopped',
           ...CONTAINER_LOG_ARGS,
-          ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+          '--network', networkName, '--network-alias', service.id,
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
           '--label', `mos.package=${packageId}`,
           '--label', `mos.service=${service.id}`,
@@ -939,15 +939,35 @@ class SystemAppAdapter {
     }
   }
 
-  async connectPackageNetwork({ consumerPackageId, providerPackageId, providerServiceCount, providerServices }) {
-    const networkName = this.networkName(consumerPackageId);
-    let activity = `docker network inspect for ${networkName}`;
+  // The container names attached to a network, empty when there is no such network.
+  async networkMembers(networkName) {
+    const output = await this.executeCapture(this.dockerBinary, ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', networkName], { timeoutMs: 30000 }).catch(() => '');
+    return String(output).split(/\s+/u).filter(Boolean);
+  }
+
+  // A connection puts the joining package on the network the other one holds, so
+  // that uninstalling the joiner takes nothing away from the app it joined. The
+  // caller decides which side holds: a plugin joins the app it is a plugin for.
+  //
+  // Membership is read rather than assumed, because re-attaching a container that
+  // is already on the network would drop the network out from under a working app
+  // for as long as the reconnect takes, and because the holder is only attached to
+  // its own network from the moment its containers were started with one.
+  async connectPackageNetwork({ holderPackageId, holderServiceCount, holderServices, joinerPackageId, joinerServiceCount, joinerServices }) {
+    const networkName = this.networkName(holderPackageId);
+    const members = [
+      ...holderServices.map((serviceId) => [holderPackageId, serviceId, holderServiceCount]),
+      ...joinerServices.map((serviceId) => [joinerPackageId, serviceId, joinerServiceCount]),
+    ];
+    let activity = `docker network create for ${networkName}`;
     try {
-      await this.execute(this.dockerBinary, ['network', 'inspect', networkName], { timeoutMs: 30000 });
-      for (const serviceId of providerServices) {
-        const containerName = this.containerName(providerPackageId, serviceId, providerServiceCount);
-        const aliases = [...new Set([providerPackageId, serviceId])].flatMap((alias) => ['--alias', alias]);
-        await this.execute(this.dockerBinary, ['network', 'disconnect', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
+      activity = `docker network inspect for ${networkName}`;
+      const attached = await this.networkMembers(networkName);
+      for (const [packageId, serviceId, serviceCount] of members) {
+        const containerName = this.containerName(packageId, serviceId, serviceCount);
+        if (attached.includes(containerName)) continue;
+        const aliases = [...new Set([packageId, serviceId])].flatMap((alias) => ['--alias', alias]);
         activity = `docker network connect for ${containerName}`;
         await this.execute(this.dockerBinary, [
           'network',
@@ -961,6 +981,17 @@ class SystemAppAdapter {
     } catch (error) {
       throw new AppApplyError('network', describeFailure(error, activity));
     }
+  }
+
+  // Removes a package's own network, detaching whatever is still on it first: a
+  // package joined to this one keeps its endpoint until it is disconnected, and
+  // Docker refuses to remove a network that still has one.
+  async removePackageNetwork(packageId) {
+    const networkName = this.networkName(packageId);
+    for (const containerName of await this.networkMembers(networkName)) {
+      await this.execute(this.dockerBinary, ['network', 'disconnect', '--force', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+    }
+    await this.execute(this.dockerBinary, ['network', 'rm', networkName], { timeoutMs: 30000 }).catch(() => {});
   }
 
   async removePackageContainers({ packageId, serviceCount = 1, serviceIds = [] }) {
@@ -979,7 +1010,7 @@ class SystemAppAdapter {
       for (const serviceId of serviceIds) {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
-      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      await this.removePackageNetwork(packageId);
       return { steps: ['stopped'] };
     } catch {
       throw new AppApplyError('stop');
@@ -1020,7 +1051,7 @@ class SystemAppAdapter {
       for (const serviceId of serviceIds) {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
-      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      await this.removePackageNetwork(packageId);
       for (const volume of volumes) {
         const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);

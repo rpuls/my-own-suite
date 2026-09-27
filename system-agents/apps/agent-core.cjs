@@ -202,28 +202,38 @@ function assertRuntimeRemoveRequest(input, { allowInstance = false, allowVolumes
   return { installedSourceRevision: input.installedSourceRevision, instanceId: input.instanceId, packageId: input.packageId, services, volumes };
 }
 
+// The holder owns the network the two packages meet on and the joiner is attached
+// to it. Which side is which is the caller's decision, taken from what the two
+// manifests say about each other, so the agent carries no policy about it.
 function assertNetworkConnectRequest(input) {
-  if (!exactKeys(input, ['consumerPackageId', 'providerPackageId', 'providerServiceCount', 'providerServices'])) {
+  if (!exactKeys(input, ['holderPackageId', 'holderServiceCount', 'holderServices', 'joinerPackageId', 'joinerServiceCount', 'joinerServices'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app network fields are accepted.');
   }
-  assertString(input.consumerPackageId, 'consumerPackageId', PACKAGE_ID_PATTERN);
-  assertString(input.providerPackageId, 'providerPackageId', PACKAGE_ID_PATTERN);
-  if (!Number.isInteger(input.providerServiceCount) || input.providerServiceCount < 1 || input.providerServiceCount > 8) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service count is invalid.');
-  }
-  if (!Array.isArray(input.providerServices) || input.providerServices.length < 1 || input.providerServices.length > 8) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service list is invalid.');
-  }
-  for (const serviceId of input.providerServices) {
-    if (!DNS_LABEL_PATTERN.test(String(serviceId))) {
-      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Provider service ids must be DNS-safe labels.');
+  assertString(input.holderPackageId, 'holderPackageId', PACKAGE_ID_PATTERN);
+  assertString(input.joinerPackageId, 'joinerPackageId', PACKAGE_ID_PATTERN);
+  for (const side of ['holder', 'joiner']) {
+    const label = side === 'holder' ? 'Holder' : 'Joiner';
+    const count = input[`${side}ServiceCount`];
+    const services = input[`${side}Services`];
+    if (!Number.isInteger(count) || count < 1 || count > 8) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `The ${side} service count is invalid.`);
+    }
+    if (!Array.isArray(services) || services.length < 1 || services.length > 8) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `The ${side} service list is invalid.`);
+    }
+    for (const serviceId of services) {
+      if (!DNS_LABEL_PATTERN.test(String(serviceId))) {
+        throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `${label} service ids must be DNS-safe labels.`);
+      }
     }
   }
   return {
-    consumerPackageId: input.consumerPackageId,
-    providerPackageId: input.providerPackageId,
-    providerServiceCount: input.providerServiceCount,
-    providerServices: input.providerServices,
+    holderPackageId: input.holderPackageId,
+    holderServiceCount: input.holderServiceCount,
+    holderServices: input.holderServices,
+    joinerPackageId: input.joinerPackageId,
+    joinerServiceCount: input.joinerServiceCount,
+    joinerServices: input.joinerServices,
   };
 }
 

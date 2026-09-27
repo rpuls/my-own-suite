@@ -68,6 +68,7 @@ type AppPackageSummary = {
   catalogUpdate: CatalogUpdate | null;
   category: string | string[];
   compatibility?: {
+    connectedBy: Array<{ id: string; name: string; status: string }>;
     connections: Array<{
       actionLabel: string;
       capabilityId: string;
@@ -725,6 +726,7 @@ function AppDetail({
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
     && !applying;
   const connections = app.compatibility?.connections || [];
+  const connectedBy = app.compatibility?.connectedBy || [];
   const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
   const installedCompatiblePeers = packages.filter((item) => item.id !== app.id && item.instance && item.capabilities.exports.some((capability) => app.capabilities.usefulness.requiresOneOf.includes(capability.type)));
 
@@ -1005,6 +1007,27 @@ function AppDetail({
           <p className="suite-app-help">These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.</p>
           {app.catalog.privacy.summary ? <p>{app.catalog.privacy.summary}</p> : null}
           {app.catalog.privacy.notes.length ? <ul>{app.catalog.privacy.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+        </section> : null}
+
+        {connectedBy.length ? <section className="suite-app-detail-section">
+          <h3>Connected to this app</h3>
+          <div className="suite-app-connection-list">
+            {connectedBy.map((peer) => {
+              const peerPackage = packages.find((item) => item.id === peer.id);
+              return <article className="suite-app-connection" key={peer.id}>
+                <AppConnect
+                  size="sm"
+                  source={{ iconUrl: peerPackage?.iconUrl, name: peer.name }}
+                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                />
+                <div className="suite-app-connection-copy">
+                  <strong>{peer.name}</strong>
+                  <small>Shares this app's network - {peer.status}</small>
+                </div>
+                {peerPackage ? <button className="mos-btn mos-btn-secondary" onClick={() => onSelect(peerPackage)} type="button">Open</button> : null}
+              </article>;
+            })}
+          </div>
         </section> : null}
 
         {connections.length ? <section className="suite-app-detail-section">

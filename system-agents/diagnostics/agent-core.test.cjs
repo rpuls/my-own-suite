@@ -22,11 +22,30 @@ function adapter(overrides = {}) {
     hostFacts: async () => ({ disk: 'df', kernel: 'linux' }),
     hostPatches: async () => ({ available: true, managedBy: 'mos', rebootRequired: false, security: [] }),
     journal: async (unit, lines) => `journal for ${unit} (${lines} lines)`,
+    networks: async () => [{ containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'mos-app-vaultwarden' }],
     unitState: async () => ({ active: 'active', enabled: 'enabled', sub: 'running' }),
     webServerConfig: async () => [{ content: 'home.example.com {\n  reverse_proxy 127.0.0.1:3100\n}', path: '/etc/caddy/Caddyfile' }],
     ...overrides,
   };
 }
+
+// A collector that fails takes its own section and nothing else, and the map is
+// the section most likely to fail on a machine where Docker itself is the problem.
+test('the network map is collected, and a machine that cannot list networks loses only the map', async () => {
+  const core = new DiagnosticsAgentCore(adapter());
+  const collected = await core.collect();
+
+  assert.deepEqual(collected.networks, [{ containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'mos-app-vaultwarden' }]);
+  assert.deepEqual(collected.incomplete, []);
+
+  const broken = new DiagnosticsAgentCore(adapter({ networks: async () => { throw new Error('Cannot connect to the Docker daemon'); } }));
+  const partial = await broken.collect();
+
+  assert.deepEqual(partial.networks, []);
+  assert.deepEqual(partial.incomplete, ['networks']);
+  assert.ok(partial.containers);
+  assert.ok(partial.host.kernel);
+});
 
 test('collect takes no arguments, so no caller can widen what is read', () => {
   // Structural rather than behavioural on purpose. The security argument for a

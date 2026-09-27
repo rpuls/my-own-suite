@@ -159,6 +159,21 @@ function parseLabels(raw) {
   return labels;
 }
 
+// One line per network, `name|driver|container,container,`. A network with
+// nothing on it keeps its line and ends with an empty member list, because a
+// network that exists and is empty is a different machine state from one that was
+// never created.
+function parseNetworkMap(raw) {
+  const networks = [];
+  for (const line of String(raw || '').split('\n')) {
+    if (!line.trim()) continue;
+    const [name, driver, members = ''] = line.split('|');
+    if (!name) continue;
+    networks.push({ containers: members.split(',').map((entry) => entry.trim()).filter(Boolean).sort(), driver: driver || '', name });
+  }
+  return networks;
+}
+
 class SystemDiagnosticsAdapter {
   async availableCollectors() {
     const present = async (file) => {
@@ -272,9 +287,26 @@ class SystemDiagnosticsAdapter {
     return parseContainerList(await capture(DOCKER_BINARY, ['ps', '-a', '--no-trunc', '--format', '{{json .}}']));
   }
 
+  // Which containers share a network, as Docker has it rather than as MOS meant
+  // it. Nothing else in the bundle can answer this: a compose projection says
+  // what was asked for, and two apps sharing a network is either a connection the
+  // owner made or an app still sitting on the default bridge. Every network is
+  // listed, including ones MOS did not create, because a foreign network holding
+  // a name MOS wants is itself the finding.
+  async networks(limit = 24) {
+    const names = String(await capture(DOCKER_BINARY, ['network', 'ls', '--format', '{{.Name}}']))
+      .split('\n').map((line) => line.trim()).filter(Boolean).slice(0, limit);
+    if (!names.length) return [];
+    return parseNetworkMap(await capture(DOCKER_BINARY, [
+      'network', 'inspect',
+      '--format', '{{.Name}}|{{.Driver}}|{{range $id, $container := .Containers}}{{$container.Name}},{{end}}',
+      ...names,
+    ]));
+  }
+
   containerLog(name, lines) {
     return capture(DOCKER_BINARY, ['logs', '--tail', String(lines), '--timestamps', name]).catch(keepPartialLog);
   }
 }
 
-module.exports = { CaptureTimeoutError, MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, boundedTail, capture, keepPartialLog, parseContainerList, parseLabels, parseShowOutput, serializeJournal };
+module.exports = { CaptureTimeoutError, MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, boundedTail, capture, keepPartialLog, parseContainerList, parseLabels, parseNetworkMap, parseShowOutput, serializeJournal };

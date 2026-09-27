@@ -236,6 +236,19 @@ function webServerLines(files) {
   ].join('\n')).join('\n\n');
 }
 
+// The network map. Two packages on one network is a connection the owner made,
+// and a MOS app container on the default `bridge` network is an app that has not
+// been restarted onto its own network yet — neither is visible anywhere else in
+// this bundle, and both decide whether "app A cannot reach app B" is a
+// misconfiguration or exactly what the machine is set up to do.
+function networkLines(networks) {
+  if (!networks?.length) return 'The Docker networks could not be listed.';
+  return networks.map((network) => [
+    `${network.name}  ·  ${network.driver}`,
+    network.containers?.length ? network.containers.map((name) => `  ${name}`).join('\n') : '  (nothing attached)',
+  ].join('\n')).join('\n\n');
+}
+
 function containerLines(containers) {
   if (!containers?.length) return 'No MOS containers are present.';
   return containers.map((container) => [
@@ -305,6 +318,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
     section('WEB SERVER', webServerLines(collection.webServer)),
     section('APPS', appLines(apps)),
     section('SERVICES', unitLines(collection.units)),
+    section('NETWORKS', networkLines(collection.networks)),
     section('CONTAINERS', containerLines(collection.containers)),
   ].join('');
 

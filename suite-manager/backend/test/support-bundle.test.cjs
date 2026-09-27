@@ -21,6 +21,10 @@ function healthyCollection() {
     containers: [{ image: 'mos-app-vaultwarden:1', labels: { 'mos.package': 'vaultwarden' }, log: 'started', name: 'mos-app-vaultwarden', state: 'running', status: 'Up 2 hours', troubled: false }],
     host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0' },
     incomplete: [],
+    networks: [
+      { containers: ['mos-app-paperless-ngx-broker', 'mos-app-paperless-ngx-paperless', 'mos-app-x-abcdef01-scan-bridge'], driver: 'bridge', name: 'mos-app-paperless-ngx' },
+      { containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'bridge' },
+    ],
     units: [{ active: 'active', enabled: 'enabled', log: 'ready', name: 'mos-suite-manager.service', sub: 'running', troubled: false }],
     webServer: [
       { content: 'home.mos.example.com {\n  reverse_proxy 127.0.0.1:3100\n}', path: '/etc/caddy/Caddyfile' },
@@ -261,6 +265,27 @@ test('an advisory failure is reported on its own account only', () => {
 
   const withCatalogError = summarizeTrouble({ catalog: { ...base, advisories, error: { code: 'CATALOG_FETCH_FAILED', message: 'Official catalog request failed.' } } });
   assert.deepEqual(withCatalogError.filter((line) => line.includes('Privacy advisories could not be read')), []);
+});
+
+// Whether two apps can reach each other is not in any projection MOS stores, and
+// it is the question behind both "the plugin cannot see Paperless" and "why can
+// this app reach that one at all".
+test('the bundle carries the network map, naming what shares each network', () => {
+  const { text } = buildSupportBundle({ collection: healthyCollection(), now, secrets: [] });
+
+  assert.match(text, /^NETWORKS$/mu);
+  // A package's own containers and a plugin joined to them, under one network.
+  assert.match(text, /mos-app-paperless-ngx {2}· {2}bridge\n {2}mos-app-paperless-ngx-broker\n {2}mos-app-paperless-ngx-paperless\n {2}mos-app-x-abcdef01-scan-bridge/u);
+  // An app still on the default bridge is one that has not been restarted onto
+  // its own network yet, which is the only place that shows.
+  assert.match(text, /^bridge {2}· {2}bridge\n {2}mos-app-vaultwarden$/mu);
+});
+
+test('a bundle from a machine whose Docker could not be reached says so instead of showing an empty map', () => {
+  const collection = { ...healthyCollection(), incomplete: ['networks'], networks: [] };
+  const { text } = buildSupportBundle({ collection, now, secrets: [] });
+
+  assert.match(text, /The Docker networks could not be listed\./u);
 });
 
 // "That address answers nothing" and "that address is proxied somewhere wrong"

@@ -25,6 +25,7 @@ const {
   managedEnvNames,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  networkConnectRequest,
   OWNER_ENV_NAME_PATTERN,
   ownerEnvSecretKey,
   primaryProjectedRoute,
@@ -494,13 +495,10 @@ class AppPackageService {
 
     try {
       const applied = await this.applyPackageRuntime(consumerPackageId, publicUrlFor(consumerPackageId));
-      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
-      const network = await this.agent.connectNetwork({
-        consumerPackageId,
-        providerPackageId,
-        providerServiceCount: providerServices.length,
-        providerServices,
-      });
+      const network = await this.agent.connectNetwork(networkConnectRequest(
+        { manifest: consumerPackage.manifest, packageId: consumerPackageId },
+        { manifest: providerPackage.manifest, packageId: providerPackageId },
+      ));
       this.store.completeAppIntegration({
         at: this.now().toISOString(),
         consumerInstanceId: consumer.id,
@@ -574,14 +572,10 @@ class AppPackageService {
 
     try {
       await this.applyPackageRuntime(consumer.packageId, requestContextForPackage(consumer.packageId, requestContext));
-      const providerPackage = this.installedPackageFor(provider);
-      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
-      const network = await this.agent.connectNetwork({
-        consumerPackageId: consumer.packageId,
-        providerPackageId: provider.packageId,
-        providerServiceCount: providerServices.length,
-        providerServices,
-      });
+      const network = await this.agent.connectNetwork(networkConnectRequest(
+        { manifest: this.installedPackageFor(consumer).manifest, packageId: consumer.packageId },
+        { manifest: this.installedPackageFor(provider).manifest, packageId: provider.packageId },
+      ));
       this.store.completeAppIntegration({
         at: this.now().toISOString(),
         consumerInstanceId: consumer.id,
@@ -1208,7 +1202,20 @@ class AppPackageService {
       const missingUsefulPeers = (app.capabilities.usefulness.requiresOneOf || [])
         .filter((type) => !packages.some((candidate) => candidate.id !== app.id && (candidate.capabilities.exports || []).some((capability) => capability.type === type)))
         .map((type) => ({ type, message: app.capabilities.usefulness.emptyState || `Install a compatible ${type} app to use this package well.` }));
-      return { ...app, compatibility: { connections, missingUsefulPeers } };
+      // What is connected to this app, for the app that was connected to rather
+      // than the one that did the connecting. Only the connecting side declares
+      // the slot, so without this an owner opening the app a plugin was attached
+      // to has nowhere to see that it was.
+      const connectedBy = app.instance
+        ? integrations
+          .filter((item) => item.status !== 'removed' && item.providerInstanceId === app.instance.id)
+          .map((item) => {
+            const other = packages.find((candidate) => candidate.instance?.id === item.consumerInstanceId);
+            return other ? { id: other.id, name: other.name, status: item.status } : null;
+          })
+          .filter(Boolean)
+        : [];
+      return { ...app, compatibility: { connectedBy, connections, missingUsefulPeers } };
     });
   }
 

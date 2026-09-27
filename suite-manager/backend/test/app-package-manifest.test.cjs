@@ -12,6 +12,7 @@ const {
   readAppPackageManifest,
   validateAppPackageManifest,
 } = require('../src/apps/package-manifest.cjs');
+const { networkConnectRequest } = require('../src/apps/app-package-internals.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(repoRoot, 'apps');
@@ -180,6 +181,41 @@ test('Paperless-ngx package exports its archive without handing over a credentia
   assert.equal(archive.internalBaseUrl, 'http://paperless:8000');
   assert.equal(archive.secrets, undefined);
   assert.deepEqual(validateAppPackageManifest(paperless.manifest, { packageDir: paperless.packageDir }), []);
+});
+
+// Which app holds the network the two meet on cannot follow from which one
+// consumes the capability, because the plugin is the consumer in one real pairing
+// and the provider in the other. It follows from the manifests saying which app is
+// useless on its own: that one joins, so uninstalling it leaves the other app's
+// network exactly as it was.
+test('a connection puts the plugin on the network of the app it is a plugin for', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const side = (id) => ({ manifest: packages.find((entry) => entry.manifest.id === id).manifest, packageId: id });
+
+  // Seafile consumes OnlyOffice's editor, and OnlyOffice is the plugin.
+  const editing = networkConnectRequest(side('seafile'), side('onlyoffice'));
+  assert.equal(editing.holderPackageId, 'seafile');
+  assert.equal(editing.joinerPackageId, 'onlyoffice');
+  assert.deepEqual(editing.joinerServices, ['onlyoffice']);
+
+  // A scanner bridge consumes Paperless's archive, and the bridge is the plugin,
+  // so the direction is the other way round for the same reason.
+  const filing = networkConnectRequest(
+    {
+      manifest: {
+        id: 'scan-bridge',
+        integrations: { documentArchive: { accepts: [{ type: 'document-archive' }] } },
+        resources: { services: { bridge: {} } },
+        usefulness: { requiresOneOf: ['document-archive'] },
+      },
+      packageId: 'x-abcdef01-scan-bridge',
+    },
+    side('paperless-ngx'),
+  );
+  assert.equal(filing.holderPackageId, 'paperless-ngx');
+  assert.equal(filing.holderServiceCount, 2);
+  assert.equal(filing.joinerPackageId, 'x-abcdef01-scan-bridge');
+  assert.deepEqual(filing.joinerServices, ['bridge']);
 });
 
 test('Immich package is discoverable and declares its heavy multi-service stack generically', () => {

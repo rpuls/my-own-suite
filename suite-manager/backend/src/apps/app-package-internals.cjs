@@ -565,6 +565,27 @@ function exportEntries(manifest) {
   return Object.entries(isRecord(manifest.exports) ? manifest.exports : {});
 }
 
+// Which side of a connection holds the network the two apps meet on, and which
+// side joins it. A plugin joins the app it is a plugin for, never the reverse, so
+// that uninstalling the plugin leaves the other app's network untouched, and
+// removing the app it joined takes only that app's own network with it. A package
+// says it is a plugin by declaring that it needs a capability before it is useful
+// at all, or by being published as a capability provider. When neither side says
+// so, the consumer joins, because it is the side handed an address to reach.
+function networkConnectRequest(consumer, provider) {
+  const isPlugin = (side) => (side.manifest.usefulness?.requiresOneOf || []).length > 0 || side.manifest.role === 'capability-provider';
+  const [holder, joiner] = isPlugin(consumer) || !isPlugin(provider) ? [provider, consumer] : [consumer, provider];
+  const servicesOf = (side) => Object.keys(side.manifest.resources?.services || {});
+  return {
+    holderPackageId: holder.packageId,
+    holderServiceCount: servicesOf(holder).length,
+    holderServices: servicesOf(holder),
+    joinerPackageId: joiner.packageId,
+    joinerServiceCount: servicesOf(joiner).length,
+    joinerServices: servicesOf(joiner),
+  };
+}
+
 function integrationConfigKey(slotId, envKey) {
   const pascal = String(envKey).toLowerCase().replace(/_([a-z0-9])/gu, (_match, letter) => letter.toUpperCase());
   return `integration${slotId.slice(0, 1).toUpperCase()}${slotId.slice(1)}${pascal.slice(0, 1).toUpperCase()}${pascal.slice(1)}`;
@@ -752,6 +773,7 @@ module.exports = {
   managedEnvNames,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  networkConnectRequest,
   ownerEnvSecretKey,
   privacyReviewPresentation,
   publicEnv,

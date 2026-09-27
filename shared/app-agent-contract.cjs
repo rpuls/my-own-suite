@@ -3,7 +3,7 @@
 // a managed update that applied half of itself (`AGENTS.md` rule 7), not a tier
 // to negotiate: every operation that changes a runtime refuses it and names both
 // numbers, and the update preview reports it on the app card.
-const APP_AGENT_CONTRACT_VERSION = 10;
+const APP_AGENT_CONTRACT_VERSION = 11;
 
 // Null for an agent that could not be asked at all: not installed, socket down,
 // or an answer MOS has no vocabulary for. That is a permanent state with its own
