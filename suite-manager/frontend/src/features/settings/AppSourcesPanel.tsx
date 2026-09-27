@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
+import { appSourceLabel } from '../../lib/app-sources';
 
 // What MOS last learned from a source, and when it may ask again.
 type SourceCatalog = {
@@ -30,15 +31,6 @@ type AppSource = {
   trust: string;
   updatedAt: string;
 };
-
-function repoLabel(repository: string) {
-  try {
-    const url = new URL(repository);
-    return url.pathname.replace(/^\//u, '') || url.hostname;
-  } catch {
-    return repository;
-  }
-}
 
 function whenLabel(at: string | null) {
   if (!at) return 'never';
@@ -85,7 +77,7 @@ function SourceRow({ busy, onRefresh, onRemove, source }: {
   return <PanelItem quiet={source.status !== 'active'}>
     <div className="suite-source-row">
       <div className="suite-source-main">
-        <strong>{repoLabel(source.repository)}</strong>
+        <strong>{appSourceLabel(source.repository)}</strong>
         <span className="suite-meta">
           {count === null ? 'No apps read from this source yet' : `${count} ${count === 1 ? 'app' : 'apps'}`}
           {' · '}
@@ -104,7 +96,7 @@ function SourceRow({ busy, onRefresh, onRemove, source }: {
       <Notice title={failure.title} variant="warning">
         <p>{failure.detail}</p>
         <p>
-          <a href={source.repository} rel="noreferrer" target="_blank">Open {repoLabel(source.repository)}<Icon name="external" /></a>
+          <a href={source.repository} rel="noreferrer" target="_blank">Open {appSourceLabel(source.repository)}<Icon name="external" /></a>
           {' — its apps stay listed and anything you installed from it keeps running.'}
         </p>
       </Notice>
@@ -207,7 +199,7 @@ export function AppSourcesPanel() {
       {sources.length ? <PanelBody>
         <AdvancedPanel facts={sources.map((source) => ({
           code: true,
-          label: repoLabel(source.repository),
+          label: appSourceLabel(source.repository),
           value: `${source.revision ? source.revision.slice(0, 12) : 'unresolved'} · next check ${source.catalog.nextCheckAt || 'now'}`,
         }))} reveal="technical-mode" summary="Source revisions">
           <p>MOS asks each source which commit it is at, no more often than every few hours, and only downloads it again when that commit has moved. A source that fails to answer is asked less and less often rather than more.</p>
@@ -221,7 +213,7 @@ export function AppSourcesPanel() {
         <button className="mos-btn mos-btn-danger" disabled={Boolean(busyId)} onClick={() => void remove(removing)} type="button">{busyId ? 'Removing...' : 'Remove source'}</button>
       </>}
       onClose={() => setRemoving(null)}
-      title={`Remove ${repoLabel(removing.repository)}?`}
+      title={`Remove ${appSourceLabel(removing.repository)}?`}
     >
       <p>Its apps stop being offered on the Apps page. Anything you already installed from it keeps running exactly as it is, with its settings and its data — but MOS will no longer offer it updates, because only this source knows when a newer version exists.</p>
       {installedFrom ? <p className="suite-meta">This source currently offers {installedFrom} {installedFrom === 1 ? 'app' : 'apps'}.</p> : null}

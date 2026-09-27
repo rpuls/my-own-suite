@@ -7,6 +7,7 @@ import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 import { jsonResponse } from '../../lib/api';
+import { appSourceLabel } from '../../lib/app-sources';
 
 // What one service needs. The resting pair is always present when the package
 // declares anything; the peaks are stated only where a service has a heavy job
@@ -82,6 +83,9 @@ type AppPackageSummary = {
   health: { type: string | null; url: string | null } | null;
   homepage: { description: string; group: string; icon: string; name: string } | null;
   icon: string;
+  // Set only on a card an added source offers, where there is no icon file
+  // on this server to serve.
+  iconDataUrl?: string | null;
   iconUrl: string;
   instance: {
     config?: InstanceConfigEntry[];
@@ -613,9 +617,13 @@ function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
   ];
 }
 
+// An app a source offers has no icon file on this server to fetch: the source's
+// download is discarded once its packages are read, so its icon travels inlined
+// on the card instead of as a URL. Installed apps keep the served URL.
 function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
+  const icon = app.iconUrl || app.iconDataUrl || '';
   return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
-    {app.iconUrl ? <img alt="" src={app.iconUrl} /> : <span>{initialsFor(app.name)}</span>}
+    {icon ? <img alt="" src={icon} /> : <span>{initialsFor(app.name)}</span>}
   </span>;
 }
 
@@ -1192,10 +1200,6 @@ function repoUrlFromQuery(raw: string): string | null {
   } catch { return null; }
 }
 
-function externalSourceLabel(repository: string) {
-  try { return new URL(repository).hostname; } catch { return 'External repository'; }
-}
-
 function externalDescription(card: ExternalCard) {
   return card.summary || card.homepage?.description || card.catalog.description || 'External MOS app package.';
 }
@@ -1320,7 +1324,7 @@ function ExternalAppDetail({ card, installError, installing, onClose, onInstall,
           <div><span>Trust</span><strong>Unverified</strong></div>
           <div><span>Review</span><strong>Not reviewed by MOS</strong></div>
           {card.appVersion ? <div><span>Version</span><strong>{card.appVersion}</strong></div> : null}
-          <div><span>Source</span><strong>{externalSourceLabel(source.repository)}</strong></div>
+          <div><span>Source</span><strong>{appSourceLabel(source.repository)}</strong></div>
         </section>
 
         <AdvancedPanel className="suite-app-advanced" facts={[
@@ -1748,7 +1752,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     const repository = app.source!.repository;
     const existing = sections.find((section) => section.repository === repository);
     if (existing) existing.apps.push(app);
-    else sections.push({ apps: [app], repository, title: app.source!.publisher || externalSourceLabel(repository) });
+    else sections.push({ apps: [app], repository, title: app.source!.publisher || appSourceLabel(repository) });
     return sections;
   }, []);
 
@@ -1768,7 +1772,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       <section className="suite-app-catalog-section">
         <div className="suite-app-section-heading">
           <h2>{externalResolved && externalResolved.packages.length > 1
-            ? `${externalResolved.packages.length} apps from ${externalSourceLabel(externalResolved.source.repository)}`
+            ? `${externalResolved.packages.length} apps from ${appSourceLabel(externalResolved.source.repository)}`
             : 'External package'}</h2>
           {/* Adding is what makes a catalog browsable later without pasting the URL
               again. It is offered only once the repository has actually resolved,

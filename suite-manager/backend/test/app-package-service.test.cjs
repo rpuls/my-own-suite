@@ -68,6 +68,7 @@ async function externalCandidate(root, overrides = {}, dirName = 'ext-abc') {
   };
   await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  if (manifest.icon) await fsp.writeFile(path.join(packageDir, manifest.icon), '<svg xmlns="http://www.w3.org/2000/svg" />\n');
   const source = { kind: 'external-git', path: '.mos', repository: 'https://github.com/community/notes', revision: 'b'.repeat(40), trust: 'unverified' };
   return {
     manifest: readAppPackageManifest(packageDir).manifest,
@@ -183,6 +184,25 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(listed.trust, 'unverified');
   assert.equal(listed.name, 'Community Notes');
   assert.equal(listed.privacy.status, 'review-required');
+  store.close();
+});
+
+// Every URL an installed app's card hands back is addressed by the id the app is
+// installed as. For an external app that is the namespaced id, not the id its
+// manifest claims: nothing is installed under the claimed id, so an icon
+// addressed by it resolves to no app at all.
+test('an installed external app serves its icon under the id it is installed as', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root, { icon: 'icon.svg' });
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+
+  await service.installExternalPackage({ candidate });
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.iconUrl, '/suite-manager/api/apps/packages/x-abcdef01-community-notes/icon');
+  // And that id is what the icon route resolves against, so the URL is reachable.
+  assert.equal(path.basename(service.iconPath('x-abcdef01-community-notes')), 'icon.svg');
   store.close();
 });
 

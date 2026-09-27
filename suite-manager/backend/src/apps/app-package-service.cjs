@@ -1117,9 +1117,13 @@ class AppPackageService {
       // One instance whose snapshot no longer matches its record (a pending
       // update commit, a corrupted snapshot) must degrade to its own recovery
       // card, never take the whole app list down with it.
+      // Summarised under the id the app is installed as, not the id its manifest
+      // claims. For an external package those differ, and the summary's own icon
+      // and screenshot URLs are built from the id it is given: addressed by the
+      // manifest id they resolve to no installed app and 404.
       let installedSummary = null;
       if (instance?.snapshotState === 'installed') {
-        try { installedSummary = publicPackageSummary(this.installedPackageFor(instance).manifest); } catch {}
+        try { installedSummary = publicPackageSummary({ ...this.installedPackageFor(instance).manifest, id: packageId }); } catch {}
       }
       const summary = installedSummary
         || (instance
