@@ -966,7 +966,9 @@ function AppDetail({
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
-        {app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
+        {/* An offered package carries the same status, and without the instance
+            guard its card called the version on offer "Installed". */}
+        {app.instance && app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
           {app.appVersion ? <div><span>Installed</span><strong>{app.appVersion}</strong></div> : null}
           <div><span>Source</span><strong>A source you added</strong></div>
           <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
@@ -1202,9 +1204,7 @@ function AppDetail({
             })}
           </ul>
         </Notice> : null}
-        {/* Two grey shields and "no change" is the truthful reading for an app
-            MOS does not assess, and a useless one: there was never an assessment
-            to change. The notice above already says what updating one risks. */}
+        {/* Nothing to compare where neither side was ever assessed. */}
         {isNotAssessed(comparison.installed.privacy) || isNotAssessed(comparison.candidate.privacy)
           ? null
           : <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />}

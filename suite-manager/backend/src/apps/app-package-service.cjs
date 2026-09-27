@@ -957,15 +957,9 @@ class AppPackageService {
         || { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' };
     }
     // Only a MOS-reviewed source may present a package-shipped review as a
-    // review. An external package can ship a `privacy-review.json` claiming any
-    // posture it likes, so it is not read at all and the instance reports the one
-    // honest thing instead: MOS assesses the packages it publishes, so this app
-    // has no MOS assessment and is not waiting for one.
-    //
-    // Derived from where the package came from rather than read back from the
-    // row. The stored status records what the package itself shipped; that an app
-    // from an added source is outside MOS's scope is a property of the source,
-    // true of every such row however it was written.
+    // review, so an external package's own file is not read at all. Derived from
+    // the source rather than the row: being outside MOS's scope is a property of
+    // where the package came from, true of every such row however it was written.
     if (instance.sourceTrust !== 'mos-reviewed') {
       return { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' };
     }
@@ -1157,12 +1151,8 @@ class AppPackageService {
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',
         privacy: this.packagePrivacyFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
-        // Who publishes an installed external app, for the same reason an offered
-        // one carries it: with no MOS assessment to read, the repository is what
-        // the owner judges instead, and it should not disappear the moment they
-        // install it. An offered package carries its source record's publisher
-        // name too; an installed one is named by its repository path, which is
-        // the identity that stays true whether or not the source is still added.
+        // With no MOS assessment to read, the repository is what the owner judges
+        // instead, so it must not disappear the moment they install the app.
         ...(instance?.sourceKind === 'external-git' && instance.sourceRepository
           ? { source: { repository: instance.sourceRepository } }
           : {}),

@@ -2673,9 +2673,8 @@
   line-height: 1.55;
 }
 
-/* Why an app from an added source carries no grade, above the facts that hold
-   anyway. Muted rather than boxed: it is the reason for the sentence above it,
-   not a second warning competing with the one below. */
+/* Muted rather than boxed: the reason for the sentence above it, not a second
+   warning competing with the one below. */
 .suite-privacy-why {
   margin: 0;
   color: var(--mos-color-text-muted);
@@ -2685,8 +2684,8 @@
 
 .suite-privacy-rows { display: grid; }
 
-/* Only the enclosure rows are labelled; the dimension rows sit directly under
-   the posture sentence that introduces them. */
+/* Only the enclosure rows are labelled; the dimension rows sit under the posture
+   sentence that introduces them. */
 .suite-privacy-rows-label {
   padding-bottom: var(--mos-space-2);
   color: var(--mos-color-text-muted);

@@ -21,9 +21,8 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
   const unreviewed = { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' };
   // Only a MOS-reviewed source may have its shipped review presented as a
   // review. Any other package can put whatever posture it likes in its own
-  // `privacy-review.json`, so the file is not read for it at all — and the
-  // preview says MOS does not assess this app rather than that it has not got
-  // round to it, which would promise a review to compare against next time.
+  // `privacy-review.json`, so the file is not read for it at all, and the preview
+  // says MOS does not assess this app rather than has not got round to it.
   if (source?.trust !== 'mos-reviewed') return { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' };
   const reviewPath = path.join(packageDir, 'privacy-review.json');
   if (!fs.existsSync(reviewPath)) return unreviewed;

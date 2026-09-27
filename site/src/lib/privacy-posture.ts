@@ -66,10 +66,8 @@ export type PrivacyDimensionRow = {
 
 export const ASSESSMENT_DOCS_URL = 'https://myownsuite.org/docs/privacy/how-we-assess/';
 
-// Where the same page explains why an app from an added source never gets a
-// grade. A surface showing NOT_ASSESSED links here instead, because sending
-// somebody to "how MOS assesses app privacy" to read about an app MOS does not
-// assess is the wrong door.
+// Where NOT_ASSESSED links instead: "how MOS assesses app privacy" is the wrong
+// door for an app MOS does not assess.
 export const EXTERNAL_DOCS_URL = 'https://myownsuite.org/docs/privacy/how-we-assess/#apps-from-sources-you-add';
 
 export const SHIELD_PATH = 'M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z';
@@ -124,19 +122,10 @@ export const UNREVIEWED = {
   soft: 'var(--mos-color-danger-soft)',
 };
 
-// Not a posture either, and not the same absence as UNREVIEWED. An app from a
-// source the owner added sits outside what MOS assesses, permanently rather
-// than pending: MOS assesses the packages it publishes, and a
-// `privacy-review.json` shipped by somebody else's repository is that
-// publisher's word about themselves. Printing it here in MOS's colours would
-// make their claim read as MOS's, so it is never carried forward and no grade
-// is ever derived from it.
-//
-// Everything about this state has to say permanent rather than pending. No
-// "yet", no "not rated", no queue implied anywhere it appears; grey rather
-// than danger red, because this is absence of scope and not a failing verdict;
-// and a shield drawn with a broken outline, because the slot is not waiting to
-// be filled. See shieldDashArray and tileLabelFor.
+// An app from a source the owner added: outside what MOS assesses, permanently
+// rather than pending, so no copy in this state may imply a queue. A review
+// shipped by somebody else's repository is its publisher's word, never carried
+// forward as MOS's.
 export const NOT_ASSESSED = {
   border: 'var(--mos-color-surface-border)',
   color: 'var(--mos-color-text-muted)',
@@ -155,16 +144,9 @@ export const DIMENSIONS: Array<{ iconPath: string; key: PrivacyDimensionKey; lab
   { iconPath: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8', key: 'policyExposure', label: 'Policies' },
 ];
 
-// What MOS builds around every app package whoever wrote it. These replace the
-// five dimension rows on a surface showing NOT_ASSESSED: the dimensions are
-// MOS's questions about an app, and rendering them all "unknown" both promises
-// an answer that is not coming and leaves the owner with nothing. These are the
-// facts that survive the absence of an assessment — not findings about the app,
-// but the shape of the box it runs in, which MOS enforces either way.
-//
-// Each one has to stay true of every package MOS can install, so nothing
-// app-specific or source-specific belongs here. They restate the limits the
-// Apps screen already promises an external package in prose.
+// What MOS builds around every app package whoever wrote it, which is what
+// survives the absence of an assessment. These replace the dimension rows where
+// there is no review, so each must stay true of every package MOS can install.
 export const ENCLOSURE_FACTS: Array<{ detail: string; iconPath: string; label: string }> = [
   {
     detail: 'Named volumes MOS creates for it. Not your host folders, not another app’s data, not your backups.',
@@ -183,10 +165,7 @@ export const ENCLOSURE_FACTS: Array<{ detail: string; iconPath: string; label: s
   },
 ];
 
-// The limit of the box above, said in the same breath rather than left for the
-// owner to discover. Every other risk an unassessed app carries is bounded by
-// ENCLOSURE_FACTS; this one is not bounded by anything, which is why it is the
-// thing to decide on.
+// The one risk ENCLOSURE_FACTS does not bound, so it is said in the same breath.
 export const ENCLOSURE_GAP = 'Installing or updating it builds its Dockerfiles on your server, which runs commands its publisher wrote — with network access — before any of those limits apply. That step is what you are trusting the repository for.';
 
 const PHRASES: Record<PrivacyDimensionKey, Record<string, { level: 0 | 1 | 2; phrase: string }>> = {
@@ -224,9 +203,6 @@ const VERDICTS: Record<0 | 1 | 2, PrivacyVerdict> = {
 
 const UNKNOWN_VERDICT: PrivacyVerdict = { border: 'var(--mos-color-surface-border)', color: 'var(--mos-color-text-muted)', soft: 'var(--mos-color-surface-strong)', word: 'Unknown' };
 
-// Whether this app is one MOS never rates, rather than one it has not rated
-// yet. The backend decides it from the source the package came from, never
-// from anything the package says about itself.
 export function isNotAssessed(privacy: PrivacyReviewSummary | null | undefined): boolean {
   return privacy?.status === 'not-assessed';
 }
@@ -237,16 +213,13 @@ export function postureFor(privacy: PrivacyReviewSummary | null | undefined) {
   return (posture && POSTURES[posture]) || UNREVIEWED;
 }
 
-// A solid shield outline means MOS reached a verdict; a broken one means this
-// slot is never going to hold one. Same silhouette in the same place, so the
-// eye still knows where to look, with one bit of ink carrying the difference
-// between "no answer yet" and "not MOS's question".
+// Solid outline means MOS reached a verdict, broken means this slot never holds
+// one — same silhouette in the same place, so the eye still knows where to look.
 export function shieldDashArray(privacy: PrivacyReviewSummary | null | undefined): string | null {
   return isNotAssessed(privacy) ? '2.6 2.2' : null;
 }
 
-// The word "grade" over a `?` is a pending grade however grey the shield is,
-// so the tile names what the slot actually holds instead.
+// "Grade" over a `?` reads as a pending grade however grey the shield is.
 export function tileLabelFor(privacy: PrivacyReviewSummary | null | undefined): string {
   return isNotAssessed(privacy) ? 'Privacy' : 'Posture grade';
 }
@@ -372,9 +345,7 @@ export function provenanceMethodLabel(privacy: PrivacyReviewSummary | null | und
 }
 
 export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): string {
-  // An app from an added source has no MOS assessment on either side of an
-  // update, so there is no change to describe — and saying "neither has been
-  // rated yet" here would promise the review that is never coming.
+  // No assessment on either side, so no change to describe.
   if (isNotAssessed(installed) || isNotAssessed(candidate)) {
     return 'MOS does not assess apps from sources you added, so neither version carries a MOS assessment.';
   }

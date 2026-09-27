@@ -102,15 +102,43 @@ class ExternalSourceService {
   // A source that is not installable contributes nothing either. Its packages are
   // not offerable, and a card that looks installable but refuses at the last step
   // is worse than no card.
+  //
+  // The MOS-owned half of a cached card is re-derived on every read: an unchanged
+  // revision skips the archive download, so a release that changes those rules
+  // would otherwise reach nobody until a source got a new commit.
   catalogPackages() {
     const cards = [];
     for (const record of this.store.listAppSources()) {
       if (!sourceInstallable(record)) continue;
       for (const card of this.cache.get(record.id)?.packages || []) {
-        cards.push({ ...card, source: { id: record.id, publisher: record.publisher, repository: record.repository } });
+        cards.push({
+          ...card,
+          ...this.mosOwnedCardFields(),
+          source: { id: record.id, publisher: record.publisher, repository: record.repository },
+          trust: record.trust,
+        });
       }
     }
     return cards;
+  }
+
+  // The parts of an external card that are MOS's rules rather than the source's
+  // content. Everything here must be derivable without the package; anything
+  // that needs it belongs in packageCard.
+  mosOwnedCardFields() {
+    return {
+      // Stated rather than omitted, so the Apps list treats the card like any other.
+      advisories: [],
+      catalogUpdate: { available: null, installed: null, status: 'external-source' },
+      external: true,
+      // No icon on this server to fetch: it travels inlined on the card instead.
+      iconUrl: '',
+      instance: null,
+      mosReviewed: false,
+      // `not-assessed`, not `review-required`: the latter means a review MOS owes
+      // and the UI is right to show as pending.
+      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' },
+    };
   }
 
   // Bring one source's cached package list up to date.
@@ -188,37 +216,18 @@ class ExternalSourceService {
     }, entry.errors);
     return {
       ...summary,
-      // MOS publishes no advisories against a package it has not reviewed, and a
-      // source that is not the catalog cannot offer an update to something that is
-      // not installed. Both are stated rather than omitted so the Apps list can
-      // treat an offered external package exactly like any other card.
-      advisories: [],
-      catalogUpdate: { available: null, installed: null, status: 'external-source' },
-      external: true,
       iconDataUrl: installable ? this.iconDataUrl(entry) : null,
-      instance: null,
       // The id every API path addresses this package by. It is the source-namespaced
       // id, never the bare id the manifest claims, because that is the identity the
       // instance row, containers, volumes, and routes all take.
       id: entry.namespacedPackageId,
-      iconUrl: '',
       installStatus: installable ? 'external-available' : 'external-unavailable',
-      mosReviewed: false,
       packageDigest: entry.packageDigest,
       packageErrors: entry.errors,
       packageId: entry.packageId,
       permissions: entry.permissions,
-      // A package MOS has not reviewed has no posture. A `privacy-review.json` the
-      // package ships is not a MOS review, which is why nothing the package claims
-      // about itself is read here.
-      //
-      // `not-assessed`, not `review-required`: the second means a review MOS owes
-      // and has not written, which is a queue the Apps UI is right to describe as
-      // pending. MOS assesses the packages it publishes, so nothing it can say
-      // about this app is ever coming, and the status has to carry that difference
-      // or every surface downstream re-invents it from `external`.
-      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' },
       trust: source.trust,
+      ...this.mosOwnedCardFields(),
     };
   }
 

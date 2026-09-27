@@ -95,11 +95,9 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
-// The body of the dialog for an app MOS does not assess. It answers the three
-// questions the five "unknown" dimension rows used to leave open: why there is
-// no grade and why one is not coming, what MOS guarantees regardless, and what
-// is left for the owner to weigh. Suite Manager only — the public site lists
-// catalog apps, every one of which carries a review, so there is no sibling.
+// Dialog body for an app MOS does not assess: why there is no grade, what MOS
+// guarantees regardless, what is left to weigh. Suite Manager only — every app
+// the public site lists carries a review, so there is no sibling.
 function NotAssessedBody() {
   return <>
     <p className="suite-privacy-why">
@@ -139,9 +137,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
   // dialog has to be able to reach it.
   packageId?: string | null;
   privacy: PrivacyReviewSummary | null | undefined;
-  // Who publishes the app, for a package MOS does not assess. It is the one
-  // thing the owner can actually weigh in place of a grade, so the dialog
-  // names it rather than leaving "a source you added" abstract.
+  // Who publishes it: what the owner weighs in place of a grade.
   sourceLabel?: string | null;
 }) {
   const posture = postureFor(privacy);
@@ -162,8 +158,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
     title={`${appName} privacy`}
   >
     <p className="suite-privacy-sentence">{posture.sentence}</p>
-    {/* The override line scopes an assessment to the app as MOS ships it, so it
-        has nothing to say where there is no assessment to scope. */}
+    {/* Nothing to scope where there is no assessment. */}
     {overrideNotice && !notAssessed ? <p className="suite-privacy-override">{overrideNotice}</p> : null}
     {notAssessed ? <NotAssessedBody /> : <div className="suite-privacy-rows">
       {dimensionRowsFor(privacy).map((row) => <div className="suite-privacy-row" key={row.key}>
@@ -190,8 +185,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
     </a> : null}
     <div className="suite-privacy-footer">
       <div className="suite-privacy-footer-meta">
-        {/* Who published it sits where a reviewed app's provenance sits, because
-            it answers the same question: whose word this app comes with. */}
+        {/* The publisher sits where provenance does: whose word this comes with. */}
         <span>{[
           provenanceLine(privacy, isRated(privacy) ? appVersion : null),
           notAssessed && sourceLabel ? `from ${sourceLabel}` : null,

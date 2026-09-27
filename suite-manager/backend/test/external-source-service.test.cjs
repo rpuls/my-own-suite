@@ -283,6 +283,46 @@ test('an added source caches its package list and serves it to the Apps list wit
   store.close();
 });
 
+// The regression this caught once: an update replaced 'Not yet reviewed' with 'Not
+// assessed by MOS' and the Apps page kept the old card, because an unchanged
+// revision skips the archive download and the whole rendered card is cached.
+test('MOS-owned card fields are re-derived on read, so a cached card cannot outlive the rules that made it', async () => {
+  const store = await tempStore();
+  const client = fakeClient({
+    async listPackages(record) {
+      return { cleanup: () => {}, packages: [fakePackage(record, 'community-notes')] };
+    },
+  }, ['community-notes']);
+  const svc = service(store, client);
+  const added = await svc.addSource({ publisher: 'community', repository, trust: 'unverified' });
+
+  // A cache written by an older MOS: good source content, stale rules beside it.
+  const stale = svc.cache.get(added.id);
+  svc.cache.put(added.id, {
+    packages: stale.packages.map((card) => ({
+      ...card,
+      advisories: [{ id: 'invented' }],
+      catalogUpdate: { available: null, installed: null, status: 'up-to-date' },
+      external: false,
+      mosReviewed: true,
+      privacy: { dimensions: null, posture: 'private-by-default', reviewedAt: null, status: 'reviewed' },
+    })),
+    revision: stale.revision,
+  });
+
+  const [card] = svc.catalogPackages();
+  assert.equal(card.privacy.status, 'not-assessed');
+  assert.equal(card.privacy.posture, null);
+  assert.equal(card.mosReviewed, false);
+  assert.equal(card.external, true);
+  assert.equal(card.trust, 'unverified');
+  assert.deepEqual(card.advisories, []);
+  assert.equal(card.catalogUpdate.status, 'external-source');
+  // What the source published still comes from the cache.
+  assert.equal(card.packageId, 'community-notes');
+  assert.deepEqual(card.permissions, ['route:notes', 'volume:notes-data']);
+  store.close();
+});
 // A source MOS cannot reach has not retracted what it published yesterday, and the
 // reason it could not be reached is the whole point of the warning an owner sees.
 test('an unreachable source keeps serving its cached packages and records what the host actually answered', async () => {
