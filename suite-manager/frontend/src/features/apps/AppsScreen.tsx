@@ -632,8 +632,12 @@ function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
 // An app a source offers has no icon file on this server to fetch: the source's
 // download is discarded once its packages are read, so its icon travels inlined
 // on the card instead of as a URL. Installed apps keep the served URL.
+function appIconSrc(app: Pick<AppPackageSummary, 'iconDataUrl' | 'iconUrl'>) {
+  return app.iconUrl || app.iconDataUrl || undefined;
+}
+
 function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
-  const icon = app.iconUrl || app.iconDataUrl || '';
+  const icon = appIconSrc(app);
   return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
     {icon ? <img alt="" src={icon} /> : <span>{initialsFor(app.name)}</span>}
   </span>;
@@ -1047,8 +1051,8 @@ function AppDetail({
               return <article className="suite-app-connection" key={peer.id}>
                 <AppConnect
                   size="sm"
-                  source={{ iconUrl: peerPackage?.iconUrl, name: peer.name }}
-                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                  source={{ iconUrl: peerPackage ? appIconSrc(peerPackage) : undefined, name: peer.name }}
+                  target={{ iconUrl: appIconSrc(app), name: app.name }}
                 />
                 <div className="suite-app-connection-copy">
                   <strong>{peer.name}</strong>
@@ -1073,8 +1077,8 @@ function AppDetail({
               return <article className="suite-app-connection" key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`}>
                 <AppConnect
                   size="sm"
-                  source={{ iconUrl: providerPackage?.iconUrl, name: connection.provider.name }}
-                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                  source={{ iconUrl: providerPackage ? appIconSrc(providerPackage) : undefined, name: connection.provider.name }}
+                  target={{ iconUrl: appIconSrc(app), name: app.name }}
                 />
                 <div className="suite-app-connection-copy">
                   <strong>{connection.title}</strong>
