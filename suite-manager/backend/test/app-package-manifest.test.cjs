@@ -163,6 +163,25 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
   assert.deepEqual(validateAppPackageManifest(onlyoffice.manifest, { packageDir: onlyoffice.packageDir }), []);
 });
 
+// A package outside the official catalog can only reach Paperless's API if
+// Paperless keeps publishing it: dropping this export would leave such a package
+// installed with no address and no way to be given one. The capability carries no
+// credential because Paperless mints its API tokens in its own database, where MOS
+// never sees them, so a consumer collects its own token from the owner.
+test('Paperless-ngx package exports its archive without handing over a credential', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const paperless = packages.find((entry) => entry.manifest.id === 'paperless-ngx');
+  const archive = paperless?.manifest.exports?.documentArchive;
+
+  assert.ok(paperless);
+  assert.equal(archive.type, 'document-archive');
+  assert.equal(archive.protocol, 'paperless-ngx-rest');
+  assert.equal(archive.interfaceVersion, 1);
+  assert.equal(archive.internalBaseUrl, 'http://paperless:8000');
+  assert.equal(archive.secrets, undefined);
+  assert.deepEqual(validateAppPackageManifest(paperless.manifest, { packageDir: paperless.packageDir }), []);
+});
+
 test('Immich package is discoverable and declares its heavy multi-service stack generically', () => {
   const packages = discoverAppPackages(v2AppsDir);
   const immich = packages.find((entry) => entry.manifest.id === 'immich');
