@@ -201,9 +201,11 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 - `mos-first-boot` leads with **Locked.** on an installed machine whose vault
   did not open, and says where to enter the key; only a machine whose gate
   succeeded reads **Installed and running.**
-- `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
-  the address reservation both doors need, then offers each door in one line, and
-  points at the docs for the rest; a login screen is the wrong place for a guide.
+- `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It asks
+  tty1 how many rows the console has and prints the full screen when there is
+  room for it — the reservation both doors need, each door with the reason to
+  prefer it, and what to do when one does not load — falling back to a
+  twenty-row version on a console that answers 80x25 or will not answer at all.
   The Easy Door line appears only when this machine's address is RFC1918 and the
   live Caddyfile still serves that door, and the name comes from
   `shared/easy-door.cjs` so the screen cannot print an address the box refuses.

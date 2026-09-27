@@ -14,13 +14,12 @@
 # it drew are gone rather than redrawn. Add a glyph here only after seeing it on
 # a screen - ✓ (U+2713) and ▸ (U+25B8) do not render either.
 #
-# Twenty rows, and not one more. A UEFI machine may paint the console on the
-# panel's framebuffer, but plenty of firmware hands the kernel an 80x25 text mode
-# instead, and that is the size this banner has to survive. The server login is
-# four more rows written by mos-console-login as its own file after this one, and
-# agetty spends the twenty-fifth on the prompt. A row added here is a row taken
-# off the top of the screen, silently, on exactly the machines least able to
-# afford it - which is how the logo and the whole of door A once scrolled away.
+# The screen is as tall as the machine says it is, and no taller. A UEFI machine
+# may hand the kernel a framebuffer console of 45 rows or more; plenty of
+# firmware hands it an 80x25 text mode instead. Both exist on this desk. So there
+# are two screens, written out separately below and laid out differently rather
+# than one being the other with lines removed, and the machine is asked which one
+# it has room for.
 #
 # There is no run-once guard on the unit: this re-renders on every boot, and
 # mos-address-watch.timer runs it again every couple of minutes. An address that
@@ -28,7 +27,8 @@
 # the truth - Suite Manager knows its address drifted and offers to follow, but
 # an owner who cannot reach Suite Manager cannot be told that. Waiting for a
 # reboot to say so is the difference between a minute and an evening for someone
-# who does not know a reboot is what is called for.
+# who does not know a reboot is what is called for. The same re-run is what picks
+# up a console that only reaches its full size once a graphics driver has loaded.
 #
 # Being safe to run on a timer is the whole of what that costs: the banner is
 # written and the console repainted only when what it would say has changed,
@@ -41,6 +41,7 @@ set -euo pipefail
 home_url='@@HOME_URL@@'
 domain='@@DOMAIN@@'
 docs_url='@@DOCS_URL@@'
+easy_docs_url='@@EASY_DOCS_URL@@'
 
 # Suite Manager's host gate admits the Easy Door name derived from
 # `shared/easy-door.cjs`, so the banner has to name the address that module
@@ -87,6 +88,193 @@ if systemctl is-failed --quiet mos-vault.service 2>/dev/null; then
   vault_locked=yes
 fi
 
+# ---------------------------------------------------------------------------
+# The screens. Each one is written out in full, in the order it appears on the
+# console - its own logo included - so that what a machine prints can be read
+# and changed here without unpicking it from the others. They share nothing, and
+# that is deliberate: the tall screen opens with the six-row logo and states the
+# machine under it, while the short one uses a four-row logo with the state set
+# beside it, which is five rows it can spend on words instead. Where a screen
+# still asks a question, it is because the machine is in one state or another,
+# not because the screen has two shapes.
+# ---------------------------------------------------------------------------
+
+# THE FULL SCREEN - 39 rows, printed when the console has room for it.
+#
+# It opens with the six-row logo, because a screen with rows to spare should
+# look like something. Nothing below it is decoration: the reservation is the
+# step people skip, the paragraph under A is the only place an owner is told why
+# A is worth the trouble, the paragraph under B is the only place they are told
+# that an address which looks public is not, and the note under that is what
+# they read when B does not load. Adding a row here means raising `tall_rows`,
+# and the unit test says so.
+render_tall() {
+  printf '\033[2J\033[H\033[32m      ███╗   ███╗  ██████╗  ███████╗\033[0m\n'
+  printf '\033[32m      ████╗ ████║ ██╔═══██╗ ██╔════╝\033[0m\n'
+  printf '\033[32m      ██╔████╔██║ ██║   ██║ ███████╗\033[0m\n'
+  printf '\033[32m      ██║╚██╔╝██║ ██║   ██║ ╚════██║\033[0m\n'
+  printf '\033[32m      ██║ ╚═╝ ██║ ╚██████╔╝ ███████║\033[0m\n'
+  printf '\033[32m      ╚═╝     ╚═╝  ╚═════╝  ╚══════╝\033[0m\n'
+  printf '\n'
+  if [ "$vault_locked" = yes ]; then
+    printf '  \033[1;33m>  Locked.\033[0m  \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
+    printf '\n'
+    printf '     \033[2mYour data is encrypted and waiting for your recovery key. Open one\033[0m\n'
+    printf '     \033[2mof the addresses below, enter it, and your apps start.\033[0m\n'
+  else
+    printf '  \033[1;32m>  Installed and running.\033[0m  \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
+    printf '\n'
+    printf '     \033[2mReserve that address in your router before anything else - your\033[0m\n'
+    printf '     \033[2mrouter may call it a DHCP reservation. This step is important.\033[0m\n'
+  fi
+  printf '\n'
+  if [ -n "$easy_host" ]; then
+    printf '  \033[1;32mA   THE BEST WAY IN\033[0m \033[2m- if you can add a DNS rule\033[0m\n'
+  else
+    printf '  \033[1;32mTHE WAY IN\033[0m \033[2m- add a DNS rule for this machine\033[0m\n'
+  fi
+  printf '\n'
+  printf '      \033[2mYour router, Pi-hole or AdGuard Home needs one wildcard record:\033[0m\n'
+  printf '\n'
+  printf '          \033[1;36m*.%-15s ->        %s\033[0m\n' "$domain" "$lan_ip"
+  printf '\n'
+  printf '      \033[2mThen open\033[0m        \033[1;36m%s\033[0m\n' "$home_url"
+  printf '\n'
+  if [ -n "$easy_host" ]; then
+    printf '      \033[2mNothing about your suite ever leaves your network. Take this one\033[0m\n'
+    printf '      \033[2mif you can - many routers cannot do it, and that is why B exists.\033[0m\n'
+    printf '\n'
+    printf '  \033[1;32mB   THE EASY WAY IN\033[0m \033[2m- nothing to set up\033[0m\n'
+    printf '\n'
+    printf '      \033[2mOpen\033[0m   \033[1;36mhttp://%s/\033[0m\n' "$easy_host"
+    printf '\n'
+    printf '      \033[2mAny device on your home network, phones included. The address\033[0m\n'
+    printf '      \033[2mlooks public but it is not - nothing outside can reach your suite.\033[0m\n'
+    printf '      \033[2mCurious how?\033[0m  \033[36m%s\033[0m\n' "$easy_docs_url"
+    printf '\n'
+    printf '      \033[2mNothing loads? Your router is refusing addresses that point into\033[0m\n'
+    printf '      \033[2myour own network. Allow local.myownsuite.org in its DNS settings,\033[0m\n'
+    printf '      \033[2mor use A instead.\033[0m\n'
+  else
+    printf '      \033[2mNothing about your suite ever leaves your network.\033[0m\n'
+  fi
+  printf '\n'
+  printf '  \033[33m>\033[0m  \033[1mOnce inside, follow the instructions on screen.\033[0m\n'
+  if [ -n "$easy_host" ]; then
+    printf '     \033[2mBoth addresses reach your suite only from inside your own network.\033[0m\n'
+  else
+    printf '     \033[2mThat address reaches your suite only from inside your own network.\033[0m\n'
+  fi
+  printf '\n'
+  printf '  \033[2mNeed help?\033[0m  \033[36m%s\033[0m\n' "$docs_url"
+}
+
+# THE SHORT SCREEN - 20 rows, for an 80x25 console and for one that will not say
+# how big it is.
+#
+# It is not the full screen with lines removed. It has its own four-row logo,
+# and the machine's state is set beside it rather than under it: those five rows
+# are what pays for keeping the reason to prefer A, the reassurance about B's
+# address, and the note for when B does not load. The state block is written out
+# twice, once running and once locked, because what a console prints should be
+# readable here as the four rows it is.
+render_short() {
+  if [ "$vault_locked" = yes ]; then
+    printf '\033[2J\033[H\033[32m  ██   ██  ██████  ██████\033[0m   \033[1;33mLocked.\033[0m\n'
+    printf '\033[32m  ███ ███  ██  ██  ███   \033[0m   \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
+    printf '\033[32m  ██ █ ██  ██  ██     ███\033[0m   \033[2mYour data is encrypted. Open an address\033[0m\n'
+    printf '\033[32m  ██   ██  ██████  ██████\033[0m   \033[2mbelow and enter your recovery key.\033[0m\n'
+  else
+    printf '\033[2J\033[H\033[32m  ██   ██  ██████  ██████\033[0m   \033[1;32mInstalled and running.\033[0m\n'
+    printf '\033[32m  ███ ███  ██  ██  ███   \033[0m   \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
+    printf '\033[32m  ██ █ ██  ██  ██     ███\033[0m   \033[2mReserve that address in your router -\033[0m\n'
+    printf '\033[32m  ██   ██  ██████  ██████\033[0m   \033[2mit may call it a DHCP reservation.\033[0m\n'
+  fi
+  printf '\n'
+  if [ -n "$easy_host" ]; then
+    printf '  \033[1;32mA   THE BEST WAY IN\033[0m \033[2m- one DNS rule in your router, Pi-hole or AdGuard Home\033[0m\n'
+  else
+    printf '  \033[1;32mTHE WAY IN\033[0m \033[2m- one DNS rule in your router, Pi-hole or AdGuard Home\033[0m\n'
+  fi
+  printf '      \033[1;36m*.%s  ->  %s\033[0m\n' "$domain" "$lan_ip"
+  printf '      \033[2mThen open\033[0m  \033[1;36m%s\033[0m\n' "$home_url"
+  if [ -n "$easy_host" ]; then
+    printf '      \033[2mNothing about your suite ever leaves your network. Take this one if\033[0m\n'
+    printf '      \033[2myou can - many routers cannot do it, and that is why B exists.\033[0m\n'
+    printf '\n'
+    printf '  \033[1;32mB   THE EASY WAY IN\033[0m \033[2m- nothing to set up\033[0m\n'
+    printf '      \033[2mOpen\033[0m  \033[1;36mhttp://%s/\033[0m\n' "$easy_host"
+    printf '      \033[2mAny device on your home network, phones included. It looks public\033[0m\n'
+    printf '      \033[2mbut it is not - nothing outside can reach your suite.\033[0m\n'
+    printf '      \033[2mNothing loads? Allow local.myownsuite.org in your router DNS settings.\033[0m\n'
+  else
+    printf '      \033[2mNothing about your suite ever leaves your network.\033[0m\n'
+  fi
+  printf '\n'
+  printf '  \033[33m>\033[0m  \033[1mOnce inside, follow the instructions on screen.\033[0m\n'
+  if [ -n "$easy_host" ]; then
+    printf '     \033[2mBoth addresses reach your suite only from inside your own network.\033[0m\n'
+  else
+    printf '     \033[2mThat address reaches your suite only from inside your own network.\033[0m\n'
+  fi
+  printf '  \033[2mNeed help?\033[0m  \033[36m%s\033[0m\n' "$docs_url"
+}
+
+# NO ADDRESS - 10 rows, and the same on every console, because it fits the
+# smallest one. Printing an address line with nothing in it would be worse than
+# saying nothing: it reads as advice and cannot work.
+render_no_address() {
+  printf '\033[2J\033[H\033[32m  ██   ██  ██████  ██████\033[0m   \033[1;33mThis machine has no network\033[0m\n'
+  printf '\033[32m  ███ ███  ██  ██  ███   \033[0m   \033[1;33maddress yet.\033[0m\n'
+  printf '\033[32m  ██ █ ██  ██  ██     ███\033[0m\n'
+  printf '\033[32m  ██   ██  ██████  ██████\033[0m\n'
+  printf '\n'
+  printf '  \033[2mMy Own Suite is installed, but nothing can reach it until it is on\033[0m\n'
+  printf '  \033[2myour network. Plug it into your router, then reboot to see the\033[0m\n'
+  printf '  \033[2maddress and the last setup step.\033[0m\n'
+  printf '\n'
+  printf '  \033[2mNeed help?\033[0m  \033[36m%s\033[0m\n' "$docs_url"
+}
+
+# ---------------------------------------------------------------------------
+# Which screen this machine gets.
+#
+# The kernel keeps a window size per virtual console and updates it whenever the
+# mode or the font changes, so tty1 is asked rather than the framebuffer: the
+# pixel geometry under /sys says nothing about the font drawn on it, and this
+# screen is measured in characters. A console that will not answer, or answers
+# something implausible, counts as the smallest console there is - which is the
+# mode this banner used to assume for every machine.
+#
+# `tall_rows` is what render_tall prints and `reserved_rows` is what is printed
+# under it: the server login mos-console-login writes as its own file, and the
+# row agetty spends on the prompt. Both are asserted by the unit test rather
+# than trusted, because a screen one row too tall scrolls its own logo away.
+# ---------------------------------------------------------------------------
+tall_rows=39
+reserved_rows=5
+console_rows=25
+console_cols=80
+console_size="$(stty -F /dev/tty1 size 2>/dev/null || true)"
+case "$console_size" in
+  [0-9]*\ [0-9]*)
+    rows="${console_size%% *}"
+    cols="${console_size##* }"
+    if [ "$rows" -ge 24 ] && [ "$cols" -ge 80 ]; then
+      console_rows="$rows"
+      console_cols="$cols"
+    fi
+    ;;
+esac
+
+layout=short
+if [ "$console_rows" -ge "$((tall_rows + reserved_rows))" ]; then
+  layout=tall
+fi
+# Journal only, and the one line a support bundle needs to explain which screen
+# an owner is describing.
+echo "[mos] console ${console_rows}x${console_cols}, ${layout} banner"
+
 install -d -m 0755 /etc/issue.d
 banner=/etc/issue.d/10-mos-address.issue
 # Staged beside the real file so replacing it is an atomic rename on the same
@@ -95,59 +283,13 @@ banner=/etc/issue.d/10-mos-address.issue
 # `*.issue` glob agetty expands while it is being written.
 staged="${banner}.tmp"
 {
-  # agetty renders /etc/issue before this file and hands whatever is in it
-  # straight to the terminal, so clearing here puts the banner on a blank console
-  # instead of underneath the boot log. Files after this one in /etc/issue.d,
-  # the server login among them, are printed after it and stay on screen.
-  printf '\033[2J\033[H\033[32m      ███╗   ███╗  ██████╗  ███████╗\033[0m\n'
-  printf '\033[32m      ████╗ ████║ ██╔═══██╗ ██╔════╝\033[0m\n'
-  printf '\033[32m      ██╔████╔██║ ██║   ██║ ███████╗\033[0m\n'
-  printf '\033[32m      ██║╚██╔╝██║ ██║   ██║ ╚════██║\033[0m\n'
-  printf '\033[32m      ██║ ╚═╝ ██║ ╚██████╔╝ ███████║\033[0m\n'
-  printf '\033[32m      ╚═╝     ╚═╝  ╚═════╝  ╚══════╝\033[0m\n'
-  printf '\n'
-  if [ -n "$lan_ip" ]; then
-    # The two headlines occupy the same two rows deliberately: they are mutually
-    # exclusive, so the banner does not get taller for carrying a warning.
-    if [ "$vault_locked" = yes ]; then
-      printf '  \033[1;33m>  Locked.\033[0m  \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
-      printf '     \033[2mYour data is encrypted. Open an address below and enter your recovery key.\033[0m\n'
-    else
-      printf '  \033[1;32m>  Installed and running.\033[0m  \033[2mThis machine is\033[0m  \033[1;36m%s\033[0m\n' "$lan_ip"
-      printf '     \033[2mReserve that address in your router - it may call it a DHCP reservation.\033[0m\n'
-    fi
-    printf '\n'
-    if [ -n "$easy_host" ]; then
-      printf '  \033[1;32mA   THE BEST WAY IN\033[0m \033[2m- one DNS rule in your router, Pi-hole or AdGuard Home\033[0m\n'
-    else
-      printf '  \033[1;32mTHE WAY IN\033[0m \033[2m- one DNS rule in your router, Pi-hole or AdGuard Home\033[0m\n'
-    fi
-    printf '     \033[1;36m*.%s  ->  %s\033[0m\n' "$domain" "$lan_ip"
-    printf '     \033[2mThen open\033[0m  \033[1;36m%s\033[0m\n' "$home_url"
-    if [ -n "$easy_host" ]; then
-      # No blank row between the doors. The lettered headings are what tell them
-      # apart, and the six rows the logo takes have to come from somewhere.
-      printf '  \033[1;32mB   THE EASY WAY IN\033[0m \033[2m- nothing to set up\033[0m\n'
-      printf '     \033[2mOpen\033[0m  \033[1;36mhttp://%s/\033[0m\n' "$easy_host"
-      printf '     \033[2mNothing loads? Allow local.myownsuite.org in your router DNS settings.\033[0m\n'
-    fi
-    printf '\n'
-    printf '  \033[33m>\033[0m  \033[1mOnce inside, follow the instructions on screen.\033[0m\n'
-    if [ -n "$easy_host" ]; then
-      printf '     \033[2mBoth addresses reach your suite only from inside your own network.\033[0m\n'
-    else
-      printf '     \033[2mThat address reaches your suite only from inside your own network.\033[0m\n'
-    fi
+  if [ -z "$lan_ip" ]; then
+    render_no_address
+  elif [ "$layout" = tall ]; then
+    render_tall
   else
-    # Printing an address line with nothing in it would be worse than saying
-    # nothing: it reads as advice and cannot work.
-    printf '  \033[1;33mThis machine has no network address yet.\033[0m\n'
-    printf '\n'
-    printf '  \033[2mMy Own Suite is installed, but nothing can reach it until it is on\033[0m\n'
-    printf '  \033[2myour network. Plug it into your router, then reboot to see the\033[0m\n'
-    printf '  \033[2maddress and the last setup step.\033[0m\n'
+    render_short
   fi
-  printf '  \033[2mNeed help?\033[0m  \033[36m%s\033[0m\n' "$docs_url"
 } > "$staged"
 chmod 0644 "$staged"
 
