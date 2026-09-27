@@ -331,6 +331,34 @@ test('a source that is not installable offers no cards, and removing one forgets
   store.close();
 });
 
+// Removing a source is a decision the owner is entitled to take back. The record
+// MOS keeps of the removal is hidden from them everywhere — the Settings list
+// drops it, the Apps screen offers nothing from it — so if it still answered
+// "already added" to the same URL the owner would be left with no add button, no
+// row to act on, and no way to undo.
+test('a source the owner removed can be added again, and its record does not block the paste', async () => {
+  const store = await tempStore();
+  const svc = service(store);
+  const added = await svc.addSource({ repository, trust: 'unverified' });
+  svc.removeSource(added.id);
+
+  // The paste reports it as absent, which is what puts the add back in front of
+  // the owner, and the install behind it is not blocked either.
+  const resolved = await svc.resolveUrl(repository);
+  assert.equal(resolved.added, false);
+
+  const readded = await svc.addSource({ repository, trust: 'unverified' });
+  // Same repository, so the same derived identity: anything still installed from
+  // it is adopted again rather than orphaned twice.
+  assert.equal(readded.id, added.id);
+  assert.equal(readded.status, 'active');
+  assert.equal(svc.catalogPackages().length, 1);
+
+  // And a source the owner actually holds still refuses a second add.
+  await assert.rejects(() => svc.addSource({ repository, trust: 'unverified' }), { code: 'SOURCE_ALREADY_ADDED' });
+  store.close();
+});
+
 test('previewing a candidate returns its permission surface and unverified trust without persisting anything', async () => {
   const store = await tempStore();
   const svc = service(store);

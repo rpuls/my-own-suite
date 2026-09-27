@@ -1213,6 +1213,14 @@ class SuiteManagerStore {
     return this.getAppSource(id);
   }
 
+  // Drops a source's row so the same repository can be registered again. An
+  // installed app records the repository and catalog path it came from itself, so
+  // nothing hangs off this row: its apps stay manageable either way, and a source
+  // added again derives the same id and re-adopts them for updates.
+  deleteAppSource(id) {
+    this.database.prepare('DELETE FROM app_sources WHERE id = ?').run(id);
+  }
+
   updateAppSourceStatus({ at, id, status, statusReason = null }) {
     this.database.prepare(`
       UPDATE app_sources SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?

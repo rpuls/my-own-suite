@@ -67,6 +67,28 @@ class ExternalSourceService {
     this.sweeping = null;
   }
 
+  // The source record for a repository, when it is one the owner still has.
+  //
+  // A removed source is history: it is hidden from the Settings list and offers
+  // nothing on the Apps screen, so it must not answer "already added" to a paste of
+  // the same URL, or block the install behind it. Every path that asks whether a
+  // repository is already the owner's asks through here, so none of them can
+  // disagree with what the owner is looking at.
+  heldSource(id) {
+    const record = this.store.getAppSource(id);
+    return record && record.status !== 'removed' ? record : null;
+  }
+
+  // Clear a removed source's record so its repository can be registered again.
+  // Adding it back is a new decision, with its own addedAt and its own resolved
+  // revision, rather than a status walked backwards.
+  releaseRemovedSource(id) {
+    if (this.store.getAppSource(id) && !this.heldSource(id)) {
+      this.store.deleteAppSource(id);
+      this.cache.forget(id);
+    }
+  }
+
   listSources() {
     return this.store.listAppSources().map((record) => ({ ...publicSource(record), catalog: this.cache.status(record.id) }));
   }
@@ -212,7 +234,7 @@ class ExternalSourceService {
       return {
         // Present already, so the owner can see they are re-adding something rather
         // than be told at the end that it was already added.
-        added: Boolean(this.store.getAppSource(resolved.id)),
+        added: Boolean(this.heldSource(resolved.id)),
         packages: listing.packages.map((entry) => this.packageCard(entry, resolved)),
         source: {
           catalogPath: resolved.catalogPath,
@@ -250,7 +272,8 @@ class ExternalSourceService {
       { repository: parsed.repository, trust: 'unverified' },
       { allowLocalSources: this.allowLocalSources, now: this.now },
     );
-    const existing = this.store.getAppSource(record.id);
+    this.releaseRemovedSource(record.id);
+    const existing = this.heldSource(record.id);
     if (existing && !sourceInstallable(existing)) {
       throw new ExternalSourceError('SOURCE_NOT_INSTALLABLE', 'This source is not active, so new installs are blocked.');
     }
@@ -303,7 +326,8 @@ class ExternalSourceService {
   // carries the reason, and Refresh is there to try again.
   async addSource(input = {}, { ref = 'main' } = {}) {
     const record = buildSourceRecord(input, { allowLocalSources: this.allowLocalSources, now: this.now });
-    if (this.store.getAppSource(record.id)) {
+    this.releaseRemovedSource(record.id);
+    if (this.heldSource(record.id)) {
       throw new ExternalSourceError('SOURCE_ALREADY_ADDED', 'That package source is already added.');
     }
     const resolved = await this.client.resolveRevision(record, ref);
