@@ -539,6 +539,12 @@ class AppUpdateService {
       });
       const candidateConfig = [...installedConfigRows, ...addedConfig];
       secrets = redactionSecretsFor(candidateConfig, envRows);
+      // What the instance row records is the state of the review attached to this
+      // package: `review-required` means no valid MOS review is bound to it, which
+      // is as true of an external package as of a catalog one awaiting review.
+      // Whether a review is *pending* or permanently out of scope is a property of
+      // the source, not of the row, and is derived from the source wherever the
+      // status is presented (see packagePrivacyFor).
       let candidatePrivacy = { posture: null, reviewedAt: null, status: 'review-required' };
       const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
       // A package-shipped review counts as a review only from a MOS-reviewed

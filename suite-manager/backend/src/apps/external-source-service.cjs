@@ -209,9 +209,15 @@ class ExternalSourceService {
       packageId: entry.packageId,
       permissions: entry.permissions,
       // A package MOS has not reviewed has no posture. A `privacy-review.json` the
-      // package ships is not a MOS review, which is why this says review-required
-      // rather than reading anything the package claims about itself.
-      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+      // package ships is not a MOS review, which is why nothing the package claims
+      // about itself is read here.
+      //
+      // `not-assessed`, not `review-required`: the second means a review MOS owes
+      // and has not written, which is a queue the Apps UI is right to describe as
+      // pending. MOS assesses the packages it publishes, so nothing it can say
+      // about this app is ever coming, and the status has to carry that difference
+      // or every surface downstream re-invents it from `external`.
+      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' },
       trust: source.trust,
     };
   }

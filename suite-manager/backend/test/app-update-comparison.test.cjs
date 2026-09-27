@@ -129,8 +129,11 @@ test('an unverified package cannot present its own privacy review as a MOS revie
   writePrivacyReview(candidate, 'private-by-default', dimensions);
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
+  // Out of scope on both sides rather than pending on both sides, so the update
+  // preview has no assessment to compare and says so instead of implying one is
+  // on its way.
   for (const side of [comparison.installed.privacy, comparison.candidate.privacy]) {
-    assert.equal(side.status, 'review-required');
+    assert.equal(side.status, 'not-assessed');
     assert.equal(side.posture, null);
     assert.equal(side.dimensions, null);
   }

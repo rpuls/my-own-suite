@@ -22,9 +22,10 @@ an app joins the catalog when its review is done, not before. So every app you
 can install from the catalog carries a posture grade, with its evidence
 published.
 
-Apps you install from outside the catalog are a different thing: they are
-labelled **External · Unverified** and never receive a grade, because we have
-not reviewed them.
+Apps you install from a source you added are a different thing: they are
+labelled **External · Unverified**, and they never receive a grade - not now,
+not later. [Apps from sources you add](#apps-from-sources-you-add) says why,
+and what MOS enforces around them instead.
 
 ## What the assessment covers
 
@@ -135,3 +136,38 @@ feed, it warns that the absence of an advisory should be treated as unknown.
 Manifest privacy notes are labeled as package-provided and not independently
 verified. Only the structured Privacy Posture assessment receives the MOS
 evidence-backed grade.
+
+## Apps from sources you add
+
+MOS lets you add app sources of your own: a repository you trust, publishing
+packages MOS did not write. Those apps never carry a posture grade. That is not
+a queue you are waiting in - there is no review coming.
+
+The reason is what a grade means here. A posture grade is MOS's own finding
+about one exact package, with its evidence published. A package from somebody
+else's repository may well ship a privacy review of its own, and it may be
+honest and thorough, but it is its publisher's word about their own software.
+MOS does not read it and does not repeat it, because a claim printed in MOS's
+colours reads as a claim MOS checked, and nobody checked it. Baking reviews of
+other people's apps into MOS instead would mean standing behind software we do
+not publish, cannot version, and cannot reassess when it changes.
+
+So Suite Manager shows these apps a broken-outline shield with no letter in it,
+reading **Not assessed by MOS**, and tells you what it does know instead:
+
+- **Its own storage only** - named volumes MOS creates for it, not your host
+  folders, not another app's data, not your backups.
+- **Its own addresses only** - the web addresses its package asked for, which
+  you saw before installing it, and no others on your suite.
+- **No privileged access** - no Docker socket, no host network, no elevated
+  container.
+
+Those limits hold whoever wrote the app. One thing sits outside them:
+installing or updating an external app builds its Dockerfiles on your server,
+which runs commands its publisher wrote, with network access, before any of
+those limits apply. That step is what you are trusting the repository for, so
+install an external app only from a publisher you would trust to run a build on
+your machine.
+
+Whether to take that trade is yours to decide. MOS's job is to be clear that it
+is a decision, and never to dress somebody else's claim up as our assessment.

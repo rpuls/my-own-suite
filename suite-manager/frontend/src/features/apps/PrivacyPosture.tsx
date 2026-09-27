@@ -11,24 +11,30 @@
 // privacy-posture.ts (next to this file) and site/src/lib/privacy-posture.ts.
 // If you change look, copy, or logic here, mirror it in the siblings.
 
-import { Dialog } from '../../components/ui';
+import { Dialog, Notice } from '../../components/ui';
 import {
   ADVISORY_SEVERITY_STYLE,
   ADVISORY_TYPE_LABEL,
   ASSESSMENT_DOCS_URL,
+  ENCLOSURE_FACTS,
+  ENCLOSURE_GAP,
+  EXTERNAL_DOCS_URL,
   GLYPHS,
   SHIELD_PATH,
   advisoryMarkerLabel,
   badgeTextFor,
   dimensionRowsFor,
   gradeScaleLabel,
+  isNotAssessed,
   isRated,
   postureFor,
   privacyChangeSentence,
   privacyChanged,
   provenanceLine,
   provenanceMethodLabel,
+  shieldDashArray,
   sortedAdvisories,
+  tileLabelFor,
   tileMetaLine,
   type PrivacyAdvisory,
   type PrivacyReviewSummary,
@@ -41,8 +47,9 @@ function Glyph({ className, path }: { className?: string; path: string }) {
 export function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSummary | null | undefined; size: 'dialog' | 'row' | 'tile' }) {
   const posture = postureFor(privacy);
   const text = badgeTextFor(privacy);
+  const dash = shieldDashArray(privacy);
   return <span aria-hidden="true" className={`suite-privacy-shield is-${size}${text.length > 1 ? ' is-wide' : ''}`}>
-    <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} strokeLinejoin="round" strokeWidth="1.6" /></svg>
+    <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} strokeDasharray={dash || undefined} strokeLinejoin="round" strokeWidth="1.6" /></svg>
     <span style={{ color: posture.color }}>{text}</span>
   </span>;
 }
@@ -52,7 +59,7 @@ export function PrivacyFactsTile({ advisories, onOpen, privacy }: { advisories?:
   const marker = advisoryMarkerLabel(advisories);
   const topSeverity = sortedAdvisories(advisories)[0]?.severity;
   return <button className="suite-privacy-tile" onClick={onOpen} type="button">
-    <span className="suite-privacy-tile-label">Posture grade</span>
+    <span className="suite-privacy-tile-label">{tileLabelFor(privacy)}</span>
     <span className="suite-privacy-tile-posture">
       <PrivacyShieldBadge privacy={privacy} size="tile" />
       <strong>{posture.label}</strong>
@@ -88,7 +95,34 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
-export function PrivacyPostureDialog({ advisories, appName, appVersion, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, overrideNotice = null, packageId, privacy }: {
+// The body of the dialog for an app MOS does not assess. It answers the three
+// questions the five "unknown" dimension rows used to leave open: why there is
+// no grade and why one is not coming, what MOS guarantees regardless, and what
+// is left for the owner to weigh. Suite Manager only — the public site lists
+// catalog apps, every one of which carries a review, so there is no sibling.
+function NotAssessedBody() {
+  return <>
+    <p className="suite-privacy-why">
+      Whatever this package says about its own privacy is its publisher&apos;s word. MOS does not repeat it here, because a claim printed in MOS&apos;s colours reads as a claim MOS checked, and nobody did.
+    </p>
+    <div className="suite-privacy-rows">
+      <span className="suite-privacy-rows-label">What MOS enforces anyway</span>
+      {ENCLOSURE_FACTS.map((fact) => <div className="suite-privacy-row" key={fact.label}>
+        <span className="suite-privacy-row-icon"><Glyph path={fact.iconPath} /></span>
+        <span className="suite-privacy-row-text">
+          <strong>{fact.label}</strong>
+          <span>{fact.detail}</span>
+        </span>
+        <span className="suite-privacy-verdict" style={{ background: 'var(--mos-color-accent-soft)', borderColor: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent)' }}>Enforced</span>
+      </div>)}
+    </div>
+    <Notice title="What you are trusting" variant="warning">
+      <p>{ENCLOSURE_GAP}</p>
+    </Notice>
+  </>;
+}
+
+export function PrivacyPostureDialog({ advisories, appName, appVersion, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, overrideNotice = null, packageId, privacy, sourceLabel = null }: {
   advisories?: PrivacyAdvisory[] | null;
   appName: string;
   appVersion?: string | null;
@@ -105,10 +139,15 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
   // dialog has to be able to reach it.
   packageId?: string | null;
   privacy: PrivacyReviewSummary | null | undefined;
+  // Who publishes the app, for a package MOS does not assess. It is the one
+  // thing the owner can actually weigh in place of a grade, so the dialog
+  // names it rather than leaving "a source you added" abstract.
+  sourceLabel?: string | null;
 }) {
   const posture = postureFor(privacy);
   const method = provenanceMethodLabel(privacy);
   const gradeScale = gradeScaleLabel(privacy);
+  const notAssessed = isNotAssessed(privacy);
   return <Dialog
     className="suite-privacy-dialog"
     header={<div className="suite-privacy-dialog-heading">
@@ -123,8 +162,10 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
     title={`${appName} privacy`}
   >
     <p className="suite-privacy-sentence">{posture.sentence}</p>
-    {overrideNotice ? <p className="suite-privacy-override">{overrideNotice}</p> : null}
-    <div className="suite-privacy-rows">
+    {/* The override line scopes an assessment to the app as MOS ships it, so it
+        has nothing to say where there is no assessment to scope. */}
+    {overrideNotice && !notAssessed ? <p className="suite-privacy-override">{overrideNotice}</p> : null}
+    {notAssessed ? <NotAssessedBody /> : <div className="suite-privacy-rows">
       {dimensionRowsFor(privacy).map((row) => <div className="suite-privacy-row" key={row.key}>
         <span className="suite-privacy-row-icon"><Glyph path={row.iconPath} /></span>
         <span className="suite-privacy-row-text">
@@ -133,7 +174,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
         </span>
         <span className="suite-privacy-verdict" style={{ background: row.verdict.soft, borderColor: row.verdict.border, color: row.verdict.color }}>{row.verdict.word}</span>
       </div>)}
-    </div>
+    </div>}
     <AdvisoryNotices advisories={advisories || []} />
     {packageId && isRated(privacy) ? <a
       className="suite-privacy-report-link"
@@ -149,9 +190,15 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
     </a> : null}
     <div className="suite-privacy-footer">
       <div className="suite-privacy-footer-meta">
-        <span>{[provenanceLine(privacy, isRated(privacy) ? appVersion : null), method].filter(Boolean).join(' · ')}</span>
-        <a className="suite-privacy-link" href={assessmentUrl} rel="noreferrer" target="_blank">
-          How MOS assesses app privacy
+        {/* Who published it sits where a reviewed app's provenance sits, because
+            it answers the same question: whose word this app comes with. */}
+        <span>{[
+          provenanceLine(privacy, isRated(privacy) ? appVersion : null),
+          notAssessed && sourceLabel ? `from ${sourceLabel}` : null,
+          method,
+        ].filter(Boolean).join(' · ')}</span>
+        <a className="suite-privacy-link" href={notAssessed ? EXTERNAL_DOCS_URL : assessmentUrl} rel="noreferrer" target="_blank">
+          {notAssessed ? 'Why MOS does not assess these' : 'How MOS assesses app privacy'}
           <Glyph path={GLYPHS.externalLink} />
         </a>
       </div>

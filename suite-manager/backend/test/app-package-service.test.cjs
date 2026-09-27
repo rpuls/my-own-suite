@@ -169,6 +169,8 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(installed.sourceTrust, 'unverified');
   assert.equal(installed.snapshotState, 'installed');
   // MOS has not reviewed it, and the package cannot talk itself into a review.
+  // The row records the state of the review bound to this package; that no MOS
+  // review of it is coming at all is derived from the source when it is shown.
   assert.equal(installed.privacyStatus, 'review-required');
 
   // The agent is asked to snapshot from the confined candidate path, never a repo folder.
@@ -183,7 +185,10 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(listed.mosReviewed, false);
   assert.equal(listed.trust, 'unverified');
   assert.equal(listed.name, 'Community Notes');
-  assert.equal(listed.privacy.status, 'review-required');
+  // Presented as out of scope, never as pending: MOS assesses the packages it
+  // publishes, so 'review-required' here would promise a review that is not
+  // coming and the Apps UI would render it as a queue.
+  assert.equal(listed.privacy.status, 'not-assessed');
   store.close();
 });
 
@@ -296,7 +301,7 @@ test('an external package cannot present its own privacy review as a MOS review'
   await service.installExternalPackage({ candidate: republished });
 
   const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
-  assert.equal(listed.privacy.status, 'review-required');
+  assert.equal(listed.privacy.status, 'not-assessed');
   assert.equal(listed.privacy.posture, null);
   assert.equal(listed.mosReviewed, false);
   store.close();

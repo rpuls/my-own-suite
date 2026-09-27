@@ -4,7 +4,7 @@ import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput,
 import { AppConfigDialog, initialSetupConfig, ownerDefault, requiredSetupMissing, setupFieldsNeedInput, type InstanceConfigEntry, type OwnerEnvEntry, type SetupField } from './AppConfigDialog';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
-import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
+import { isNotAssessed, type PrivacyAdvisory, type PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 import { jsonResponse } from '../../lib/api';
 import { appSourceLabel } from '../../lib/app-sources';
@@ -118,10 +118,12 @@ type AppPackageSummary = {
   // Why MOS will not install an offered external package. Present only on a card
   // an added source publishes that failed validation.
   packageErrors?: string[];
-  // The added source offering this app, present only while it is not installed.
-  // Installing it means re-resolving that repository rather than reading a package
-  // this MOS already holds.
-  source?: { id: string; publisher: string | null; repository: string };
+  // The added source this app came from. An offered package carries its source
+  // record — installing it means re-resolving that repository rather than reading
+  // a package this MOS already holds — and an installed external app carries its
+  // repository alone, which is what names its publisher once there is no source
+  // record to read. Absent entirely on a catalog app.
+  source?: { id?: string; publisher?: string | null; repository: string };
   name: string;
   privacy: PrivacyReviewSummary;
   onboarding?: {
@@ -1004,7 +1006,9 @@ function AppDetail({
 
         {app.catalog.privacy.summary || app.catalog.privacy.notes.length ? <section className="suite-app-detail-section suite-app-privacy">
           <h3>Package-provided privacy notes</h3>
-          <p className="suite-app-help">These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.</p>
+          <p className="suite-app-help">{app.external
+            ? 'These claims come from the package metadata. They are its publisher’s word about their own app: MOS has not verified them, and does not assess apps from sources you added.'
+            : 'These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.'}</p>
           {app.catalog.privacy.summary ? <p>{app.catalog.privacy.summary}</p> : null}
           {app.catalog.privacy.notes.length ? <ul>{app.catalog.privacy.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
         </section> : null}
@@ -1081,6 +1085,7 @@ function AppDetail({
       appVersion={app.appVersion}
       packageId={app.id}
       privacy={app.privacy}
+      sourceLabel={app.source ? app.source.publisher || appSourceLabel(app.source.repository) : null}
     /> : null}
     {configOpen ? <AppConfigDialog
       appName={app.name}
@@ -1197,7 +1202,12 @@ function AppDetail({
             })}
           </ul>
         </Notice> : null}
-        <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />
+        {/* Two grey shields and "no change" is the truthful reading for an app
+            MOS does not assess, and a useless one: there was never an assessment
+            to change. The notice above already says what updating one risks. */}
+        {isNotAssessed(comparison.installed.privacy) || isNotAssessed(comparison.candidate.privacy)
+          ? null
+          : <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />}
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
         {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}

@@ -2673,7 +2673,29 @@
   line-height: 1.55;
 }
 
+/* Why an app from an added source carries no grade, above the facts that hold
+   anyway. Muted rather than boxed: it is the reason for the sentence above it,
+   not a second warning competing with the one below. */
+.suite-privacy-why {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.55;
+}
+
 .suite-privacy-rows { display: grid; }
+
+/* Only the enclosure rows are labelled; the dimension rows sit directly under
+   the posture sentence that introduces them. */
+.suite-privacy-rows-label {
+  padding-bottom: var(--mos-space-2);
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  font-weight: 700;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
 
 .suite-privacy-row {
   display: grid;
