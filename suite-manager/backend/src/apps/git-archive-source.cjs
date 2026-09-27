@@ -5,12 +5,14 @@ const zlib = require('node:zlib');
 const { DEFAULT_PACKAGE_LIMITS, canonicalPackagePath } = require('./package-contracts.cjs');
 const { ExternalSourceError } = require('./external-source-registry.cjs');
 
-// A published external app package lives in a `.mos/` folder at the root of its
-// git repository. MOS identifies a package by its repository URL alone (one repo
-// = one app), fetches a provider-neutral gzip archive of the repo at an immutable
-// commit, and extracts only `.mos/` through a hardened reader. Git hosts are
-// restricted to a small allowlist so a pasted URL cannot point at an arbitrary
-// or credentialed endpoint.
+// Published external app packages live in a `.mos/` folder at the root of a git
+// repository. That folder holds either one package, with its manifest at the
+// folder root, or a catalog of them, one folder per package — an app project
+// publishing its own app, or someone curating many. MOS fetches a
+// provider-neutral gzip archive of the repo at an immutable commit and extracts
+// only `.mos/` through a hardened reader. Git hosts are restricted to a small
+// allowlist so a pasted URL cannot point at an arbitrary or credentialed
+// endpoint.
 //
 // Only github.com is enabled to begin with. The download/extract pipeline is
 // host-agnostic; adding gitlab.com or codeberg.org later is one HOST_DESCRIPTORS
@@ -18,8 +20,15 @@ const { ExternalSourceError } = require('./external-source-registry.cjs');
 
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/u;
+const MANIFEST_BASENAME = 'manifest.json';
+// Mirrors the package id pattern in package-contracts: a catalog folder is named
+// for the id its manifest declares, so the folder has to be able to hold one.
+const PACKAGE_FOLDER_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const DEFAULT_LIMITS = Object.freeze({
   maxArchiveBytes: 64 * 1024 * 1024,
+  // A curated catalog is allowed to be long, but not unbounded: every package it
+  // publishes costs a manifest validation on each refresh.
+  maxSourcePackages: 64,
   metadataBytes: 1024 * 1024,
   timeoutMs: 15_000,
   ...DEFAULT_PACKAGE_LIMITS,
@@ -66,13 +75,39 @@ function repoCoordinates(repository) {
   return parseGitPackageUrl(repository);
 }
 
+// What the host actually answered, kept apart from "it failed". An owner whose
+// repository has just gone private and an owner who has spent the hour's
+// unauthenticated quota need opposite advice, and collapsing the two into one
+// error tells the first to wait for something that is never coming back. It also
+// decides how long MOS waits before asking again: a quota resets, a repository
+// that is gone does not.
+//
+// GitHub answers 404 rather than 403 for a repository an anonymous caller may not
+// see, deliberately, so that it does not leak whether the repository exists. So
+// 404 and 401 mean the same thing here — not visible, cause unknown — and MOS must
+// not claim the repository was deleted.
+function fetchFailure(response) {
+  const status = response.status;
+  if (status === 401 || status === 404) {
+    return new ExternalSourceError('SOURCE_NOT_VISIBLE', 'The git host will not show this repository to an anonymous request. It may have been deleted, renamed, or made private.');
+  }
+  if ((status === 403 || status === 429) && response.headers.get('x-ratelimit-remaining') === '0') {
+    const resetAt = Number(response.headers.get('x-ratelimit-reset'));
+    const error = new ExternalSourceError('SOURCE_RATE_LIMITED', 'The git host is rate-limiting unauthenticated requests from this server.');
+    if (Number.isFinite(resetAt) && resetAt > 0) error.retryAt = new Date(resetAt * 1000).toISOString();
+    return error;
+  }
+  if (status === 403) return new ExternalSourceError('SOURCE_FORBIDDEN', 'The git host refused the request for this repository.');
+  return new ExternalSourceError('SOURCE_FETCH_FAILED', `External source request failed with HTTP ${status}.`);
+}
+
 async function request(fetchImpl, url, { timeoutMs }, headers = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'mos-external-source', ...headers }, redirect: 'manual', signal: controller.signal });
     if (response.status >= 300 && response.status < 400) throw new ExternalSourceError('SOURCE_REDIRECT_REJECTED', 'External source requests must not redirect.');
-    if (!response.ok) throw new ExternalSourceError('SOURCE_FETCH_FAILED', `External source request failed with HTTP ${response.status}.`);
+    if (!response.ok) throw fetchFailure(response);
     return response;
   } catch (error) {
     if (error instanceof ExternalSourceError) throw error;
@@ -148,9 +183,39 @@ function readTarEntries(buffer) {
   return entries;
 }
 
-// Extract only `<root>/.mos/**` from a repo archive into destDir, which becomes
-// the package directory. Rejects links, devices, extended headers, traversal,
-// absolute paths, multiple roots, and anything over the file/byte limits.
+// Which packages an extracted `.mos/` folder holds. A manifest at the folder root
+// means the folder *is* one package; otherwise every immediate subfolder holding a
+// manifest is one. The root manifest wins outright, so a package that declares a
+// nested `manifest.json` in `packageFiles` can never be read as a second package.
+//
+// A catalog folder is named for the package id its manifest declares, which the
+// caller asserts once it has parsed that manifest. Two packages claiming one id
+// therefore cannot be published at all — the filesystem refuses the second folder
+// — and the repository's own file listing reads as the catalog's contents.
+function discoverMosPackages(packageRoot, limits = DEFAULT_LIMITS) {
+  if (fs.existsSync(path.join(packageRoot, MANIFEST_BASENAME))) {
+    return [{ dir: packageRoot, folder: null }];
+  }
+  const packages = [];
+  for (const name of fs.readdirSync(packageRoot).sort()) {
+    const dir = path.join(packageRoot, name);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    if (!fs.existsSync(path.join(dir, MANIFEST_BASENAME))) continue;
+    if (!PACKAGE_FOLDER_PATTERN.test(name)) {
+      throw new ExternalSourceError('CANDIDATE_PATH_INVALID', `A .mos catalog folder must be named for the package id its manifest declares: ${name}.`);
+    }
+    packages.push({ dir, folder: name });
+  }
+  if (packages.length > limits.maxSourcePackages) {
+    throw new ExternalSourceError('CANDIDATE_TOO_LARGE', `A source may publish at most ${limits.maxSourcePackages} app packages.`);
+  }
+  return packages;
+}
+
+// Extract only `<root>/.mos/**` from a repo archive into destDir and report the
+// packages it holds, each as its own directory beneath it. Rejects links, devices,
+// extended headers, traversal, absolute paths, multiple roots, and anything over
+// the file/byte limits.
 function extractMosPackage(archiveBytes, destDir, limits = DEFAULT_LIMITS) {
   let tar;
   try { tar = zlib.gunzipSync(archiveBytes, { maxOutputLength: limits.maxPackageBytes }); }
@@ -187,19 +252,20 @@ function extractMosPackage(archiveBytes, destDir, limits = DEFAULT_LIMITS) {
     fs.writeFileSync(target, entry.data, { mode: 0o600 });
     written += 1;
   }
-  if (!written || !fs.existsSync(path.join(destDir, 'manifest.json'))) {
-    throw new ExternalSourceError('CANDIDATE_INVALID', 'The repository does not contain a .mos app package.');
-  }
+  if (!written) throw new ExternalSourceError('CANDIDATE_INVALID', 'The repository does not contain a .mos app package.');
+  const packages = discoverMosPackages(destDir, limits);
+  if (!packages.length) throw new ExternalSourceError('CANDIDATE_INVALID', 'The repository does not contain a .mos app package.');
+  return packages;
 }
 
-// Download the repo archive at a resolved commit and materialize its `.mos/`
-// package into destDir.
+// Download the repo archive at a resolved commit, materialize its `.mos/` folder
+// into destDir, and report the packages it publishes.
 async function downloadMosPackage(fetchImpl, { host, owner, repo, sha }, destDir, limits = DEFAULT_LIMITS) {
   const descriptor = HOST_DESCRIPTORS[host];
   if (!descriptor) throw new ExternalSourceError('SOURCE_URL_INVALID', 'This git host is not supported.');
   if (!COMMIT_PATTERN.test(String(sha || ''))) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'Resolve the repository revision before downloading it.');
   const archive = await boundedBytes(await request(fetchImpl, descriptor.archiveUrl(owner, repo, sha), limits, { Accept: 'application/gzip' }), limits.maxArchiveBytes);
-  extractMosPackage(archive, destDir, limits);
+  return extractMosPackage(archive, destDir, limits);
 }
 
 module.exports = {
@@ -207,6 +273,7 @@ module.exports = {
   COMMIT_PATTERN,
   DEFAULT_LIMITS,
   HOST_DESCRIPTORS,
+  discoverMosPackages,
   downloadMosPackage,
   extractMosPackage,
   parseGitPackageUrl,

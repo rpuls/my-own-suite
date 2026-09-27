@@ -105,6 +105,53 @@ test('extractMosPackage materializes only the .mos folder as the package root', 
   assert.ok(!fs.existsSync(path.join(dest, 'README.md'))); // repo files outside .mos are not extracted
 });
 
+test('extractMosPackage reports a root-manifest .mos folder as one package rooted at the folder itself', async () => {
+  const dest = await tempDir();
+  assert.deepEqual(extractMosPackage(validArchive(), dest, DEFAULT_LIMITS), [{ dir: dest, folder: null }]);
+});
+
+test('extractMosPackage reports every folder of a .mos catalog as its own package', async () => {
+  const root = `repo-${sha}`;
+  const dest = await tempDir();
+  const manifestFor = (id) => validManifest.replace('"community-notes"', JSON.stringify(id));
+  const packages = extractMosPackage(tarGz([
+    { name: `${root}/.mos/`, typeflag: '5' },
+    { name: `${root}/.mos/README.md`, data: '# catalog\n' }, // a catalog may document itself without being a package
+    { name: `${root}/.mos/scan-bridge/manifest.json`, data: manifestFor('scan-bridge') },
+    { name: `${root}/.mos/scan-bridge/Dockerfile`, data: 'FROM scratch\n' },
+    { name: `${root}/.mos/community-notes/manifest.json`, data: manifestFor('community-notes') },
+    { name: `${root}/.mos/community-notes/Dockerfile`, data: 'FROM scratch\n' },
+  ]), dest, DEFAULT_LIMITS);
+  // Sorted by folder, so a listing is stable across archive orderings.
+  assert.deepEqual(packages, [
+    { dir: path.join(dest, 'community-notes'), folder: 'community-notes' },
+    { dir: path.join(dest, 'scan-bridge'), folder: 'scan-bridge' },
+  ]);
+  assert.ok(fs.existsSync(path.join(dest, 'scan-bridge', 'Dockerfile')));
+});
+
+test('a root manifest wins outright, so a package declaring a nested manifest is never read as two', async () => {
+  const root = `repo-${sha}`;
+  const dest = await tempDir();
+  assert.deepEqual(extractMosPackage(tarGz([
+    { name: `${root}/.mos/manifest.json`, data: validManifest },
+    { name: `${root}/.mos/vendor/manifest.json`, data: validManifest },
+  ]), dest, DEFAULT_LIMITS), [{ dir: dest, folder: null }]);
+});
+
+test('a .mos catalog folder that cannot hold a package id is refused, and the catalog is bounded', async () => {
+  const root = `repo-${sha}`;
+  const named = await tempDir();
+  assert.throws(() => extractMosPackage(tarGz([
+    { name: `${root}/.mos/Not_An_Id/manifest.json`, data: validManifest },
+  ]), named, DEFAULT_LIMITS), { code: 'CANDIDATE_PATH_INVALID' });
+
+  const bounded = await tempDir();
+  const many = [];
+  for (let index = 0; index < 3; index += 1) many.push({ name: `${root}/.mos/app-${index}/manifest.json`, data: validManifest });
+  assert.throws(() => extractMosPackage(tarGz(many), bounded, { ...DEFAULT_LIMITS, maxSourcePackages: 2 }), { code: 'CANDIDATE_TOO_LARGE' });
+});
+
 test('extractMosPackage fails closed on symlinks, traversal, extended headers, and multiple roots', async () => {
   const root = `repo-${sha}`;
   const cases = [

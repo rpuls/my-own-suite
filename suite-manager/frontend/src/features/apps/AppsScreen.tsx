@@ -110,6 +110,13 @@ type AppPackageSummary = {
   id: string;
   installStatus: string;
   mosReviewed?: boolean;
+  // Why MOS will not install an offered external package. Present only on a card
+  // an added source publishes that failed validation.
+  packageErrors?: string[];
+  // The added source offering this app, present only while it is not installed.
+  // Installing it means re-resolving that repository rather than reading a package
+  // this MOS already holds.
+  source?: { id: string; publisher: string | null; repository: string };
   name: string;
   privacy: PrivacyReviewSummary;
   onboarding?: {
@@ -135,9 +142,13 @@ type AppPackageSummary = {
   version: string;
 };
 
-// A pasted repository URL resolves to an unverified external package preview.
-// The card reuses the public package summary shape, plus explicit external/trust
-// flags and the package's own inlined icon; nothing is persisted by resolving.
+// A pasted repository URL resolves to one unverified preview card per app package
+// the repository publishes. The card reuses the public package summary shape, plus
+// explicit external/trust flags, the package's own inlined icon, and what it would
+// ask MOS for; nothing is persisted by resolving.
+//
+// `id` is the source-namespaced id every API path addresses the package by;
+// `packageId` is the bare id its own manifest claims, shown only as a fact.
 type ExternalCard = Pick<AppPackageSummary,
   'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
   external: true;
@@ -146,14 +157,20 @@ type ExternalCard = Pick<AppPackageSummary,
   installStatus: string;
   minimumMosVersion: string;
   mosReviewed: false;
+  packageDigest: string | null;
+  // Why MOS will not install this one. A package a source publishes but cannot
+  // install is listed with its reasons rather than hidden, so the owner can see it
+  // is offered and its publisher can see what to fix.
+  packageErrors: string[];
+  packageId: string;
+  permissions: string[];
   trust: string;
 };
-type ExternalSourceCoordinates = { catalogPath: string; kind: string; packageId: string; repository: string; revision: string; trust: string };
+type ExternalSourceCoordinates = { catalogPath: string; id: string; kind: string; repository: string; revision: string; trust: string };
 type ExternalResolveResponse = {
-  card: ExternalCard;
-  instanceId: string;
-  packageDigest: string;
-  permissions: string[];
+  // Whether this repository is already one of the owner's added sources.
+  added: boolean;
+  packages: ExternalCard[];
   source: ExternalSourceCoordinates;
 };
 
@@ -909,10 +926,18 @@ function AppDetail({
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+        {app.packageErrors?.length ? <Notice title="This package cannot be installed" variant="warning">
+          <p>The source publishes this app, but MOS refuses it for the reasons below. Only its publisher can fix these.</p>
+          <ul>{app.packageErrors.map((item) => <li key={item}>{item}</li>)}</ul>
+        </Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
+        {/* The same warning before and after installing, because the risk is the
+            same one: an added source's app is not reviewed either way. */}
         {app.external ? <Notice title="Unverified external package" variant="warning">
-          <p>You installed this app from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.</p>
+          <p>{app.instance
+            ? 'You installed this app from a source you added, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.'
+            : 'This app comes from a source you added, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote — with network access — before any of MOS’s runtime restrictions apply. Once running, it is restricted to its own named storage and its own web addresses.'}</p>
         </Notice> : null}
 
         {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
@@ -931,7 +956,7 @@ function AppDetail({
 
         {app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
           {app.appVersion ? <div><span>Installed</span><strong>{app.appVersion}</strong></div> : null}
-          <div><span>Source</span><strong>The repository you pasted</strong></div>
+          <div><span>Source</span><strong>A source you added</strong></div>
           <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
           <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking...' : 'Check for updates'}</button>
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
@@ -1203,6 +1228,7 @@ function ExternalAppIcon({ card, large = false }: { card: ExternalCard; large?: 
 }
 
 function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => void }) {
+  const broken = card.packageErrors.length > 0;
   return <article className="suite-app-card is-external">
     <button className="suite-app-card-main" onClick={onOpen} type="button">
       <ExternalAppIcon card={card} />
@@ -1211,7 +1237,7 @@ function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => v
           <strong>{card.name}</strong>
           <span className="suite-app-external-pill">External &middot; Unverified</span>
         </span>
-        <span>{externalDescription(card)}</span>
+        <span>{broken ? 'This app package cannot be installed until its publisher fixes it.' : externalDescription(card)}</span>
       </span>
     </button>
     <div className="suite-app-card-actions">
@@ -1220,18 +1246,19 @@ function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => v
   </article>;
 }
 
-function ExternalAppDetail({ installError, installing, onClose, onInstall, owner, resolved }: {
+function ExternalAppDetail({ card, installError, installing, onClose, onInstall, owner, source }: {
+  card: ExternalCard;
   installError: string;
   installing: boolean;
   onClose: () => void;
-  onInstall: (resolved: ExternalResolveResponse, config: Record<string, string>) => void;
+  onInstall: (card: ExternalCard, config: Record<string, string>) => void;
   owner: Owner;
-  resolved: ExternalResolveResponse;
+  source: ExternalSourceCoordinates;
 }) {
-  const { card, permissions, source } = resolved;
+  const permissions = card.permissions;
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(card, owner));
   const inputFields = setupFieldsNeedInput(card);
-  const canInstall = card.validation.valid && !requiredSetupMissing(card, setupConfig) && !installing;
+  const canInstall = card.validation.valid && !card.packageErrors.length && !requiredSetupMissing(card, setupConfig) && !installing;
   return <div className="suite-app-detail-layer">
     <button aria-label="Close package details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     <aside aria-label={`${card.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
@@ -1253,7 +1280,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           </div>
         </div>
         <div className="suite-app-action-bar">
-          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
+          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(card, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
         </div>
       </header>
 
@@ -1269,10 +1296,15 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
         {installError ? <Notice title="This package could not be installed" variant="warning"><p>{installError}</p></Notice> : null}
 
         <Notice title="Unverified external package" variant="warning">
-          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before any of MOS&apos;s runtime restrictions apply. Install it only if you trust whoever publishes that repository. Once running, it is restricted to its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
+          <p>This package comes from a repository you brought yourself, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before any of MOS&apos;s runtime restrictions apply. Install it only if you trust whoever publishes that repository. Once running, it is restricted to its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
         </Notice>
 
         {!card.validation.valid ? <Notice title="This package cannot be installed" variant="warning"><ul>{card.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+
+        {card.packageErrors.length ? <Notice title="This package cannot be installed" variant="warning">
+          <p>The repository publishes this app, but MOS refuses it for the reasons below. Only its publisher can fix these.</p>
+          <ul>{card.packageErrors.map((item) => <li key={item}>{item}</li>)}</ul>
+        </Notice> : null}
 
         <section className="suite-app-detail-section">
           <h3>Requested access</h3>
@@ -1294,9 +1326,9 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
         <AdvancedPanel className="suite-app-advanced" facts={[
           { label: 'Repository', value: source.repository },
           { code: true, label: 'Revision', value: source.revision.slice(0, 12) },
-          { label: 'Package id', value: source.packageId },
+          { label: 'Package id', value: card.packageId },
           { label: 'Package version', value: card.version || 'Unknown' },
-          { code: true, label: 'Package digest', value: resolved.packageDigest },
+          { code: true, label: 'Package digest', value: card.packageDigest || 'Unavailable' },
           { label: 'Services', value: card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
           { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
         ]} reveal="technical-mode" />
@@ -1320,9 +1352,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalResolved, setExternalResolved] = useState<ExternalResolveResponse | null>(null);
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalError, setExternalError] = useState('');
-  const [externalOpen, setExternalOpen] = useState(false);
+  // Which of a source's packages the owner has opened, by namespaced id — a
+  // repository may publish several.
+  const [externalOpenId, setExternalOpenId] = useState('');
   const [externalInstalling, setExternalInstalling] = useState(false);
   const [externalInstallError, setExternalInstallError] = useState('');
+  const [externalAdding, setExternalAdding] = useState(false);
+  const [externalAddError, setExternalAddError] = useState('');
 
   // Silent loads run in the background: they never flash the loading state and
   // never replace a working catalog view with a transient fetch error. A silent
@@ -1402,7 +1438,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       setExternalResolved(null);
       setExternalError('');
       setExternalLoading(false);
-      setExternalOpen(false);
+      setExternalOpenId('');
       return undefined;
     }
     let cancelled = false;
@@ -1434,6 +1470,33 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   }, [externalUrl]);
 
   const selected = packages.find((app) => app.id === selectedId) || null;
+  const externalOpenCard = externalResolved?.packages.find((card) => card.id === externalOpenId) || null;
+
+  // Register the pasted repository as an added source. Nothing is installed: the
+  // source's apps join the catalog list, and the owner installs from there whenever
+  // they like. Managing and removing added sources lives in Settings.
+  async function addExternalSource(repository: string) {
+    setExternalAdding(true);
+    setExternalAddError('');
+    try {
+      await jsonResponse<{ source: unknown }>(
+        await fetch('/suite-manager/api/apps/sources', {
+          body: JSON.stringify({ repository }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        'Unable to add that app source.',
+      );
+      // Clearing the query drops the preview and shows the ordinary catalog, which
+      // now includes this source's apps.
+      setQuery('');
+      await load();
+    } catch (caught) {
+      setExternalAddError(caught instanceof Error ? caught.message : 'Unable to add that app source.');
+    } finally {
+      setExternalAdding(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1463,18 +1526,20 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   // installed is whatever passes the gate right now rather than the previewed
   // card. Once it is installed it is an ordinary app instance under its
   // namespaced id, so the normal install flow finishes runtime and Homepage.
-  async function performExternalInstall(resolved: ExternalResolveResponse, config: Record<string, string> = {}) {
-    if (!resolved.card.validation.valid) return;
+  async function performExternalInstall(card: ExternalCard, source: ExternalSourceCoordinates, config: Record<string, string> = {}) {
+    if (!card.validation.valid || card.packageErrors.length) return;
     setExternalInstalling(true);
     setExternalInstallError('');
     try {
       const installed = await jsonResponse<{ packageId: string }>(
         await fetch('/suite-manager/api/apps/sources/install', {
-          body: JSON.stringify({ config, url: resolved.source.repository }),
+          // Naming the package is what makes a repository publishing several of them
+          // installable: the backend refuses to choose on the owner's behalf.
+          body: JSON.stringify({ config, packageId: card.id, url: source.repository }),
           headers: { 'Content-Type': 'application/json' },
           method: 'POST',
         }),
-        `Unable to install ${resolved.card.name}.`,
+        `Unable to install ${card.name}.`,
       );
       const refreshed = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
         await fetch('/suite-manager/api/apps/packages'),
@@ -1483,7 +1548,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       setPackages(refreshed.packages);
       setCatalogStatus(refreshed.catalog);
       const app = refreshed.packages.find((item) => item.id === installed.packageId);
-      setExternalOpen(false);
+      setExternalOpenId('');
       setQuery('');
       // Forward the collected setup values: the package is installed by now, but
       // performInstall still needs them to pass its required-field check before
@@ -1491,7 +1556,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       // never starts.
       if (app) await performInstall(app, { config });
     } catch (caught) {
-      setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${resolved.card.name}.`);
+      setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${card.name}.`);
     } finally {
       setExternalInstalling(false);
     }
@@ -1499,7 +1564,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
   async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; showOnHomepage?: boolean } = {}) {
     const setupConfig = options.config || {};
-    const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig);
+    const canInstall = app.validation.valid && !app.packageErrors?.length && !requiredSetupMissing(app, setupConfig);
     if (!canInstall) return;
     const showOnHomepage = hasHomepageContribution(app) && options.showOnHomepage !== false;
     setSelectedId(app.id);
@@ -1511,10 +1576,18 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     try {
       if (current.installStatus !== 'installed') {
         setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
+        // An app offered by one of the owner's added sources is not in the reviewed
+        // catalog, so it is installed by re-resolving its own repository through the
+        // external gate rather than from a package this MOS already holds. Once that
+        // returns, it is an ordinary instance under its namespaced id and the rest of
+        // this flow is identical.
+        const external = current.external && current.source ? current.source : null;
         const installed = await withMinimumInstallStep(async () =>
           jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
-              body: JSON.stringify({ config: setupConfig }),
+            await fetch(external ? '/suite-manager/api/apps/sources/install' : `/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
+              body: JSON.stringify(external
+                ? { config: setupConfig, packageId: current.id, url: external.repository }
+                : { config: setupConfig }),
               headers: { 'Content-Type': 'application/json' },
               method: 'POST',
             }),
@@ -1661,8 +1734,23 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
-  const standaloneApps = filtered.filter((app) => !isCompanionApp(app));
-  const companionApps = filtered.filter(isCompanionApp);
+  // Apps an added source offers get their own section per source, so "these came
+  // from a repository you added" is told by where a card sits rather than by a badge
+  // on every one of them. An installed external app is one of the owner's apps and
+  // belongs in the sections above with the rest: the source section is about what a
+  // source is *offering*, which is also why removing a source empties it without
+  // touching anything installed.
+  const offered = filtered.filter((app) => app.source && !app.instance);
+  const own = filtered.filter((app) => !(app.source && !app.instance));
+  const standaloneApps = own.filter((app) => !isCompanionApp(app));
+  const companionApps = own.filter(isCompanionApp);
+  const sourceSections = offered.reduce<Array<{ apps: AppPackageSummary[]; repository: string; title: string }>>((sections, app) => {
+    const repository = app.source!.repository;
+    const existing = sections.find((section) => section.repository === repository);
+    if (existing) existing.apps.push(app);
+    else sections.push({ apps: [app], repository, title: app.source!.publisher || externalSourceLabel(repository) });
+    return sections;
+  }, []);
 
   return <section className="mos-shell mos-page">
     <div className="suite-app-simple-header">
@@ -1678,13 +1766,25 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
     {externalUrl ? <div className="suite-app-catalog-sections">
       <section className="suite-app-catalog-section">
-        <div className="suite-app-section-heading"><h2>External package</h2></div>
-        {externalLoading ? <p className="suite-meta">Checking that repository for a MOS app package...</p> : null}
+        <div className="suite-app-section-heading">
+          <h2>{externalResolved && externalResolved.packages.length > 1
+            ? `${externalResolved.packages.length} apps from ${externalSourceLabel(externalResolved.source.repository)}`
+            : 'External package'}</h2>
+          {/* Adding is what makes a catalog browsable later without pasting the URL
+              again. It is offered only once the repository has actually resolved,
+              and only while it is not already added. */}
+          {externalResolved && !externalResolved.added ? <button className="mos-btn mos-btn-secondary" disabled={externalAdding} onClick={() => void addExternalSource(externalResolved.source.repository)} type="button">
+            {externalAdding ? 'Adding...' : 'Add this source'}
+          </button> : null}
+        </div>
+        {externalLoading ? <p className="suite-meta">Checking that repository for MOS app packages...</p> : null}
         {externalError && !externalLoading ? <Notice title="No app package found at that URL" variant="warning"><p>{externalError}</p></Notice> : null}
+        {externalAddError ? <Notice title="This source could not be added" variant="warning"><p>{externalAddError}</p></Notice> : null}
+        {externalResolved?.added ? <p className="suite-meta">You have already added this source, so its apps are listed with your catalog below.</p> : null}
         {externalResolved && !externalLoading ? <div className="suite-app-grid">
-          <ExternalAppCard card={externalResolved.card} onOpen={() => setExternalOpen(true)} />
+          {externalResolved.packages.map((card) => <ExternalAppCard card={card} key={card.id} onOpen={() => setExternalOpenId(card.id)} />)}
         </div> : null}
-        {!externalLoading && !externalError && !externalResolved ? <p className="suite-meta">Paste a public GitHub repository that publishes a MOS app package in a <code>.mos</code> folder at its root.</p> : null}
+        {!externalLoading && !externalError && !externalResolved ? <p className="suite-meta">Paste a public GitHub repository that publishes MOS app packages in a <code>.mos</code> folder at its root &mdash; one app, or a catalog of them.</p> : null}
       </section>
     </div> : null}
 
@@ -1706,6 +1806,15 @@ export function AppsScreen({ owner }: { owner: Owner }) {
           {companionApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
         </div>
       </section> : null}
+      {sourceSections.map((section) => <section className="suite-app-catalog-section" key={section.repository}>
+        <div className="suite-app-section-heading">
+          <h2>{section.title}</h2>
+          <p className="suite-meta">A source you added. MOS has not reviewed these apps. Manage it in Settings.</p>
+        </div>
+        <div className="suite-app-grid">
+          {section.apps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+        </div>
+      </section>)}
     </div> : null}
 
     {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus)} reveal="technical-mode" summary="App catalog">
@@ -1715,13 +1824,14 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       {catalogStatus.error ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p> : null}
     </AdvancedPanel> : null}
 
-    {externalOpen && externalResolved ? <ExternalAppDetail
+    {externalOpenCard && externalResolved ? <ExternalAppDetail
+      card={externalOpenCard}
       installError={externalInstallError}
       installing={externalInstalling}
-      onClose={() => setExternalOpen(false)}
-      onInstall={(resolved, config) => { void performExternalInstall(resolved, config); }}
+      onClose={() => setExternalOpenId('')}
+      onInstall={(card, config) => { void performExternalInstall(card, externalResolved.source, config); }}
       owner={owner}
-      resolved={externalResolved}
+      source={externalResolved.source}
     /> : null}
 
     {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} onUpdated={() => load()} owner={owner} packages={packages} /> : null}

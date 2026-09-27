@@ -77,6 +77,10 @@ class AppPackageService {
     agent = null,
     appsDir,
     catalogService = null,
+    // The packages the owner's added sources publish, read from their cache. A
+    // thunk because the source service installs through this one, so the two are
+    // wired to each other rather than one owning the other.
+    externalCatalog = () => [],
     externalClient = null,
     limiter = new AppOperationLimiter(),
     now = () => new Date(),
@@ -87,6 +91,7 @@ class AppPackageService {
     this.agent = agent;
     this.appsDir = appsDir;
     this.catalogService = catalogService;
+    this.externalCatalog = externalCatalog;
     this.externalClient = externalClient;
     this.limiter = limiter;
     this.now = now;
@@ -1148,7 +1153,15 @@ class AppPackageService {
         trust: instance?.sourceTrust || 'mos-reviewed',
       };
     });
-    return this.withCompatibility(packages, integrations);
+    // Packages the owner's added sources publish but has not installed. They join
+    // the list *before* compatibility is worked out, which is what lets an external
+    // package take part in "works with" at all — a package that declares it consumes
+    // a capability an installed app exports has to be matched against it while it is
+    // still only an offer. An installed external app already has a row above, so it
+    // is never listed twice.
+    const listed = new Set(packages.map((app) => app.id));
+    const external = this.externalCatalog().filter((card) => card.id && !listed.has(card.id));
+    return this.withCompatibility([...packages, ...external], integrations);
   }
 
   withCompatibility(packages, integrations = []) {

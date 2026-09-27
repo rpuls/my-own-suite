@@ -83,6 +83,46 @@
   margin-bottom: 0;
 }
 
+/* One added app source. The panel section owns the inset, so this only decides
+   where the name sits relative to its status and its menu. */
+.suite-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+  padding: var(--mos-panel-pad);
+}
+
+.suite-source-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.suite-source-main > strong {
+  overflow-wrap: anywhere;
+}
+
+.suite-source-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex-shrink: 0;
+}
+
+/* The explanation for a source that could not be checked, inset to line up with
+   the row above it rather than running edge to edge on its own. */
+.suite-source-problem {
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
+}
+
+@media (max-width: 34rem) {
+  .suite-source-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .suite-auth-field {
   display: grid;
   gap: var(--mos-space-2);

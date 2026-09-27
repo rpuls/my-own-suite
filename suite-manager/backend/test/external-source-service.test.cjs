@@ -42,22 +42,44 @@ function tarGz(sha, files) {
   return zlib.gzipSync(Buffer.concat(blocks));
 }
 
+// One validated package entry, shaped like the real client's readPackage output.
+function fakePackage(record, packageId) {
+  return {
+    errors: [],
+    folder: null,
+    manifest: { category: 'tools', id: packageId, name: packageId, summary: `${packageId}.`, version: '1.0.0' },
+    manifestPath: `${packageId}/manifest.json`,
+    namespacedPackageId: `x-abcdef01-${packageId}`,
+    packageDigest: `sha256:${'0'.repeat(64)}`,
+    packageDir: null,
+    packageId,
+    permissions: ['route:notes', 'volume:notes-data'],
+    source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
+    trust: record.trust,
+  };
+}
+
 // A fake download client so the service is exercised without network access. It
-// resolves a fixed revision and returns a candidate shaped like the real client.
-function fakeClient(overrides = {}) {
+// resolves a fixed revision and serves the packages it was built with, selecting
+// between them the way the real client does.
+function fakeClient(overrides = {}, packageIds = ['community-notes']) {
   return {
     async resolveRevision(record) { return { ...record, revision }; },
-    async downloadCandidate(record) {
-      const packageId = 'community-notes';
-      return {
-        cleanup: () => {},
-        manifest: { id: packageId, version: '1.0.0' },
-        namespacedPackageId: `x-abcdef01-${packageId}`,
-        packageId,
-        permissions: ['route:notes', 'volume:notes-data'],
-        source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
-        trust: record.trust,
-      };
+    async listPackages(record) {
+      return { cleanup: () => {}, packages: packageIds.map((id) => fakePackage(record, id)) };
+    },
+    async downloadCandidate(record, { packageId = null } = {}) {
+      const packages = packageIds.map((id) => fakePackage(record, id));
+      const wanted = packageId
+        ? packages.find((entry) => entry.namespacedPackageId === packageId)
+        : (packages.length === 1 ? packages[0] : null);
+      if (!wanted) {
+        throw new ExternalSourceError(
+          packageId ? 'SOURCE_PACKAGE_NOT_FOUND' : 'SOURCE_PACKAGE_REQUIRED',
+          packageId ? 'This source does not publish that app package.' : 'This source publishes more than one app package; name the one to install.',
+        );
+      }
+      return { ...wanted, cleanup: () => {} };
     },
     ...overrides,
   };
@@ -93,14 +115,18 @@ test('resolving a pasted repository URL returns an external, unverified card wit
   const store = await tempStore();
   const svc = service(store);
   const resolved = await svc.resolveUrl('https://github.com/community/community-notes');
-  assert.equal(resolved.card.external, true);
-  assert.equal(resolved.card.trust, 'unverified');
-  assert.equal(resolved.card.mosReviewed, false);
-  assert.equal(resolved.card.installStatus, 'external-available');
-  assert.equal(resolved.card.iconUrl, '');
-  assert.deepEqual(resolved.permissions, ['route:notes', 'volume:notes-data']);
+  assert.equal(resolved.packages.length, 1); // a single-package repository is the one-entry case
+  const [card] = resolved.packages;
+  assert.equal(card.external, true);
+  assert.equal(card.trust, 'unverified');
+  assert.equal(card.mosReviewed, false);
+  assert.equal(card.installStatus, 'external-available');
+  assert.equal(card.iconUrl, '');
+  assert.equal(card.packageId, 'community-notes');
+  assert.deepEqual(card.permissions, ['route:notes', 'volume:notes-data']);
+  assert.equal(resolved.added, false);
   assert.deepEqual(resolved.source, {
-    catalogPath: '.mos', kind: 'external-git', packageId: 'community-notes', repository: 'https://github.com/community/community-notes', revision, trust: 'unverified',
+    catalogPath: '.mos', id: resolved.source.id, kind: 'external-git', repository: 'https://github.com/community/community-notes', revision, trust: 'unverified',
   });
   assert.deepEqual(svc.listSources(), []); // nothing persisted by a preview
   store.close();
@@ -202,8 +228,106 @@ test('a resolved card inlines the package own icon as a data URL', async () => {
   const client = new ExternalSourceClient({ fetchImpl, officialPackageIds: ['immich'], platformVersion: '0.11.0', stateDir: store.stateDir });
   const svc = new ExternalSourceService({ client, now, officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
   const resolved = await svc.resolveUrl('https://github.com/community/notes/tree/main');
-  assert.equal(resolved.card.iconDataUrl, `data:image/png;base64,${iconBytes.toString('base64')}`);
-  assert.equal(resolved.card.external, true);
+  assert.equal(resolved.packages[0].iconDataUrl, `data:image/png;base64,${iconBytes.toString('base64')}`);
+  assert.equal(resolved.packages[0].external, true);
+  store.close();
+});
+
+// The point of the slice: one repository may publish a catalog of apps, and the
+// single-package repository is simply the one-entry case of the same thing.
+test('a source publishing several packages lists all of them and refuses to guess which to install', async () => {
+  const store = await tempStore();
+  const client = fakeClient({}, ['scan-bridge', 'community-notes']);
+  const svc = new ExternalSourceService({
+    appPackages: { async installExternalPackage({ candidate }) { return { id: 'i1', packageId: candidate.namespacedPackageId, status: 'installed' }; } },
+    client, now, officialPackageIds: ['immich'], platformVersion: '0.11.0', store,
+  });
+  const resolved = await svc.resolveUrl(repository);
+  assert.deepEqual(resolved.packages.map((card) => card.packageId), ['scan-bridge', 'community-notes']);
+  // Every card is addressed by its source-namespaced id, so two sources shipping
+  // one package id can never collide in the Apps list.
+  assert.deepEqual(resolved.packages.map((card) => card.id), ['x-abcdef01-scan-bridge', 'x-abcdef01-community-notes']);
+
+  await assert.rejects(() => svc.installUrl(repository), { code: 'SOURCE_PACKAGE_REQUIRED' });
+  await assert.rejects(() => svc.installUrl(repository, { packageId: 'x-abcdef01-nope' }), { code: 'SOURCE_PACKAGE_NOT_FOUND' });
+  const installed = await svc.installUrl(repository, { packageId: 'x-abcdef01-scan-bridge' });
+  assert.equal(installed.packageId, 'x-abcdef01-scan-bridge');
+  assert.equal(installed.trust, 'unverified');
+  store.close();
+});
+
+// Adding a source is what fills the cache; the Apps list then reads only the cache,
+// so browsing an added catalog costs no network at all.
+test('an added source caches its package list and serves it to the Apps list without refetching', async () => {
+  const store = await tempStore();
+  let listings = 0;
+  const client = fakeClient({
+    async listPackages(record) {
+      listings += 1;
+      return { cleanup: () => {}, packages: ['scan-bridge', 'community-notes'].map((id) => fakePackage(record, id)) };
+    },
+  }, ['scan-bridge', 'community-notes']);
+  const svc = service(store, client);
+  const added = await svc.addSource({ publisher: 'community', repository, trust: 'unverified' });
+  assert.equal(listings, 1);
+  assert.equal(added.catalog.packageCount, 2);
+  assert.equal(added.catalog.revision, revision);
+
+  assert.deepEqual(svc.catalogPackages().map((card) => card.id), ['x-abcdef01-scan-bridge', 'x-abcdef01-community-notes']);
+  assert.equal(svc.catalogPackages()[0].source.repository, repository);
+  assert.equal(listings, 1); // reading the catalog never touches the network
+
+  // A probe that finds the same commit must not pay for the archive again.
+  assert.equal((await svc.refreshSource(added.id, { force: true })).packageCount, 2);
+  assert.equal(listings, 1);
+  store.close();
+});
+
+// A source MOS cannot reach has not retracted what it published yesterday, and the
+// reason it could not be reached is the whole point of the warning an owner sees.
+test('an unreachable source keeps serving its cached packages and records what the host actually answered', async () => {
+  const store = await tempStore();
+  let fail = false;
+  const client = fakeClient({
+    async resolveRevision(record) {
+      if (fail) {
+        const error = new ExternalSourceError('SOURCE_NOT_VISIBLE', 'The git host will not show this repository to an anonymous request.');
+        throw error;
+      }
+      return { ...record, revision };
+    },
+  });
+  const svc = service(store, client);
+  const added = await svc.addSource({ repository, trust: 'unverified' });
+  fail = true;
+  const status = await svc.refreshSource(added.id, { force: true });
+  assert.equal(status.error.code, 'SOURCE_NOT_VISIBLE');
+  assert.equal(status.error.failures, 1);
+  assert.equal(status.packageCount, 1); // the previously published package is still offered
+  assert.deepEqual(svc.catalogPackages().map((card) => card.packageId), ['community-notes']);
+  // Consecutive failures stretch the wait rather than spending the hour's quota on
+  // a repository that is gone.
+  const second = await svc.refreshSource(added.id, { force: true });
+  assert.equal(second.error.failures, 2);
+  assert.ok(Date.parse(second.nextCheckAt) > Date.parse(status.nextCheckAt));
+  store.close();
+});
+
+test('a source that is not installable offers no cards, and removing one forgets its cached list', async () => {
+  const store = await tempStore();
+  const svc = service(store);
+  const added = await svc.addSource({ repository, trust: 'unverified' });
+  assert.equal(svc.catalogPackages().length, 1);
+
+  svc.setSourceStatus(added.id, 'unavailable', 'Owner marked it unavailable.');
+  assert.deepEqual(svc.catalogPackages(), []); // nothing offerable, so nothing offered
+
+  svc.setSourceStatus(added.id, 'active');
+  assert.equal(svc.catalogPackages().length, 1);
+
+  svc.removeSource(added.id);
+  assert.deepEqual(svc.catalogPackages(), []);
+  assert.equal(svc.cache.get(added.id), null);
   store.close();
 });
 

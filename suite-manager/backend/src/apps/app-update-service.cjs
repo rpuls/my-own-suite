@@ -137,11 +137,23 @@ class AppUpdateService {
     if (!sourceInstallable(source)) {
       throw new AppPackageServiceError('APP_SOURCE_NOT_INSTALLABLE', 'This app package source is not active, so updates from it are blocked. The installed version keeps running.', 409);
     }
-    const candidate = await this.externalClient.downloadCandidate(await this.externalClient.resolveRevision(source));
-    // The repository must still publish the same package. If it now publishes a
-    // different one, that is not an update to this app, whatever the repository
-    // calls it. The app agent would refuse the identity anyway; refusing here
-    // keeps a repository takeover from ever reaching an update operation.
+    const resolved = await this.externalClient.resolveRevision(source);
+    // The source must still publish *this* package. Naming it is what makes a
+    // multi-package source updatable at all: the other packages in the same
+    // repository are not candidates for this app, however the repository has been
+    // rearranged since. A source that no longer publishes it — dropped, renamed,
+    // or taken over — fails here rather than reaching an update operation, and the
+    // installed version keeps running either way.
+    let candidate;
+    try {
+      candidate = await this.externalClient.downloadCandidate(resolved, { packageId: instance.packageId });
+    } catch (error) {
+      if (error?.code !== 'SOURCE_PACKAGE_NOT_FOUND') throw error;
+      throw new AppPackageServiceError('APP_SOURCE_PACKAGE_CHANGED', 'This repository no longer publishes the app package that was installed from it, so it cannot be updated. The installed version keeps running.', 409);
+    }
+    // Belt and braces around the selection above: the app agent would refuse a
+    // mismatched identity anyway, and this keeps the refusal on this side of the
+    // privileged boundary.
     if (candidate.namespacedPackageId !== instance.packageId) {
       candidate.cleanup?.();
       throw new AppPackageServiceError('APP_SOURCE_PACKAGE_CHANGED', 'This repository no longer publishes the app package that was installed from it, so it cannot be updated. The installed version keeps running.', 409);

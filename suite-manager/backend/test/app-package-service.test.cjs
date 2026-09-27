@@ -186,6 +186,82 @@ test('an external package installs through the shared snapshot pipeline under it
   store.close();
 });
 
+// An added source's apps have to reach the Apps list before anything is installed,
+// and they have to do it early enough to take part in "works with" — a package that
+// declares it consumes a capability an installed app exports is matched while it is
+// still only an offer.
+test('apps an added source offers join the package list and take part in compatibility matching', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const offered = {
+    capabilities: {
+      exports: [],
+      integrations: [{ accepts: [{ interfaceVersion: 1, protocol: 'onlyoffice-docs-api', type: 'document-editor' }], id: 'documentEditor', title: 'Document editing' }],
+      usefulness: { emptyState: '', requiresOneOf: [] },
+    },
+    external: true,
+    id: 'x-abcdef01-scan-bridge',
+    installStatus: 'external-available',
+    instance: null,
+    mosReviewed: false,
+    name: 'Scan Bridge',
+    packageErrors: [],
+    privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+    source: { id: 'src-1', publisher: 'community', repository: 'https://github.com/community/apps' },
+    trust: 'unverified',
+  };
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [offered],
+    store,
+  });
+
+  const listed = service.listPackages();
+  const card = listed.find((item) => item.id === 'x-abcdef01-scan-bridge');
+  assert.equal(card.external, true);
+  assert.equal(card.installStatus, 'external-available');
+  assert.equal(card.privacy.status, 'review-required');
+  // ONLYOFFICE is in the official package set this test's appsDir carries and
+  // exports the capability this offered package consumes, so the match is found
+  // across the official/external boundary rather than only among official apps.
+  const connection = card.compatibility.connections.find((item) => item.provider.id === 'onlyoffice');
+  assert.ok(connection, 'an offered external package should match an official provider');
+  assert.equal(connection.slotId, 'documentEditor');
+  assert.equal(connection.ready, false); // nothing is installed, so nothing can be wired yet
+  store.close();
+});
+
+// An installed external app already has its own row, built from its snapshot. The
+// offered card for the same package must not add a second one.
+test('an installed external app is not listed twice when its source still offers it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-available',
+      instance: null,
+      name: 'Community Notes',
+      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+      source: { id: 'src-1', publisher: null, repository: 'https://github.com/community/notes' },
+    }],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const rows = service.listPackages().filter((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].installStatus, 'installed');
+  assert.ok(rows[0].instance, 'the installed row wins over the offered card');
+  store.close();
+});
+
 test('an external package cannot present its own privacy review as a MOS review', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));

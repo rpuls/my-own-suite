@@ -21,6 +21,21 @@ The repository holds the latest available official package for each app. On inst
 
 Every installed package records its source repository, path, immutable source revision, package digest, package version, minimum compatible MOS platform version, and trust level. Official packages are `mos-reviewed`; owner-added Git sources are `unverified`. `publisher-signed` is reserved for a future publisher-key verification design and is refused today. `local` source records are a development-only storage seam and are not accepted by the end-to-end source URL flow. Structural validity never promotes external content to reviewed trust.
 
+### Publishing outside the official catalog
+
+An owner-added source is a public repository with a `.mos/` folder at its root, holding one package or many:
+
+```
+.mos/manifest.json          # one app: the .mos folder is the package
+.mos/<package-id>/manifest.json   # a catalog: one folder per app, named for its manifest id
+```
+
+A root manifest wins outright, so a package declaring a nested `manifest.json` in `packageFiles` is never read as a second package. Each package validates on its own: one that fails is still listed, with its reasons, and only installing it is refused. Installing from a source publishing more than one package must name which — MOS refuses to choose, because an install resolved by directory order would be a different app after the next push.
+
+Trust and the catalog path belong to the source, not the package. Every package a source publishes shares its `.mos` catalog path, which is what ties the repository's installed apps back to one registry record; each still gets its own collision-safe installed identity from `namespacedPackageId`, which hashes `.mos/<package id>`. A source is recorded `unverified` whatever its packages claim.
+
+What a source publishes is cached in `external-app-sources.json` in the state directory. MOS probes for a new commit on a per-source interval of hours, downloads the archive again only when the commit moved, and backs off on failure; `Refresh` on the source's row in Settings is the only thing that bypasses both. A source that cannot be reached keeps serving its cached packages, and its recorded failure distinguishes *not visible to an anonymous caller* (401/404 — deleted, renamed or private, indistinguishable by design) from a rate limit.
+
 ## MOS Privacy Posture
 
 Each reviewed candidate package owns a `privacy-review.json` and a compact manifest summary. Reviews are validated by `npm run apps:privacy:check` against the contracts in `suite-manager/backend/src/apps/package-contracts.cjs`, which enforce the document's shape, its binding to the package it ships with, and the derivation of its posture. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.

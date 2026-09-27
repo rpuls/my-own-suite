@@ -2612,20 +2612,27 @@ test('onboarding records the Easy Door, and an offered domain is adopted with it
 async function externalSourcesFixture({ appPackages = null } = {}) {
   const revision = 'b'.repeat(40);
   const store = new SuiteManagerStore(await tempStateDir());
+  const packageEntry = (record, packageId) => ({
+    errors: [],
+    folder: null,
+    manifest: { category: 'tools', id: packageId, name: 'Community Notes', summary: 'Notes.', version: '1.0.0' },
+    namespacedPackageId: `x-abcdef01-${packageId}`,
+    packageDigest: `sha256:${'0'.repeat(64)}`,
+    packageDir: null,
+    packageId,
+    permissions: ['route:notes', 'volume:notes-data'],
+    source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
+    trust: record.trust,
+  });
   const client = {
     async resolveRevision(record) { return { ...record, revision }; },
+    async listPackages(record) {
+      if (record.repository.endsWith('/hostile')) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: manifest.privileged is not permitted.');
+      return { cleanup: () => {}, packages: [packageEntry(record, 'community-notes')] };
+    },
     async downloadCandidate(record) {
       if (record.repository.endsWith('/hostile')) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: manifest.privileged is not permitted.');
-      const packageId = 'community-notes';
-      return {
-        cleanup: () => {},
-        manifest: { id: packageId, version: '1.0.0' },
-        namespacedPackageId: `x-abcdef01-${packageId}`,
-        packageId,
-        permissions: ['route:notes', 'volume:notes-data'],
-        source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
-        trust: record.trust,
-      };
+      return { ...packageEntry(record, 'community-notes'), cleanup: () => {} };
     },
   };
   const service = new ExternalSourceService({ appPackages, client, now: () => new Date('2026-07-15T10:00:00.000Z'), officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
@@ -2685,10 +2692,12 @@ test('pasting a package URL resolves an external card without persisting a sourc
     });
     assert.equal(resolved.status, 200);
     const payload = resolved.json();
-    assert.equal(payload.card.external, true);
-    assert.equal(payload.card.trust, 'unverified');
-    assert.equal(payload.card.mosReviewed, false);
-    assert.equal(payload.source.packageId, 'community-notes');
+    assert.equal(payload.packages.length, 1);
+    assert.equal(payload.packages[0].external, true);
+    assert.equal(payload.packages[0].trust, 'unverified');
+    assert.equal(payload.packages[0].mosReviewed, false);
+    assert.equal(payload.packages[0].packageId, 'community-notes');
+    assert.equal(payload.added, false);
 
     const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
     assert.deepEqual(listed.json().sources, []); // preview persists nothing

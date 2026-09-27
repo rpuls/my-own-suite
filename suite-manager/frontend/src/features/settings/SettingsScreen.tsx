@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { AdvancedPanel, Checkbox, Dialog, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
+import { AppSourcesPanel } from './AppSourcesPanel';
 import { jsonResponse } from '../../lib/api';
 import { readVaultView, type VaultView } from '../../lib/vault';
 
@@ -817,6 +818,7 @@ export function SettingsScreen() {
       <AddressDiagnostics status={status} />
     </div> : contact === 'ok' && !loadError ? <p className="suite-meta">Loading the suite address...</p> : null}
     <EmailRelayPanel />
+    <AppSourcesPanel />
     <EncryptionPanel />
     <TechnicalControlsPanel />
     <OwnerAccountPanel />

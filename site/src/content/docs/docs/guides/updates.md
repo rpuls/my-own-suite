@@ -40,7 +40,9 @@ Two honest limits worth understanding:
 
 ### Apps you brought yourself
 
-An [external package](/docs/guides/apps/) installed from your own repository URL updates through the same machinery, with one difference: MOS doesn't track versions for sources it hasn't reviewed, so there's no badge. Its detail view offers **Check for updates** instead, which looks at the source you gave it.
+An [app from a source you added](/docs/guides/apps/) updates through the same machinery, with one difference: MOS doesn't track versions for sources it hasn't reviewed, so there's no badge. Its detail view offers **Check for updates** instead, which asks the source it came from.
+
+That check looks for *that app* specifically, so a source publishing several apps updates each on its own. If the source has stopped publishing the app — dropped, renamed, or the repository taken over — the check says so and refuses rather than offering you something else under your app's name. Either way your installed version keeps running. Removing a source is the one thing that ends updates for its apps permanently.
 
 ### Security advisories
 

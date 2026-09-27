@@ -1185,6 +1185,15 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   color: var(--mos-color-accent);
 }
 
+/* A pill that says this row needs the owner's attention without claiming anything
+   is broken. Warning rather than error on purpose: the thing it marks is still
+   working, it just cannot be checked. */
+.mos-pill-warning {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+  color: var(--mos-color-warning);
+}
+
 .mos-eyebrow {
   display: inline-block;
   color: var(--mos-color-accent);

@@ -503,10 +503,16 @@ function createMOSServer({
     recordSecurityEvent,
     stateDir: setup.store.stateDir,
   });
+  // Declared before the package service so it can read the owner's added sources,
+  // and assigned after so the source service can install through the package
+  // service. The two genuinely need each other: a source installs packages, and the
+  // Apps list has to show what a source publishes before anything is installed.
+  let externalSourceService = null;
   const appPackages = new AppPackageService({
     agent: appAgent,
     appsDir,
     catalogService,
+    externalCatalog: () => externalSourceService?.catalogPackages() || [],
     externalClient: externalSourceClient,
     limiter: appOperationLimiter,
     store: setup.store,
@@ -537,7 +543,7 @@ function createMOSServer({
   addressService.start();
   const publicUrls = () => appPublicUrlResolver(suiteAddress.read(), appHostFor);
   const publicUrlOf = (packageId) => publicUrls()(packageId);
-  const externalSourceService = externalSources || new ExternalSourceService({
+  externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
     client: externalSourceClient,
@@ -1375,7 +1381,12 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
           return;
         }
+        // Answer from what is already on disk, then let any sources that are due a
+        // check catch up behind the response. Deliberately not awaited: the Apps
+        // page must never wait on a git host, and a source found to have moved
+        // shows up on the next load.
         jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages() });
+        externalSourceService.sweep();
         return;
       }
 
@@ -1428,12 +1439,24 @@ function createMOSServer({
         }
         if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/install`) {
           const body = await readJsonBody(request, 16 * 1024);
-          jsonResponse(response, 201, await externalSourceService.installUrl(String(body.url || ''), { config: body.config }));
+          jsonResponse(response, 201, await externalSourceService.installUrl(String(body.url || ''), {
+            config: body.config,
+            packageId: typeof body.packageId === 'string' && body.packageId ? body.packageId : null,
+          }));
           return;
         }
         const sourceStatusMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/status$/u);
         const sourcePreviewMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/preview$/u);
+        const sourceRefreshMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/refresh$/u);
         const sourceRemoveMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/remove$/u);
+        // The owner asking directly, which is the one check that ignores both the
+        // interval and the failure back-off — the warning on a failing source is
+        // what prompts the click, so making the click wait would strand them.
+        if (request.method === 'POST' && sourceRefreshMatch) {
+          const id = decodeURIComponent(sourceRefreshMatch[1]);
+          jsonResponse(response, 200, { catalog: await externalSourceService.refreshSource(id, { force: true }) });
+          return;
+        }
         if (request.method === 'POST' && sourceStatusMatch) {
           const body = await readJsonBody(request, 4 * 1024);
           jsonResponse(response, 200, {
@@ -1442,8 +1465,11 @@ function createMOSServer({
           return;
         }
         if (request.method === 'POST' && sourcePreviewMatch) {
+          const body = await readJsonBody(request, 4 * 1024).catch(() => ({}));
           jsonResponse(response, 200, {
-            candidate: await externalSourceService.previewCandidate(decodeURIComponent(sourcePreviewMatch[1])),
+            candidate: await externalSourceService.previewCandidate(decodeURIComponent(sourcePreviewMatch[1]), {
+              packageId: typeof body?.packageId === 'string' && body.packageId ? body.packageId : null,
+            }),
           });
           return;
         }
