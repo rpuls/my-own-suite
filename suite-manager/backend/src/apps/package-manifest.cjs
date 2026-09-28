@@ -205,6 +205,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
     role: SUPPORTED_PACKAGE_ROLES.has(manifest.role) ? manifest.role : 'standalone',
     routes: Array.isArray(manifest.routes) ? manifest.routes.map((route) => ({
       host: route?.host || '',
+      kind: route?.kind === 'api' ? 'api' : 'web',
       service: route?.service || '',
     })) : [],
     services,

@@ -144,7 +144,7 @@ type AppPackageSummary = {
     summary?: string;
     title?: string;
   };
-  routes: Array<{ host: string; service: string }>;
+  routes: Array<{ host: string; kind: 'web' | 'api'; service: string }>;
   role: 'standalone' | 'capability-provider' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: SetupField[] };
@@ -227,7 +227,7 @@ function isCompanionApp(app: AppPackageSummary) {
 }
 
 function hasPrimaryAppDestination(app: AppPackageSummary) {
-  return !isCompanionApp(app) && app.routes.length > 0;
+  return !isCompanionApp(app) && app.routes[0]?.kind === 'web';
 }
 
 function runtimeApplied(app: AppPackageSummary) {
@@ -318,12 +318,6 @@ function catalogFacts(status: CatalogStatus): AdvancedFact[] {
 function initialsFor(name: string) {
   const words = name.split(/\s+/u).filter(Boolean);
   return (words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : name.slice(0, 2)).toUpperCase();
-}
-
-function baseHost() {
-  if (typeof window === 'undefined') return 'mos.home';
-  const host = window.location.hostname;
-  return host.startsWith('home.') ? host.slice(5) : host;
 }
 
 // The address as it is spoken and typed, which is what the settings dialog
@@ -607,7 +601,7 @@ function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
     { label: 'Package id', value: app.id },
     { label: 'MOS package version', value: app.version },
     { label: 'Service', value: app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
-    { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+    { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}${route.kind === 'api' ? ' (api)' : ''}`).join(', ') || 'None' },
     { label: 'Volumes', value: app.services.flatMap((service) => service.volumes).join(', ') || 'None' },
     { label: 'Health', value: app.health ? `${app.health.type}: ${app.health.url}` : 'None' },
     { label: 'Projections', value: projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install' },
@@ -1128,6 +1122,7 @@ function AppDetail({
       running={ready}
       service={app.routes[0]?.service || app.services[0]?.id || app.id}
       webAddress={appAddress(app)}
+      webAddressKind={app.routes[0]?.kind || 'web'}
     /> : null}
     {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
       <figure className="suite-app-gallery">
@@ -1299,7 +1294,7 @@ function permissionLabel(permission: string): { detail: string; label: string } 
   const separator = permission.indexOf(':');
   const kind = separator === -1 ? permission : permission.slice(0, separator);
   const value = separator === -1 ? '' : permission.slice(separator + 1);
-  if (kind === 'route') return { detail: `Serves a web app at ${value}.${baseHost()} on your MOS.`, label: `Web address: ${value}` };
+  if (kind === 'route') return { detail: 'Gets its own HTTPS address under your MOS domain.', label: `Web address: ${value}` };
   if (kind === 'volume') return { detail: 'Reads and writes its own private, named storage volume.', label: `Storage: ${value}` };
   if (kind === 'integration') return { detail: 'Can connect to a compatible app you choose. Nothing connects automatically.', label: `Integration: ${value}` };
   if (permission === 'provides-capability') return { detail: 'Other installed apps can connect to this one.', label: 'Provides a capability to other apps' };
@@ -1415,7 +1410,7 @@ function ExternalAppDetail({ card, installError, installing, onClose, onInstall,
           { label: 'Package version', value: card.version || 'Unknown' },
           { code: true, label: 'Package digest', value: card.packageDigest || 'Unavailable' },
           { label: 'Services', value: card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
-          { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+          { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}${route.kind === 'api' ? ' (api)' : ''}`).join(', ') || 'None' },
         ]} reveal="technical-mode" />
       </div>
     </aside>

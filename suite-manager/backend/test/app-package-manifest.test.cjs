@@ -292,6 +292,17 @@ test('appVersion is optional, must be text when present, and reaches the public 
   assert.equal(publicPackageSummary(validManifest()).appVersion, null);
 });
 
+test('a route is web by default, an api route has no Homepage tile, and the kind reaches the summary', () => {
+  const apiRoutes = [{ host: 'example-app', kind: 'api', service: 'example-app' }];
+  assert.deepEqual(validateAppPackageManifest(validManifest({ homepage: undefined, routes: apiRoutes })), []);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ routes: apiRoutes })), [
+    'homepage must be omitted when the first route is an api route; there is no page for a tile to open.',
+  ]);
+  assert.ok(validateAppPackageManifest(validManifest({ routes: [{ host: 'example-app', kind: 'tcp', service: 'example-app' }] })).length);
+  assert.equal(publicPackageSummary(validManifest()).routes[0].kind, 'web');
+  assert.equal(publicPackageSummary(validManifest({ homepage: undefined, routes: apiRoutes })).routes[0].kind, 'api');
+});
+
 test('manifestVersion is required and must be a known generation', () => {
   const missing = validManifest();
   delete missing.manifestVersion;

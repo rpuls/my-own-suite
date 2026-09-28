@@ -151,6 +151,9 @@ function validateRouteSemantics(manifest, errors) {
         errors.push(`${prefix}.${key} is not allowed; routes are structured fields, never raw proxy configuration.`);
       }
     }
+    if (index === 0 && route.kind === 'api' && manifest.homepage !== undefined) {
+      errors.push('homepage must be omitted when the first route is an api route; there is no page for a tile to open.');
+    }
     if (isRecord(route.internalIcalBridge)) {
       const bridge = route.internalIcalBridge;
       if (!SAFE_INTERNAL_PATH_PATTERN.test(String(bridge.path || ''))) {

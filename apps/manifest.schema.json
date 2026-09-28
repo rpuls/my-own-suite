@@ -301,6 +301,10 @@
             "$ref": "#/$defs/text",
             "description": "The declared service that receives this route's traffic."
           },
+          "kind": {
+            "enum": ["web", "api"],
+            "description": "Who the address is for. web (default) is a page people open; api answers only programs, so MOS offers no Open button and no Homepage tile for it. The first route decides for the app. Requires minimumMosVersion 0.21.0."
+          },
           "internalIcalBridge": {
             "type": "object",
             "required": ["path", "targetPath", "basicAuth"],

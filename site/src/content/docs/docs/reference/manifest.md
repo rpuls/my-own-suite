@@ -17,6 +17,17 @@ Two artifacts define the contract:
 - **[`apps/manifest.schema.json`](https://github.com/rpuls/my-own-suite/blob/main/apps/manifest.schema.json)** — the machine-readable JSON Schema (draft 2020-12). Validate against it with any standard JSON Schema tool. MOS itself interprets this exact file; there is no second hand-written validator to drift from it.
 - **The semantic rules** on this page — cross-references and the template grammar, which JSON Schema cannot express. In a repository checkout, `npm run apps:manifest:check` runs both passes over every package (or over folders you name) without running MOS.
 
+## Baseline and additions
+
+The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set `minimumMosVersion` to at least `0.17.0`, and a manifest using only baseline fields works on every generation-1 release. Everything added since is optional, and a package that uses an addition raises `minimumMosVersion` to the release that introduced it, so an older MOS refuses the package instead of silently ignoring what it asked for.
+
+| Addition | Since | What it adds |
+| --- | --- | --- |
+| [`resources.services.<id>.requires`](#resource-requirements-requires) | 0.18.0 | Memory and CPU a service needs at rest and at peak, shown to the owner. |
+| [`${smtp.*}`](#the-smtp-relay-namespace) | 0.19.0 | The owner's outbound email relay, projected into an app that sends mail. |
+| [`appVersion`](#required-fields) | 0.20.0 | The app's own version, which owners see instead of the package version. |
+| [`routes[].kind`](#routes) | 0.21.0 | `api` marks an address only programs call: no Open button, no Homepage tile. |
+
 ## A complete minimal manifest
 
 ```json
@@ -105,6 +116,12 @@ Declare `requires` on every service of a package or none: a package with figures
 
 Each route publishes one HTTPS hostname (`<host>.<suite-domain>`), terminated by MOS and reverse-proxied to the service's `internalPort`. Routes are structured data — raw proxy configuration is refused. Generation 1 routes are HTTP(S) only; a future contract for other protocols would arrive as a separate optional field, not a reinterpretation of `routes`.
 
+`kind` says who the address is for: `web` (the default) is a page people open; `api` answers only programs — a webhook, a trigger, an endpoint another app calls. The **Open** button and the Homepage tile use the first route, so when it is `api` Suite Manager shows the address for copying but no **Open** button, and the package must omit `homepage`, since a tile would open nothing. `kind` was added in MOS 0.21.0; a package using it declares `minimumMosVersion` 0.21.0 or later.
+
+```json
+"routes": [{ "host": "scan-bridge", "service": "scan-bridge", "kind": "api" }]
+```
+
 ## Health
 
 ```json
@@ -137,7 +154,7 @@ All display-only. `description` (the fuller paragraph for the app detail view �
 
 ## Homepage tile (`homepage`)
 
-`group` and `icon` are required when the block is present; `name` defaults to the package name and `description` to the summary. Omit the block for packages that should not appear on the dashboard (capability providers usually do).
+`group` and `icon` are required when the block is present; `name` defaults to the package name and `description` to the summary. Omit the block for packages that should not appear on the dashboard (capability providers usually do), and always when the first route is an `api` route.
 
 ## Onboarding guide (`onboarding`)
 
@@ -220,4 +237,4 @@ Or validate structure alone against `apps/manifest.schema.json` with any JSON Sc
 
 ## Amendment policy
 
-Recorded in the repository's decision log and agent rules: a manifest change must be an **optional, additive** field; the UI must render its absence as absence; a change to an existing field's meaning requires a new generation; and reintroducing a closed allow-list anywhere in the manifest shape is a regression (a unit test fails if anyone tries).
+Recorded in the repository's decision log and agent rules: a manifest change must be an **optional, additive** field, listed under [Baseline and additions](#baseline-and-additions) with the release that introduced it; the UI must render its absence as absence; a change to an existing field's meaning requires a new generation; and reintroducing a closed allow-list anywhere in the manifest shape is a regression (a unit test fails if anyone tries).

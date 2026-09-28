@@ -407,7 +407,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.ok(radicale);
     assert.equal(radicale.name, 'Radicale');
     assert.equal(radicale.validation.valid, true);
-    assert.deepEqual(radicale.routes, [{ host: 'radicale', service: 'radicale' }]);
+    assert.deepEqual(radicale.routes, [{ host: 'radicale', kind: 'web', service: 'radicale' }]);
     assert.equal(radicale.health.url, 'http://radicale:5232/');
     assert.deepEqual(radicale.setup.fields, [
       {
@@ -454,7 +454,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.equal(stirling.setup.fieldCount, 0);
     assert.equal(stirling.icon, 'icon.png');
     assert.equal(stirling.iconUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon');
-    assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', service: 'stirling-pdf' }]);
+    assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', kind: 'web', service: 'stirling-pdf' }]);
     assert.equal(stirling.health.url, 'http://stirling-pdf:8080/api/v1/info/status');
     assert.equal(JSON.stringify(stirling).includes('reverse_proxy'), false);
     assert.ok(vaultwarden);

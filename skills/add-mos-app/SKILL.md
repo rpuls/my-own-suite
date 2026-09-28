@@ -12,7 +12,7 @@ The manifest is a locked, versioned contract: author against manifest generation
 ## Workflow
 
 1. Confirm role, user outcome, license, architecture support, resources, dependencies, and operational maturity.
-2. Assign an app-package version independent of the MOS platform and upstream app versions. Declare the package source, minimum compatible MOS platform version, and trust level. Set `minimumMosVersion` to at least the first release carrying the locked manifest validator (0.17.0) and higher if the package uses newer contract fields.
+2. Assign an app-package version independent of the MOS platform and upstream app versions. Declare the package source, minimum compatible MOS platform version, and trust level. Set `minimumMosVersion` to at least the first release carrying the locked manifest validator (0.17.0) and higher if the package uses newer contract fields — the reference page's **Baseline and additions** table names the release for each one. Mark a route `"kind": "api"` when it answers only programs, so MOS offers no Open button or Homepage tile for it.
 3. Pin every base image by immutable digest in root-level package Dockerfiles. Preserve public compatibility paths.
 4. Design setup fields, secrets, services, named volumes, routes, health checks, declared capabilities, integrations, onboarding, lifecycle behavior, and backup consistency requirements within the locked manifest shape — no host paths, extra ports, or raw proxy configuration.
 5. Follow the `assess-app-privacy` skill to create `privacy-review.json` and the manifest privacy posture. Never give an unreviewed app a favorable placeholder.
