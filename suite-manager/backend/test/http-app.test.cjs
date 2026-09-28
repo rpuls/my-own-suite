@@ -1005,6 +1005,9 @@ test('Vaultwarden install generates a redacted secret and materializes it only f
       headers: { Cookie: cookie, Host: 'home.test' },
     });
     assert.doesNotMatch(packages.body, new RegExp(adminToken, 'u'));
+    const listed = packages.json().packages;
+    assert.equal(listed.find((app) => app.id === 'vaultwarden').publicUrl, calls[0].publicUrl);
+    assert.equal(listed.find((app) => app.id === 'immich').publicUrl, '');
   }, { appAgent, homeHost: 'home.test' });
 });
 

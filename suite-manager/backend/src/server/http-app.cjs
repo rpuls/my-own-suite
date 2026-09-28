@@ -543,6 +543,9 @@ function createMOSServer({
   addressService.start();
   const publicUrls = () => appPublicUrlResolver(suiteAddress.read(), appHostFor);
   const publicUrlOf = (packageId) => publicUrls()(packageId);
+  // The UI follows this URL rather than rebuilding it from a manifest host, which
+  // for an external app would drop the `ext-` prefix it is really served under.
+  const withPublicUrl = (app) => ({ ...app, publicUrl: appHostFor(app.id) ? publicUrlOf(app.id).publicUrl : '' });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -1385,7 +1388,7 @@ function createMOSServer({
         // check catch up behind the response. Deliberately not awaited: the Apps
         // page must never wait on a git host, and a source found to have moved
         // shows up on the next load.
-        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages() });
+        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages().map(withPublicUrl) });
         externalSourceService.sweep();
         return;
       }

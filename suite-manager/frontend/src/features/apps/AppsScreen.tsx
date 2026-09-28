@@ -90,6 +90,8 @@ type AppPackageSummary = {
   // on this server to serve.
   iconDataUrl?: string | null;
   iconUrl: string;
+  // Where the installed app is really served; empty when nothing answers yet.
+  publicUrl: string;
   instance: {
     config?: InstanceConfigEntry[];
     enabled: boolean;
@@ -324,17 +326,10 @@ function baseHost() {
   return host.startsWith('home.') ? host.slice(5) : host;
 }
 
-function appUrl(app: AppPackageSummary) {
-  const route = app.routes[0];
-  if (!route?.host || typeof window === 'undefined') return '';
-  return `${window.location.protocol}//${route.host}.${baseHost()}/`;
-}
-
 // The address as it is spoken and typed, which is what the settings dialog
-// shows; appUrl() is for following, this is for reading and copying.
+// shows; publicUrl is for following, this is for reading and copying.
 function appAddress(app: AppPackageSummary) {
-  const route = app.routes[0];
-  return route?.host ? `${route.host}.${baseHost()}` : '';
+  return app.publicUrl ? new URL(app.publicUrl).host : '';
 }
 
 function hasGuide(app: AppPackageSummary) {
@@ -508,7 +503,7 @@ function resolveGuideValue(app: AppPackageSummary, value: string) {
     .filter((item) => !item.secret)
     .map((item) => [item.key, String(item.value ?? '')]));
   return value
-    .replace(/\$\{app\.publicUrl\}/gu, appUrl(app))
+    .replace(/\$\{app\.publicUrl\}/gu, (match) => app.publicUrl || match)
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => config.get(key) || match);
 }
 
@@ -725,7 +720,7 @@ function AppDetail({
   const primaryDestination = hasPrimaryAppDestination(app);
   const uninstalled = app.instance?.status === 'uninstalled';
   const disabled = !uninstalled && (app.instance?.status === 'disabled' || app.instance?.enabled === false);
-  const url = appUrl(app);
+  const url = app.publicUrl;
   const screenshots = app.catalog.screenshots;
   const cover = screenshots[0];
   const guideCompleted = app.instance?.guideState?.status === 'completed';
