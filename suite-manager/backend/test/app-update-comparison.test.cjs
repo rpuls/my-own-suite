@@ -62,10 +62,10 @@ test('an update that drops this host architecture is unsupported before it is st
   const candidate = appPackage('2.0.0', (manifest) => ({ ...manifest, architectures: ['amd64'] }));
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const input = { agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' };
-  const refused = compareAppPackages({ ...input, hostArchitecture: 'arm64' });
+  const refused = compareAppPackages({ ...input, host: { architecture: 'arm64' } });
   assert.equal(refused.compatibility, 'unsupported');
-  assert.deepEqual(refused.validation.errors, ['Package runs on amd64; this host is arm64.']);
-  assert.equal(compareAppPackages({ ...input, hostArchitecture: 'amd64' }).compatibility, 'compatible');
+  assert.deepEqual(refused.validation.errors, ['This app runs only on amd64 processors, and this server is arm64.']);
+  assert.equal(compareAppPackages({ ...input, host: { architecture: 'amd64' } }).compatibility, 'compatible');
   // An agent that does not recognise its own host leaves the update exactly as
   // it was before this check existed, rather than blocking every declaring
   // package.

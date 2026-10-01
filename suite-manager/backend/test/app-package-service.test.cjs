@@ -513,7 +513,7 @@ test('an app that does not run on this host is refused before anything is instal
     store,
   });
 
-  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_ARCHITECTURE_UNSUPPORTED'
+  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_HOST_REQUIREMENT_UNMET'
     && error.statusCode === 409
     && /amd64.*arm64/u.test(error.message));
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
@@ -559,8 +559,38 @@ test('the amd64-only package in the catalog is refused on an arm64 host', async 
     store,
   });
 
-  await assert.rejects(() => service.installPackage('immich'), { code: 'APP_ARCHITECTURE_UNSUPPORTED' });
+  await assert.rejects(() => service.installPackage('immich'), { code: 'APP_HOST_REQUIREMENT_UNMET' });
   assert.equal(store.getAppInstanceByPackageId('immich'), null);
+  store.close();
+});
+
+test('an app that needs HTTPS is refused on a suite served over http and installs on one served over https', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const suiteAddress = { scheme: 'http', readOrNull() { return { scheme: this.scheme }; } };
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store, suiteAddress });
+  const candidate = await externalCandidate(root, { requirements: { https: true } });
+
+  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_HOST_REQUIREMENT_UNMET'
+    && /HTTPS/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+
+  suiteAddress.scheme = 'https';
+  await service.installExternalPackage({ candidate });
+  assert.ok(store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
+  store.close();
+});
+
+test('the Apps list says why an app cannot be installed on this server, and says nothing when the server is unknown', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ appsDir: v2AppsDir, store });
+  const unmetFor = (host, id) => service.listPackages(host).find((app) => app.id === id).unmetRequirements.map((unmet) => unmet.id);
+
+  assert.deepEqual(unmetFor({ architecture: 'arm64', https: false }, 'vaultwarden'), ['https']);
+  assert.deepEqual(unmetFor({ architecture: 'arm64', https: false }, 'immich'), ['architecture']);
+  assert.deepEqual(unmetFor({ architecture: 'amd64', https: true }, 'vaultwarden'), []);
+  assert.deepEqual(unmetFor({}, 'vaultwarden'), []);
   store.close();
 });
 

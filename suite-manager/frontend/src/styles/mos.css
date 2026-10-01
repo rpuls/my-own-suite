@@ -1113,6 +1113,26 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   box-shadow: var(--mos-shadow-strong);
 }
 
+/* Tooltip: a short reason beside a control, on hover or focus. Pair with
+   .mos-overlay; the anchor is what takes the pointer and focus, because a
+   disabled button takes neither. */
+.mos-tooltip {
+  max-width: min(20rem, calc(100vw - 2 * var(--mos-space-4)));
+  padding: var(--mos-space-2) var(--mos-space-3);
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-small);
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.mos-tooltip[hidden] {
+  display: none;
+}
+
+.mos-tooltip-anchor {
+  display: inline-flex;
+}
+
 /* A secret shown to be kept: the whole value on one block, in the face it was
    designed to be read back in, with the copy control beside it. Wrapping rather
    than truncating is the point — an ellipsis in the middle of a recovery key is

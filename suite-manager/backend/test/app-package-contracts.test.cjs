@@ -133,7 +133,7 @@ test('platform minimum version rejects incompatible candidates', () => {
 
 test('a package is refused on a host it says it does not run on', () => {
   assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, 'arm64'), [
-    'Package runs on amd64; this host is arm64.',
+    'This app runs only on amd64 processors, and this server is arm64.',
   ]);
   assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, 'amd64'), []);
   assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64', 'arm64'] }, 'arm64'), []);

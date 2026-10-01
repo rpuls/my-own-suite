@@ -10,7 +10,6 @@ const {
   digestFor,
   homepageEntryForHomepage,
   homepageProjectionApplied,
-  hostArchitectureOf,
   isRecord,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
@@ -420,7 +419,7 @@ class AppUpdateService {
       return compareAppPackages({
         agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
-        hostArchitecture: hostArchitectureOf(agentStatus),
+        host: await this.apps.hostFacts(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,
@@ -486,7 +485,7 @@ class AppUpdateService {
       const comparison = compareAppPackages({
         agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
-        hostArchitecture: hostArchitectureOf(agentStatus),
+        host: await this.apps.hostFacts(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,

@@ -2243,6 +2243,18 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-markdown > :first-child { margin-top: 0; }
+.suite-markdown > :last-child { margin-bottom: 0; }
+.suite-markdown :is(p, ul, ol, pre, blockquote) { margin: 0 0 var(--mos-space-3); }
+.suite-markdown :is(ul, ol) { padding-left: 1.2rem; }
+.suite-markdown li + li { margin-top: var(--mos-space-1); }
+.suite-markdown :is(h1, h2, h3, h4, h5, h6) { margin: var(--mos-space-4) 0 var(--mos-space-2); color: var(--mos-color-text-strong); font-size: var(--mos-text-body); }
+.suite-markdown strong { color: var(--mos-color-text-strong); font-weight: var(--mos-weight-semibold); }
+.suite-markdown code { padding: 0.05em 0.35em; border-radius: 0.35rem; background: var(--mos-color-surface-muted); font-family: var(--mos-font-mono); font-size: 0.9em; overflow-wrap: anywhere; }
+.suite-markdown pre { overflow-x: auto; padding: var(--mos-space-3); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); }
+.suite-markdown pre code { padding: 0; background: none; }
+.suite-markdown blockquote { padding-left: var(--mos-space-3); border-left: 3px solid var(--mos-color-surface-border); }
+
 .suite-updates-log {
   display: grid;
   gap: var(--mos-space-2);

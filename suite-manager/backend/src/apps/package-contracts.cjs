@@ -251,7 +251,7 @@ function validateArchitectureCompatibility(manifest, hostArchitecture) {
   if (!SUPPORTED_ARCHITECTURES.includes(hostArchitecture)) return [];
   return declared.includes(hostArchitecture)
     ? []
-    : [`Package runs on ${declared.join(', ')}; this host is ${hostArchitecture}.`];
+    : [`This app runs only on ${declared.join(' or ')} processors, and this server is ${hostArchitecture}.`];
 }
 
 function validatePrivacyBinding(review, { manifest, packageDigest, source }) {

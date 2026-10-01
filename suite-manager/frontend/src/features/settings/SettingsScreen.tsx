@@ -557,7 +557,6 @@ function TechnicalControlsPanel() {
 }
 
 const securityEventLabels: Record<string, { description: string; label: string }> = {
-  'app-catalog-refresh-failed': { description: 'MOS could not refresh the verified app catalog.', label: 'Catalog refresh failures' },
   'app-catalog-signature-invalid': { description: 'Catalog data was refused because its publisher signature was missing or invalid.', label: 'Invalid catalog signatures' },
   'app-source-candidate-rejected': { description: 'An external package candidate failed MOS safety or validation checks.', label: 'Rejected external packages' },
   'app-source-download-throttled': { description: 'An external package source exceeded its bounded download rate.', label: 'Throttled package sources' },

@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { validateManifestStructure } = require('./manifest-schema.cjs');
+const { declaredHostRequirements } = require('./host-requirements.cjs');
 const { APP_ID_PATTERN, validateManifestSemantics } = require('./manifest-semantics.cjs');
 
 const MANIFEST_FILENAME = 'manifest.json';
@@ -192,6 +193,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       name: manifest.homepage.name || manifest.name || manifest.id,
       ...(isRecord(manifest.homepage.widget) ? { widget: manifest.homepage.widget } : {}),
     } : null,
+    hostRequirements: declaredHostRequirements(manifest),
     capabilities: {
       exports: publicCapabilityExports(manifest.exports),
       integrations: publicIntegrationSlots(manifest.integrations),

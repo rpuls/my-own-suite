@@ -23,6 +23,33 @@ release_udev() {
   udevadm settle 2>/dev/null || true
 }
 
+# Each setting is put back only if it was read first, so a failure path cannot
+# write an empty value where the kernel's own one was.
+saved_console_level=''
+saved_hung_task_timeout=''
+watchdogs_paused=no
+quiet_for_copy() {
+  read -r saved_console_level _ 2>/dev/null < /proc/sys/kernel/printk || saved_console_level=''
+  [ -z "$saved_console_level" ] || printf '3\n' 2>/dev/null > /proc/sys/kernel/printk || true
+  saved_hung_task_timeout="$(cat /proc/sys/kernel/hung_task_timeout_secs 2>/dev/null || true)"
+  [ -z "$saved_hung_task_timeout" ] || printf '0\n' 2>/dev/null > /proc/sys/kernel/hung_task_timeout_secs || true
+  if systemctl service-watchdogs no >/dev/null 2>&1; then watchdogs_paused=yes; fi
+}
+restore_after_copy() {
+  if [ "$watchdogs_paused" = 'yes' ]; then
+    watchdogs_paused=no
+    systemctl service-watchdogs yes >/dev/null 2>&1 || true
+  fi
+  if [ -n "$saved_hung_task_timeout" ]; then
+    printf '%s\n' "$saved_hung_task_timeout" 2>/dev/null > /proc/sys/kernel/hung_task_timeout_secs || true
+    saved_hung_task_timeout=''
+  fi
+  if [ -n "$saved_console_level" ]; then
+    printf '%s\n' "$saved_console_level" 2>/dev/null > /proc/sys/kernel/printk || true
+    saved_console_level=''
+  fi
+}
+
 # The stick installs or it stops: every way out that is not a finished install
 # leaves its reason on the screen until someone has read it, then restarts.
 # Nothing ever runs from the stick.
@@ -30,6 +57,7 @@ stop_here() {
   printf '\n  %s\n\n  %s\n  > ' "$1" "${2:-Press Enter to restart.}"
   read -r _ || true
   fsfreeze -u / 2>/dev/null || true
+  restore_after_copy
   release_udev
   sync
   reboot -f
@@ -210,16 +238,11 @@ while :; do
 done
 
 stage 'Copying. This takes a few minutes and must not be interrupted.'
-# The freeze below holds every write to the root for the length of the copy, and
-# systemd reads a service that has not checked in as a hung one: journald's
-# watchdog is three minutes, so it was killed and restarted mid-copy and took the
-# log of the install with it. The override lives in /run, so it is gone on the
-# next boot and is never part of what is copied to the disk.
-for watchdog_unit in systemd-journald systemd-timesyncd; do
-  mkdir -p "/run/systemd/system/${watchdog_unit}.service.d"
-  printf '[Service]\nWatchdogSec=0\n' > "/run/systemd/system/${watchdog_unit}.service.d/mos-install.conf"
-done
-systemctl daemon-reload || true
+# The freeze blocks every writer to the root, so systemd would kill journald for
+# a missed watchdog and the hung-task detector would print over the progress line
+# (Ubuntu's sysctl lifts the console to level 4). A daemon-reload cannot disarm a
+# watchdog that is already running; service-watchdogs can.
+quiet_for_copy
 
 # The stick is a live, writable root while it is copied, and remounting a running
 # root read-only fails, so the filesystem is frozen instead: writes wait until the
@@ -227,9 +250,10 @@ systemctl daemon-reload || true
 sync
 hold_udev
 fsfreeze -f /
-trap 'fsfreeze -u / 2>/dev/null || true; release_udev' EXIT
+trap 'fsfreeze -u / 2>/dev/null || true; restore_after_copy; release_udev' EXIT
 dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
 fsfreeze -u /
+restore_after_copy
 trap - EXIT
 sync
 

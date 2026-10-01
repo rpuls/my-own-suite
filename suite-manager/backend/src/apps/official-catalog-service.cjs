@@ -408,18 +408,11 @@ class OfficialCatalogService {
       this.failures += 1;
       const safeError = { code: error.code || 'CATALOG_FETCH_FAILED', message: error.message || 'Official catalog refresh failed.' };
       this.lastError = safeError;
-      // A catalog that cannot refresh is a MOS that has stopped learning which
-      // installed packages have advisories against them. That is quiet by
-      // nature: the last-known-good cache keeps serving and nothing looks wrong,
-      // so it is worth a durable count rather than only a status field the owner
-      // has to think to look at. Counted per configured catalog repository by
-      // digest, not by URL, and never allowed to replace the refresh failure.
-      //
-      // A signature that does not verify is kept apart from a refresh that did
-      // not happen: one says the network is down, the other says something served
-      // this box a catalog its publisher did not sign, and reading them as the
-      // same number would bury the second under the first.
-      this.noteSecurityEvent(error?.code === 'CATALOG_SIGNATURE_INVALID' ? 'app-catalog-signature-invalid' : 'app-catalog-refresh-failed', attemptedAt);
+      // Only a catalog its publisher did not sign is a security signal. A refresh
+      // that merely did not happen is network timing, and stays in `lastError` and the log.
+      if (['CATALOG_SIGNATURE_INVALID', 'CATALOG_SIGNATURE_MISSING'].includes(error?.code)) {
+        this.noteSecurityEvent('app-catalog-signature-invalid', attemptedAt);
+      }
       // A refresh failure used to reach `lastError`, the cache file and the
       // security-event counter but never the log, so the journal and the
       // diagnostics file showed a healthy server whose catalog had not refreshed

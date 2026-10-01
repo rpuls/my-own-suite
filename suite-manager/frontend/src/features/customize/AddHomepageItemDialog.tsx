@@ -57,7 +57,6 @@ export function AddHomepageItemDialog({ groups, onAdd, onClose, previewHomeServi
   return <Dialog title="Add to Homepage" onClose={onClose} footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={kind ? () => { setKind(null); setError(''); } : onClose} type="button">{kind ? 'Back' : 'Cancel'}</button>{kind ? <button className="mos-btn mos-btn-primary" disabled={busy || !canSubmit} onClick={() => void save()} type="button">{busy ? 'Adding...' : 'Add'}</button> : null}</>}>
     <Stepper currentStepIndex={kind ? 1 : 0} steps={['Type', 'Details']} />
     {!kind ? <section className="suite-decision-step" aria-labelledby="add-homepage-question"><h3 id="add-homepage-question">What do you want to add?</h3><div className="suite-choice-grid" role="group" aria-label="Item type">
-      <button className="suite-choice-card" disabled type="button"><span><strong>MOS app</strong><small>Install a packaged app from the future MOS catalog.</small></span></button>
       <button className="suite-choice-card" onClick={() => { setKind('service'); setForm((current) => ({ ...current, group: groups.includes('Home services') ? 'Home services' : current.group })); }} type="button"><span><strong>Home network app</strong><small>Link an app already running on your LAN and give it a friendly MOS address.</small></span></button>
       <button className="suite-choice-card" onClick={() => setKind('link')} type="button"><span><strong>Website</strong><small>Add a normal dashboard link without proxying or managing it.</small></span></button>
     </div>

@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
 export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'key' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
@@ -460,6 +460,28 @@ export function SecretText({ label, masked = false, value }: { label: string; ma
       <button aria-label={`Copy ${label}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
     </div>
   </div>;
+}
+
+// Portalled like ActionMenu, so a flush panel's clipping cannot cut it off.
+// Placed below its anchor and kept inside the viewport.
+export function Tooltip({ children, label }: { children: ReactNode; label: ReactNode }) {
+  const id = useId();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current?.getBoundingClientRect();
+    const tip = tipRef.current;
+    if (!open || !anchor || !tip) return;
+    const edge = 16;
+    const left = anchor.left + anchor.width / 2 - tip.offsetWidth / 2;
+    tip.style.left = `${Math.min(Math.max(left, edge), window.innerWidth - tip.offsetWidth - edge)}px`;
+    tip.style.top = `${anchor.bottom + 8}px`;
+  }, [open]);
+  return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={0}>
+    {children}
+    {createPortal(<span ref={tipRef} className="mos-overlay mos-tooltip" hidden={!open} id={id} role="tooltip">{label}</span>, document.body)}
+  </span>;
 }
 
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {

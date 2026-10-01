@@ -8,10 +8,10 @@ const {
   describeRequestedPermissions,
   diffRequestedPermissions,
   stableJson,
-  validateArchitectureCompatibility,
   validatePlatformCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
+const { declaredHostRequirements, unmetHostRequirements } = require('./host-requirements.cjs');
 
 function equal(left, right) { return stableJson(left) === stableJson(right); }
 function fields(manifest) { return new Map((manifest.setup?.fields || []).map((field) => [field.id, field])); }
@@ -70,7 +70,7 @@ function unmetRequirements(manifest, peers) {
   return required.map((type) => ({ providers: peers.providersByType?.[type] || [], type }));
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, hostArchitecture = null, peers = null }) {
+function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, peers = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
@@ -98,12 +98,12 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   const declaredBreaking = new Set(candidate.manifest.update?.breakingChanges || []);
   const undeclaredBreaking = [...breakingAreas].filter((area) => !declaredBreaking.has(area));
   if (undeclaredBreaking.length) changes.push({ area: 'manifest', classification: 'unsupported', summary: `Breaking changes are not declared for: ${undeclaredBreaking.join(', ')}.` });
-  // An update may narrow the architectures it runs on, and the host it is
-  // running on is not one the owner can change. Refusing here keeps that
-  // discovery in the preview instead of in a build that cannot pull its images.
+  // An update may start needing something this server is not, such as another
+  // processor or HTTPS. Refusing here keeps that discovery in the preview
+  // instead of in a build that cannot pull its images or an app that cannot work.
   const platformErrors = [
     ...validatePlatformCompatibility(candidate.manifest, platformVersion),
-    ...validateArchitectureCompatibility(candidate.manifest, hostArchitecture),
+    ...unmetHostRequirements(declaredHostRequirements(candidate.manifest), host).map((unmet) => unmet.reason),
   ];
   const agentBlocker = describeAgentBlocker(agentContractVersion, candidate.manifest.update?.minimumAppAgentVersion || 1);
   const agentReady = agentBlocker === null;

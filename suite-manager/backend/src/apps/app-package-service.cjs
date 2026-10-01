@@ -53,10 +53,10 @@ const {
   effectiveRouteHost,
   parseNamespacedPackageId,
   stableJson,
-  validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
+const { declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
 const {
   inspectAppPackages,
   publicPackageSummary,
@@ -88,6 +88,7 @@ class AppPackageService {
     officialRepository = 'https://github.com/rpuls/my-own-suite',
     secretDir = null,
     store,
+    suiteAddress = null,
   }) {
     this.agent = agent;
     this.appsDir = appsDir;
@@ -99,6 +100,7 @@ class AppPackageService {
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
+    this.suiteAddress = suiteAddress;
     // The update saga is its own service (see app-update-service.cjs). It needs
     // this instance for install-side work it must not own — runtime apply,
     // integrations, lifecycle — so it is built here with `this` rather than at
@@ -122,19 +124,20 @@ class AppPackageService {
 
   stagePackageUpdate(packageId, input = {}, requestContext = {}) { return this.updates.stagePackageUpdate(packageId, input, requestContext); }
 
-  // A package's base images are pinned by digest, so one that names an
-  // architecture this host is not cannot pull them and will fail in the middle
-  // of `docker build`, after the download, the gate, and the snapshot have all
-  // passed. Refusing up front turns that into an answer the owner can act on.
-  //
-  // An agent that cannot be asked leaves the host unknown, and an unknown host
-  // enforces nothing: this check exists to explain a failure that was already
-  // coming, so it must never invent one.
-  async assertArchitectureSupported(manifest, agentStatus = null) {
-    const status = agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null);
-    const errors = validateArchitectureCompatibility(manifest, hostArchitectureOf(status));
-    if (errors.length) {
-      throw new AppPackageServiceError('APP_ARCHITECTURE_UNSUPPORTED', `This app cannot be installed on this server. ${errors.join(' ')}`, 409);
+  // What this server is, for judging what a package needs from it. The
+  // architecture cannot change while Suite Manager runs, so it is asked once.
+  async hostFacts(agentStatus = null) {
+    this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
+    const scheme = this.suiteAddress?.readOrNull()?.scheme;
+    return { architecture: this.hostArchitecture, https: scheme ? scheme === 'https' : null };
+  }
+
+  // Refusing up front turns a build that cannot pull its images, or an app that
+  // cannot work here, into an answer the owner can act on.
+  async assertHostRequirementsMet(manifest, agentStatus = null) {
+    const unmet = unmetHostRequirements(declaredHostRequirements(manifest), await this.hostFacts(agentStatus));
+    if (unmet.length) {
+      throw new AppPackageServiceError('APP_HOST_REQUIREMENT_UNMET', `This app cannot be installed on this server. ${unmet.map((item) => item.reason).join(' ')}`, 409);
     }
   }
 
@@ -1122,7 +1125,7 @@ class AppPackageService {
     }
   }
 
-  listPackages() {
+  listPackages(host = {}) {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
     const externalCards = this.externalCatalog();
@@ -1187,7 +1190,7 @@ class AppPackageService {
     // is never listed twice.
     const listed = new Set(packages.map((app) => app.id));
     const external = externalCards.filter((card) => card.id && !listed.has(card.id));
-    return this.withCompatibility([...packages, ...external], integrations);
+    return withUnmetRequirements(this.withCompatibility([...packages, ...external], integrations), host);
   }
 
   withCompatibility(packages, integrations = []) {
@@ -1364,7 +1367,7 @@ class AppPackageService {
     }
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
-    await this.assertArchitectureSupported(manifest, agentStatus);
+    await this.assertHostRequirementsMet(manifest, agentStatus);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1551,7 +1554,7 @@ class AppPackageService {
     }
     const agentStatus = await this.agent.status().catch(() => null);
     assertAppAgentContract(agentStatus);
-    await this.assertArchitectureSupported(manifest, agentStatus);
+    await this.assertHostRequirementsMet(manifest, agentStatus);
     this.assertRouteHostsAvailable(manifest, packageId);
 
     const at = this.now().toISOString();

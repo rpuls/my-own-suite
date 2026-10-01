@@ -261,42 +261,60 @@ test('a restart reports the refresh failure the cache recorded, not a clean slat
   assert.equal((await restarted.refresh()).status.error, null); // inside the window, but the recorded attempt failed
 });
 
-// A catalog that cannot refresh is a MOS that has stopped learning which of its
-// installed packages have advisories against them, and it is quiet: the
-// last-known-good cache keeps serving and nothing about the Apps screen looks
-// wrong. Counting it durably is the difference between that being discoverable
-// and it depending on someone thinking to check a status field.
-test('a catalog that cannot refresh is counted without recording where it fetches from', async () => {
+// A fresh install refreshes before its network is up; that is not a security event.
+test('a catalog that cannot be fetched is not recorded as security activity', async () => {
   const events = [];
   const service = catalogService({
-    fetchImpl: async () => { throw new Error('network included secret-token'); },
+    fetchImpl: async () => { throw new Error('offline'); },
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+  assert.equal(service.status().error.message, 'Official catalog request failed.');
+  assert.deepEqual(events, []);
+});
+
+test('a signature event is recorded without where the catalog is fetched from', async () => {
+  const events = [];
+  const service = catalogService({
+    fetchImpl: serveRepo({ key: generateSigningKeyPair().privateKey }),
     now: () => new Date('2026-07-14T10:00:00.000Z'),
     recordSecurityEvent: (event) => events.push(event),
     repository: 'https://github.com/rpuls/my-own-suite',
     stateDir: tempDir(),
   });
 
-  await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
-  assert.deepEqual(events, [{
-    at: '2026-07-14T10:00:00.000Z',
-    eventType: 'app-catalog-refresh-failed',
-    subject: events[0]?.subject,
-  }]);
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_SIGNATURE_INVALID' });
+  assert.deepEqual(events, [{ at: '2026-07-14T10:00:00.000Z', eventType: 'app-catalog-signature-invalid', subject: events[0]?.subject }]);
   assert.match(events[0].subject, /^[a-f0-9]{12}$/u);
-  assert.doesNotMatch(JSON.stringify(events), /github\.com|rpuls|secret-token/u);
+  assert.doesNotMatch(JSON.stringify(events), /github\.com|rpuls/u);
+});
+
+test('a served catalog with a missing signature is recorded as a signature event', async () => {
+  const events = [];
+  const serve = serveRepo();
+  const service = catalogService({
+    fetchImpl: async (url) => (url.endsWith('/apps/catalog.json.sig') ? new Response('', { status: 404 }) : serve(url)),
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_SIGNATURE_MISSING' });
+  assert.deepEqual(events.map((event) => event.eventType), ['app-catalog-signature-invalid']);
 });
 
 // The count is an observation of the failure, not part of handling it: the
 // refresh must still fail the way it always did, with its own error.
-test('a failing event recorder cannot change how a failed refresh reports', async () => {
+test('a failing event recorder cannot change how a refused catalog reports', async () => {
   const service = catalogService({
-    fetchImpl: async () => { throw new Error('offline'); },
+    fetchImpl: serveRepo({ key: generateSigningKeyPair().privateKey }),
     recordSecurityEvent: () => { throw new Error('database is gone'); },
     stateDir: tempDir(),
   });
 
-  await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
-  assert.equal(service.status().error.message, 'Official catalog request failed.');
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_SIGNATURE_INVALID' });
+  assert.equal(service.status().error.code, 'CATALOG_SIGNATURE_INVALID');
 });
 
 // The point of the whole exercise: being able to push to the repository, or to
@@ -456,15 +474,13 @@ test('a signed catalog missing what this release requires reports skew, not a br
     assert.match(error.message, /appVersion/u);
     return true;
   });
-  // Still counted, and still not a signature event: nothing was served that
-  // anybody distrusts.
+  // Not a signature event: nothing was served that anybody distrusts.
   assert.equal(service.status().error.code, 'CATALOG_VERSION_SKEW');
 });
 
-// The reason a failed refresh was invisible: it reached `lastError`, the cache
-// file and the security-event counter, and never the log — so the journal and
-// the diagnostics file showed a healthy server whose catalog had not refreshed
-// once.
+// The reason a failed refresh was invisible: it reached `lastError` and the cache
+// file but never the log, so the journal showed a healthy server whose catalog
+// had not refreshed once.
 test('a refresh failure is logged once per state, not once per attempt', async () => {
   const records = [];
   const logger = { info: (event, fields) => records.push(['info', event, fields]), warn: (event, fields) => records.push(['warn', event, fields]) };

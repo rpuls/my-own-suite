@@ -570,7 +570,7 @@ test('Backup inventory API requires auth and reports MOS protected state', async
     });
     assert.equal(denied.status, 401);
 
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -1026,7 +1026,7 @@ test('Vaultwarden runtime apply returns a controlled redacted error when its sec
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -1514,7 +1514,7 @@ test('app lifecycle stop, start, restart, and uninstall remove app state, data, 
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -2906,7 +2906,7 @@ test('a failed runtime apply is recorded, readable on the app, and carries no se
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -2956,7 +2956,7 @@ test('a recorded failure stops being reported once the app applies successfully'
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',

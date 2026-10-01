@@ -24,9 +24,31 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
+type Route = 'apps' | 'backups' | 'customize' | 'dashboard' | 'not-found' | 'settings' | 'updates';
+
+const routesByPath: Record<string, Route> = {
+  '/suite-manager': 'dashboard',
+  '/suite-manager/apps': 'apps',
+  '/suite-manager/backups': 'backups',
+  '/suite-manager/customize': 'customize',
+  '/suite-manager/settings': 'settings',
+  '/suite-manager/updates': 'updates',
+};
+
+function routeForPath(): Route {
+  return routesByPath[window.location.pathname.replace(/\/+$/u, '')] || 'not-found';
+}
+
+function NotFoundScreen({ onNavigate }: { onNavigate: (route: Route, path: string) => void }) {
+  return <section className="mos-shell"><div className="mos-panel suite-card">
+    <h1 className="mos-card-title">Page not found</h1>
+    <p>Suite Manager has no page at <code>{window.location.pathname}</code>.</p>
+    <a href="/suite-manager/" onClick={(event) => { event.preventDefault(); onNavigate('dashboard', '/suite-manager/'); }}>Back to Suite Manager</a>
+  </div></section>;
+}
+
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/updates') ? 'updates' : window.location.pathname.endsWith('/backups') ? 'backups' : window.location.pathname.endsWith('/customize') ? 'customize' : window.location.pathname.endsWith('/apps') ? 'apps' : 'dashboard';
   const [route, setRoute] = useState(routeForPath);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useEffect(() => {
@@ -35,7 +57,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
     return () => window.removeEventListener('popstate', update);
   }, []);
 
-  function navigate(nextRoute: 'apps' | 'backups' | 'customize' | 'settings' | 'updates', path: string) {
+  function navigate(nextRoute: Route, path: string) {
     window.history.pushState({}, '', path);
     setRoute(nextRoute);
     closeMenu();
@@ -77,7 +99,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
       </nav></Drawer>
 
       <main className="suite-shell-main">
-        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
           <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>

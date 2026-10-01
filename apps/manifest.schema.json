@@ -47,6 +47,16 @@
       "uniqueItems": true,
       "description": "CPU architectures the package's pinned base images actually publish. Omitted means no constraint. Incompatible hosts refuse the install."
     },
+    "requirements": {
+      "type": "object",
+      "properties": {
+        "https": {
+          "type": "boolean",
+          "description": "true when the app does not work unless the suite is served over HTTPS, as with browser crypto or clients that refuse plain http. MOS refuses the install, with that reason, on a suite that is not. Requires minimumMosVersion 0.21.0."
+        }
+      },
+      "description": "What the app needs from the server beyond the platform version and architectures. Omitted means nothing. Requires minimumMosVersion 0.21.0."
+    },
     "packageFiles": {
       "type": "array",
       "items": { "$ref": "#/$defs/relativePath" },

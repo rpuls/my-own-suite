@@ -38,6 +38,7 @@ const { sweepCandidateRoot } = require('../apps/candidate-storage.cjs');
 const { ExternalSourceService } = require('../apps/external-source-service.cjs');
 const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
+const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 const { restoreGuaranteeFor } = require('../backups/restore-guarantee.cjs');
@@ -516,6 +517,7 @@ function createMOSServer({
     externalClient: externalSourceClient,
     limiter: appOperationLimiter,
     store: setup.store,
+    suiteAddress,
   });
   // The owner's shared outbound email relay. Reads and writes the same secret
   // directory the app runtimes read ${smtp.*} from, so a relay saved here is the
@@ -1388,7 +1390,7 @@ function createMOSServer({
         // check catch up behind the response. Deliberately not awaited: the Apps
         // page must never wait on a git host, and a source found to have moved
         // shows up on the next load.
-        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages().map(withPublicUrl) });
+        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages(await appPackages.hostFacts()).map(withPublicUrl) });
         externalSourceService.sweep();
         return;
       }
@@ -1437,7 +1439,8 @@ function createMOSServer({
         }
         if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/resolve`) {
           const body = await readJsonBody(request, 4 * 1024);
-          jsonResponse(response, 200, await externalSourceService.resolveUrl(String(body.url || '')));
+          const resolved = await externalSourceService.resolveUrl(String(body.url || ''));
+          jsonResponse(response, 200, { ...resolved, packages: withUnmetRequirements(resolved.packages, await appPackages.hostFacts()) });
           return;
         }
         if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/install`) {

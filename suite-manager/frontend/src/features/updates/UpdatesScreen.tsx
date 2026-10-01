@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { Markdown } from '../../components/Markdown';
 import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse } from '../../lib/api';
@@ -320,7 +321,7 @@ export function UpdatesScreen() {
       <section className="mos-panel suite-card suite-updates-panel">
         <h2 className="mos-card-title">{status.changeSummary.title}</h2>
         {status.changeSummary.source ? <p className="suite-meta">From {status.changeSummary.source}</p> : null}
-        {status.changeSummary.items.length ? <ul className="suite-updates-change-list">{status.changeSummary.items.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="suite-meta">No local changelog summary is available for this target.</p>}
+        {status.changeSummary.items.length ? <ul className="suite-updates-change-list">{status.changeSummary.items.map((item) => <li key={item}><Markdown inline>{item}</Markdown></li>)}</ul> : <p className="suite-meta">No local changelog summary is available for this target.</p>}
       </section>
 
 

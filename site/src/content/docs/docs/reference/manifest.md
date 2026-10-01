@@ -27,6 +27,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`${smtp.*}`](#the-smtp-relay-namespace) | 0.19.0 | The owner's outbound email relay, projected into an app that sends mail. |
 | [`appVersion`](#required-fields) | 0.20.0 | The app's own version, which owners see instead of the package version. |
 | [`routes[].kind`](#routes) | 0.21.0 | `api` marks an address only programs call: no Open button, no Homepage tile. |
+| [`requirements`](#server-requirements-requirements) | 0.21.0 | What the app needs from the server, starting with `https`; Suite Manager disables Install and says why on a server that lacks it. |
 
 ## A complete minimal manifest
 
@@ -166,9 +167,21 @@ Guides are data, never behavior: no scripts, no app-specific components, no host
 
 What updating **to** this package version means for an installed machine: `backupRequired`, `breakingChanges` (declared structural areas — an undeclared structural change makes the update unofferable), `downtime` (`none`/`brief`/`extended`/`unknown`), `migrations[]`, `ownerActions[]`, `minimumAppAgentVersion`, `rollback` (`safe`/`not-guaranteed`/`unsupported`).
 
+## Server requirements (`requirements`)
+
+What the app needs from the server it is installed on. Suite Manager checks each one against this server: the Apps list disables **Install** and names the missing requirement, and the install, and an update that starts needing it, are refused with the same reason. A requirement Suite Manager cannot judge, for example before the suite has a recorded address, refuses nothing.
+
+- `https` — `true` when the app does not work unless the suite is served over HTTPS: browser crypto, service workers, or clients that refuse a plain-http server. On a suite served over http, such as the Easy Door, the owner is told to serve the suite from their own domain first.
+
+```json
+"requirements": { "https": true }
+```
+
+`requirements` was added in MOS 0.21.0; a package using it declares `minimumMosVersion` 0.21.0 or later. `architectures` below predates it and is judged the same way.
+
 ## Other top-level fields
 
-- `architectures` — `["amd64"]` and/or `["arm64"]`. Omitted means unconstrained; incompatible hosts refuse the install before building.
+- `architectures` — `["amd64"]` and/or `["arm64"]`. Omitted means unconstrained; incompatible hosts show Install disabled with the reason and refuse the install before building.
 - `packageFiles` — every extra file the package ships beyond the fixed root set (`manifest.json`, `Dockerfile*`, `README.md`, `entrypoint.sh`, `icon.*`, `privacy-review.json`). Undeclared files do not survive packaging.
 - `icon` — package-relative icon path, conventionally `icon.png`.
 

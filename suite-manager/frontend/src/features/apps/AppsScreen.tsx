@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, type AdvancedFact } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, Tooltip, type AdvancedFact } from '../../components/ui';
 import { AppConfigDialog, initialSetupConfig, ownerDefault, requiredSetupMissing, setupFieldsNeedInput, type InstanceConfigEntry, type OwnerEnvEntry, type SetupField } from './AppConfigDialog';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
@@ -56,6 +56,8 @@ type UpdateComparison = {
   updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { errors: string[] };
 };
+
+type UnmetRequirement = { id: string; reason: string };
 
 type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
@@ -149,6 +151,8 @@ type AppPackageSummary = {
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: SetupField[] };
   summary: string;
+  // What this server lacks that the app needs, each with the reason to show.
+  unmetRequirements: UnmetRequirement[];
   validation: { errors: string[]; valid: boolean };
   version: string;
 };
@@ -161,7 +165,7 @@ type AppPackageSummary = {
 // `id` is the source-namespaced id every API path addresses the package by;
 // `packageId` is the bare id its own manifest claims, shown only as a fact.
 type ExternalCard = Pick<AppPackageSummary,
-  'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
+  'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'unmetRequirements' | 'validation' | 'version'> & {
   external: true;
   iconDataUrl: string | null;
   iconUrl: string;
@@ -625,6 +629,11 @@ function appIconSrc(app: Pick<AppPackageSummary, 'iconDataUrl' | 'iconUrl'>) {
   return app.iconUrl || app.iconDataUrl || undefined;
 }
 
+function InstallButton({ disabled, installing, onClick, unmet = [] }: { disabled: boolean; installing: boolean; onClick: () => void; unmet?: UnmetRequirement[] }) {
+  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : 'Install'}</button>;
+  return unmet.length ? <Tooltip label={unmet.map((item) => item.reason).join(' ')}>{button}</Tooltip> : button;
+}
+
 function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
   const icon = appIconSrc(app);
   return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
@@ -877,7 +886,7 @@ function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setConfigOpen(true)} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || uninstalled || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
@@ -1360,7 +1369,7 @@ function ExternalAppDetail({ card, installError, installing, onClose, onInstall,
           </div>
         </div>
         <div className="suite-app-action-bar">
-          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(card, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
+          <InstallButton disabled={!canInstall} installing={installing} onClick={() => onInstall(card, { ...setupConfig })} unmet={card.unmetRequirements} />
         </div>
       </header>
 

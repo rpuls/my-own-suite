@@ -192,11 +192,11 @@ test('app source events count alongside sign-in throttling without borrowing its
   store.recordSecurityEvent({ at: '2026-07-13T10:05:00.000Z', eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'client-a' });
   store.recordSecurityEvent({ at: '2026-07-13T10:10:00.000Z', eventType: 'app-source-candidate-rejected', subject: 'src-abcdef012345' });
   store.recordSecurityEvent({ at: '2026-07-13T10:40:00.000Z', eventType: 'app-source-candidate-rejected', subject: 'src-abcdef012345' });
-  store.recordSecurityEvent({ at: '2026-07-13T10:45:00.000Z', eventType: 'app-catalog-refresh-failed', subject: 'fedcba098765' });
+  store.recordSecurityEvent({ at: '2026-07-13T10:45:00.000Z', eventType: 'app-catalog-signature-invalid', subject: 'fedcba098765' });
 
   assert.deepEqual(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }), {
     byType: [
-      { eventCount: 1, eventType: 'app-catalog-refresh-failed', lastSeenAt: '2026-07-13T10:45:00.000Z', subjectCount: 1 },
+      { eventCount: 1, eventType: 'app-catalog-signature-invalid', lastSeenAt: '2026-07-13T10:45:00.000Z', subjectCount: 1 },
       { eventCount: 2, eventType: 'app-source-candidate-rejected', lastSeenAt: '2026-07-13T10:40:00.000Z', subjectCount: 1 },
       { eventCount: 1, eventType: 'login-throttled', lastSeenAt: '2026-07-13T10:05:00.000Z', subjectCount: 1 },
     ],
