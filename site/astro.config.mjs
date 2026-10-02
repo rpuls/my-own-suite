@@ -75,6 +75,7 @@ export default defineConfig({
             'docs/guides/https-domain',
             'docs/guides/email-relay',
             'docs/guides/backup-restore',
+            'docs/guides/keeping-copies',
             'docs/guides/updates'
           ]
         },

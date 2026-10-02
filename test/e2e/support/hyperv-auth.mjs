@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 
 import { apiJson, apiPathFor, expectSignedInApi } from './hyperv-api.mjs';
-import { acceptTermsIfPending, settleAfterSignIn } from './terms.mjs';
+import { acceptTermsIfPending, saveHandoverIfPending, settleAfterSignIn } from './gates.mjs';
 
 async function expectHomeDashboard(page) {
   await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 60000 });
@@ -29,7 +29,10 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     // yet, and sign-in deliberately holds there instead of redirecting past it.
     await settleAfterSignIn(page);
     expect(await acceptTermsIfPending(page)).toBe(true);
-    // Accepting deliberately leaves the owner in Suite Manager, so navigate to Homepage.
+    // A machine that generated its own server login, or holds an encrypted
+    // disk, shows the handover page next; a lab with neither falls through.
+    await saveHandoverIfPending(page);
+    // Both gates deliberately leave the owner in Suite Manager, so navigate to Homepage.
     await gotoHomeDashboard(page, entryUrl);
     await expectSignedInApi(page, entryUrl);
     return;
@@ -41,9 +44,10 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     await page.getByLabel(/^Password/i).fill(env.owner.password);
     await page.getByRole('button', { name: /Sign in/i }).click();
     // Conditional: only a lab whose owner never accepted, or a terms-version bump, meets the
-    // gate here. Sign-in hands over to Homepage on its own, accepting does not — navigate either way.
+    // gates here. Sign-in hands over to Homepage on its own, the gates do not — navigate either way.
     await settleAfterSignIn(page);
     await acceptTermsIfPending(page);
+    await saveHandoverIfPending(page);
     await gotoHomeDashboard(page, entryUrl);
     await expectSignedInApi(page, entryUrl);
     return;
@@ -56,6 +60,7 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     await expect(page.getByRole('heading', { name: /Before you start/iu })).toBeVisible({ timeout: 30000 });
     await acceptTermsIfPending(page);
   }
+  await saveHandoverIfPending(page);
   await gotoHomeDashboard(page, entryUrl);
   await expectSignedInApi(page, entryUrl);
 }

@@ -13,7 +13,7 @@ Host agents are the privileged half of the [MOS privilege boundary](/docs/refere
 | Homepage | `mos-homepage-agent` | Validates and applies allowlisted [dashboard YAML](/docs/guides/customize-homepage/) and the MOS-owned home route snippet; keeps a 10-checkpoint history; restarts/reloads only when content actually changed. |
 | App runtime | `mos-app-agent` | The Docker side of [app management](/docs/guides/apps/) — the largest agent, and the one with a versioned contract. See below. |
 | Backup | `mos-backup-agent` | Drive discovery and mounting, whole-suite [backup and restore](/docs/guides/backup-restore/) jobs (one at a time). |
-| Update | `mos-update-agent` | [Managed updates](/docs/guides/updates/): track configuration and update jobs, each run as a transient systemd unit so an update survives the agent restarting itself. An orphaned job is marked failed after a timeout instead of blocking updates forever. |
+| Update | `mos-update-agent` | [Managed updates](/docs/guides/updates/): track configuration and update jobs, each run as a transient systemd unit so an update survives the agent restarting itself. An orphaned job is marked failed after a timeout instead of blocking updates forever. It also performs the server restart an Ubuntu kernel patch needs, and refuses one while an update or a backup is running. |
 | Lab reset | `mos-lab-reset-agent` | **Lab installs only** (USB/Hyper-V with `MOS_LAB_RESET_ENABLED=1`): clears disposable lab state for repeatable testing. Absent on normal installs. |
 
 Sockets live at `/run/mos-<name>-agent/agent.sock`.

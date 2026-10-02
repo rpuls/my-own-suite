@@ -9,6 +9,12 @@ const HOMEPAGE_FILES = Object.freeze([
 ]);
 const HOMEPAGE_FILE_SET = new Set(HOMEPAGE_FILES);
 const PROTOCOLS = new Set(['http', 'https']);
+// The URL parser drops a port that is its scheme's default, so `https://nas.lan`
+// and `https://nas.lan:443` both arrive with no port at all — and an app already
+// served over HTTPS at home is reached at exactly those. What has to be explicit
+// is the upstream MOS records and hands to the web server, not what its owner
+// types, so the scheme supplies the number instead of the form refusing it.
+const DEFAULT_PORTS = Object.freeze({ http: 80, https: 443 });
 const HOST_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -120,10 +126,10 @@ function validateProxy(proxy) {
   if (!PROTOCOLS.has(protocol) || upstream.username || upstream.password || upstream.pathname !== '/' || upstream.search || upstream.hash) {
     throw new HomepageConfigError('INVALID_PROXY_UPSTREAM', 'The upstream must contain only protocol, host, and port.');
   }
-  if (!HOST_PATTERN.test(upstream.hostname.toLowerCase()) || !upstream.port) {
-    throw new HomepageConfigError('INVALID_PROXY_UPSTREAM', 'The upstream host and explicit port are required.');
+  if (!HOST_PATTERN.test(upstream.hostname.toLowerCase())) {
+    throw new HomepageConfigError('INVALID_PROXY_UPSTREAM', 'The upstream needs the name or address the app answers at.');
   }
-  const port = Number(upstream.port);
+  const port = Number(upstream.port || DEFAULT_PORTS[protocol]);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new HomepageConfigError('INVALID_PROXY_PORT', 'The upstream port must be between 1 and 65535.');
   }
@@ -374,12 +380,15 @@ function reconcileManagedUrls(content, entries = []) {
   return { changed: true, content: next };
 }
 
+// `domainState` is the suite's recorded address as the base its hosts hang
+// under and the scheme it is served on: `{ baseDomain, scheme }`. Nothing here
+// decides whether a name is secure; the address that was recorded says so.
 function publicUrlFor(proxy, domainState) {
   const baseDomain = String(domainState?.baseDomain || '').trim().toLowerCase();
   if (!HOST_PATTERN.test(baseDomain) || baseDomain === 'localhost') {
     throw new HomepageConfigError('PUBLIC_DOMAIN_REQUIRED', 'Configure a usable MOS domain before adding a home service.');
   }
-  return `${domainState?.tlsMode === 'cloudflare-dns01' ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
+  return `${domainState?.scheme === 'https' ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
 }
 
 function projectServices(content, domainState) {

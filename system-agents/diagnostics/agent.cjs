@@ -27,6 +27,13 @@ const server = http.createServer(async (request, response) => {
       respond(response, 200, await core.status());
       return;
     }
+    // The host's own patch state. A fixed source like every other one in this
+    // agent: the caller names nothing, so this is a read of four files and two
+    // commands decided in system-adapter.cjs, not a question a web app gets to ask.
+    if (request.method === 'GET' && url.pathname === '/v1/host/patches') {
+      respond(response, 200, await core.hostPatches());
+      return;
+    }
     // No request body is read, here or anywhere in this agent. The collector
     // list is compiled in; a caller cannot name a unit, a container, a path or
     // a line count, so there is no input to validate and none to get wrong.

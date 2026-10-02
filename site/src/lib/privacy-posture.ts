@@ -66,6 +66,10 @@ export type PrivacyDimensionRow = {
 
 export const ASSESSMENT_DOCS_URL = 'https://myownsuite.org/docs/privacy/how-we-assess/';
 
+// Where NOT_ASSESSED links instead: "how MOS assesses app privacy" is the wrong
+// door for an app MOS does not assess.
+export const EXTERNAL_DOCS_URL = 'https://myownsuite.org/docs/privacy/how-we-assess/#apps-from-sources-you-add';
+
 export const SHIELD_PATH = 'M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z';
 
 // Small stroke-style glyphs (24x24 grid) used by the privacy components.
@@ -118,6 +122,18 @@ export const UNREVIEWED = {
   soft: 'var(--mos-color-danger-soft)',
 };
 
+// An app from a source the owner added: outside what MOS assesses, permanently
+// rather than pending, so no copy in this state may imply a queue. A review
+// shipped by somebody else's repository is its publisher's word, never carried
+// forward as MOS's.
+export const NOT_ASSESSED = {
+  border: 'var(--mos-color-surface-border)',
+  color: 'var(--mos-color-text-muted)',
+  label: 'Not assessed by MOS',
+  sentence: 'MOS assesses the apps it publishes. This one comes from a source you added, so whether to trust it is your call.',
+  soft: 'var(--mos-color-surface-strong)',
+};
+
 // The first two rows are the ones the posture derives from, and they lead for
 // that reason: what happens, then who settled it.
 export const DIMENSIONS: Array<{ iconPath: string; key: PrivacyDimensionKey; label: string }> = [
@@ -127,6 +143,30 @@ export const DIMENSIONS: Array<{ iconPath: string; key: PrivacyDimensionKey; lab
   { iconPath: 'M22 12H2M5.5 5h13l3.5 7v5a2 2 0 01-2 2H4a2 2 0 01-2-2v-5l3.5-7zM6 16h.01M10 16h.01', key: 'dataProcessing', label: 'Data processing' },
   { iconPath: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8', key: 'policyExposure', label: 'Policies' },
 ];
+
+// What MOS builds around every app package whoever wrote it, which is what
+// survives the absence of an assessment. These replace the dimension rows where
+// there is no review, so each must stay true of every package MOS can install.
+export const ENCLOSURE_FACTS: Array<{ detail: string; iconPath: string; label: string }> = [
+  {
+    detail: 'Named volumes MOS creates for it. Not your host folders, not another app’s data, not your backups.',
+    iconPath: 'M4 6.5h16v4H4zM4 13.5h16v4H4zM7.5 8.5h.01M7.5 15.5h.01',
+    label: 'Its own storage only',
+  },
+  {
+    detail: 'Only the web addresses its package asked for, which you saw before installing it. It cannot answer on any other address on your suite.',
+    iconPath: 'M12 3a9 9 0 100 18 9 9 0 000-18zM3.5 12h17M12 3c2.6 2.9 2.6 15.1 0 18M12 3c-2.6 2.9-2.6 15.1 0 18',
+    label: 'Its own addresses only',
+  },
+  {
+    detail: 'No Docker socket, no host network, no elevated container. It cannot reach the machine MOS runs on.',
+    iconPath: 'M5.5 10.5h13v9.5h-13zM9 10.5V7a3 3 0 016 0v3.5M12 14.5v2.5',
+    label: 'No privileged access',
+  },
+];
+
+// The one risk ENCLOSURE_FACTS does not bound, so it is said in the same breath.
+export const ENCLOSURE_GAP = 'Installing or updating it builds its Dockerfiles on your server, which runs commands its publisher wrote — with network access — before any of those limits apply. That step is what you are trusting the repository for.';
 
 const PHRASES: Record<PrivacyDimensionKey, Record<string, { level: 0 | 1 | 2; phrase: string }>> = {
   defaultEgress: {
@@ -163,9 +203,25 @@ const VERDICTS: Record<0 | 1 | 2, PrivacyVerdict> = {
 
 const UNKNOWN_VERDICT: PrivacyVerdict = { border: 'var(--mos-color-surface-border)', color: 'var(--mos-color-text-muted)', soft: 'var(--mos-color-surface-strong)', word: 'Unknown' };
 
+export function isNotAssessed(privacy: PrivacyReviewSummary | null | undefined): boolean {
+  return privacy?.status === 'not-assessed';
+}
+
 export function postureFor(privacy: PrivacyReviewSummary | null | undefined) {
+  if (isNotAssessed(privacy)) return NOT_ASSESSED;
   const posture = privacy?.posture as PrivacyPostureId | undefined;
   return (posture && POSTURES[posture]) || UNREVIEWED;
+}
+
+// Solid outline means MOS reached a verdict, broken means this slot never holds
+// one — same silhouette in the same place, so the eye still knows where to look.
+export function shieldDashArray(privacy: PrivacyReviewSummary | null | undefined): string | null {
+  return isNotAssessed(privacy) ? '2.6 2.2' : null;
+}
+
+// "Grade" over a `?` reads as a pending grade however grey the shield is.
+export function tileLabelFor(privacy: PrivacyReviewSummary | null | undefined): string {
+  return isNotAssessed(privacy) ? 'Privacy' : 'Posture grade';
 }
 
 // A completed review always carries a posture, so the status alone answers this.
@@ -233,10 +289,12 @@ function reviewerLabel(privacy: PrivacyReviewSummary | null | undefined): string
 }
 
 export function tileMetaLine(privacy: PrivacyReviewSummary | null | undefined): string {
+  if (isNotAssessed(privacy)) return 'From a source you added';
   return isRated(privacy) ? reviewerLabel(privacy) : 'Not yet rated';
 }
 
 export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, appVersion?: string | null): string {
+  if (isNotAssessed(privacy)) return 'Not assessed by MOS';
   if (!isRated(privacy)) return 'Not yet rated by MOS';
   return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), appVersion ? `version ${appVersion}` : null]
     .filter(Boolean)
@@ -287,6 +345,10 @@ export function provenanceMethodLabel(privacy: PrivacyReviewSummary | null | und
 }
 
 export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): string {
+  // No assessment on either side, so no change to describe.
+  if (isNotAssessed(installed) || isNotAssessed(candidate)) {
+    return 'MOS does not assess apps from sources you added, so neither version carries a MOS assessment.';
+  }
   if (!privacyChanged(installed, candidate)) {
     // Two unrated packages share no score to "keep".
     return privacyScore(installed) === null

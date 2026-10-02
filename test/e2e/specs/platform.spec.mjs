@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { acceptTermsIfPending, settleAfterSignIn } from '../support/terms.mjs';
+import { acceptTermsIfPending, saveHandoverIfPending, settleAfterSignIn } from '../support/gates.mjs';
 
 const owner = { email: 'owner@example.com', name: 'MOS Owner', password: 'correct horse battery' };
 
@@ -23,10 +23,11 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page.getByRole('heading', { name: /Before you start/i })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
   // Back to the entry route: accepting unlocks Suite Manager and deliberately stays there,
-  // because first run is when the dashboard has the server login to show.
+  // because first run is when the handover page follows on a machine that has one.
   await page.goto('/suite-manager/');
   await expect(page.getByRole('heading', { name: /Before you start/i })).toBeVisible();
   expect(await acceptTermsIfPending(page)).toBe(true);
+  await saveHandoverIfPending(page);
 
   await expect(page).toHaveURL(/\/suite-manager\/?$/u);
   await expect(page.getByRole('heading', { name: /install your first app/iu })).toBeVisible();
@@ -87,12 +88,13 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page).toHaveURL(/\/suite-manager\/settings$/u);
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Apply HTTPS settings' }).click();
-  await expect(page.getByText('Enter a valid Cloudflare-managed base domain.')).toBeVisible();
-  await page.getByLabel('MOS base domain').fill('mos.example.com');
+  await page.getByLabel('MOS base domain').fill('not a domain');
   await page.getByLabel('ACME contact email').fill('owner@example.com');
   await page.getByLabel('Cloudflare API token').fill('token_value_1234567890');
-  await page.getByRole('button', { name: 'Apply HTTPS settings' }).click();
+  await page.getByRole('button', { name: 'Move my suite to this domain' }).click();
+  await expect(page.getByText('Enter a valid Cloudflare-managed base domain.')).toBeVisible();
+  await page.getByLabel('MOS base domain').fill('mos.example.com');
+  await page.getByRole('button', { name: 'Move my suite to this domain' }).click();
   await expect(page.getByText(/HTTPS system agent is unavailable/i)).toBeVisible();
   await expect(page.getByLabel('Cloudflare API token')).toHaveValue('token_value_1234567890');
 

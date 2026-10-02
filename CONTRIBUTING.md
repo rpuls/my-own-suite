@@ -37,7 +37,7 @@ The full workflow rules live in [AGENTS.md](./AGENTS.md) — it is written for c
 
 - Never commit directly to `main`. Branch as `feat/…`, `fix/…`, `docs/…`, or `chore/…`.
 - `staging` is the integration branch; `main` holds released batches.
-- Run `npm run hooks:install` once so the local hooks block accidental commits on `main`.
+- Run `npm run hooks:install` once. The local hooks block accidental commits on `main`, and run the workspace checks before a branch push so CI is not where you find out.
 - Update [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]` when your change affects how MOS behaves for someone updating it. Documentation-only and website-only changes do not need an entry.
 - Releases follow [RELEASING.md](./RELEASING.md). Do not invent version numbers.
 
@@ -46,8 +46,15 @@ The full workflow rules live in [AGENTS.md](./AGENTS.md) — it is written for c
 ```bash
 npm install
 npm run dev            # builds the Suite Manager client and starts the backend
-npm run test           # typecheck, unit tests, catalog/privacy/release checks, builds
+npm test               # every check CI gates on, both lanes
+npm run check:workspace  # just the workspace lane (~1 min), what the pre-push hook runs
 ```
+
+`npm test` runs [`scripts/checks.cjs`](./scripts/checks.cjs), which is the single
+definition of the checks — CI, the release gate and the pre-push hook run the
+same file, so a green run locally means a green run in CI. Re-run one failing
+check with `npm run check -- --only <id>`, and list them with
+`npm run check -- --list`.
 
 Browser and infrastructure tests are run by hand because they are noisy or create paid cloud resources — see [`scripts/README.md`](./scripts/README.md) and [`test/README.md`](./test/README.md).
 

@@ -62,10 +62,10 @@ test('an update that drops this host architecture is unsupported before it is st
   const candidate = appPackage('2.0.0', (manifest) => ({ ...manifest, architectures: ['amd64'] }));
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const input = { agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' };
-  const refused = compareAppPackages({ ...input, hostArchitecture: 'arm64' });
+  const refused = compareAppPackages({ ...input, host: { architecture: 'arm64' } });
   assert.equal(refused.compatibility, 'unsupported');
-  assert.deepEqual(refused.validation.errors, ['Package runs on amd64; this host is arm64.']);
-  assert.equal(compareAppPackages({ ...input, hostArchitecture: 'amd64' }).compatibility, 'compatible');
+  assert.deepEqual(refused.validation.errors, ['This app runs only on amd64 processors, and this server is arm64.']);
+  assert.equal(compareAppPackages({ ...input, host: { architecture: 'amd64' } }).compatibility, 'compatible');
   // An agent that does not recognise its own host leaves the update exactly as
   // it was before this check existed, rather than blocking every declaring
   // package.
@@ -129,8 +129,11 @@ test('an unverified package cannot present its own privacy review as a MOS revie
   writePrivacyReview(candidate, 'private-by-default', dimensions);
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
+  // Out of scope on both sides rather than pending on both sides, so the update
+  // preview has no assessment to compare and says so instead of implying one is
+  // on its way.
   for (const side of [comparison.installed.privacy, comparison.candidate.privacy]) {
-    assert.equal(side.status, 'review-required');
+    assert.equal(side.status, 'not-assessed');
     assert.equal(side.posture, null);
     assert.equal(side.dimensions, null);
   }
@@ -215,4 +218,69 @@ test('an update preview carries the app version each manifest declares on both s
   assert.equal(compare(moved).candidate.appVersion, '3.2.0');
   assert.equal(compare(repackaged).candidate.appVersion, '3.1.0');
   assert.equal(compare(undeclared).candidate.appVersion, null);
+});
+
+test('an update that starts requiring an absent capability is owner-action-required and names what would provide it', () => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.1.0', (manifest) => ({
+    ...manifest,
+    integrations: { documentArchive: { accepts: [{ protocol: 'paperless-rest', type: 'document-archive' }], title: 'Document archive' } },
+    usefulness: { emptyState: 'Connect a document archive.', requiresOneOf: ['document-archive'] },
+  }));
+  const comparison = compareAppPackages({
+    agentContractVersion: APP_AGENT_CONTRACT_VERSION,
+    candidate,
+    installed,
+    peers: {
+      providedTypes: ['document-editor'],
+      providersByType: { 'document-archive': [{ action: 'update', id: 'paperless-ngx', name: 'Paperless-ngx', version: '2.19.5' }] },
+    },
+    platformVersion: '0.20.0',
+  });
+
+  assert.deepEqual(comparison.requirements, [{
+    providers: [{ action: 'update', id: 'paperless-ngx', name: 'Paperless-ngx', version: '2.19.5' }],
+    type: 'document-archive',
+  }]);
+  // Not `unsupported`: the update applies; the missing app is the owner's to deal with.
+  assert.equal(comparison.compatibility, 'owner-action-required');
+  assert.equal(comparison.updateStatus, 'update-available');
+});
+
+test('a requirement an installed app already provides is not reported, and one the installed version already had does not flag the update', () => {
+  const requiresArchive = (manifest) => ({
+    ...manifest,
+    usefulness: { emptyState: 'Connect a document archive.', requiresOneOf: ['document-archive'] },
+  });
+  const satisfied = compareAppPackages({
+    agentContractVersion: APP_AGENT_CONTRACT_VERSION,
+    candidate: appPackage('1.1.0', requiresArchive),
+    installed: appPackage('1.0.0'),
+    peers: { providedTypes: ['document-archive'], providersByType: {} },
+    platformVersion: '0.20.0',
+  });
+  assert.deepEqual(satisfied.requirements, []);
+  assert.equal(satisfied.compatibility, 'compatible');
+
+  // Already unmet before the update: still reported, but updating is not what broke it.
+  const alreadyUnmet = compareAppPackages({
+    agentContractVersion: APP_AGENT_CONTRACT_VERSION,
+    candidate: appPackage('1.1.0', requiresArchive),
+    installed: appPackage('1.0.0', requiresArchive),
+    peers: { providedTypes: [], providersByType: {} },
+    platformVersion: '0.20.0',
+  });
+  assert.deepEqual(alreadyUnmet.requirements, [{ providers: [], type: 'document-archive' }]);
+  assert.equal(alreadyUnmet.compatibility, 'compatible');
+});
+
+test('a comparison with no peer facts reports no requirements at all', () => {
+  const comparison = compareAppPackages({
+    agentContractVersion: APP_AGENT_CONTRACT_VERSION,
+    candidate: appPackage('1.1.0', (manifest) => ({ ...manifest, usefulness: { emptyState: '', requiresOneOf: ['document-archive'] } })),
+    installed: appPackage('1.0.0'),
+    platformVersion: '0.20.0',
+  });
+  assert.deepEqual(comparison.requirements, []);
+  assert.equal(comparison.compatibility, 'compatible');
 });

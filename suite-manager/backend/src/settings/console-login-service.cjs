@@ -1,17 +1,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Written by the installer's first-boot script, on the machine that generated
-// the password. Suite Manager only ever reads it and deletes it; it never
-// creates one, because a password this process invented would not be the
-// password the machine's console account actually has.
-const HANDOVER_FILE = 'console-login.json';
-// Replaces the handover file when the owner confirms they saved it. Two jobs:
-// the installer's path unit watches for it and clears the console banner, and
-// its presence is how this service tells "already handed over" apart from "this
-// install never had a generated console login" — a cloud install, or one built
-// with an explicit LINUX_PASSWORD.
-const ACKNOWLEDGED_FILE = 'console-login.acknowledged';
+const {
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE,
+} = require('../../../../shared/console-login-contract.cjs');
+
+// The server login this machine generated for itself, as Suite Manager hands it
+// over. The installer's first-boot generator writes the handover file, on the
+// machine that generated the password; Suite Manager only ever reads it and
+// deletes it, because a password this process invented would not be the
+// password the console account actually has. The acknowledged file replaces it
+// when the owner confirms: the installer's path unit watches for it and clears
+// the console, and its presence tells "already handed over" apart from "this
+// install never had a generated login".
 
 class ConsoleLoginError extends Error {
   constructor(code, message) {
@@ -27,35 +29,26 @@ class ConsoleLoginService {
   }
 
   handoverPath() {
-    return path.join(this.stateDir, HANDOVER_FILE);
+    return path.join(this.stateDir, CONSOLE_LOGIN_HANDOVER_FILE);
   }
 
   acknowledgedPath() {
-    return path.join(this.stateDir, ACKNOWLEDGED_FILE);
+    return path.join(this.stateDir, CONSOLE_LOGIN_ACKNOWLEDGED_FILE);
   }
 
-  // Never includes the password. The dashboard asks for this on every load, so
-  // a password in the answer would be a plaintext credential in a response the
-  // owner never asked to see and a browser is free to cache.
+  // Whether a login is waiting, read with every setup status. Never the
+  // password: that travels only in the answer to an explicit reveal. A handover
+  // this process cannot open is reported as such rather than as none, because
+  // the two need opposite responses — one is the steady state of every install
+  // past its handover, the other is a password stranded on disk with no way to
+  // reach its owner.
   status() {
-    const handover = this.#readHandover();
-    if (handover) {
-      return { acknowledged: false, pending: true, unreadable: false, username: handover.username };
-    }
-    // A handover this process cannot open is not the same as no handover, and
-    // reporting them alike is what let an unreadable one look like an owner who
-    // had already saved their password. The dashboard says so rather than
-    // rendering nothing, because the only route to that password is this panel.
-    return {
-      acknowledged: fs.existsSync(this.acknowledgedPath()),
-      pending: false,
-      unreadable: this.#handoverUnreadable(),
-      username: '',
-    };
+    if (this.#readHandover()) return { pending: true, unreadable: false };
+    return { pending: false, unreadable: this.#handoverUnreadable() };
   }
 
   // Deliberately a separate, explicit step: the password crosses the wire only
-  // when the owner opens the panel to write it down.
+  // when the owner opens the page to write it down.
   reveal() {
     const handover = this.#readHandover();
     if (!handover) {
@@ -80,9 +73,7 @@ class ConsoleLoginService {
   }
 
   // True when a handover exists but this process cannot read it — an ownership
-  // or permission fault on the installer's side. Distinguished from "no file"
-  // because the two need opposite responses: one is the steady state, the other
-  // means a password is stranded on disk with no way to reach its owner.
+  // or permission fault on the installer's side.
   #handoverUnreadable() {
     try {
       fs.accessSync(this.handoverPath(), fs.constants.R_OK);
@@ -121,9 +112,4 @@ class ConsoleLoginService {
   }
 }
 
-module.exports = {
-  ACKNOWLEDGED_FILE,
-  ConsoleLoginError,
-  ConsoleLoginService,
-  HANDOVER_FILE,
-};
+module.exports = { ConsoleLoginError, ConsoleLoginService };

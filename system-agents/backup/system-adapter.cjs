@@ -66,7 +66,24 @@ class BackupSystemAdapter {
 
   async stopService(name) { this.optionalCommand('systemctl', ['stop', name], { timeout: 120_000 }); }
   async startService(name) { this.optionalCommand('systemctl', ['start', name], { timeout: 120_000 }); }
-  async reloadCaddy() { this.optionalCommand('systemctl', ['reload', 'caddy.service'], { timeout: 120_000 }); }
+  // The answer is returned rather than discarded. Caddy refuses a whole config
+  // it cannot provision, keeps serving the one it already had, and exits
+  // non-zero — so a reload that is thrown away is exactly how a machine ends up
+  // serving pre-restore routes while the restore reports success.
+  async reloadCaddy() {
+    try {
+      this.command('systemctl', ['reload', 'caddy.service'], { timeout: 120_000 });
+      return { ok: true };
+    } catch (error) {
+      const detail = String(error?.stderr || error?.message || '').trim().split(/\r?\n/u).filter(Boolean).slice(-1)[0] || '';
+      return { detail, ok: false };
+    }
+  }
+
+  async writeFile(target, content) {
+    ensureDir(path.dirname(target));
+    fs.writeFileSync(target, content, 'utf8');
+  }
 
   async archiveTree(sourceDir, archivePath, { entries } = {}) {
     ensureDir(path.dirname(archivePath));

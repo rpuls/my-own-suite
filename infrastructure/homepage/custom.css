@@ -179,6 +179,13 @@ dialog,
   color: var(--mos-text) !important;
 }
 
+/* With one search provider this is a disabled picker whose only label is the
+   untranslated key `search.search` (missing from Homepage 1.12's locales). */
+.information-widget-search button[disabled],
+.information-widget-search button[data-disabled] {
+  display: none !important;
+}
+
 #information-widgets .resource-usage,
 #information-widgets .resource-usage > div {
   box-shadow: none !important;

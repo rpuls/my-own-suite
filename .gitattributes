@@ -6,3 +6,7 @@
 # rule above does not cover them. A CRLF checkout on Windows would bake scripts
 # whose shebang line ends in \r onto every machine flashed from that build.
 image-builder/payload/** text eol=lf
+
+# Git hooks are extensionless too, and are run as shell scripts on whichever
+# machine checked them out.
+.githooks/** text eol=lf

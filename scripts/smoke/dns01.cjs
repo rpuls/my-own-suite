@@ -39,24 +39,27 @@ async function main() {
   });
   const cookie = String(login.response.headers.get('set-cookie') || '').split(';')[0];
   if (!cookie) throw new Error('Suite Manager did not create an owner session.');
-  const applied = await request(new URL('api/settings/https/apply', suiteUrl), {
-    body: JSON.stringify({ acmeEmail, baseDomain, cloudflareApiToken }),
+  // The change answers at once and runs on; the status says where it got to.
+  const started = await request(new URL('api/settings/address/change', suiteUrl), {
+    body: JSON.stringify({ acmeEmail, baseDomain, cloudflareApiToken, kind: 'domain' }),
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     method: 'POST',
   });
-  process.stdout.write(`[mos-dns01] Configuration applied. Waiting for ${applied.body.homeUrl}\n`);
-  const deadline = Date.now() + 180000;
+  process.stdout.write(`[mos-dns01] Address change started towards ${started.body.target.host}. Waiting for it to finish.\n`);
+  const deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
+    let status = null;
     try {
-      const response = await fetch(new URL('/suite-manager/api/setup/status', applied.body.homeUrl));
-      if (response.ok) {
-        process.stdout.write(`[mos-dns01] HTTPS is reachable at ${applied.body.homeUrl}\n`);
-        return;
-      }
+      status = (await request(new URL('api/settings/address', suiteUrl), { headers: { Cookie: cookie } })).body;
     } catch {}
+    if (status?.lastChange?.status === 'failed') throw new Error(`The address change failed: ${status.lastChange.errorCode}\n${status.lastChange.diagnostics || ''}`);
+    if (status?.lastChange?.status === 'applied') {
+      process.stdout.write(`[mos-dns01] The suite is served at ${status.address.url}${status.address.resolvesHere === false ? ' (the name does not point at this server yet)' : ''}\n`);
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
-  throw new Error('Timed out waiting for the HTTPS Home URL. Check DNS and Caddy diagnostics through the bootstrap URL.');
+  throw new Error('Timed out waiting for the address change. Check the Settings screen through the bootstrap URL.');
 }
 
 main().catch((error) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { Owner, OwnerPreferences, SetupSessionState, SetupStatusResponse, TermsState } from './types';
+import type { HandoverState, Owner, OwnerPreferences, SetupSessionState, SetupStatusResponse, TermsState } from './types';
 
 const UNKNOWN_TERMS: TermsState = { accepted: false, acceptedAt: null, version: '' };
 // What a backend that predates owner preferences implies, and what a fresh
@@ -48,8 +48,12 @@ function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
   }
 
   if (status.status === 'signed-in') {
+    if (!status.handover) {
+      return { kind: 'error', message: 'Suite Manager returned a signed-in state without saying what this machine still has to hand over.' };
+    }
     return {
       kind: 'signed-in',
+      handover: status.handover,
       owner: status.owner,
       preferences: status.preferences || DEFAULT_PREFERENCES,
       terms: status.terms || UNKNOWN_TERMS,
@@ -79,6 +83,16 @@ function termsPending(status: SetupStatusResponse): boolean {
   return status.status === 'signed-in' && Boolean(status.terms?.version) && !status.terms?.accepted;
 }
 
+// Whether the handover page is owed: anything not yet confirmed holds it, and
+// so does anything the backend could not read.
+export function handoverOwed(handover: HandoverState): boolean {
+  return handover.login !== 'done' || handover.recoveryKey !== 'done';
+}
+
+function handoverPending(status: SetupStatusResponse): boolean {
+  return status.status === 'signed-in' && Boolean(status.handover && handoverOwed(status.handover));
+}
+
 export function useSetupSession() {
   const [state, setState] = useState<SetupSessionState>({ kind: 'loading' });
 
@@ -86,11 +100,12 @@ export function useSetupSession() {
     setState(stateFromStatus(await readStatus()));
   }
 
-  // Shared tail of owner creation and sign-in: show the terms gate if it is
-  // owed, otherwise hand over to the Homepage dashboard as before.
+  // Shared tail of owner creation and sign-in: show the terms gate or the
+  // handover page if one is owed, otherwise hand over to the Homepage dashboard
+  // as before.
   async function completeSignIn(): Promise<void> {
     const status = await readStatus();
-    if (termsPending(status) || !enterHomeDashboard()) {
+    if (termsPending(status) || handoverPending(status) || !enterHomeDashboard()) {
       setState(stateFromStatus(status));
     }
   }
@@ -158,8 +173,8 @@ export function useSetupSession() {
     }
     // Deliberately no handover to the Homepage dashboard. Accepting the terms
     // only happens on first run, which is the one moment Suite Manager has
-    // things to say that arrive nowhere else — the server login to save, the
-    // state of the install. Dropping the owner on Homepage here would skip past
+    // things to say that arrive nowhere else — the handover page that follows,
+    // the state of the install. Dropping the owner on Homepage here would skip past
     // all of it. Ordinary sign-ins, where the terms are already accepted, still
     // hand over as before.
     await refresh();

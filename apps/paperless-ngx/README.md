@@ -49,6 +49,12 @@ The allauth login page, which returns 200 without a session. Note that the MOS p
 
 Documents can be uploaded through the web interface, which is the path this package expects owners to use. The `consume` volume is a MOS-managed Docker volume, so the watched-folder and scanner-drop workflows described upstream need server-side access to that volume; there is no Suite Manager path to write into it.
 
+## Capability Exports
+
+`exports.documentArchive` publishes this package's REST API to other packages as `document-archive` / `paperless-ngx-rest` interface 1, carrying `internalBaseUrl` (`http://paperless:8000`) and no secrets. A consumer that accepts it receives the internal address and joins this package's network, so an upload never leaves the server.
+
+The capability deliberately carries no credential. A MOS integration can only hand over a secret MOS generated itself, and a Paperless API token is minted inside Paperless's own database; a consumer therefore collects its token from the owner, who creates it under **My Profile** in Paperless.
+
 ## Upgrades
 
 Paperless runs database migrations on start, so the manifest declares `backupRequired: true` and brief downtime.

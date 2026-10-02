@@ -4,7 +4,6 @@ import { BetaNotice } from '../../components/disclaimers';
 import { Icon } from '../../components/ui';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
 import type { Owner } from '../setup/types';
-import { ConsoleLoginCard } from './ConsoleLoginCard';
 
 type DashboardScreenProps = {
   onNavigate: (route: 'apps' | 'backups' | 'customize', path: string) => void;
@@ -81,15 +80,9 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
             ? 'Suite Manager is your control room: add apps, keep them updated, and back everything up. Your dashboard is one tap away on the menu.'
             : 'Suite Manager is your control room: add apps, keep them updated, and back everything up. The best first move is installing an app — everything else grows from there.'}
         </p>
-        {/* No call to action here. A primary button at the top of the page reads
-            as "do this first", and on first run the first thing to do is save the
-            server login below it. Installing an app is already step 1 of the
+        {/* No call to action here: installing an app is already step 1 of the
             First steps card, which is where the ordering is stated. */}
       </div>
-
-      {/* Above everything else on purpose: it is the one thing on this screen
-          that stops being possible if the owner ignores it. */}
-      <ConsoleLoginCard />
 
       <div className="suite-dashboard-grid">
         <section className="mos-panel suite-card suite-status-card">

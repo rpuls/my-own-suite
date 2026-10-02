@@ -280,28 +280,32 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   });
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
-  // build, container rm, volume inspect, labeled volume create, run.
-  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
+  // build, container rm, package network create, volume inspect, labeled volume create, run.
+  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
   assert.ok(commands[0].args.includes('mos.package-version=0.1.0'));
   assert.ok(commands[0].args.includes(`mos.package-digest=${packageDigest}`));
   assert.ok(commands[0].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.deepEqual(commands[3].args.slice(0, 2), ['volume', 'create']);
-  assert.equal(commands[3].args.at(-1), 'mos-app-example-tool-configs');
-  assert.ok(commands[3].args.includes('mos.owned=true'));
-  assert.ok(commands[3].args.includes(`mos.instance=${instanceId}`));
-  assert.deepEqual(commands[4].args.slice(0, 6), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped']);
-  assert.ok(commands[4].args.join(' ').includes('--publish 127.0.0.1:18123:3000'));
+  // A package with a single service gets its own network like any other, so no
+  // app is left on the default bridge where every other app there can reach it.
+  assert.deepEqual(commands[2].args, ['network', 'create', 'mos-app-example-tool']);
+  assert.deepEqual(commands[4].args.slice(0, 2), ['volume', 'create']);
+  assert.equal(commands[4].args.at(-1), 'mos-app-example-tool-configs');
+  assert.ok(commands[4].args.includes('mos.owned=true'));
+  assert.ok(commands[4].args.includes(`mos.instance=${instanceId}`));
+  assert.deepEqual(commands[5].args.slice(0, 6), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped']);
+  assert.ok(commands[5].args.join(' ').includes('--network mos-app-example-tool --network-alias example-tool'));
+  assert.ok(commands[5].args.join(' ').includes('--publish 127.0.0.1:18123:3000'));
   // An app that logs on a loop must not be able to fill the root disk and take
   // the whole suite down; asserted by content rather than position so the next
   // flag added to the run does not break this.
-  assert.ok(commands[4].args.join(' ').includes('--log-opt max-size=10m'));
-  assert.ok(commands[4].args.join(' ').includes('--log-opt max-file=3'));
-  assert.ok(commands[4].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
-  assert.ok(commands[4].args.includes('mos.package-version=0.1.0'));
-  assert.ok(commands[4].args.includes(`mos.package-digest=${packageDigest}`));
-  assert.ok(commands[4].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.ok(commands[4].args.includes('mos-app-example-tool-configs:/configs'));
+  assert.ok(commands[5].args.join(' ').includes('--log-opt max-size=10m'));
+  assert.ok(commands[5].args.join(' ').includes('--log-opt max-file=3'));
+  assert.ok(commands[5].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
+  assert.ok(commands[5].args.includes('mos.package-version=0.1.0'));
+  assert.ok(commands[5].args.includes(`mos.package-digest=${packageDigest}`));
+  assert.ok(commands[5].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
+  assert.ok(commands[5].args.includes('mos-app-example-tool-configs:/configs'));
   assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
@@ -354,7 +358,7 @@ test('system adapter applies runtime for an external app under its namespaced id
   const result = await adapter.applyAppService(request);
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
-  assert.deepEqual(commands[2].args.slice(0, 4), ['run', '--detach', '--name', `mos-app-${packageId}`]);
+  assert.deepEqual(commands[3].args.slice(0, 4), ['run', '--detach', '--name', `mos-app-${packageId}`]);
   assert.match(await fsp.readFile(routesPath, 'utf8'), new RegExp(`mos-app-route:start ${packageId}`, 'u'));
 
   // The identity check still refuses a snapshot that is not the package the
@@ -440,6 +444,7 @@ http://second-app.mos.home {
   assert.deepEqual(result.steps, ['stopped', 'volumes-removed', 'route-removed', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => [command.file, command.args.slice(0, 3)]), [
     ['docker', ['rm', '-f', 'mos-app-second-app']],
+    ['docker', ['network', 'inspect', '--format']],
     ['docker', ['network', 'rm', 'mos-app-second-app']],
     ['docker', ['volume', 'inspect', 'mos-app-second-app-data']],
     ['docker', ['volume', 'rm', 'mos-app-second-app-data']],
@@ -479,6 +484,7 @@ http://second-app.mos.home {
   assert.deepEqual(commands.map((command) => command.args), [
     ['rm', '-f', 'mos-app-second-app'],
     ['rm', '-f', 'mos-app-second-app-web'],
+    ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', 'mos-app-second-app'],
     ['network', 'rm', 'mos-app-second-app'],
   ]);
   assert.equal(commands.some((command) => command.args.includes('volume') || command.args.includes('rmi')), false);
@@ -941,30 +947,87 @@ test('system adapter checks app health with a short refresh budget', async () =>
   }]);
 });
 
-test('system adapter connects a provider container to a consumer package network', async () => {
+function connectAdapter(attached) {
   const commands = [];
   const adapter = new SystemAppAdapter({
     dockerBinary: 'docker',
-    async execute(file, args) {
+    async execute(file, args) { commands.push({ args, file }); },
+    async executeCapture(file, args) {
       commands.push({ args, file });
-      if (args[0] === 'network' && args[1] === 'disconnect') {
-        throw new Error('not connected yet');
-      }
+      return attached;
     },
   });
+  return { adapter, commands };
+}
+
+test('system adapter joins a plugin to the network the main app already holds', async () => {
+  const { adapter, commands } = connectAdapter('mos-app-seafile-seafile mos-app-seafile-mysql mos-app-seafile-memcached');
 
   const result = await adapter.connectPackageNetwork({
-    consumerPackageId: 'seafile',
-    providerPackageId: 'onlyoffice',
-    providerServiceCount: 1,
-    providerServices: ['onlyoffice'],
+    holderPackageId: 'seafile',
+    holderServiceCount: 3,
+    holderServices: ['seafile', 'mysql', 'memcached'],
+    joinerPackageId: 'onlyoffice',
+    joinerServiceCount: 1,
+    joinerServices: ['onlyoffice'],
+  });
+
+  assert.deepEqual(result.steps, ['network-connected']);
+  // The main app's own containers are read and left alone: they joined this
+  // network when they started, and re-attaching a running app would drop the
+  // network out from under it for as long as the reconnect takes.
+  assert.deepEqual(commands.map((command) => command.args), [
+    ['network', 'create', 'mos-app-seafile'],
+    ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', 'mos-app-seafile'],
+    ['network', 'connect', '--alias', 'onlyoffice', 'mos-app-seafile', 'mos-app-onlyoffice'],
+  ]);
+});
+
+// The direction is the whole point: a network held by the app that is useless
+// without the other would be removed together with it, taking a working app's
+// network with it. The plugin joins, so uninstalling the plugin leaves the app it
+// was a plugin for exactly as it was.
+test('system adapter joins a single-service plugin to the main app network', async () => {
+  const { adapter, commands } = connectAdapter('mos-app-paperless-ngx-paperless mos-app-paperless-ngx-broker');
+
+  const result = await adapter.connectPackageNetwork({
+    holderPackageId: 'paperless-ngx',
+    holderServiceCount: 2,
+    holderServices: ['paperless', 'broker'],
+    joinerPackageId: 'x-6b3c113c-epson2paperless',
+    joinerServiceCount: 1,
+    joinerServices: ['epson2paperless'],
   });
 
   assert.deepEqual(result.steps, ['network-connected']);
   assert.deepEqual(commands.map((command) => command.args), [
-    ['network', 'inspect', 'mos-app-seafile'],
-    ['network', 'disconnect', 'mos-app-seafile', 'mos-app-onlyoffice'],
-    ['network', 'connect', '--alias', 'onlyoffice', 'mos-app-seafile', 'mos-app-onlyoffice'],
+    ['network', 'create', 'mos-app-paperless-ngx'],
+    ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', 'mos-app-paperless-ngx'],
+    ['network', 'connect', '--alias', 'x-6b3c113c-epson2paperless', '--alias', 'epson2paperless', 'mos-app-paperless-ngx', 'mos-app-x-6b3c113c-epson2paperless'],
+  ]);
+});
+
+// A main app whose containers were started before packages had their own networks
+// is on no network of its own, so the connect attaches it as well rather than
+// leaving the plugin alone on a network with nothing on it to reach.
+test('system adapter attaches the main app when it is not on its own network yet', async () => {
+  const { adapter, commands } = connectAdapter('');
+
+  await adapter.connectPackageNetwork({
+    holderPackageId: 'paperless-ngx',
+    holderServiceCount: 2,
+    holderServices: ['paperless', 'broker'],
+    joinerPackageId: 'x-6b3c113c-epson2paperless',
+    joinerServiceCount: 1,
+    joinerServices: ['epson2paperless'],
+  });
+
+  assert.deepEqual(commands.map((command) => command.args), [
+    ['network', 'create', 'mos-app-paperless-ngx'],
+    ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', 'mos-app-paperless-ngx'],
+    ['network', 'connect', '--alias', 'paperless-ngx', '--alias', 'paperless', 'mos-app-paperless-ngx', 'mos-app-paperless-ngx-paperless'],
+    ['network', 'connect', '--alias', 'paperless-ngx', '--alias', 'broker', 'mos-app-paperless-ngx', 'mos-app-paperless-ngx-broker'],
+    ['network', 'connect', '--alias', 'x-6b3c113c-epson2paperless', '--alias', 'epson2paperless', 'mos-app-paperless-ngx', 'mos-app-x-6b3c113c-epson2paperless'],
   ]);
 });
 
@@ -1157,4 +1220,62 @@ test('a stale volume refuses the install under its own code instead of as a star
     (error) => error.code === 'APP_VOLUME_STALE',
   );
   assert.equal(commands.some((command) => command.args[0] === 'run'), false);
+});
+
+// The number a restore's estimate is read off: how long each app took to come
+// up on this machine, from the first build to healthy. Recorded beside the
+// package root, only for an app that got there.
+test('system adapter records how long each app took to build and come up, and nothing for one that failed', async () => {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', name: 'Example Tool', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const packageDigest = digestAppPackage(packageDir);
+  const timingsPath = path.join(root, 'app-build-timings.json');
+  let clock = 1_000_000;
+  const request = {
+    caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    dockerfile: 'Dockerfile',
+    environment: {},
+    healthTarget: 'http://127.0.0.1:18123/health',
+    imageTag: 'mos-app-example-tool:0.1.0',
+    instanceId,
+    internalPort: 3000,
+    loopbackPort: 18123,
+    packageDigest,
+    packageId: 'example-tool',
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+    volumes: [],
+  };
+  const build = (failBuild) => new SystemAppAdapter({
+    appsRoot: root,
+    appPackageRoot,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    now: () => clock,
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) {
+      if (args[0] === 'build') {
+        if (failBuild) throw new Error('build exploded');
+        clock += 200_000;
+      }
+    },
+    async waitForReady() { clock += 30_000; },
+  });
+
+  assert.equal(path.join(path.dirname(appPackageRoot), 'app-build-timings.json'), timingsPath, 'the default lands in the state root beside the package root');
+  await assert.rejects(() => build(true).applyAppService(request));
+  assert.equal(fs.existsSync(timingsPath), false, 'a failed build records nothing');
+
+  await build(false).applyAppService(request);
+  const timings = JSON.parse(await fsp.readFile(timingsPath, 'utf8'));
+  assert.equal(timings['example-tool'].displayName, 'Example Tool');
+  assert.equal(timings['example-tool'].samples.length, 1);
+  assert.equal(timings['example-tool'].samples[0].seconds, 230);
+  assert.equal(timings['example-tool'].samples[0].buildSeconds, 200);
+  assert.ok(timings['example-tool'].samples[0].cpus >= 1);
 });

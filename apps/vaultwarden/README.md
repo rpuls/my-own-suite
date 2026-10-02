@@ -13,6 +13,10 @@
 
 The package runs Vaultwarden as a single service on its built-in SQLite storage; there is no separate database container. The self-hosted server requires no upstream Bitwarden account.
 
+## HTTPS Requirement
+
+The manifest declares `requirements.https`, so Suite Manager refuses the install on a suite served over plain http, such as the Easy Door. The web vault needs the browser's Subtle Crypto API, which exists only in a secure context, and the Bitwarden clients refuse a self-hosted server that is not https.
+
 ## Health Check
 
 - `http://vaultwarden:80/alive`

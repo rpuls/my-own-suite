@@ -12,6 +12,7 @@ const {
   readAppPackageManifest,
   validateAppPackageManifest,
 } = require('../src/apps/package-manifest.cjs');
+const { networkConnectRequest } = require('../src/apps/app-package-internals.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(repoRoot, 'apps');
@@ -163,6 +164,60 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
   assert.deepEqual(validateAppPackageManifest(onlyoffice.manifest, { packageDir: onlyoffice.packageDir }), []);
 });
 
+// A package outside the official catalog can only reach Paperless's API if
+// Paperless keeps publishing it: dropping this export would leave such a package
+// installed with no address and no way to be given one. The capability carries no
+// credential because Paperless mints its API tokens in its own database, where MOS
+// never sees them, so a consumer collects its own token from the owner.
+test('Paperless-ngx package exports its archive without handing over a credential', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const paperless = packages.find((entry) => entry.manifest.id === 'paperless-ngx');
+  const archive = paperless?.manifest.exports?.documentArchive;
+
+  assert.ok(paperless);
+  assert.equal(archive.type, 'document-archive');
+  assert.equal(archive.protocol, 'paperless-ngx-rest');
+  assert.equal(archive.interfaceVersion, 1);
+  assert.equal(archive.internalBaseUrl, 'http://paperless:8000');
+  assert.equal(archive.secrets, undefined);
+  assert.deepEqual(validateAppPackageManifest(paperless.manifest, { packageDir: paperless.packageDir }), []);
+});
+
+// Which app holds the network the two meet on cannot follow from which one
+// consumes the capability, because the plugin is the consumer in one real pairing
+// and the provider in the other. It follows from the manifests saying which app is
+// useless on its own: that one joins, so uninstalling it leaves the other app's
+// network exactly as it was.
+test('a connection puts the plugin on the network of the app it is a plugin for', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const side = (id) => ({ manifest: packages.find((entry) => entry.manifest.id === id).manifest, packageId: id });
+
+  // Seafile consumes OnlyOffice's editor, and OnlyOffice is the plugin.
+  const editing = networkConnectRequest(side('seafile'), side('onlyoffice'));
+  assert.equal(editing.holderPackageId, 'seafile');
+  assert.equal(editing.joinerPackageId, 'onlyoffice');
+  assert.deepEqual(editing.joinerServices, ['onlyoffice']);
+
+  // A scanner bridge consumes Paperless's archive, and the bridge is the plugin,
+  // so the direction is the other way round for the same reason.
+  const filing = networkConnectRequest(
+    {
+      manifest: {
+        id: 'scan-bridge',
+        integrations: { documentArchive: { accepts: [{ type: 'document-archive' }] } },
+        resources: { services: { bridge: {} } },
+        usefulness: { requiresOneOf: ['document-archive'] },
+      },
+      packageId: 'x-abcdef01-scan-bridge',
+    },
+    side('paperless-ngx'),
+  );
+  assert.equal(filing.holderPackageId, 'paperless-ngx');
+  assert.equal(filing.holderServiceCount, 2);
+  assert.equal(filing.joinerPackageId, 'x-abcdef01-scan-bridge');
+  assert.deepEqual(filing.joinerServices, ['bridge']);
+});
+
 test('Immich package is discoverable and declares its heavy multi-service stack generically', () => {
   const packages = discoverAppPackages(v2AppsDir);
   const immich = packages.find((entry) => entry.manifest.id === 'immich');
@@ -235,6 +290,17 @@ test('appVersion is optional, must be text when present, and reaches the public 
   assert.ok(validateAppPackageManifest(validManifest({ appVersion: 3 })).length);
   assert.equal(publicPackageSummary(validManifest({ appVersion: '26.8.1' })).appVersion, '26.8.1');
   assert.equal(publicPackageSummary(validManifest()).appVersion, null);
+});
+
+test('a route is web by default, an api route has no Homepage tile, and the kind reaches the summary', () => {
+  const apiRoutes = [{ host: 'example-app', kind: 'api', service: 'example-app' }];
+  assert.deepEqual(validateAppPackageManifest(validManifest({ homepage: undefined, routes: apiRoutes })), []);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ routes: apiRoutes })), [
+    'homepage must be omitted when the first route is an api route; there is no page for a tile to open.',
+  ]);
+  assert.ok(validateAppPackageManifest(validManifest({ routes: [{ host: 'example-app', kind: 'tcp', service: 'example-app' }] })).length);
+  assert.equal(publicPackageSummary(validManifest()).routes[0].kind, 'web');
+  assert.equal(publicPackageSummary(validManifest({ homepage: undefined, routes: apiRoutes })).routes[0].kind, 'api');
 });
 
 test('manifestVersion is required and must be a known generation', () => {

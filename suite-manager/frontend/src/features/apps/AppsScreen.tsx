@@ -1,12 +1,13 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, type AdvancedFact } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, Tooltip, type AdvancedFact } from '../../components/ui';
 import { AppConfigDialog, initialSetupConfig, ownerDefault, requiredSetupMissing, setupFieldsNeedInput, type InstanceConfigEntry, type OwnerEnvEntry, type SetupField } from './AppConfigDialog';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
-import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
+import { isNotAssessed, type PrivacyAdvisory, type PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 import { jsonResponse } from '../../lib/api';
+import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 
 // What one service needs. The resting pair is always present when the package
 // declares anything; the peaks are stated only where a service has a heavy job
@@ -27,14 +28,14 @@ type CatalogMetadata = {
 };
 type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; ref: string | null; repository: string; revision: string | null };
 type CatalogUpdate = {
-  // `sourceChannel` says which of the two channels offered this: the published
-  // catalog, or the packages this MOS version shipped with. A checkout candidate
-  // has no fetched revision of its own, so `sourceRevision` is null there.
-  available: { appVersion: string; compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'catalog' | 'checkout'; sourceRevision: string | null } | null;
+  // A checkout candidate has no fetched revision of its own, so `sourceRevision` is
+  // null there.
+  available: { appVersion: string; compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'added-source' | 'catalog' | 'checkout'; sourceRevision: string | null } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
-  // `external-source` means the app came from a pasted repository rather than the
-  // reviewed catalog, so only that repository knows whether a newer package
-  // exists and the owner checks on demand.
+  // When MOS last read the added source's listing; null on every other channel.
+  sourceCheckedAt?: string | null;
+  // `external-source` means the app came from a pasted repository and its source's
+  // last listing offers nothing newer than what is installed.
   status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
@@ -50,9 +51,13 @@ type UpdateComparison = {
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
+  // Capabilities the candidate needs that nothing here provides, with what would.
+  requirements: Array<{ providers: Array<{ action: 'install' | 'update'; id: string; name: string; version: string }>; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { errors: string[] };
 };
+
+type UnmetRequirement = { id: string; reason: string };
 
 type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
@@ -67,6 +72,7 @@ type AppPackageSummary = {
   catalogUpdate: CatalogUpdate | null;
   category: string | string[];
   compatibility?: {
+    connectedBy: Array<{ id: string; name: string; status: string }>;
     connections: Array<{
       actionLabel: string;
       capabilityId: string;
@@ -82,7 +88,12 @@ type AppPackageSummary = {
   health: { type: string | null; url: string | null } | null;
   homepage: { description: string; group: string; icon: string; name: string } | null;
   icon: string;
+  // Set only on a card an added source offers, where there is no icon file
+  // on this server to serve.
+  iconDataUrl?: string | null;
   iconUrl: string;
+  // Where the installed app is really served; empty when nothing answers yet.
+  publicUrl: string;
   instance: {
     config?: InstanceConfigEntry[];
     enabled: boolean;
@@ -110,6 +121,15 @@ type AppPackageSummary = {
   id: string;
   installStatus: string;
   mosReviewed?: boolean;
+  // Why MOS will not install an offered external package. Present only on a card
+  // an added source publishes that failed validation.
+  packageErrors?: string[];
+  // The added source this app came from. An offered package carries its source
+  // record — installing it means re-resolving that repository rather than reading
+  // a package this MOS already holds — and an installed external app carries its
+  // repository alone, which is what names its publisher once there is no source
+  // record to read. Absent entirely on a catalog app.
+  source?: { id?: string; publisher?: string | null; repository: string };
   name: string;
   privacy: PrivacyReviewSummary;
   onboarding?: {
@@ -126,34 +146,46 @@ type AppPackageSummary = {
     summary?: string;
     title?: string;
   };
-  routes: Array<{ host: string; service: string }>;
+  routes: Array<{ host: string; kind: 'web' | 'api'; service: string }>;
   role: 'standalone' | 'capability-provider' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: SetupField[] };
   summary: string;
+  // What this server lacks that the app needs, each with the reason to show.
+  unmetRequirements: UnmetRequirement[];
   validation: { errors: string[]; valid: boolean };
   version: string;
 };
 
-// A pasted repository URL resolves to an unverified external package preview.
-// The card reuses the public package summary shape, plus explicit external/trust
-// flags and the package's own inlined icon; nothing is persisted by resolving.
+// A pasted repository URL resolves to one unverified preview card per app package
+// the repository publishes. The card reuses the public package summary shape, plus
+// explicit external/trust flags, the package's own inlined icon, and what it would
+// ask MOS for; nothing is persisted by resolving.
+//
+// `id` is the source-namespaced id every API path addresses the package by;
+// `packageId` is the bare id its own manifest claims, shown only as a fact.
 type ExternalCard = Pick<AppPackageSummary,
-  'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
+  'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'unmetRequirements' | 'validation' | 'version'> & {
   external: true;
   iconDataUrl: string | null;
   iconUrl: string;
   installStatus: string;
   minimumMosVersion: string;
   mosReviewed: false;
+  packageDigest: string | null;
+  // Why MOS will not install this one. A package a source publishes but cannot
+  // install is listed with its reasons rather than hidden, so the owner can see it
+  // is offered and its publisher can see what to fix.
+  packageErrors: string[];
+  packageId: string;
+  permissions: string[];
   trust: string;
 };
-type ExternalSourceCoordinates = { catalogPath: string; kind: string; packageId: string; repository: string; revision: string; trust: string };
+type ExternalSourceCoordinates = { catalogPath: string; id: string; kind: string; repository: string; revision: string; trust: string };
 type ExternalResolveResponse = {
-  card: ExternalCard;
-  instanceId: string;
-  packageDigest: string;
-  permissions: string[];
+  // Whether this repository is already one of the owner's added sources.
+  added: boolean;
+  packages: ExternalCard[];
   source: ExternalSourceCoordinates;
 };
 
@@ -199,7 +231,7 @@ function isCompanionApp(app: AppPackageSummary) {
 }
 
 function hasPrimaryAppDestination(app: AppPackageSummary) {
-  return !isCompanionApp(app) && app.routes.length > 0;
+  return !isCompanionApp(app) && app.routes[0]?.kind === 'web';
 }
 
 function runtimeApplied(app: AppPackageSummary) {
@@ -292,23 +324,10 @@ function initialsFor(name: string) {
   return (words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : name.slice(0, 2)).toUpperCase();
 }
 
-function baseHost() {
-  if (typeof window === 'undefined') return 'mos.home';
-  const host = window.location.hostname;
-  return host.startsWith('home.') ? host.slice(5) : host;
-}
-
-function appUrl(app: AppPackageSummary) {
-  const route = app.routes[0];
-  if (!route?.host || typeof window === 'undefined') return '';
-  return `${window.location.protocol}//${route.host}.${baseHost()}/`;
-}
-
 // The address as it is spoken and typed, which is what the settings dialog
-// shows; appUrl() is for following, this is for reading and copying.
+// shows; publicUrl is for following, this is for reading and copying.
 function appAddress(app: AppPackageSummary) {
-  const route = app.routes[0];
-  return route?.host ? `${route.host}.${baseHost()}` : '';
+  return app.publicUrl ? new URL(app.publicUrl).host : '';
 }
 
 function hasGuide(app: AppPackageSummary) {
@@ -482,7 +501,7 @@ function resolveGuideValue(app: AppPackageSummary, value: string) {
     .filter((item) => !item.secret)
     .map((item) => [item.key, String(item.value ?? '')]));
   return value
-    .replace(/\$\{app\.publicUrl\}/gu, appUrl(app))
+    .replace(/\$\{app\.publicUrl\}/gu, (match) => app.publicUrl || match)
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => config.get(key) || match);
 }
 
@@ -586,19 +605,39 @@ function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
     { label: 'Package id', value: app.id },
     { label: 'MOS package version', value: app.version },
     { label: 'Service', value: app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
-    { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+    { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}${route.kind === 'api' ? ' (api)' : ''}`).join(', ') || 'None' },
     { label: 'Volumes', value: app.services.flatMap((service) => service.volumes).join(', ') || 'None' },
     { label: 'Health', value: app.health ? `${app.health.type}: ${app.health.url}` : 'None' },
     { label: 'Projections', value: projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install' },
+    ...(app.catalogUpdate?.available?.sourceChannel === 'added-source'
+      ? [{
+        code: true,
+        label: 'Offered from commit',
+        value: `${app.catalogUpdate.available.sourceRevision?.slice(0, 12) || 'unresolved'} · read ${sourceCheckedLabel(app.catalogUpdate.sourceCheckedAt)}`,
+      }]
+      : []),
     ...(app.instance?.config?.length
       ? [{ label: 'Config', value: app.instance.config.map((item) => `${item.key}: ${item.secret ? item.redactedLabel || 'secret stored' : item.value}`).join(', ') }]
       : []),
   ];
 }
 
+// An app a source offers has no icon file on this server to fetch: the source's
+// download is discarded once its packages are read, so its icon travels inlined
+// on the card instead of as a URL. Installed apps keep the served URL.
+function appIconSrc(app: Pick<AppPackageSummary, 'iconDataUrl' | 'iconUrl'>) {
+  return app.iconUrl || app.iconDataUrl || undefined;
+}
+
+function InstallButton({ disabled, installing, onClick, unmet = [] }: { disabled: boolean; installing: boolean; onClick: () => void; unmet?: UnmetRequirement[] }) {
+  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : 'Install'}</button>;
+  return unmet.length ? <Tooltip label={unmet.map((item) => item.reason).join(' ')}>{button}</Tooltip> : button;
+}
+
 function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
+  const icon = appIconSrc(app);
   return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
-    {app.iconUrl ? <img alt="" src={app.iconUrl} /> : <span>{initialsFor(app.name)}</span>}
+    {icon ? <img alt="" src={icon} /> : <span>{initialsFor(app.name)}</span>}
   </span>;
 }
 
@@ -684,7 +723,7 @@ function AppDetail({
   const primaryDestination = hasPrimaryAppDestination(app);
   const uninstalled = app.instance?.status === 'uninstalled';
   const disabled = !uninstalled && (app.instance?.status === 'disabled' || app.instance?.enabled === false);
-  const url = appUrl(app);
+  const url = app.publicUrl;
   const screenshots = app.catalog.screenshots;
   const cover = screenshots[0];
   const guideCompleted = app.instance?.guideState?.status === 'completed';
@@ -699,7 +738,10 @@ function AppDetail({
     && comparison!.compatibility !== 'unsupported'
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
     && !applying;
+  const ownerChanges = comparison ? comparison.changes.filter((change) => change.classification !== 'automatically-handled') : [];
+  const handledChanges = comparison ? comparison.changes.filter((change) => change.classification === 'automatically-handled') : [];
   const connections = app.compatibility?.connections || [];
+  const connectedBy = app.compatibility?.connectedBy || [];
   const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
   const installedCompatiblePeers = packages.filter((item) => item.id !== app.id && item.instance && item.capabilities.exports.some((capability) => app.capabilities.usefulness.requiresOneOf.includes(capability.type)));
 
@@ -789,6 +831,8 @@ function AppDetail({
   // an update they never notice is an update they never apply. Opening the app
   // stays one button away.
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
+  // Null means no listing at all — removed, paused, never reached — not an unticked clock.
+  const sourceReadAt = app.catalogUpdate?.sourceCheckedAt || null;
   const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
   const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
@@ -842,7 +886,7 @@ function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setConfigOpen(true)} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || uninstalled || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
@@ -909,14 +953,28 @@ function AppDetail({
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+        {app.packageErrors?.length ? <Notice title="This package cannot be installed" variant="warning">
+          <p>The source publishes this app, but MOS refuses it for the reasons below. Only its publisher can fix these.</p>
+          <ul>{app.packageErrors.map((item) => <li key={item}>{item}</li>)}</ul>
+        </Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
+        {/* The same warning before and after installing, because the risk is the
+            same one: an added source's app is not reviewed either way. */}
         {app.external ? <Notice title="Unverified external package" variant="warning">
-          <p>You installed this app from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.</p>
+          <p>{app.instance
+            ? 'You installed this app from a source you added, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.'
+            : 'This app comes from a source you added, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote — with network access — before any of MOS’s runtime restrictions apply. Once running, it is restricted to its own named storage and its own web addresses.'}</p>
         </Notice> : null}
 
         {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
-          {app.appVersion === app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
+          {/* An added source's package need not declare appVersion, and the MOS
+              package number is never shown to an owner. */}
+          {!app.appVersion || !app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
+            <span>{app.name}</span>
+            <strong>A newer version is available</strong>
+            <small>Its publisher does not state a version number, so MOS has none to show. Reviewing the update lists what changes.</small>
+          </div> : app.appVersion === app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
             <span>{app.name} version</span>
             <strong>{app.appVersion}</strong>
             <small>Stays the same. This update changes how MOS runs it, not the app itself.</small>
@@ -925,14 +983,21 @@ function AppDetail({
             <div><span>Available</span><strong>{app.catalogUpdate.available.appVersion}</strong></div>
           </>}
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
+          {app.catalogUpdate.available.sourceChannel === 'added-source' ? <p>
+            {`A source you added publishes this${sourceReadAt ? `, as MOS read its list ${sourceCheckedLabel(sourceReadAt)}` : ''}. MOS re-reads each source every few hours, and reviewing the update asks the repository directly. Nothing here has been reviewed by MOS.`}
+          </p> : null}
           {updateWaiting ? null : <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>}
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
-        {app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
+        {/* An offered package carries the same status, and without the instance
+            guard its card called the version on offer "Installed". */}
+        {app.instance && app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
           {app.appVersion ? <div><span>Installed</span><strong>{app.appVersion}</strong></div> : null}
-          <div><span>Source</span><strong>The repository you pasted</strong></div>
-          <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
+          <div><span>Source</span><strong>A source you added</strong></div>
+          <p>{sourceReadAt
+            ? `MOS read what this source publishes ${sourceCheckedLabel(sourceReadAt)}, and it offers nothing newer than what you have. Checking asks its repository directly, right now.`
+            : 'MOS has no current list of what this source publishes, so it cannot say whether a newer version exists — the source may have been removed or paused, or it may no longer publish this app. Checking asks its repository directly, right now.'}</p>
           <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking...' : 'Check for updates'}</button>
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
@@ -969,9 +1034,32 @@ function AppDetail({
 
         {app.catalog.privacy.summary || app.catalog.privacy.notes.length ? <section className="suite-app-detail-section suite-app-privacy">
           <h3>Package-provided privacy notes</h3>
-          <p className="suite-app-help">These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.</p>
+          <p className="suite-app-help">{app.external
+            ? 'These claims come from the package metadata. They are its publisher’s word about their own app: MOS has not verified them, and does not assess apps from sources you added.'
+            : 'These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.'}</p>
           {app.catalog.privacy.summary ? <p>{app.catalog.privacy.summary}</p> : null}
           {app.catalog.privacy.notes.length ? <ul>{app.catalog.privacy.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+        </section> : null}
+
+        {connectedBy.length ? <section className="suite-app-detail-section">
+          <h3>Connected to this app</h3>
+          <div className="suite-app-connection-list">
+            {connectedBy.map((peer) => {
+              const peerPackage = packages.find((item) => item.id === peer.id);
+              return <article className="suite-app-connection" key={peer.id}>
+                <AppConnect
+                  size="sm"
+                  source={{ iconUrl: peerPackage ? appIconSrc(peerPackage) : undefined, name: peer.name }}
+                  target={{ iconUrl: appIconSrc(app), name: app.name }}
+                />
+                <div className="suite-app-connection-copy">
+                  <strong>{peer.name}</strong>
+                  <small>Shares this app's network - {peer.status}</small>
+                </div>
+                {peerPackage ? <button className="mos-btn mos-btn-secondary" onClick={() => onSelect(peerPackage)} type="button">Open</button> : null}
+              </article>;
+            })}
+          </div>
         </section> : null}
 
         {connections.length ? <section className="suite-app-detail-section">
@@ -987,8 +1075,8 @@ function AppDetail({
               return <article className="suite-app-connection" key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`}>
                 <AppConnect
                   size="sm"
-                  source={{ iconUrl: providerPackage?.iconUrl, name: connection.provider.name }}
-                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                  source={{ iconUrl: providerPackage ? appIconSrc(providerPackage) : undefined, name: connection.provider.name }}
+                  target={{ iconUrl: appIconSrc(app), name: app.name }}
                 />
                 <div className="suite-app-connection-copy">
                   <strong>{connection.title}</strong>
@@ -1025,6 +1113,7 @@ function AppDetail({
       appVersion={app.appVersion}
       packageId={app.id}
       privacy={app.privacy}
+      sourceLabel={app.source ? app.source.publisher || appSourceLabel(app.source.repository) : null}
     /> : null}
     {configOpen ? <AppConfigDialog
       appName={app.name}
@@ -1042,6 +1131,7 @@ function AppDetail({
       running={ready}
       service={app.routes[0]?.service || app.services[0]?.id || app.id}
       webAddress={appAddress(app)}
+      webAddressKind={app.routes[0]?.kind || 'web'}
     /> : null}
     {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
       <figure className="suite-app-gallery">
@@ -1132,6 +1222,17 @@ function AppDetail({
         {app.external && comparison.updateStatus === 'update-available' ? <Notice title="Updating runs the publisher's build" variant="warning">
           <p>Updating rebuilds this package&apos;s Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before MOS&apos;s runtime restrictions apply. Update only if you still trust the repository this app came from.</p>
         </Notice> : null}
+        {comparison.requirements.length ? <Notice title="This version needs another app first" variant="warning">
+          <p>{`${app.name} declares that it cannot do its job without ${comparison.requirements.length === 1 ? 'an app providing' : 'an app providing one of'} ${comparison.requirements.map((item) => capabilityLabel(item.type)).join(' or ')}. Nothing installed provides that today, so updating now leaves ${app.name} running with nothing to hand its work to.`}</p>
+          {comparison.requirements.flatMap((item) => item.providers).length ? <>
+            <p>Do this first:</p>
+            <ul>{comparison.requirements.flatMap((item) => item.providers.map((provider) => <li key={`${item.type}-${provider.id}`}>
+              <strong>{provider.action === 'update' ? `Update ${provider.name}` : `Install ${provider.name}`}</strong>
+              {provider.version ? ` (${provider.version})` : ''}
+              {provider.action === 'update' ? ' — it is installed, but the version you have does not provide this yet.' : ' — it provides what this update needs.'}
+            </li>))}</ul>
+          </> : <p className="suite-meta">No app available on this server provides it, so there is nothing to install first. Updating is still allowed; {app.name} will simply have nothing to work with until one exists.</p>}
+        </Notice> : null}
         {comparison.permissions.added.length ? <Notice title="This update asks for more access" variant="warning">
           <p>The installed version does not have this access today. Updating grants it.</p>
           <ul className="suite-app-permission-list">
@@ -1141,9 +1242,21 @@ function AppDetail({
             })}
           </ul>
         </Notice> : null}
-        <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />
+        {/* Nothing to compare where neither side was ever assessed. */}
+        {isNotAssessed(comparison.installed.privacy) || isNotAssessed(comparison.candidate.privacy)
+          ? null
+          : <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />}
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
-        {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
+        {comparison.changes.length ? <>
+          {ownerChanges.length ? <div className="suite-app-update-changes">
+            <p>What this changes for you</p>
+            <ul>{ownerChanges.map((change, index) => <li key={`owner-${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul>
+          </div> : null}
+          {handledChanges.length ? <div className="suite-app-update-changes">
+            <p>MOS applies these for you</p>
+            <ul>{handledChanges.map((change, index) => <li key={`auto-${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul>
+          </div> : null}
+        </> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
@@ -1167,10 +1280,6 @@ function repoUrlFromQuery(raw: string): string | null {
   } catch { return null; }
 }
 
-function externalSourceLabel(repository: string) {
-  try { return new URL(repository).hostname; } catch { return 'External repository'; }
-}
-
 function externalDescription(card: ExternalCard) {
   return card.summary || card.homepage?.description || card.catalog.description || 'External MOS app package.';
 }
@@ -1182,6 +1291,11 @@ function updateNoticeTitle(comparison: UpdateComparison): string {
   return comparison.compatibility === 'owner-action-required' ? 'Review this before updating' : 'Ready to update';
 }
 
+// The app that would carry a human title is by definition not installed.
+function capabilityLabel(type: string): string {
+  return type.replace(/[-_]+/gu, ' ').trim() || type;
+}
+
 // Plain-language explanation of one requested permission key, so an owner can see
 // exactly what a package would be granted before installing it and exactly what
 // an update would add to that.
@@ -1189,7 +1303,7 @@ function permissionLabel(permission: string): { detail: string; label: string } 
   const separator = permission.indexOf(':');
   const kind = separator === -1 ? permission : permission.slice(0, separator);
   const value = separator === -1 ? '' : permission.slice(separator + 1);
-  if (kind === 'route') return { detail: `Serves a web app at ${value}.${baseHost()} on your MOS.`, label: `Web address: ${value}` };
+  if (kind === 'route') return { detail: 'Gets its own HTTPS address under your MOS domain.', label: `Web address: ${value}` };
   if (kind === 'volume') return { detail: 'Reads and writes its own private, named storage volume.', label: `Storage: ${value}` };
   if (kind === 'integration') return { detail: 'Can connect to a compatible app you choose. Nothing connects automatically.', label: `Integration: ${value}` };
   if (permission === 'provides-capability') return { detail: 'Other installed apps can connect to this one.', label: 'Provides a capability to other apps' };
@@ -1203,6 +1317,7 @@ function ExternalAppIcon({ card, large = false }: { card: ExternalCard; large?: 
 }
 
 function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => void }) {
+  const broken = card.packageErrors.length > 0;
   return <article className="suite-app-card is-external">
     <button className="suite-app-card-main" onClick={onOpen} type="button">
       <ExternalAppIcon card={card} />
@@ -1211,7 +1326,7 @@ function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => v
           <strong>{card.name}</strong>
           <span className="suite-app-external-pill">External &middot; Unverified</span>
         </span>
-        <span>{externalDescription(card)}</span>
+        <span>{broken ? 'This app package cannot be installed until its publisher fixes it.' : externalDescription(card)}</span>
       </span>
     </button>
     <div className="suite-app-card-actions">
@@ -1220,18 +1335,19 @@ function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => v
   </article>;
 }
 
-function ExternalAppDetail({ installError, installing, onClose, onInstall, owner, resolved }: {
+function ExternalAppDetail({ card, installError, installing, onClose, onInstall, owner, source }: {
+  card: ExternalCard;
   installError: string;
   installing: boolean;
   onClose: () => void;
-  onInstall: (resolved: ExternalResolveResponse, config: Record<string, string>) => void;
+  onInstall: (card: ExternalCard, config: Record<string, string>) => void;
   owner: Owner;
-  resolved: ExternalResolveResponse;
+  source: ExternalSourceCoordinates;
 }) {
-  const { card, permissions, source } = resolved;
+  const permissions = card.permissions;
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(card, owner));
   const inputFields = setupFieldsNeedInput(card);
-  const canInstall = card.validation.valid && !requiredSetupMissing(card, setupConfig) && !installing;
+  const canInstall = card.validation.valid && !card.packageErrors.length && !requiredSetupMissing(card, setupConfig) && !installing;
   return <div className="suite-app-detail-layer">
     <button aria-label="Close package details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     <aside aria-label={`${card.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
@@ -1253,7 +1369,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           </div>
         </div>
         <div className="suite-app-action-bar">
-          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
+          <InstallButton disabled={!canInstall} installing={installing} onClick={() => onInstall(card, { ...setupConfig })} unmet={card.unmetRequirements} />
         </div>
       </header>
 
@@ -1269,10 +1385,15 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
         {installError ? <Notice title="This package could not be installed" variant="warning"><p>{installError}</p></Notice> : null}
 
         <Notice title="Unverified external package" variant="warning">
-          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before any of MOS&apos;s runtime restrictions apply. Install it only if you trust whoever publishes that repository. Once running, it is restricted to its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
+          <p>This package comes from a repository you brought yourself, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before any of MOS&apos;s runtime restrictions apply. Install it only if you trust whoever publishes that repository. Once running, it is restricted to its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
         </Notice>
 
         {!card.validation.valid ? <Notice title="This package cannot be installed" variant="warning"><ul>{card.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+
+        {card.packageErrors.length ? <Notice title="This package cannot be installed" variant="warning">
+          <p>The repository publishes this app, but MOS refuses it for the reasons below. Only its publisher can fix these.</p>
+          <ul>{card.packageErrors.map((item) => <li key={item}>{item}</li>)}</ul>
+        </Notice> : null}
 
         <section className="suite-app-detail-section">
           <h3>Requested access</h3>
@@ -1288,17 +1409,17 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           <div><span>Trust</span><strong>Unverified</strong></div>
           <div><span>Review</span><strong>Not reviewed by MOS</strong></div>
           {card.appVersion ? <div><span>Version</span><strong>{card.appVersion}</strong></div> : null}
-          <div><span>Source</span><strong>{externalSourceLabel(source.repository)}</strong></div>
+          <div><span>Source</span><strong>{appSourceLabel(source.repository)}</strong></div>
         </section>
 
         <AdvancedPanel className="suite-app-advanced" facts={[
           { label: 'Repository', value: source.repository },
           { code: true, label: 'Revision', value: source.revision.slice(0, 12) },
-          { label: 'Package id', value: source.packageId },
+          { label: 'Package id', value: card.packageId },
           { label: 'Package version', value: card.version || 'Unknown' },
-          { code: true, label: 'Package digest', value: resolved.packageDigest },
+          { code: true, label: 'Package digest', value: card.packageDigest || 'Unavailable' },
           { label: 'Services', value: card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
-          { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+          { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}${route.kind === 'api' ? ' (api)' : ''}`).join(', ') || 'None' },
         ]} reveal="technical-mode" />
       </div>
     </aside>
@@ -1320,9 +1441,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalResolved, setExternalResolved] = useState<ExternalResolveResponse | null>(null);
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalError, setExternalError] = useState('');
-  const [externalOpen, setExternalOpen] = useState(false);
+  // Which of a source's packages the owner has opened, by namespaced id — a
+  // repository may publish several.
+  const [externalOpenId, setExternalOpenId] = useState('');
   const [externalInstalling, setExternalInstalling] = useState(false);
   const [externalInstallError, setExternalInstallError] = useState('');
+  const [externalAdding, setExternalAdding] = useState(false);
+  const [externalAddError, setExternalAddError] = useState('');
 
   // Silent loads run in the background: they never flash the loading state and
   // never replace a working catalog view with a transient fetch error. A silent
@@ -1402,7 +1527,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       setExternalResolved(null);
       setExternalError('');
       setExternalLoading(false);
-      setExternalOpen(false);
+      setExternalOpenId('');
       return undefined;
     }
     let cancelled = false;
@@ -1434,6 +1559,33 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   }, [externalUrl]);
 
   const selected = packages.find((app) => app.id === selectedId) || null;
+  const externalOpenCard = externalResolved?.packages.find((card) => card.id === externalOpenId) || null;
+
+  // Register the pasted repository as an added source. Nothing is installed: the
+  // source's apps join the catalog list, and the owner installs from there whenever
+  // they like. Managing and removing added sources lives in Settings.
+  async function addExternalSource(repository: string) {
+    setExternalAdding(true);
+    setExternalAddError('');
+    try {
+      await jsonResponse<{ source: unknown }>(
+        await fetch('/suite-manager/api/apps/sources', {
+          body: JSON.stringify({ repository }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        'Unable to add that app source.',
+      );
+      // Clearing the query drops the preview and shows the ordinary catalog, which
+      // now includes this source's apps.
+      setQuery('');
+      await load();
+    } catch (caught) {
+      setExternalAddError(caught instanceof Error ? caught.message : 'Unable to add that app source.');
+    } finally {
+      setExternalAdding(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1463,18 +1615,20 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   // installed is whatever passes the gate right now rather than the previewed
   // card. Once it is installed it is an ordinary app instance under its
   // namespaced id, so the normal install flow finishes runtime and Homepage.
-  async function performExternalInstall(resolved: ExternalResolveResponse, config: Record<string, string> = {}) {
-    if (!resolved.card.validation.valid) return;
+  async function performExternalInstall(card: ExternalCard, source: ExternalSourceCoordinates, config: Record<string, string> = {}) {
+    if (!card.validation.valid || card.packageErrors.length) return;
     setExternalInstalling(true);
     setExternalInstallError('');
     try {
       const installed = await jsonResponse<{ packageId: string }>(
         await fetch('/suite-manager/api/apps/sources/install', {
-          body: JSON.stringify({ config, url: resolved.source.repository }),
+          // Naming the package is what makes a repository publishing several of them
+          // installable: the backend refuses to choose on the owner's behalf.
+          body: JSON.stringify({ config, packageId: card.id, url: source.repository }),
           headers: { 'Content-Type': 'application/json' },
           method: 'POST',
         }),
-        `Unable to install ${resolved.card.name}.`,
+        `Unable to install ${card.name}.`,
       );
       const refreshed = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
         await fetch('/suite-manager/api/apps/packages'),
@@ -1483,7 +1637,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       setPackages(refreshed.packages);
       setCatalogStatus(refreshed.catalog);
       const app = refreshed.packages.find((item) => item.id === installed.packageId);
-      setExternalOpen(false);
+      setExternalOpenId('');
       setQuery('');
       // Forward the collected setup values: the package is installed by now, but
       // performInstall still needs them to pass its required-field check before
@@ -1491,7 +1645,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       // never starts.
       if (app) await performInstall(app, { config });
     } catch (caught) {
-      setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${resolved.card.name}.`);
+      setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${card.name}.`);
     } finally {
       setExternalInstalling(false);
     }
@@ -1499,7 +1653,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
   async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; showOnHomepage?: boolean } = {}) {
     const setupConfig = options.config || {};
-    const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig);
+    const canInstall = app.validation.valid && !app.packageErrors?.length && !requiredSetupMissing(app, setupConfig);
     if (!canInstall) return;
     const showOnHomepage = hasHomepageContribution(app) && options.showOnHomepage !== false;
     setSelectedId(app.id);
@@ -1511,10 +1665,18 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     try {
       if (current.installStatus !== 'installed') {
         setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
+        // An app offered by one of the owner's added sources is not in the reviewed
+        // catalog, so it is installed by re-resolving its own repository through the
+        // external gate rather than from a package this MOS already holds. Once that
+        // returns, it is an ordinary instance under its namespaced id and the rest of
+        // this flow is identical.
+        const external = current.external && current.source ? current.source : null;
         const installed = await withMinimumInstallStep(async () =>
           jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
-              body: JSON.stringify({ config: setupConfig }),
+            await fetch(external ? '/suite-manager/api/apps/sources/install' : `/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
+              body: JSON.stringify(external
+                ? { config: setupConfig, packageId: current.id, url: external.repository }
+                : { config: setupConfig }),
               headers: { 'Content-Type': 'application/json' },
               method: 'POST',
             }),
@@ -1661,8 +1823,23 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
-  const standaloneApps = filtered.filter((app) => !isCompanionApp(app));
-  const companionApps = filtered.filter(isCompanionApp);
+  // Apps an added source offers get their own section per source, so "these came
+  // from a repository you added" is told by where a card sits rather than by a badge
+  // on every one of them. An installed external app is one of the owner's apps and
+  // belongs in the sections above with the rest: the source section is about what a
+  // source is *offering*, which is also why removing a source empties it without
+  // touching anything installed.
+  const offered = filtered.filter((app) => app.source && !app.instance);
+  const own = filtered.filter((app) => !(app.source && !app.instance));
+  const standaloneApps = own.filter((app) => !isCompanionApp(app));
+  const companionApps = own.filter(isCompanionApp);
+  const sourceSections = offered.reduce<Array<{ apps: AppPackageSummary[]; repository: string; title: string }>>((sections, app) => {
+    const repository = app.source!.repository;
+    const existing = sections.find((section) => section.repository === repository);
+    if (existing) existing.apps.push(app);
+    else sections.push({ apps: [app], repository, title: app.source!.publisher || appSourceLabel(repository) });
+    return sections;
+  }, []);
 
   return <section className="mos-shell mos-page">
     <div className="suite-app-simple-header">
@@ -1678,13 +1855,25 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
     {externalUrl ? <div className="suite-app-catalog-sections">
       <section className="suite-app-catalog-section">
-        <div className="suite-app-section-heading"><h2>External package</h2></div>
-        {externalLoading ? <p className="suite-meta">Checking that repository for a MOS app package...</p> : null}
+        <div className="suite-app-section-heading">
+          <h2>{externalResolved && externalResolved.packages.length > 1
+            ? `${externalResolved.packages.length} apps from ${appSourceLabel(externalResolved.source.repository)}`
+            : 'External package'}</h2>
+          {/* Adding is what makes a catalog browsable later without pasting the URL
+              again. It is offered only once the repository has actually resolved,
+              and only while it is not already added. */}
+          {externalResolved && !externalResolved.added ? <button className="mos-btn mos-btn-secondary" disabled={externalAdding} onClick={() => void addExternalSource(externalResolved.source.repository)} type="button">
+            {externalAdding ? 'Adding...' : 'Add this source'}
+          </button> : null}
+        </div>
+        {externalLoading ? <p className="suite-meta">Checking that repository for MOS app packages...</p> : null}
         {externalError && !externalLoading ? <Notice title="No app package found at that URL" variant="warning"><p>{externalError}</p></Notice> : null}
+        {externalAddError ? <Notice title="This source could not be added" variant="warning"><p>{externalAddError}</p></Notice> : null}
+        {externalResolved?.added ? <p className="suite-meta">You have already added this source, so its apps are listed with your catalog below.</p> : null}
         {externalResolved && !externalLoading ? <div className="suite-app-grid">
-          <ExternalAppCard card={externalResolved.card} onOpen={() => setExternalOpen(true)} />
+          {externalResolved.packages.map((card) => <ExternalAppCard card={card} key={card.id} onOpen={() => setExternalOpenId(card.id)} />)}
         </div> : null}
-        {!externalLoading && !externalError && !externalResolved ? <p className="suite-meta">Paste a public GitHub repository that publishes a MOS app package in a <code>.mos</code> folder at its root.</p> : null}
+        {!externalLoading && !externalError && !externalResolved ? <p className="suite-meta">Paste a public GitHub repository that publishes MOS app packages in a <code>.mos</code> folder at its root &mdash; one app, or a catalog of them.</p> : null}
       </section>
     </div> : null}
 
@@ -1706,6 +1895,15 @@ export function AppsScreen({ owner }: { owner: Owner }) {
           {companionApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
         </div>
       </section> : null}
+      {sourceSections.map((section) => <section className="suite-app-catalog-section" key={section.repository}>
+        <div className="suite-app-section-heading">
+          <h2>{section.title}</h2>
+          <p className="suite-meta">A source you added. MOS has not reviewed these apps. Manage it in Settings.</p>
+        </div>
+        <div className="suite-app-grid">
+          {section.apps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+        </div>
+      </section>)}
     </div> : null}
 
     {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus)} reveal="technical-mode" summary="App catalog">
@@ -1715,13 +1913,14 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       {catalogStatus.error ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p> : null}
     </AdvancedPanel> : null}
 
-    {externalOpen && externalResolved ? <ExternalAppDetail
+    {externalOpenCard && externalResolved ? <ExternalAppDetail
+      card={externalOpenCard}
       installError={externalInstallError}
       installing={externalInstalling}
-      onClose={() => setExternalOpen(false)}
-      onInstall={(resolved, config) => { void performExternalInstall(resolved, config); }}
+      onClose={() => setExternalOpenId('')}
+      onInstall={(card, config) => { void performExternalInstall(card, externalResolved.source, config); }}
       owner={owner}
-      resolved={externalResolved}
+      source={externalResolved.source}
     /> : null}
 
     {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} onUpdated={() => load()} owner={owner} packages={packages} /> : null}

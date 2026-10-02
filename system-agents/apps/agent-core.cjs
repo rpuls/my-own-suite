@@ -1,5 +1,16 @@
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
+const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
+
+// The Easy Door base app routes are aliased on, or null. Apps are
+// single-addressed on a domain, so the alias stops the moment the suite's
+// recorded address is one; until then it follows the machine's live address,
+// which is what the door itself does. Decided from the recorded address rather
+// than from the live Caddyfile because every LAN Caddyfile carries the door now.
+function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), serverAddress = detectServerAddress() } = {}) {
+  if (address?.kind === 'domain') return null;
+  return easyDoorBaseDomain(serverAddress);
+}
 
 class AppRuntimeError extends Error {
   constructor(code, message, statusCode = 400) {
@@ -191,28 +202,38 @@ function assertRuntimeRemoveRequest(input, { allowInstance = false, allowVolumes
   return { installedSourceRevision: input.installedSourceRevision, instanceId: input.instanceId, packageId: input.packageId, services, volumes };
 }
 
+// The holder owns the network the two packages meet on and the joiner is attached
+// to it. Which side is which is the caller's decision, taken from what the two
+// manifests say about each other, so the agent carries no policy about it.
 function assertNetworkConnectRequest(input) {
-  if (!exactKeys(input, ['consumerPackageId', 'providerPackageId', 'providerServiceCount', 'providerServices'])) {
+  if (!exactKeys(input, ['holderPackageId', 'holderServiceCount', 'holderServices', 'joinerPackageId', 'joinerServiceCount', 'joinerServices'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app network fields are accepted.');
   }
-  assertString(input.consumerPackageId, 'consumerPackageId', PACKAGE_ID_PATTERN);
-  assertString(input.providerPackageId, 'providerPackageId', PACKAGE_ID_PATTERN);
-  if (!Number.isInteger(input.providerServiceCount) || input.providerServiceCount < 1 || input.providerServiceCount > 8) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service count is invalid.');
-  }
-  if (!Array.isArray(input.providerServices) || input.providerServices.length < 1 || input.providerServices.length > 8) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service list is invalid.');
-  }
-  for (const serviceId of input.providerServices) {
-    if (!DNS_LABEL_PATTERN.test(String(serviceId))) {
-      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Provider service ids must be DNS-safe labels.');
+  assertString(input.holderPackageId, 'holderPackageId', PACKAGE_ID_PATTERN);
+  assertString(input.joinerPackageId, 'joinerPackageId', PACKAGE_ID_PATTERN);
+  for (const side of ['holder', 'joiner']) {
+    const label = side === 'holder' ? 'Holder' : 'Joiner';
+    const count = input[`${side}ServiceCount`];
+    const services = input[`${side}Services`];
+    if (!Number.isInteger(count) || count < 1 || count > 8) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `The ${side} service count is invalid.`);
+    }
+    if (!Array.isArray(services) || services.length < 1 || services.length > 8) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `The ${side} service list is invalid.`);
+    }
+    for (const serviceId of services) {
+      if (!DNS_LABEL_PATTERN.test(String(serviceId))) {
+        throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `${label} service ids must be DNS-safe labels.`);
+      }
     }
   }
   return {
-    consumerPackageId: input.consumerPackageId,
-    providerPackageId: input.providerPackageId,
-    providerServiceCount: input.providerServiceCount,
-    providerServices: input.providerServices,
+    holderPackageId: input.holderPackageId,
+    holderServiceCount: input.holderServiceCount,
+    holderServices: input.holderServices,
+    joinerPackageId: input.joinerPackageId,
+    joinerServiceCount: input.joinerServiceCount,
+    joinerServices: input.joinerServices,
   };
 }
 
@@ -351,7 +372,7 @@ ${bridge}
 // is reachable from the same door the owner reached Suite Manager through. Unlike
 // Suite Manager's own block, which Caddy matches by pattern, an app route names
 // one exact host and so has to be re-derived here on every apply — which is also
-// what closes it: the base is null whenever this box is not serving the door.
+// what stops it: the base is null once the suite is published on a domain.
 function renderAppRoutes({ appHost, easyDoorBase = null, internalIcalBridge = null, reverseProxy, routes = null, scheme = 'http' }) {
   if (Array.isArray(routes)) {
     const baseDomain = appHost.split('.').slice(1).join('.');
@@ -367,7 +388,7 @@ function renderAppRoutes({ appHost, easyDoorBase = null, internalIcalBridge = nu
 }
 
 class AppAgentCore {
-  constructor(adapter, { easyDoorBase = detectEasyDoorBase } = {}) {
+  constructor(adapter, { easyDoorBase = aliasedEasyDoorBase } = {}) {
     this.adapter = adapter;
     this.easyDoorBase = easyDoorBase;
   }
@@ -510,4 +531,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, packageImageTag, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, packageImageTag, renderAppRoutes, resolveEnvironment };

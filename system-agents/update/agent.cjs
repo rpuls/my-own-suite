@@ -8,7 +8,10 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, resolveTrack, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
 const { BackupAgentClient } = require('../../suite-manager/backend/src/backups/backup-agent-client.cjs');
+const { readSigningPublicKey, verifyCatalogSignature } = require('../../suite-manager/backend/src/apps/catalog-signature.cjs');
+const { hostHeldPackages, validateAdvisoryIndex } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { CANCELLABLE_STAGES, CANCELLED, SKIPPABLE_STAGES } = require('./checkpoint.cjs');
+const { HOLDS_CONFIG_PATH, REBOOT_REQUIRED_PATH, readEnablementState, renderHoldsConfig } = require('../../infrastructure/host-patching.cjs');
 
 const repoRoot = process.env.MOS_REPO_DIR || repoRootFrom(process.cwd());
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
@@ -21,13 +24,13 @@ function respond(response, statusCode, payload) {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
-function readBody(request) {
+function readBody(request, maxBytes = 32 * 1024) {
   return new Promise((resolve, reject) => {
     let raw = '';
     request.setEncoding('utf8');
     request.on('data', (chunk) => {
       raw += chunk;
-      if (raw.length > 32 * 1024) reject(new Error('BODY_TOO_LARGE'));
+      if (raw.length > maxBytes) reject(new Error('BODY_TOO_LARGE'));
     });
     request.on('end', () => {
       try { resolve(raw.trim() ? JSON.parse(raw) : {}); } catch { reject(new Error('INVALID_JSON')); }
@@ -172,6 +175,49 @@ function startWorker(job) {
   child.unref();
 }
 
+// Long enough for the response to reach the browser over a connection that may
+// be going through Caddy, short enough that the owner does not wonder whether
+// the button worked.
+const RESTART_DELAY_MS = 5_000;
+
+function scheduleHostRestart() {
+  if (process.platform !== 'linux') return;
+  // A transient unit, so the reboot is owned by systemd rather than by this
+  // agent: `systemctl reboot` stops mos-update-agent among everything else, and
+  // a child of the process being stopped is not a safe place to run it from.
+  const armed = spawnSync('systemd-run', [
+    '--collect',
+    '--unit=mos-host-restart',
+    `--on-active=${Math.round(RESTART_DELAY_MS / 1000)}s`,
+    '/usr/bin/systemctl',
+    'reboot',
+  ], { stdio: 'ignore' });
+  if (armed.status === 0) return;
+  const child = spawn('/bin/sh', ['-c', `sleep ${Math.round(RESTART_DELAY_MS / 1000)}; systemctl reboot`], { detached: true, stdio: 'ignore' });
+  child.unref();
+}
+
+// The public half of the catalog signing key, read from this installed release
+// rather than from whoever sent the feed. Missing key, bad signature and feed
+// that does not validate all answer the same way: no holds are written, and the
+// file already on disk is left as it was.
+function verifiedHeldPackages(body) {
+  const text = typeof body?.advisoriesText === 'string' ? body.advisoriesText : '';
+  const signature = typeof body?.advisoriesSignature === 'string' ? body.advisoriesSignature : '';
+  if (!text || !signature) return null;
+  let publicKey;
+  try {
+    publicKey = readSigningPublicKey(fs.readFileSync(path.join(repoRoot, 'trust', 'official-catalog.pub'), 'utf8'));
+  } catch {
+    return null;
+  }
+  if (!verifyCatalogSignature({ bytes: text, publicKey, signature })) return null;
+  let index;
+  try { index = JSON.parse(text); } catch { return null; }
+  if (validateAdvisoryIndex(index).length) return null;
+  return hostHeldPackages(index);
+}
+
 fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.mkdirSync(paths.jobsDir, { recursive: true });
 fs.rmSync(socketPath, { force: true });
@@ -248,6 +294,69 @@ const server = http.createServer(async (request, response) => {
       respond(response, 200, { job: summarizeJob(next) });
       return;
     }
+    // The restart a patched kernel needs. It is a privileged mutation, so it is
+    // here rather than in the read-only diagnostics agent that reported the need
+    // for it — and it is here at all because the UI that says a restart is
+    // needed has to be able to perform it. An owner must never be sent to a
+    // terminal for something MOS told them to do.
+    //
+    // MOS never reboots on its own: nothing reaches this but an owner who
+    // confirmed it, and only for a restart Ubuntu asked for. That is checked
+    // here, on the privileged side, rather than trusted from the web app that
+    // relayed the click. The two refusals after it are the same two an update
+    // takes, for the same reason — a reboot in the middle of either cuts it off
+    // mid-write.
+    if (request.method === 'POST' && url.pathname === '/v1/host/restart') {
+      if (!fs.existsSync(REBOOT_REQUIRED_PATH)) {
+        respond(response, 409, { code: 'RESTART_NOT_NEEDED', error: 'This server does not need a restart.' });
+        return;
+      }
+      const existing = readCurrentJob();
+      if (isActive(existing)) {
+        respond(response, 409, { code: 'UPDATE_RUNNING', currentJob: summarizeJob(existing), error: 'A MOS update is running. Restart the server when it finishes.' });
+        return;
+      }
+      const backupJob = await activeBackupJob();
+      if (backupJob) {
+        respond(response, 409, { code: 'BACKUP_RUNNING', error: backupBusyMessage(backupJob) });
+        return;
+      }
+      const restartingAt = new Date(Date.now() + RESTART_DELAY_MS).toISOString();
+      // Answered first, and the reboot armed on a delay, so the owner's browser
+      // gets the acknowledgement rather than a dropped connection it would have
+      // to guess the meaning of.
+      respond(response, 202, { restartingAt, service: 'mos-update-agent' });
+      scheduleHostRestart();
+      return;
+    }
+
+    // Packages unattended-upgrades must not install, from the signed advisory
+    // feed. The feed is re-verified here rather than trusted from the caller:
+    // Suite Manager is an unprivileged web app, and a privileged write it could
+    // name the contents of would be a way to stop a server taking security
+    // patches at all. What it can do is hand over bytes somebody signed.
+    if (request.method === 'POST' && url.pathname === '/v1/host/holds') {
+      const body = await readBody(request, 512 * 1024);
+      const held = verifiedHeldPackages(body);
+      if (held === null) {
+        respond(response, 400, { code: 'ADVISORIES_SIGNATURE_INVALID', error: 'The advisory feed was not signed by the key this MOS release trusts.' });
+        return;
+      }
+      // The hold file clears the blacklist before it fills it, so on a server
+      // whose policy is the owner's it would erase theirs. MOS writes into a
+      // policy only where MOS owns the policy.
+      const managedBy = readEnablementState(stateRoot)?.managedBy || 'unknown';
+      if (managedBy !== 'mos') {
+        fs.rmSync(HOLDS_CONFIG_PATH, { force: true });
+        respond(response, 200, { heldPackages: [], managedBy, service: 'mos-update-agent' });
+        return;
+      }
+      fs.writeFileSync(HOLDS_CONFIG_PATH, renderHoldsConfig(held), 'utf8');
+      fs.chmodSync(HOLDS_CONFIG_PATH, 0o644);
+      respond(response, 200, { heldPackages: held, managedBy, service: 'mos-update-agent' });
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/v1/track') {
       const existing = readCurrentJob();
       if (isActive(existing)) {

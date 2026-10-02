@@ -17,7 +17,7 @@ Use this when the user has run the MOS Hyper-V USB smoke and gives Codex the VM 
 - Do not ask the user to upload SSH keys into the VM. The Hyper-V autoinstall enables password SSH for the Linux user.
 - **The Hyper-V lab login is fixed and needs no lookup: `mos` / `admin1234`.** The lab ISO is built with the `lab` seed profile, which bakes that password in on purpose so anyone — human or agent — can SSH in without configuring anything first. It is a disposable VM on a private virtual switch; the password is not a secret and is fine to say out loud.
 - Override it with `LINUX_PASSWORD` in `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or `MOS_LINUX_PASSWORD`) if you want a different one; `USERNAME` defaults to `mos`. If a custom password is set there, do not print it in chat.
-- Real installer ISOs (`npm run installer:usb`) use the `release` profile and contain no password at all — the machine generates its own at first boot. That is the correct behaviour for a shareable image, and it means an ISO built that way is not SSH-reachable until someone reads the password off its console or Suite Manager. Never build a lab VM that way.
+- Every build outside the lab — the published disk image, and any ISO from a bare `npm run installer:usb` — uses the `release` profile and contains no password at all; the machine generates its own at first boot. That is the correct behaviour for something shareable, and it means such a build is not SSH-reachable until someone reads the password off its console or Suite Manager. Never build a lab VM that way.
 - First check port 22 from Windows:
 
 ```powershell

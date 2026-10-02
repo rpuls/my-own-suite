@@ -82,6 +82,15 @@ function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform
       : `The app runtime agent reports contract version ${platform.appAgentContractVersion} but this MOS needs ${APP_AGENT_CONTRACT_VERSION}, so its last update did not fully apply. Installed apps keep running; installing, updating or removing one is refused until MOS is updated again.`);
   }
   if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
+  // MOS cannot learn from the fleet that an Ubuntu patch is breaking servers —
+  // it has no telemetry, by promise — so one person's file has to be enough to
+  // act on. These three lines are what makes it so.
+  const hostPatches = collection.hostPatches;
+  if (hostPatches?.managedBy === 'none') trouble.push('Ubuntu security updates are not being applied automatically on this server.');
+  if (hostPatches?.health?.ok === false) {
+    trouble.push(`The suite did not come back cleanly after the last host patch or restart (${hostPatches.health.at || 'an unknown time'}): ${(hostPatches.health.failures || []).map((failure) => `${failure.name} is ${failure.active}`).join(', ') || 'no units were named.'}`);
+  }
+  if (hostPatches?.rebootRequired) trouble.push(`Ubuntu asked for a restart to finish installing ${(hostPatches.rebootPackages || []).join(', ') || 'a patch'}; the server has not been restarted since.`);
   for (const unit of collection.units || []) {
     if (unit.unread) trouble.push(`The state of ${unit.name} could not be read; it may or may not be running.`);
     else if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
@@ -152,6 +161,37 @@ function catalogLines(catalog) {
   return lines;
 }
 
+// Ubuntu's own patch state, beside the MOS update check above it: the same
+// question about the layer underneath. `managedBy` leads because every number
+// under it means something different depending on who is applying the patches.
+function hostPatchLines(patches) {
+  if (!patches) return ['Host patching      not collected'];
+  if (!patches.available) return ['Host patching      could not be read on this server'];
+  const lines = [
+    `Host patching      ${patches.managedBy === 'mos' ? 'MOS applies Ubuntu security updates'
+      : patches.managedBy === 'owner' ? 'owner-managed; MOS changed nothing'
+        : patches.managedBy === 'none' ? 'not applied automatically' : 'unknown'}`,
+  ];
+  if (patches.managedReason) lines.push(indent(patches.managedReason, 19));
+  lines.push(
+    `Allowed origins    ${(patches.allowedOrigins || []).join(', ') || 'none'}`,
+    `Automatic reboot   ${patches.automaticReboot === null || patches.automaticReboot === undefined ? 'unknown' : patches.automaticReboot}`,
+    `Package lists      ${patches.lastListedAt || 'never refreshed by the timer'}`,
+    `Last unattended    ${patches.lastRunAt || 'no run recorded'}`,
+    `Last installed     ${patches.lastInstallAt ? `${patches.lastInstallAt}: ${(patches.lastInstalledPackages || []).join(' ') || 'packages not recorded'}` : 'nothing recorded'}`,
+    `Security waiting   ${(patches.security || []).length}${(patches.security || []).length ? `: ${patches.security.join(' ')}` : ''}`,
+    `Other upgradable   ${(patches.other || []).length}`,
+    `Restart needed     ${patches.rebootRequired ? `yes: ${(patches.rebootPackages || []).join(' ') || 'package not recorded'}` : 'no'}`,
+  );
+  if ((patches.heldPackages || []).length) lines.push(`Held back          ${patches.heldPackages.join(' ')}`);
+  if (patches.health) {
+    lines.push(`Post-patch check   ${patches.health.ok === true ? 'the suite came back' : patches.health.ok === false ? 'the suite did not come back' : 'could not run'} at ${patches.health.at || 'an unknown time'}`);
+    for (const failure of patches.health.failures || []) lines.push(indent(`${failure.name} is ${failure.active}${failure.sub && failure.sub !== failure.active ? ` (${failure.sub})` : ''}`, 19));
+    if (patches.health.reason) lines.push(indent(patches.health.reason, 19));
+  }
+  return lines;
+}
+
 function lastHttpsApplyLines(apply) {
   if (!apply?.status) return ['Last HTTPS apply   never'];
   const lines = [`Last HTTPS apply   ${apply.status}${apply.errorCode ? ` (${apply.errorCode})` : ''} at ${apply.at || 'an unknown time'}`];
@@ -178,6 +218,34 @@ function unitLines(units) {
   return (units || []).map((unit) => [
     `${unit.name}  ·  ${unit.active}${unit.sub && unit.sub !== unit.active ? `/${unit.sub}` : ''}  ·  ${unit.enabled}`,
     unit.log ? indent(unit.log) : '  (no log lines)',
+  ].join('\n')).join('\n\n');
+}
+
+// The web server's configuration, whole and in the order it is imported. This
+// is where "my app returns 502" and "that address answers nothing" are told
+// apart: one has a route pointing somewhere wrong, the other has no route. The
+// DNS credential appears in it as `{env.CLOUDFLARE_API_TOKEN}` — a reference,
+// never the value — so nothing here is a secret before redaction even runs.
+function webServerLines(files) {
+  if (!files?.length) return 'The web server configuration could not be read.';
+  return files.map((file) => [
+    `${file.path}`,
+    file.content === null
+      ? `  (${file.unreadable ? `could not be read: ${file.unreadable}` : 'not present — this machine has no routes of that kind'})`
+      : indent(file.content),
+  ].join('\n')).join('\n\n');
+}
+
+// The network map. Two packages on one network is a connection the owner made,
+// and a MOS app container on the default `bridge` network is an app that has not
+// been restarted onto its own network yet — neither is visible anywhere else in
+// this bundle, and both decide whether "app A cannot reach app B" is a
+// misconfiguration or exactly what the machine is set up to do.
+function networkLines(networks) {
+  if (!networks?.length) return 'The Docker networks could not be listed.';
+  return networks.map((network) => [
+    `${network.name}  ·  ${network.driver}`,
+    network.containers?.length ? network.containers.map((name) => `  ${name}`).join('\n') : '  (nothing attached)',
   ].join('\n')).join('\n\n');
 }
 
@@ -246,8 +314,11 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       collection.host?.disk && `Disk:\n${collection.host.disk}`,
       collection.host?.dockerDisk && `Docker disk:\n${collection.host.dockerDisk}`,
     ].filter(Boolean).join('\n')),
+    section('HOST PATCHES', hostPatchLines(collection.hostPatches).join('\n')),
+    section('WEB SERVER', webServerLines(collection.webServer)),
     section('APPS', appLines(apps)),
     section('SERVICES', unitLines(collection.units)),
+    section('NETWORKS', networkLines(collection.networks)),
     section('CONTAINERS', containerLines(collection.containers)),
   ].join('');
 
@@ -287,6 +358,7 @@ async function assembleSupportBundle({
   platformVersion = 'unknown',
   secretDir,
   store,
+  suiteAddress = null,
   updateStatus = null,
 }) {
   // An unreachable diagnostics agent is not a failed export. It is the most
@@ -294,10 +366,10 @@ async function assembleSupportBundle({
   // an owner whose agent is down is exactly the owner asking for help.
   const collection = await Promise.resolve()
     .then(() => agent.collect())
-    .catch((error) => ({ containers: [], host: {}, incomplete: [`diagnostics agent unreachable (${error.code || 'unknown'})`], units: [] }));
+    .catch((error) => ({ containers: [], host: {}, hostPatches: null, incomplete: [`diagnostics agent unreachable (${error.code || 'unknown'})`], units: [] }));
 
-  const https = (() => {
-    try { return store.getHttpsSettings() || {}; } catch { return {}; }
+  const addressChange = (() => {
+    try { return store.getAddressChange() || {}; } catch { return {}; }
   })();
   const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
   const apps = store.getAppInstances().map((instance) => ({
@@ -321,10 +393,10 @@ async function assembleSupportBundle({
       appAgentContractVersion: appAgentContractVersionOf(appAgentStatus),
       frontDoor,
       lastHttpsApply: {
-        at: https.lastApplyAt || null,
-        diagnostics: https.lastApplyDiagnostics || null,
-        errorCode: https.lastApplyErrorCode || null,
-        status: https.lastApplyStatus || null,
+        at: addressChange.finishedAt || addressChange.startedAt || null,
+        diagnostics: addressChange.diagnostics || null,
+        errorCode: addressChange.errorCode || null,
+        status: addressChange.status && addressChange.status !== 'never' ? addressChange.status : null,
       },
       lastCheck: updateStatus?.serviceAvailable ? {
         at: updateStatus.checkedAt || null,
@@ -338,7 +410,7 @@ async function assembleSupportBundle({
         stage: updateStatus.currentJob.stage || null,
         status: updateStatus.currentJob.status || null,
       } : null,
-      tlsMode: https.tlsMode || 'unknown',
+      tlsMode: suiteAddress?.scheme === 'https' ? `https (${suiteAddress.kind})` : suiteAddress?.kind || 'unknown',
       updateTrack: updateStatus?.track?.label || 'unknown',
       version: platformVersion,
     },
@@ -351,5 +423,6 @@ module.exports = {
   buildSupportBundle,
   collectRedactionSecrets,
   fullFilesystems,
+  hostPatchLines,
   summarizeTrouble,
 };

@@ -2,16 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { DATABASE_FILENAME } = require('../state/suite-manager-store.cjs');
-const { appVolumeName } = require('../../../../infrastructure/persistent-state.cjs');
+const { appVolumeName, managedStateTargets } = require('../../../../infrastructure/persistent-state.cjs');
 const { readAppPackageManifest } = require('../apps/package-manifest.cjs');
 const { digestAppPackage } = require('../apps/package-contracts.cjs');
 
-const DEFAULT_CADDY_FILES = [
-  '/etc/caddy/Caddyfile',
-  '/etc/caddy/mos-homepage-routes.caddy',
-  '/etc/caddy/mos-app-routes.caddy',
-];
-const DEFAULT_HTTPS_SECRET_PATH = '/etc/mos/secrets/caddy-cloudflare.env';
 const HOMEPAGE_CONFIG_FILES = [
   'services.template.yaml',
   'bookmarks.yaml',
@@ -67,23 +61,33 @@ function defaultStateRoot(stateDir) {
   return path.resolve(stateDir, '..');
 }
 
+// What a backup of this machine holds and what it leaves behind, read from the
+// same state table the backup engine stages from — so this screen can never
+// claim a file is carried that the engine does not carry.
 class BackupInventoryService {
   constructor({
     appsDir,
-    caddyFiles = DEFAULT_CADDY_FILES,
+    caddyDir = '/etc/caddy',
     homepageConfigRoot = null,
-    httpsSecretPath = DEFAULT_HTTPS_SECRET_PATH,
+    secretsDir = '/etc/mos/secrets',
     stateDir,
     stateRoot = null,
     store,
   }) {
     this.appsDir = appsDir;
-    this.caddyFiles = caddyFiles;
-    this.httpsSecretPath = httpsSecretPath;
     this.stateDir = stateDir;
     this.stateRoot = stateRoot || defaultStateRoot(stateDir);
     this.homepageConfigRoot = homepageConfigRoot || path.join(this.stateRoot, 'homepage', 'config');
+    this.stateTargets = managedStateTargets({ caddyDir, secretsDir, stateDir: this.stateDir, stateRoot: this.stateRoot });
     this.store = store;
+  }
+
+  // Every file and directory the state table names, with whether a backup
+  // carries it and whether it exists on this machine right now.
+  managedState() {
+    return this.stateTargets
+      .filter((target) => ['directory', 'file'].includes(target.kind) && !target.path.includes('{'))
+      .map((target) => ({ backedUp: target.backedUp, class: target.class, id: target.id, ...pathState(target.path) }));
   }
 
   inventory() {
@@ -131,12 +135,11 @@ class BackupInventoryService {
     return {
       checkedAt: new Date().toISOString(),
       contents: {
-        caddyFiles: this.caddyFiles.map(pathState),
         homepageConfig: {
           files: HOMEPAGE_CONFIG_FILES.map((name) => pathState(path.join(this.homepageConfigRoot, name))),
           path: this.homepageConfigRoot,
         },
-        httpsSecret: pathState(this.httpsSecretPath),
+        managedState: this.managedState(),
         suiteManager: {
           appSecrets: pathState(path.join(this.stateDir, 'app-secrets')),
           database: pathState(path.join(this.stateDir, DATABASE_FILENAME)),
@@ -172,8 +175,6 @@ class BackupInventoryService {
 
 module.exports = {
   BackupInventoryService,
-  DEFAULT_CADDY_FILES,
-  DEFAULT_HTTPS_SECRET_PATH,
   HOMEPAGE_CONFIG_FILES,
   uniqueVolumesFor,
 };

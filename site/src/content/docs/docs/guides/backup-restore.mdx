@@ -7,8 +7,10 @@ import { Steps } from '@astrojs/starlight/components'
 
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
+If you are deciding how many copies to keep and where, read [Keeping copies](/docs/guides/keeping-copies/) first. This page is the mechanics.
+
 :::danger[A backup holds every secret your server has]
-Any backup contains your data, credentials, and secrets. It is encrypted with your **recovery key** before it is written anywhere, so a stolen drive or a breached bucket cannot be read. The server keeps a copy of that key so backups can run without you, which means a stolen server is still a stolen backup — and you keep a copy, because it is the only thing that can open these backups on a replacement machine. Keep backups on access-controlled storage. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
+Any backup contains your data, credentials, and secrets. It is encrypted with your **recovery key** before it is written anywhere, so a stolen drive or a breached bucket cannot be read. The server keeps a copy of that key so backups can run without you, which it holds inside its own encrypted vault: on own hardware, a stolen server with password-protected startup on gives up neither the server nor the backups, and with it off a thief who gets past the machine has the key to both. You keep a copy too, because it is the only thing that can open these backups on a replacement machine. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
 :::
 
 ## Your recovery key
@@ -18,7 +20,8 @@ MOS shows you the key once, before your first backup, and will not take that bac
 - **Save it somewhere that is not this server.** A password manager, or paper somewhere that is not the building the server is in. Without it, a replacement server cannot read a single backup, and nobody can recover it for you.
 - **Download the recovery kit.** A text file with the key, the drives and buckets you have connected, and the steps to recover onto another machine. It never contains your storage provider's access key — that lives in your provider's console, and a new key for the same bucket works just as well.
 - **You can see it again.** **Show key** on the Backup & Restore screen asks for your owner password and then shows the key and offers the kit again, so a kit that has gone stale since you connected new storage can be re-downloaded. It also lists, by name, every place this key opens and every place that still needs another server's key.
-- **What the copy on the server does and does not protect.** A key held on the server protects against a stolen drive or a breached bucket, not against a compromised server. It is there so unattended scheduled backups can run.
+- **What the copy on the server does and does not protect.** A key held on the server protects against a stolen drive or a breached bucket, not against a compromised server: something running on your server with the key can read and delete your backups, which is why [one copy you unplug](/docs/guides/keeping-copies/) matters. It is there so unattended scheduled backups can run.
+- **You can change it.** **Show key → Change recovery key** makes a new one and moves this server's disk and every backup it can reach over to it; a drive that was not plugged in catches up the next time you connect it. Changing the key does not make old snapshots unreadable to someone who already had the old key and a copy of your storage, and the screen says so — if you think that happened, start a fresh archive.
 
 ## What a backup contains
 
@@ -124,13 +127,27 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 4. The restore points appear, each showing which server wrote it. Pick one and restore it as usual.
 
-5. When the restore finishes you are signed out. Sign in with the **owner password of the server the backup came from** — accounts and passwords now match the backup. If you were using a domain, re-apply it under **Settings → HTTPS** so it points at this machine.
+5. When the restore finishes you are signed out. Sign in with the **owner password of the server the backup came from** — accounts and passwords now match the backup.
 
 </Steps>
 
+### If the old server used a domain
+
+Your suite comes back on **this machine's own address** — the one you were using while you restored. A restore never changes that, whichever address it is: the Easy Door, the name your own network holds, or a domain you set this machine up with before restoring. If you had already given this server a domain, that is what your suite comes back on, and nothing about it changes.
+
+The old server's domain is set aside rather than moved, because a name points at one machine at a time. **Settings** names it and offers to serve it from this machine in one step: MOS kept the domain's credential from the backup, so you enter no token, and MOS reports success only once the certificate has been issued and the name answers here.
+
+Until that name points at this machine, anything set up against the old address keeps failing — phone apps, desktop sync clients, browser extensions. Three things fix that:
+
+- **Point the name here.** Change the record at your DNS provider, and any override your own network holds for it, to this machine's address. MOS reads that name and tells you what it currently answers, but it never changes DNS for you.
+- **Give this machine the old server's network address**, if the old server is off and both are on the same network. That is a change on your router — a DHCP reservation for the new machine — and nothing at your DNS provider has to change. It happens outside MOS, so MOS neither does it for you nor sees that you have.
+- **Point your devices at the new address** instead, one app at a time.
+
+**Turn the old server off before you point the name here.** Two machines answering for one suite means two copies of your data drifting apart, and no way to merge them afterwards.
+
 What just happened to the backups themselves: nothing. Connecting to an archive another server wrote never changes it — not its contents and not the list of keys that open it. MOS keeps the key you entered on this machine and uses it to read that place, and **Forget this key** on the row takes it back off again.
 
-The key becomes this machine's own only when you restore and choose to take the other server's place rather than restore as a copy. From then on one key opens everything, because the two servers are one. A copy stays a second machine with its own key, still borrowing the other's to read that archive. Either way, if the original server comes back on, both machines can write to the same destination; each restore point names the machine that wrote it.
+The key becomes this machine's own when you restore another server's backup onto it: the machine now holds that suite's data, so it uses that suite's key, and from then on one key opens both the disk and the backups. If the original server comes back on, both machines can write to the same destination; each restore point names the machine that wrote it.
 
 ## Current limitations
 

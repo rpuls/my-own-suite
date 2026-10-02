@@ -1,0 +1,13 @@
+[Unit]
+Description=Repaint the console banner if this machine's address changed
+After=network.target
+
+[Service]
+Type=oneshot
+# The same script the boot unit runs, and deliberately not a second copy of its
+# logic: it is a pure function of the address this machine currently holds, and
+# it writes the screen only when what the screen says has changed. Running it
+# again is the whole of how the banner follows an address that moved.
+ExecStart=/usr/local/sbin/mos-first-boot
+StandardOutput=journal
+TimeoutStartSec=120

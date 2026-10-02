@@ -309,9 +309,13 @@ async function main() {
     });
     seedDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'seed');
   }
+  // Scratch by default, because this ISO is a stage of the disk-image bake and
+  // not a download. A finished-looking artifact in a folder called `output/` is
+  // indistinguishable from the product, and was handed to someone as the file to
+  // flash. `image-builder/README.md` owns the pipeline.
   const outputIso = path.resolve(
     repoRoot,
-    readArg('output-iso', 'infrastructure/self-host/output/my-own-suite-selfhost-installer.iso'),
+    readArg('output-iso', '.tmp/installer-iso/my-own-suite-installer.iso'),
   );
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
   const builderTag = readArg('builder-tag', 'mos-selfhost-iso-builder:latest');
@@ -382,8 +386,11 @@ async function main() {
   );
 
   console.log('');
-  console.log('Self-host installer ISO is ready.');
-  console.log(`Flash this file: ${outputIso}`);
+  console.log('Installer ISO built. This is a build stage, not a download — nobody flashes it.');
+  console.log(`  ${outputIso}`);
+  console.log('The published own-hardware artifact is the compressed disk image `.img.xz`,');
+  console.log('which the bake produces by running this ISO in a VM and snapshotting the');
+  console.log('installed machine. See image-builder/README.md.');
   console.log(`Ubuntu ISO source: ${inputIso}`);
   console.log(`Installer seed source: ${seedDir}`);
   console.log('Ubuntu image source: official Ubuntu release URL verified against SHA256SUMS.');
@@ -410,16 +417,6 @@ async function main() {
       // A malformed summary only affects this convenience printout, never the ISO.
     }
   }
-  console.log('');
-  console.log('Recommended USB stick:');
-  console.log('- Use a simple 8 GB or larger USB 3.0 stick from a reliable brand.');
-  console.log('- Avoid very old sticks or drives with hardware encryption/software bundles.');
-  console.log('');
-  console.log('Rufus:');
-  console.log('- Download: https://rufus.ie/');
-  console.log('- Select the generated ISO above.');
-  console.log('- Keep the default partition scheme Rufus suggests for the ISO.');
-  console.log('- If Rufus asks between ISO mode and DD mode, use ISO mode unless you hit a hardware-specific boot problem.');
 }
 
 if (require.main === module) {

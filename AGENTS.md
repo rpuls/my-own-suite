@@ -46,6 +46,11 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - If repo-owned host agents need new capabilities, update/restart them as part of the same managed update instead of adding UI around the partially applied state.
    - Treat a partially applied managed update as a regression to fix at the update mechanism level.
    - Installed app runtimes are intentionally outside a platform update's scope: each app runs from the package snapshot it was installed with, and app changes apply only through the per-app update transaction. A platform update must not silently rebuild installed apps, and must not claim to have updated them.
+8. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
+   - `npm test`, the CI workflow, the release gate and the pre-push hook all run that one file. A check that exists in one of them and not the others is the drift that lets a release tag fail on something no push was ever tested against.
+   - Add a check by adding an entry to the `CHECKS` table, not by adding a `run:` step to `.github/workflows/ci.yml`. Workflow steps are for setup (checkout, Node, caches) and for reporters that never gate.
+   - Pick the lane by what the check needs: `workspace` for anything that runs against a root `npm ci`, `site` for anything that needs the built site. The pre-push hook runs the `workspace` lane, so keep it around a minute.
+   - Mark a check `heavy: true` only when it downloads a browser or similar. Heavy checks always run in CI and are skipped locally unless asked for, and the run prints every skip so the gap is visible rather than silent.
 
 ## Pre-Work Checklist (Agents)
 
@@ -54,8 +59,9 @@ Before making edits, agents should confirm:
 - Current branch is **not** `main`.
 - If the change is intended for fast platform testing, target **`staging` first** rather than `main`.
 - If the work changes updater-facing software behavior, `CHANGELOG.md` contains or will contain an `Unreleased` entry; docs-only and public-site-only work does not require one.
+- Comments in the change are the leftovers after naming and structure, not a commentary beside them (see **Code as Documentation**).
 - Any needed docs split rules (MDX vs app README) are respected.
-- Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
+- Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked and every branch push runs the workspace checks first.
 - If the work is release-related, confirm `VERSION`, `releases/stable.json`, and any Suite Manager release metadata will stay in sync with the intended tag.
 
 ## Documentation Ownership Workflow
@@ -92,6 +98,19 @@ Maintenance rules:
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
 - Keep runbooks close to the thing they operate unless they become broad project policy.
 - Do not move `README.md`, `CHANGELOG.md`, `RELEASING.md`, or `AGENTS.md` into `docs/`; these are intentionally root-level convention files.
+
+## Code as Documentation
+
+The code is the documentation. A comment is what is left over when naming and structure cannot carry the meaning, not a running commentary beside them.
+
+- **Write the code so it does not need the comment.** Reach for a clearer name, a named intermediate value, or a small extracted function before reaching for a comment. A comment that restates what the line already says is noise the next reader has to skip.
+- **A comment earns its place only by saying something the code cannot**: why an obvious approach was rejected, a non-obvious external constraint, a contract another file depends on, or the reason something looks odd. "What it does" is the code's job.
+- **Keep it to one or two lines.** Three is a maximum and needs a real reason. Nobody reads a paragraph above a one-line function, so a paragraph there is the same as no comment at all — with the cost of pushing the code off the screen.
+- **Never comment a parameter, field, flag, or boolean whose name already says it.** `busy`, `disabled`, `count` need no explanation.
+- **Do not narrate inside a function body.** A summary above a function is welcome; per-statement commentary is not. If a body needs narration to follow, split it.
+- **Judge comment volume across the whole diff, not line by line.** If added comment lines approach a tenth of added code lines, the diff is over-commented — cut, or improve the code until they are unnecessary.
+- The same applies to tests: the test name is the sentence. Add a comment only for a non-obvious fixture fact or an assertion whose point is not visible.
+- Prefer modular, single-purpose functions and honest names over explanation. Long functions held together by comments are the thing to fix.
 
 ## Branding Workflow
 
@@ -322,7 +341,7 @@ The manifest shape (generation 1, `manifestVersion: 1`) is a locked public contr
 - New template namespaces (for example a future `${smtp.*}`) follow the same rule: added to the validator and schema together, gated by `minimumMosVersion`.
 - Fields documented as provisional (`role`, `exports`, `integrations`, `configTargets`, `usefulness`, `homepage.widget`, `routes[].internalIcalBridge`) are outside the lock and may still change; do not present them to external authors as stable.
 - `${ownerEnv.*}` is a projection-only namespace that MOS generates into runtime projections for owner-set environment variables. It is not part of the manifest contract: package authors may never reference it, it stays out of `KNOWN_NAMESPACES` and the schema, and an authored manifest using it must keep failing validation.
-- Schema and validator move together: any change to `apps/manifest.schema.json` requires updating the manifest reference page and running `npm run apps:manifest:check` plus the backend unit tests.
+- Schema and validator move together: any change to `apps/manifest.schema.json` requires updating the manifest reference page, including a row in its **Baseline and additions** table for a new field or namespace, and running `npm run apps:manifest:check` plus the backend unit tests.
 
 ### Catalog Privacy-Review Requirement
 

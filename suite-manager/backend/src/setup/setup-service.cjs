@@ -215,11 +215,22 @@ class SetupService {
     };
   }
 
-  // Rotating the owner password is how an install created over plain HTTP gets
-  // a password that was never sent in the clear. It proves the current password
-  // first, then ends every session — including the caller's — and hands back a
-  // fresh one so the owner stays signed in on this browser only.
-  async changeOwnerPassword(input) {
+  /**
+   * Rotating the owner password is how an install created over plain HTTP gets
+   * a password that was never sent in the clear. It proves the current password
+   * first, then ends every session — including the caller's — and hands back a
+   * fresh one so the owner stays signed in on this browser only.
+   *
+   * `beforeCommit` runs after every check has passed and before the new
+   * password becomes the one that signs the owner in. On a machine that asks
+   * for this password at startup, that ordering is the whole point: a password
+   * Suite Manager accepts while the disk still wants the previous one is a
+   * machine that signs its owner in and then refuses them after a power cut.
+   * Its own failure never refuses the change — an owner may be changing this
+   * password precisely because it leaked — so it reports rather than throws,
+   * and what it reports travels back to the screen.
+   */
+  async changeOwnerPassword(input, { beforeCommit = null } = {}) {
     const owner = this.store.getOwner();
     if (!owner) {
       throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
@@ -240,6 +251,7 @@ class SetupService {
       throw new SetupError('PASSWORD_UNCHANGED', 'Choose a password you have not used here before.');
     }
 
+    const startupProtection = beforeCommit ? await beforeCommit(newPassword) : null;
     this.store.replaceOwnerPassword(await hashPassword(newPassword));
 
     const token = createSessionToken();
@@ -251,6 +263,7 @@ class SetupService {
     return {
       owner: publicOwner(owner),
       sessionToken: token,
+      startupProtection,
       status: 'signed-in',
     };
   }

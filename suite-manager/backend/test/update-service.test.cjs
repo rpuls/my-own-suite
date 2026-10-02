@@ -137,3 +137,91 @@ test('starting an update after a failed check refuses with the reason, not with 
   });
   assert.equal(started, false);
 });
+
+function hostPayload(overrides = {}) {
+  return {
+    allowedOrigins: ['Ubuntu:noble-security'],
+    automaticReboot: false,
+    available: true,
+    health: { at: '2026-09-16T06:20:00.000Z', failures: [], ok: true },
+    lastInstallAt: '2026-09-15T06:12:55',
+    lastInstalledPackages: ['libssl3t64'],
+    lastListedAt: '2026-09-16T06:00:00.000Z',
+    lastRunAt: '2026-09-16T06:10:01',
+    managedBy: 'mos',
+    other: ['vim-common'],
+    rebootPackages: [],
+    rebootRequired: false,
+    security: [],
+    simulation: 'Inst libssl3t64 (Ubuntu:24.04/noble-security)',
+    unattendedLog: 'All upgrades installed',
+    ...overrides,
+  };
+}
+
+test('a diagnostics agent that does not answer leaves the MOS half of the screen working', async () => {
+  const service = new UpdateService({
+    agent: { status: async () => ({ capabilities: CAPABILITIES, currentJob: null, updaterStatus: { updateAvailable: false } }) },
+    diagnosticsAgent: { hostPatches: async () => { throw new Error('The diagnostics system agent is unavailable.'); } },
+  });
+  const status = await service.status();
+  assert.equal(status.updateAvailable, false);
+  assert.equal(status.host.available, false);
+  assert.equal(status.host.rebootRequired, false);
+  assert.match(status.host.summary, /could not be read/u);
+});
+
+test('a restart Ubuntu asked for is reported with the packages that asked', () => {
+  const status = normalizeStatus({ capabilities: CAPABILITIES }, true, null, hostPayload({ rebootPackages: ['linux-base'], rebootRequired: true }));
+  assert.equal(status.host.rebootRequired, true);
+  assert.deepEqual(status.host.rebootPackages, ['linux-base']);
+});
+
+// Whether the restart is needed, and whether an update or backup is running,
+// is the privileged agent's check; a refusal from it reaches the browser as is.
+test('a restart goes to the update agent and its refusal comes back unchanged', async () => {
+  const refusal = Object.assign(new Error('This server does not need a restart.'), { code: 'RESTART_NOT_NEEDED', statusCode: 409 });
+  const refusing = new UpdateService({ agent: { restartHost: async () => { throw refusal; } } });
+  await assert.rejects(() => refusing.restartHost(), (error) => error.statusCode === 409 && error.code === 'RESTART_NOT_NEEDED');
+
+  const accepting = new UpdateService({ agent: { restartHost: async () => ({ restartingAt: '2026-09-16T09:00:05.000Z' }) } });
+  assert.deepEqual(await accepting.restartHost(), { restartingAt: '2026-09-16T09:00:05.000Z' });
+});
+
+test('the pending security count is what the screen says, and the evidence rides with it', () => {
+  const status = normalizeStatus({ capabilities: CAPABILITIES }, true, null, hostPayload({ security: ['libssl3t64', 'linux-image-generic'] }));
+  assert.equal(status.host.securityCount, 2);
+  assert.deepEqual(status.host.security, ['libssl3t64', 'linux-image-generic']);
+  assert.equal(status.host.otherCount, 1);
+  assert.match(status.host.summary, /^2 Ubuntu security updates are waiting/u);
+  assert.match(status.host.diagnostics, /Inst libssl3t64/u);
+  assert.match(status.host.diagnostics, /Allowed-Origins: Ubuntu:noble-security/u);
+});
+
+test('the sentence the screen leads with distinguishes nothing waiting from nothing known', () => {
+  const summary = (overrides) => normalizeStatus({ capabilities: CAPABILITIES }, true, null, hostPayload(overrides)).host.summary;
+  assert.equal(summary({}), 'No Ubuntu security updates are waiting.');
+  assert.equal(summary({ security: ['libssl3t64'] }), 'One Ubuntu security update is waiting and installs on its own.');
+  assert.match(summary({ managedBy: 'none' }), /not being applied automatically/u);
+  assert.match(summary({ available: false }), /could not be read/u);
+});
+
+test('an owner-managed server reports what was found and is never called broken', () => {
+  const status = normalizeStatus({ capabilities: CAPABILITIES }, true, null, hostPayload({
+    automaticReboot: true,
+    managedBy: 'owner',
+    managedReason: '/etc/apt/apt.conf.d/50unattended-upgrades has been edited on this server, so MOS left the policy alone.',
+  }));
+  assert.equal(status.host.managedBy, 'owner');
+  assert.equal(status.host.automaticReboot, true);
+  assert.match(status.host.summary, /^You manage/u);
+});
+
+test('a post-patch check that could not run is not a suite that came back', () => {
+  const status = normalizeStatus({ capabilities: CAPABILITIES }, true, null, hostPayload({
+    health: { at: '2026-09-16T06:20:00.000Z', ok: null, reason: 'systemctl could not be run.' },
+  }));
+  assert.equal(status.host.health.ok, null);
+  assert.deepEqual(status.host.health.failures, []);
+  assert.equal(status.host.health.reason, 'systemctl could not be run.');
+});

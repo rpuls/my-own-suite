@@ -1,0 +1,18 @@
+[Unit]
+Description=Watch for this machine's address moving under it
+
+[Timer]
+# A timer rather than a hook on the DHCP client, because the client differs
+# between installs and its lease files live under a private /run layout no
+# contract covers. This asks the machine what address it holds, which is true
+# whatever put it there.
+#
+# mos-first-boot.service has already painted the screen by the time this first
+# fires; it only has to catch a lease that moved afterwards, which is rare and
+# never urgent to the second. AccuracySec lets systemd batch the wakeup.
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

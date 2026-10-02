@@ -68,6 +68,7 @@ async function externalCandidate(root, overrides = {}, dirName = 'ext-abc') {
   };
   await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  if (manifest.icon) await fsp.writeFile(path.join(packageDir, manifest.icon), '<svg xmlns="http://www.w3.org/2000/svg" />\n');
   const source = { kind: 'external-git', path: '.mos', repository: 'https://github.com/community/notes', revision: 'b'.repeat(40), trust: 'unverified' };
   return {
     manifest: readAppPackageManifest(packageDir).manifest,
@@ -168,6 +169,8 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(installed.sourceTrust, 'unverified');
   assert.equal(installed.snapshotState, 'installed');
   // MOS has not reviewed it, and the package cannot talk itself into a review.
+  // The row records the state of the review bound to this package; that no MOS
+  // review of it is coming at all is derived from the source when it is shown.
   assert.equal(installed.privacyStatus, 'review-required');
 
   // The agent is asked to snapshot from the confined candidate path, never a repo folder.
@@ -182,7 +185,222 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(listed.mosReviewed, false);
   assert.equal(listed.trust, 'unverified');
   assert.equal(listed.name, 'Community Notes');
-  assert.equal(listed.privacy.status, 'review-required');
+  // Presented as out of scope, never as pending: MOS assesses the packages it
+  // publishes, so 'review-required' here would promise a review that is not
+  // coming and the Apps UI would render it as a queue.
+  assert.equal(listed.privacy.status, 'not-assessed');
+  store.close();
+});
+
+// Every URL an installed app's card hands back is addressed by the id the app is
+// installed as. For an external app that is the namespaced id, not the id its
+// manifest claims: nothing is installed under the claimed id, so an icon
+// addressed by it resolves to no app at all.
+test('an installed external app serves its icon under the id it is installed as', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root, { icon: 'icon.svg' });
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+
+  await service.installExternalPackage({ candidate });
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.iconUrl, '/suite-manager/api/apps/packages/x-abcdef01-community-notes/icon');
+  // And that id is what the icon route resolves against, so the URL is reachable.
+  assert.equal(path.basename(service.iconPath('x-abcdef01-community-notes')), 'icon.svg');
+  store.close();
+});
+
+// An added source's apps have to reach the Apps list before anything is installed,
+// and they have to do it early enough to take part in "works with" — a package that
+// declares it consumes a capability an installed app exports is matched while it is
+// still only an offer.
+test('apps an added source offers join the package list and take part in compatibility matching', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const offered = {
+    capabilities: {
+      exports: [],
+      integrations: [{ accepts: [{ interfaceVersion: 1, protocol: 'onlyoffice-docs-api', type: 'document-editor' }], id: 'documentEditor', title: 'Document editing' }],
+      usefulness: { emptyState: '', requiresOneOf: [] },
+    },
+    external: true,
+    id: 'x-abcdef01-scan-bridge',
+    installStatus: 'external-available',
+    instance: null,
+    mosReviewed: false,
+    name: 'Scan Bridge',
+    packageErrors: [],
+    privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+    source: { id: 'src-1', publisher: 'community', repository: 'https://github.com/community/apps' },
+    trust: 'unverified',
+  };
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [offered],
+    store,
+  });
+
+  const listed = service.listPackages();
+  const card = listed.find((item) => item.id === 'x-abcdef01-scan-bridge');
+  assert.equal(card.external, true);
+  assert.equal(card.installStatus, 'external-available');
+  assert.equal(card.privacy.status, 'review-required');
+  // ONLYOFFICE is in the official package set this test's appsDir carries and
+  // exports the capability this offered package consumes, so the match is found
+  // across the official/external boundary rather than only among official apps.
+  const connection = card.compatibility.connections.find((item) => item.provider.id === 'onlyoffice');
+  assert.ok(connection, 'an offered external package should match an official provider');
+  assert.equal(connection.slotId, 'documentEditor');
+  assert.equal(connection.ready, false); // nothing is installed, so nothing can be wired yet
+  store.close();
+});
+
+test('an app installed from an added source is offered the newer version its source already published', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  let published = '1.0.0';
+  const card = () => ({
+    appVersion: null,
+    capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+    external: true,
+    id: 'x-abcdef01-community-notes',
+    installStatus: 'external-available',
+    minimumMosVersion: '0.1.0',
+    name: 'Community Notes',
+    packageDigest: `sha256:${'1'.repeat(64)}`,
+    source: { checkedAt: '2026-09-27T09:00:00.000Z', id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+    version: published,
+  });
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [card()],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const current = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(current.catalogUpdate.status, 'external-source');
+  assert.equal(current.catalogUpdate.available, null);
+  assert.equal(current.catalogUpdate.sourceCheckedAt, '2026-09-27T09:00:00.000Z');
+
+  published = '1.1.0';
+  const offered = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(offered.catalogUpdate.status, 'update-available');
+  assert.equal(offered.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.equal(offered.catalogUpdate.installed.packageVersion, '1.0.0');
+  assert.equal(offered.catalogUpdate.available.sourceChannel, 'added-source');
+  assert.equal(offered.catalogUpdate.available.sourceRevision, 'c'.repeat(40));
+  assert.equal(offered.catalogUpdate.available.privacy.status, 'not-assessed');
+  assert.equal(service.listPackages().filter((item) => item.id === 'x-abcdef01-community-notes').length, 1);
+  store.close();
+});
+
+test('a published package MOS refuses is never offered as an update to the app installed from it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-unavailable',
+      name: 'Community Notes',
+      packageErrors: ['manifest.routes[0].host is required.'],
+      source: { checkedAt: '2026-09-27T09:00:00.000Z', id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+      version: '2.0.0',
+    }],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.catalogUpdate.status, 'external-source');
+  assert.equal(listed.catalogUpdate.available, null);
+  store.close();
+});
+
+test('an app whose newer package would provide a capability is reported as an update to do first', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [{ id: 'documentArchive', type: 'document-archive' }], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-available',
+      name: 'Community Notes',
+      source: { checkedAt: null, id: 'src-1', publisher: null, repository: 'https://github.com/community/notes', revision: 'c'.repeat(40) },
+      version: '1.1.0',
+    }],
+    store,
+  });
+  // Installed at 1.0.0, whose manifest exports nothing.
+  await service.installExternalPackage({ candidate });
+
+  const peers = service.capabilityPeersFor('some-other-app');
+  assert.equal(peers.providedTypes.includes('document-archive'), false);
+  // Paperless publishes the same capability in this box's checkout, uninstalled.
+  assert.deepEqual(peers.providersByType['document-archive'].map((item) => [item.action, item.id]), [
+    ['install', 'paperless-ngx'],
+    ['update', 'x-abcdef01-community-notes'],
+  ]);
+  assert.equal(peers.providersByType['document-archive'].find((item) => item.id === 'x-abcdef01-community-notes').version, '1.1.0');
+  assert.deepEqual(peers.providersByType['document-editor'].map((item) => [item.action, item.id]), [['install', 'onlyoffice']]);
+  store.close();
+});
+
+test('a capability an installed app already exports is reported as provided, never as something to install', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root, {
+    exports: { documentArchive: { interfaceVersion: 1, internalBaseUrl: 'http://notes:8080', protocol: 'notes-rest', title: 'Notes archive', type: 'document-archive' } },
+  });
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+  await service.installExternalPackage({ candidate });
+
+  const peers = service.capabilityPeersFor('some-other-app');
+  assert.equal(peers.providedTypes.includes('document-archive'), true);
+  assert.equal(peers.providersByType['document-archive'], undefined);
+  store.close();
+});
+
+// An installed external app already has its own row, built from its snapshot. The
+// offered card for the same package must not add a second one.
+test('an installed external app is not listed twice when its source still offers it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: externalAgent(root),
+    appsDir: v2AppsDir,
+    externalCatalog: () => [{
+      capabilities: { exports: [], integrations: [], usefulness: { emptyState: '', requiresOneOf: [] } },
+      external: true,
+      id: 'x-abcdef01-community-notes',
+      installStatus: 'external-available',
+      instance: null,
+      name: 'Community Notes',
+      privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+      source: { id: 'src-1', publisher: null, repository: 'https://github.com/community/notes' },
+    }],
+    store,
+  });
+  await service.installExternalPackage({ candidate });
+
+  const rows = service.listPackages().filter((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].installStatus, 'installed');
+  assert.ok(rows[0].instance, 'the installed row wins over the offered card');
   store.close();
 });
 
@@ -200,7 +418,7 @@ test('an external package cannot present its own privacy review as a MOS review'
   await service.installExternalPackage({ candidate: republished });
 
   const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
-  assert.equal(listed.privacy.status, 'review-required');
+  assert.equal(listed.privacy.status, 'not-assessed');
   assert.equal(listed.privacy.posture, null);
   assert.equal(listed.mosReviewed, false);
   store.close();
@@ -295,7 +513,7 @@ test('an app that does not run on this host is refused before anything is instal
     store,
   });
 
-  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_ARCHITECTURE_UNSUPPORTED'
+  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_HOST_REQUIREMENT_UNMET'
     && error.statusCode === 409
     && /amd64.*arm64/u.test(error.message));
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
@@ -341,8 +559,38 @@ test('the amd64-only package in the catalog is refused on an arm64 host', async 
     store,
   });
 
-  await assert.rejects(() => service.installPackage('immich'), { code: 'APP_ARCHITECTURE_UNSUPPORTED' });
+  await assert.rejects(() => service.installPackage('immich'), { code: 'APP_HOST_REQUIREMENT_UNMET' });
   assert.equal(store.getAppInstanceByPackageId('immich'), null);
+  store.close();
+});
+
+test('an app that needs HTTPS is refused on a suite served over http and installs on one served over https', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const suiteAddress = { scheme: 'http', readOrNull() { return { scheme: this.scheme }; } };
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store, suiteAddress });
+  const candidate = await externalCandidate(root, { requirements: { https: true } });
+
+  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_HOST_REQUIREMENT_UNMET'
+    && /HTTPS/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+
+  suiteAddress.scheme = 'https';
+  await service.installExternalPackage({ candidate });
+  assert.ok(store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
+  store.close();
+});
+
+test('the Apps list says why an app cannot be installed on this server, and says nothing when the server is unknown', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ appsDir: v2AppsDir, store });
+  const unmetFor = (host, id) => service.listPackages(host).find((app) => app.id === id).unmetRequirements.map((unmet) => unmet.id);
+
+  assert.deepEqual(unmetFor({ architecture: 'arm64', https: false }, 'vaultwarden'), ['https']);
+  assert.deepEqual(unmetFor({ architecture: 'arm64', https: false }, 'immich'), ['architecture']);
+  assert.deepEqual(unmetFor({ architecture: 'amd64', https: true }, 'vaultwarden'), []);
+  assert.deepEqual(unmetFor({}, 'vaultwarden'), []);
   store.close();
 });
 

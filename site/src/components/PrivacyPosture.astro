@@ -7,7 +7,9 @@
 // visually identical:
 //   site/src/components/PrivacyPosture.astro                      (this file)
 //   suite-manager/frontend/src/features/apps/PrivacyPosture.tsx
-// The update-preview PrivacyChangeRow exists only in Suite Manager.
+// The update-preview PrivacyChangeRow exists only in Suite Manager, as does
+// the dialog body for an app MOS does not assess: this site lists catalog
+// apps, and a catalog app carries a review by the time it is listed at all.
 // Shared logic and copy live in the byte-identical sibling modules
 // site/src/lib/privacy-posture.ts and
 // suite-manager/frontend/src/features/apps/privacy-posture.ts.
@@ -29,7 +31,9 @@ import {
   postureFor,
   provenanceLine,
   provenanceMethodLabel,
+  shieldDashArray,
   sortedAdvisories,
+  tileLabelFor,
   tileMetaLine,
   type PrivacyAdvisory,
   type PrivacyReviewSummary
@@ -54,6 +58,10 @@ const rows = dimensionRowsFor(privacy)
 const method = provenanceMethodLabel(privacy)
 const provenance = [provenanceLine(privacy, isRated(privacy) ? appVersion : null), method].filter(Boolean).join(' · ')
 const gradeScale = gradeScaleLabel(privacy)
+// Always null for a catalog app, which is every app this site lists.
+// Mirrored from the Suite Manager sibling so the shield stays one component
+// with one behaviour rather than two that happen to agree today.
+const shieldDash = shieldDashArray(privacy)
 const sortedAdvisoryList = sortedAdvisories(advisories)
 const advisoryMarker = advisoryMarkerLabel(advisories)
 const topSeverity = sortedAdvisoryList[0]?.severity
@@ -61,10 +69,10 @@ const topSeverity = sortedAdvisoryList[0]?.severity
 
 <div class="privacy-posture" data-privacy-posture>
   <button class="suite-privacy-tile" data-open type="button">
-    <span class="suite-privacy-tile-label">Posture grade</span>
+    <span class="suite-privacy-tile-label">{tileLabelFor(privacy)}</span>
     <span class="suite-privacy-tile-posture">
       <span class={`suite-privacy-shield is-tile${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
+        <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-dasharray={shieldDash} stroke-linejoin="round" stroke-width="1.6"></path></svg>
         <span style={`color: ${posture.color}`}>{badge}</span>
       </span>
       <strong>{posture.label}</strong>
@@ -82,7 +90,7 @@ const topSeverity = sortedAdvisoryList[0]?.severity
       <div class="suite-dialog-header">
         <div class="suite-privacy-dialog-heading">
           <span class={`suite-privacy-shield is-dialog${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
+            <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-dasharray={shieldDash} stroke-linejoin="round" stroke-width="1.6"></path></svg>
             <span style={`color: ${posture.color}`}>{badge}</span>
           </span>
           <div>

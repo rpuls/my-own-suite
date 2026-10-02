@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
+const tls = require('node:tls');
 
 const { HttpsAgentError } = require('./agent-core.cjs');
 const { describeFailure, indent, runCommand } = require('../lib/command-output.cjs');
@@ -8,10 +9,35 @@ const { describeFailure, indent, runCommand } = require('../lib/command-output.c
 const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
 const CADDYFILE_PATH = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
 const SECRET_ENV_PATH = process.env.MOS_CADDY_SECRET_ENV || '/etc/mos/secrets/caddy-cloudflare.env';
+// Where a restore leaves the credential of the domain it set aside: beside the
+// live file, never over it, until the owner asks for that domain here.
+const PARKED_SECRET_ENV_PATH = `${SECRET_ENV_PATH}.parked`;
 const TRANSACTION_ROOT = process.env.MOS_HTTPS_TRANSACTION_ROOT || '/var/lib/mos/https-agent/transactions';
 const SYSTEMCTL_BINARY = '/usr/bin/systemctl';
 const JOURNALCTL_BINARY = '/usr/bin/journalctl';
 const CADDY_LOG_LINES = 40;
+// How long a DNS-01 issuance is given. Cloudflare propagates a TXT record in
+// seconds and the authority checks it within a minute; anything past this is a
+// token that cannot write the zone or a name the authority will not issue for.
+const CERTIFICATE_WAIT_MS = 180_000;
+const CERTIFICATE_POLL_MS = 3_000;
+const PARKED_MARKER = 'uses-parked-credential';
+
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+// One TLS handshake to the local Caddy for the name, verified against the
+// system's trust store: it succeeds only once a real certificate is being
+// served for exactly that host.
+function tlsHandshake({ host, port, servername, timeoutMs = 10_000 }) {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect({ host, port, rejectUnauthorized: true, servername, timeout: timeoutMs }, () => {
+      socket.end();
+      resolve();
+    });
+    socket.on('timeout', () => socket.destroy(new Error('the TLS handshake timed out')));
+    socket.on('error', reject);
+  });
+}
 
 async function atomicWrite(filePath, content, mode) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
@@ -68,15 +94,64 @@ class SystemHttpsAdapter {
   constructor({
     caddyBinary = CADDY_BINARY,
     caddyfilePath = CADDYFILE_PATH,
+    certificateWaitMs = CERTIFICATE_WAIT_MS,
     execute = runCommand,
+    handshake = tlsHandshake,
+    parkedSecretEnvPath = PARKED_SECRET_ENV_PATH,
     secretEnvPath = SECRET_ENV_PATH,
+    tlsPort = 443,
     transactionRoot = TRANSACTION_ROOT,
   } = {}) {
     this.caddyBinary = caddyBinary;
     this.caddyfilePath = caddyfilePath;
+    this.certificateWaitMs = certificateWaitMs;
     this.execute = execute;
+    this.handshake = handshake;
+    this.parkedSecretEnvPath = parkedSecretEnvPath;
     this.secretEnvPath = secretEnvPath;
+    this.tlsPort = tlsPort;
     this.transactionRoot = transactionRoot;
+  }
+
+  // The token a restore parked, read the way Caddy would read the live file.
+  async readParkedCredential() {
+    let content;
+    try {
+      content = await fsp.readFile(this.parkedSecretEnvPath, 'utf8');
+    } catch {
+      throw new HttpsAgentError('HTTPS_PARKED_CREDENTIAL_MISSING', 'No credential for that domain is kept on this machine. Enter its API token to serve it here.', { statusCode: 409 });
+    }
+    const match = content.match(/^CLOUDFLARE_API_TOKEN=(.+)$/mu);
+    if (!match) throw new HttpsAgentError('HTTPS_PARKED_CREDENTIAL_MISSING', 'The credential kept for that domain is not readable. Enter its API token to serve it here.', { statusCode: 409 });
+    return match[1].trim();
+  }
+
+  async discardParkedCredential() {
+    await fsp.rm(this.parkedSecretEnvPath, { force: true });
+  }
+
+  // Waits for Caddy to hold a trusted certificate for the name, polling the
+  // handshake until it succeeds or the wait runs out. A failure quotes Caddy's
+  // own log, which is where the authority's refusal ends up.
+  async awaitCertificate(homeHost, token) {
+    const deadline = Date.now() + this.certificateWaitMs;
+    let lastReason = null;
+    for (;;) {
+      try {
+        await this.handshake({ host: '127.0.0.1', port: this.tlsPort, servername: homeHost });
+        return;
+      } catch (error) {
+        lastReason = error?.message || String(error);
+      }
+      if (Date.now() + CERTIFICATE_POLL_MS > deadline) break;
+      await sleep(CERTIFICATE_POLL_MS);
+    }
+    const error = new HttpsAgentError('HTTPS_CERTIFICATE_NOT_ISSUED', `No trusted certificate for ${homeHost} was issued in time.`, {
+      details: [`The web server did not present a trusted certificate for ${homeHost} within ${Math.round(this.certificateWaitMs / 1000)} seconds${lastReason ? ` (${lastReason})` : ''}.`],
+    });
+    const log = await this.caddyLog(token);
+    if (log) error.details.push(`Caddy's last log lines:\n${indent(log)}`);
+    throw error;
   }
 
   // Runs one of the agent's few commands. A failure is reported under the
@@ -114,11 +189,20 @@ class SystemHttpsAdapter {
     });
   }
 
-  async createCheckpoint(rollbackId) {
+  async createCheckpoint(rollbackId, { usesParkedCredential = false } = {}) {
     const dir = transactionPath(this.transactionRoot, rollbackId);
     await fsp.mkdir(dir, { recursive: false, mode: 0o700 });
     await snapshotFile(this.caddyfilePath, path.join(dir, 'Caddyfile'));
     await snapshotFile(this.secretEnvPath, path.join(dir, 'caddy-cloudflare.env'));
+    if (usesParkedCredential) await fsp.writeFile(path.join(dir, PARKED_MARKER), '');
+  }
+
+  // A committed apply that consumed the parked credential removes it: the live
+  // file holds it now. A rolled-back one leaves it where the restore put it.
+  async commitCheckpoint(rollbackId) {
+    const dir = transactionPath(this.transactionRoot, rollbackId);
+    if (fs.existsSync(path.join(dir, PARKED_MARKER))) await this.discardParkedCredential();
+    await this.removeCheckpoint(rollbackId);
   }
 
   async installCandidate({ caddyfile, cloudflareApiToken }) {
@@ -186,4 +270,4 @@ class SystemHttpsAdapter {
   }
 }
 
-module.exports = { SystemHttpsAdapter, atomicWrite };
+module.exports = { PARKED_SECRET_ENV_PATH, SystemHttpsAdapter, atomicWrite, tlsHandshake };

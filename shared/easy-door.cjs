@@ -9,17 +9,13 @@
 // independently-correct implementations of "this machine's LAN address" is
 // exactly how they would stop agreeing.
 
-const fs = require('node:fs');
 const os = require('node:os');
 
 const EASY_DOOR_ZONE = 'local.myownsuite.org';
-// The line `renderCaddyfile()` writes above the Easy Door site block. Its
-// presence in the live Caddyfile is what "the Easy Door is open on this box"
-// means, and it is the only signal an agent needs: applying a real domain with
-// DNS-01 replaces the whole file with `renderHttpsCaddyfile()` output, and the
-// public-cloud Caddyfile never carried it.
+// The line the Caddyfile renderers write above the Easy Door site block, so a
+// reader of the live file can see the door in it. Every LAN Caddyfile carries
+// the block; only the public-cloud one never did.
 const EASY_DOOR_CADDY_MARKER = '# mos-easy-door';
-const CADDYFILE_PATH = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
 
 const IPV4_OCTET = '(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])';
 const IPV4_PATTERN = new RegExp(`^${IPV4_OCTET}(?:\\.${IPV4_OCTET}){3}$`, 'u');
@@ -65,22 +61,6 @@ function easyDoorHomeHost(address) {
   return base ? `home.${base}` : null;
 }
 
-function easyDoorOpen(caddyfilePath = CADDYFILE_PATH) {
-  try {
-    return fs.readFileSync(caddyfilePath, 'utf8').includes(EASY_DOOR_CADDY_MARKER);
-  } catch {
-    return false;
-  }
-}
-
-// The base domain generated app routes should alias, or null when this box is
-// not serving the Easy Door. Unlike Suite Manager's own site block, an app route
-// names one exact host, so it has to be re-derived on every apply.
-function detectEasyDoorBase({ caddyfilePath = CADDYFILE_PATH, serverAddress = null } = {}) {
-  if (!easyDoorOpen(caddyfilePath)) return null;
-  return easyDoorBaseDomain(serverAddress || detectServerAddress());
-}
-
 // The console banner has to print the same address Suite Manager's host gate
 // admits, and shell cannot reproduce the selection rule above — a second
 // implementation of it is exactly what this module exists to prevent. Both
@@ -88,14 +68,11 @@ function detectEasyDoorBase({ caddyfilePath = CADDYFILE_PATH, serverAddress = nu
 // the result without inspecting an exit code.
 //
 //   node shared/easy-door.cjs address              this machine's LAN address
-//   node shared/easy-door.cjs home-host <address>  its Easy Door name, while the door is open
+//   node shared/easy-door.cjs home-host <address>  its Easy Door name
 function runCli(argv) {
   const [command, address] = argv;
   if (command === 'address') return detectServerAddress() || '';
-  if (command === 'home-host') {
-    const base = detectEasyDoorBase({ serverAddress: address || null });
-    return base ? `home.${base}` : '';
-  }
+  if (command === 'home-host') return easyDoorHomeHost(address || detectServerAddress()) || '';
   throw new Error(`Unknown easy-door command: ${command || '(none)'}`);
 }
 
@@ -112,11 +89,9 @@ module.exports = {
   EASY_DOOR_CADDY_MARKER,
   EASY_DOOR_HOME_HOST_REGEXP,
   EASY_DOOR_ZONE,
-  detectEasyDoorBase,
   detectServerAddress,
   easyDoorBaseDomain,
   easyDoorHomeHost,
-  easyDoorOpen,
   isPrivateIPv4,
   runCli,
 };

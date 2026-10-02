@@ -1,9 +1,12 @@
 [Unit]
 Description=Install My Own Suite onto this machine's internal disk
 DefaultDependencies=no
-Requires=local-fs.target
-Wants=systemd-udev-settle.service
-After=local-fs.target systemd-udev-settle.service
+# Ordered after the local mounts, never bound to them. `Requires=` here also
+# propagates their stop, and the copy makes /boot/efi's device resolve to the
+# disk being written, so systemd stopped local-fs.target and killed this unit at
+# the moment the copy succeeded. It must outlive the mounts it started with.
+Wants=local-fs.target
+After=local-fs.target
 Before=basic.target shutdown.target
 Conflicts=shutdown.target
 

@@ -1,12 +1,13 @@
 import { TechnicalControlsProvider } from './components/ui';
 import { AppShell } from './features/app-shell/AppShell';
 import { LoginScreen } from './features/auth/LoginScreen';
+import { HandoverGateScreen } from './features/setup/HandoverGateScreen';
 import { OwnerSetupScreen } from './features/setup/OwnerSetupScreen';
 import { TermsGateScreen } from './features/setup/TermsGateScreen';
-import { useSetupSession } from './features/setup/useSetupSession';
+import { handoverOwed, useSetupSession } from './features/setup/useSetupSession';
 
 export default function App() {
-  const { acceptTerms, clearOwnerError, createOwner, login, logout, setTechnicalControls, state } = useSetupSession();
+  const { acceptTerms, clearOwnerError, createOwner, login, logout, refresh, setTechnicalControls, state } = useSetupSession();
 
   if (state.kind === 'loading') {
     return (
@@ -53,6 +54,12 @@ export default function App() {
   // know about terms yet; there is nothing to ask about, so the gate stays away.
   if (!state.terms.accepted && state.terms.version) {
     return <TermsGateScreen onAccept={acceptTerms} onLogout={logout} owner={state.owner} terms={state.terms} />;
+  }
+
+  // After the terms, the secrets this machine made for its owner. It holds the
+  // whole of Suite Manager, so no screen behind it has to check for itself.
+  if (handoverOwed(state.handover)) {
+    return <HandoverGateScreen handover={state.handover} onLogout={logout} onRefresh={refresh} owner={state.owner} />;
   }
 
   // The provider wraps the whole signed-in tree and nothing above it, and this

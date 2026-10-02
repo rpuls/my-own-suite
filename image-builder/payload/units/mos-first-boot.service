@@ -7,7 +7,10 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/sbin/mos-first-boot
-StandardOutput=journal+console
+# Journal only. This unit waits for the network and for Suite Manager, so it can
+# finish long after agetty has painted the banner - and anything it echoes to the
+# console lands on top of the screen it exists to produce.
+StandardOutput=journal
 TimeoutStartSec=300
 
 [Install]

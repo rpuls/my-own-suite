@@ -35,6 +35,10 @@ This single volume is the backup target; losing it loses the budgets. Disable st
 
 Actual is local-first: each browser holds its own copy of the budget and syncs changes to the server. A restored server volume is authoritative, but a client that still has newer local changes will try to sync them on next open.
 
+## HTTPS Requirement
+
+The manifest declares `requirements.https`, so Suite Manager refuses the install on a suite served over plain http, such as the Easy Door. The web client needs `SharedArrayBuffer`, which browsers grant only to a cross-origin-isolated secure context, so over http it stops at a fatal error before the budget opens.
+
 ## Health Check
 
 - `http://actual:5006/health`

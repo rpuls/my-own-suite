@@ -203,6 +203,7 @@ export function AppConfigDialog({
   running,
   service,
   webAddress,
+  webAddressKind,
 }: {
   appName: string;
   config: InstanceConfigEntry[];
@@ -225,6 +226,7 @@ export function AppConfigDialog({
   running: boolean;
   service: string;
   webAddress: string;
+  webAddressKind: 'web' | 'api';
 }) {
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFrom(entries));
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
@@ -427,7 +429,7 @@ export function AppConfigDialog({
     </div> : null}
 
     <Rows lead={!ownerFields.length}>
-      {webAddress ? <Row label="Web address">
+      {webAddress ? <Row label={webAddressKind === 'api' ? 'API address' : 'Web address'}>
         <RowTrailing>
           <RowValue>{webAddress}</RowValue>
           {/* The confirmation is the icon, not a line of text: a row that grows

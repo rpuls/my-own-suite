@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseContainerList, parseLabels, parseShowOutput, serializeJournal } = require('./system-adapter.cjs');
+const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseContainerList, parseLabels, parseNetworkMap, parseShowOutput, serializeJournal } = require('./system-adapter.cjs');
 
 test('systemctl show output is read as key/value, ignoring anything else', () => {
   const values = parseShowOutput('ActiveState=failed\nSubState=failed\nUnitFileState=enabled\n\ngarbage line\n');
@@ -43,6 +43,28 @@ test('docker output that lists nothing because docker failed is a failed read, n
   const listed = parseContainerList('WARNING: something docker wanted to say\n{"Names":"mos-app-a","Image":"img","State":"running","Status":"Up 2 hours","Labels":"a=b"}\n');
   assert.equal(listed.length, 1);
   assert.equal(listed[0].name, 'mos-app-a');
+});
+
+// An empty member list is not a missing network: a package network that outlived
+// the containers it was made for is exactly the state worth seeing here, so the
+// line survives with nothing under it.
+test('the network map keeps empty networks and sorts what is attached', () => {
+  const networks = parseNetworkMap([
+    'mos-app-paperless-ngx|bridge|mos-app-paperless-ngx-paperless,mos-app-x-abcdef01-scan-bridge,mos-app-paperless-ngx-broker,',
+    'mos-app-vaultwarden|bridge|',
+    'bridge|bridge|',
+    '',
+  ].join('\n'));
+
+  assert.deepEqual(networks, [
+    {
+      containers: ['mos-app-paperless-ngx-broker', 'mos-app-paperless-ngx-paperless', 'mos-app-x-abcdef01-scan-bridge'],
+      driver: 'bridge',
+      name: 'mos-app-paperless-ngx',
+    },
+    { containers: [], driver: 'bridge', name: 'mos-app-vaultwarden' },
+    { containers: [], driver: 'bridge', name: 'bridge' },
+  ]);
 });
 
 test('a label value containing an equals sign keeps all of it', () => {

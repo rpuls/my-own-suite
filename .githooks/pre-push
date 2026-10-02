@@ -1,20 +1,49 @@
 #!/bin/sh
 
-# Blocks pushes that would update main, not pushes that happen to be made while
-# main is checked out. Tagging a release is done from main by design, and a tag
-# push updates refs/tags/*, so it is none of this hook's business.
+# Two jobs: keep main behind a pull request, and make sure what is being pushed
+# has already survived the checks CI gates on.
 #
 # git feeds one line per ref being pushed:
 #   <local ref> <local sha> <remote ref> <remote sha>
 
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+branch_push=0
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/heads/main)
+      # Blocks pushes that would update main, not pushes that happen to be made
+      # while main is checked out. Tagging a release is done from main by
+      # design, and a tag push updates refs/tags/*, so it is none of this hook's
+      # business.
       echo "ERROR: pushing to 'main' is blocked."
       echo "Open a pull request instead. Release tags are fine: git push origin vX.Y.Z"
       exit 1
       ;;
+    refs/heads/*)
+      # An all-zero local sha is a branch deletion, which has nothing to check.
+      case "$local_sha" in
+        *[!0]*) branch_push=1 ;;
+      esac
+      ;;
   esac
 done
+
+[ "$branch_push" -eq 1 ] || exit 0
+
+if [ -n "$MOS_SKIP_CHECKS" ]; then
+  echo "pre-push: workspace checks skipped (MOS_SKIP_CHECKS is set)."
+  exit 0
+fi
+
+# The workspace lane, which is exactly what CI's MOS Workspace job runs —
+# roughly a minute against a four-minute round trip and a lost context switch.
+# The site lane is left to CI because it reinstalls and rebuilds the whole site.
+echo "pre-push: running the workspace checks (MOS_SKIP_CHECKS=1 or --no-verify to skip)"
+if ! npm run --silent check:workspace; then
+  echo ""
+  echo "ERROR: workspace checks failed, so the push was stopped."
+  echo "Fix the check above, or push anyway with: MOS_SKIP_CHECKS=1 git push"
+  exit 1
+fi
 
 exit 0

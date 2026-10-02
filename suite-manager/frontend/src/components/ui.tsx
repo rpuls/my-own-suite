@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
 export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'key' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
@@ -201,7 +201,8 @@ export function PanelHead({ actions, children, title }: {
 // One centred line: the fact, then the qualification, then at most one quiet
 // action. It is deliberately not a Notice — a notice interrupts, a band
 // annotates, and this one is read every visit.
-export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
+export function PanelBand({ busy = false, children, icon, note, title, tone = 'neutral' }: {
+  busy?: boolean;
   // A trailing action. Keep it ghost-quiet: the band is not what the owner
   // came to the page to do.
   children?: ReactNode;
@@ -210,8 +211,8 @@ export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
   title: ReactNode;
   tone?: 'accent' | 'info' | 'neutral' | 'warning';
 }) {
-  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`}>
-    {icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`} aria-busy={busy || undefined}>
+    {busy ? <span className="mos-panel-band-icon"><Spinner /></span> : icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
     <span className="mos-panel-band-title">{title}</span>
     {note ? <span className="mos-panel-band-note">{note}</span> : null}
     {children}
@@ -428,8 +429,13 @@ export function AdvancedPanel({
 // MOS shows one, and the copy behaviour is the panel's: a fresh install on plain
 // HTTP has no navigator.clipboard, so failing visibly and leaving the text
 // selectable is the whole recovery.
-export function SecretText({ label, value }: { label: string; value: string }) {
+//
+// `masked` starts the value hidden behind dots with a Show button, for a page
+// someone else in the room could read; copying never needs it visible, and a
+// copy that fails unmasks it so the fallback of selecting the text works.
+export function SecretText({ label, masked = false, value }: { label: string; masked?: boolean; value: string }) {
   const [copyState, setCopyState] = useState<'' | 'copied' | 'unavailable'>('');
+  const [hidden, setHidden] = useState(masked);
   useEffect(() => {
     if (!copyState) return undefined;
     const timer = window.setTimeout(() => setCopyState(''), 2_000);
@@ -442,16 +448,40 @@ export function SecretText({ label, value }: { label: string; value: string }) {
       setCopyState('copied');
     } catch {
       setCopyState('unavailable');
+      setHidden(false);
     }
   }
 
   return <div className="mos-secret">
-    <code className="mos-secret-value">{value}</code>
+    <code className={hidden ? 'mos-secret-value mos-secret-masked' : 'mos-secret-value'}>{hidden ? '•'.repeat(value.length) : value}</code>
     <div className="mos-secret-actions">
       <span className="mos-secret-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>
+      {masked ? <button aria-label={`${hidden ? 'Show' : 'Hide'} ${label}`} aria-pressed={!hidden} className="suite-icon-button" onClick={() => setHidden((current) => !current)} title={hidden ? 'Show' : 'Hide'} type="button"><Icon name={hidden ? 'eye' : 'eye-off'} /></button> : null}
       <button aria-label={`Copy ${label}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
     </div>
   </div>;
+}
+
+// Portalled like ActionMenu, so a flush panel's clipping cannot cut it off.
+// Placed below its anchor and kept inside the viewport.
+export function Tooltip({ children, label }: { children: ReactNode; label: ReactNode }) {
+  const id = useId();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current?.getBoundingClientRect();
+    const tip = tipRef.current;
+    if (!open || !anchor || !tip) return;
+    const edge = 16;
+    const left = anchor.left + anchor.width / 2 - tip.offsetWidth / 2;
+    tip.style.left = `${Math.min(Math.max(left, edge), window.innerWidth - tip.offsetWidth - edge)}px`;
+    tip.style.top = `${anchor.bottom + 8}px`;
+  }, [open]);
+  return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={0}>
+    {children}
+    {createPortal(<span ref={tipRef} className="mos-overlay mos-tooltip" hidden={!open} id={id} role="tooltip">{label}</span>, document.body)}
+  </span>;
 }
 
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {

@@ -1,9 +1,9 @@
 ---
 title: Install and manage apps
-description: How to install apps from the My Own Suite catalog or your own repository, connect them to each other, keep them updated, and manage their lifecycle — including what uninstalling really deletes.
+description: How to install apps from the My Own Suite catalog or your own sources, connect them to each other, keep them updated, and manage their lifecycle — including what uninstalling really deletes.
 ---
 
-Everything you host lives in the **Apps** screen of Suite Manager: a curated catalog of open-source applications, each packaged by MOS so that installing takes a couple of clicks — and, if you want something that isn't in it, a way to bring your own.
+Everything you host lives in the **Apps** screen of Suite Manager: a curated catalog of open-source applications, each packaged by MOS so that installing takes a couple of clicks — and, if you want something that isn't in it, a way to bring your own apps from anywhere.
 
 ## Installing an app
 
@@ -27,15 +27,35 @@ Some apps become more than the sum of their parts when connected — the classic
 
 When two installed apps can work together, the Apps screen offers a **connect** action. MOS handles the exchange — shared secrets, network access, configuration — and records the relationship, so you never copy keys between admin panels. Disconnecting or uninstalling either side updates the relationship honestly instead of leaving a half-connected state.
 
-## Bringing your own app
+## Bringing your own apps
 
-If the catalog doesn't have what you want, paste a GitHub repository URL into the Apps search. MOS fetches it, checks it, and shows you a preview card before anything is installed — what the package is, and what it's asking for: which web addresses, which storage, which other apps it wants to reach, all in plain language.
+If the catalog doesn't have what you want, paste a GitHub repository URL into the Apps search. MOS fetches it, checks it, and shows you what it publishes before anything is installed — each app, and what it's asking for: which web addresses, which storage, which other apps it wants to reach, all in plain language.
 
-These apps are labelled **External · Unverified** everywhere they appear, and stay labelled that way after install. It means what it says: we haven't reviewed the package and we won't imply otherwise. MOS constrains what an unverified package may ask for — no privileged containers, no Docker socket, no host filesystem, no reaching into another app's secrets — and it can't borrow an official app's name or icon to look legitimate.
+A repository can publish **one app or a whole catalog of them**. That second shape is the useful one for anything niche: someone can curate a collection of lesser-known apps for people who want them, and you can keep a private collection of your own small services in a single repository instead of one repository per service.
+
+### Adding a source
+
+You can install straight from the preview, or click **Add this source** to keep it. An added source's apps sit in their own section of the Apps screen, under the publisher's name, so you can install from them whenever you like without pasting the URL again — and so you can tell at a glance which apps came from where.
+
+**Settings → App sources you added** is the standing list of what you've added. Each row says how many apps the source publishes and when MOS last checked it, with **Refresh now** and **Remove source**.
+
+Removing a source stops offering its apps. **Anything you already installed from it keeps running**, with its settings and its data untouched — the only thing you lose is updates, because only that source knows when a newer version exists. You can add the same repository again later; nothing is deleted from your server by removing it.
+
+### What MOS does and doesn't vouch for
+
+These apps are labelled **External · Unverified** everywhere they appear, and stay labelled that way after install. It means what it says: we haven't reviewed the package and we won't imply otherwise. That applies to a curated community catalog exactly as much as to a single repository — adding a source is not a MOS endorsement of anything in it. MOS constrains what an unverified package may ask for — no privileged containers, no Docker socket, no host filesystem, no reaching into another app's secrets — and it can't borrow an official app's name or icon to look legitimate.
 
 The part to weigh honestly: installing builds the package from the publisher's own instructions, which run on your server with network access before any of those runtime limits apply. You're trusting that publisher. MOS's job is to make sure you know that at the point you decide.
 
-Once installed, an external app is managed exactly like any other — restart, stop, uninstall, backup, and updates all work the same way.
+If a source publishes an app MOS refuses, it still appears — with the reasons why. Hiding it would suggest the app was never offered, and tell its publisher nothing about what to fix.
+
+### How often MOS checks a source
+
+MOS remembers what each source publishes rather than asking every time you open the Apps screen, so the screen never waits on GitHub and your sources keep working when your server is offline. Behind that it asks each source whether anything has changed every few hours at most, and only re-downloads it when something actually has. A source that stops answering gets asked less and less often rather than more — **Refresh now** on its row checks immediately, whenever you want an answer sooner.
+
+If GitHub stops showing a source, its row says so and links to the repository. MOS can't tell you which of the reasons it is: GitHub gives the same answer whether a repository was deleted, renamed, or made private, so that's a look you have to take yourself. Its apps stay listed and anything installed from it keeps running while you do.
+
+Once installed, an app from your own source is managed exactly like any other — restart, stop, uninstall, backup, and updates all work the same way.
 
 ## Keeping apps updated
 

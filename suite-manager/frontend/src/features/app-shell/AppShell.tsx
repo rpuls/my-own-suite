@@ -1,7 +1,6 @@
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 
-import { Drawer, Icon, Notice } from '../../components/ui';
-import { useStaleFrontend } from '../../frontend-build';
+import { Drawer, Icon } from '../../components/ui';
 import { AppsScreen } from '../apps/AppsScreen';
 import { BackupsScreen } from '../backups/BackupsScreen';
 import { DashboardScreen } from '../dashboard/DashboardScreen';
@@ -25,10 +24,31 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
+type Route = 'apps' | 'backups' | 'customize' | 'dashboard' | 'not-found' | 'settings' | 'updates';
+
+const routesByPath: Record<string, Route> = {
+  '/suite-manager': 'dashboard',
+  '/suite-manager/apps': 'apps',
+  '/suite-manager/backups': 'backups',
+  '/suite-manager/customize': 'customize',
+  '/suite-manager/settings': 'settings',
+  '/suite-manager/updates': 'updates',
+};
+
+function routeForPath(): Route {
+  return routesByPath[window.location.pathname.replace(/\/+$/u, '')] || 'not-found';
+}
+
+function NotFoundScreen({ onNavigate }: { onNavigate: (route: Route, path: string) => void }) {
+  return <section className="mos-shell"><div className="mos-panel suite-card">
+    <h1 className="mos-card-title">Page not found</h1>
+    <p>Suite Manager has no page at <code>{window.location.pathname}</code>.</p>
+    <a href="/suite-manager/" onClick={(event) => { event.preventDefault(); onNavigate('dashboard', '/suite-manager/'); }}>Back to Suite Manager</a>
+  </div></section>;
+}
+
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const staleFrontend = useStaleFrontend();
-  const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/updates') ? 'updates' : window.location.pathname.endsWith('/backups') ? 'backups' : window.location.pathname.endsWith('/customize') ? 'customize' : window.location.pathname.endsWith('/apps') ? 'apps' : 'dashboard';
   const [route, setRoute] = useState(routeForPath);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useEffect(() => {
@@ -37,7 +57,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
     return () => window.removeEventListener('popstate', update);
   }, []);
 
-  function navigate(nextRoute: 'apps' | 'backups' | 'customize' | 'settings' | 'updates', path: string) {
+  function navigate(nextRoute: Route, path: string) {
     window.history.pushState({}, '', path);
     setRoute(nextRoute);
     closeMenu();
@@ -78,19 +98,8 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
       </nav></Drawer>
 
-      {/* Offered rather than done: this tab did not ask for the update and may
-          be in the middle of an install or a half-typed dialog, and reloading
-          it from under someone throws that away. The Updates screen reloads
-          itself instead, because there the owner started it and is watching. */}
-      {staleFrontend ? <div className="mos-shell suite-shell-stale">
-        <Notice title="MOS was updated" variant="info">
-          <p>This page is still running the version it was opened with. Reload to pick up the new one.</p>
-          <button className="mos-btn mos-btn-primary" onClick={() => window.location.reload()} type="button">Reload</button>
-        </Notice>
-      </div> : null}
-
       <main className="suite-shell-main">
-        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
           <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>

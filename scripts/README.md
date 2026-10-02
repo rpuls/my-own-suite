@@ -4,6 +4,34 @@ MOS operator, installer, smoke, and developer scripts live here.
 
 The DigitalOcean, USB/Hyper-V, cloud-init, and SSH installer and smoke entry points are implemented here and share the repository bootstrap contract.
 
+## One Image, One Artifact
+
+**There is one own-hardware download and it is a compressed disk image, `my-own-suite-vX.Y.Z.img.xz`.** `image-builder/README.md` owns how it is built and is the only place that describes the pipeline; the stages are seed → remastered installer ISO → VM bake → `.img.xz`.
+
+The ISO in the middle is an intermediate. `npm run installer:usb` builds it, the bake boots it in a VM to produce the machine it snapshots, and nobody flashes it — the published ISO installer was retired in favour of the image (`docs/decisions.md`, 2026-08-16). Run the command by hand and the ISO lands in `.tmp/`, alongside a printed reminder of which artifact people actually install from.
+
+Finished images land in `image-builder/.work/out/`. The `.img.xz` is the artifact; the uncompressed `.img` beside it is what the compression was made from and what `check-target.sh` inspects, and only the compressed one and `SHA256SUMS` are uploaded to R2. The one other ISO in the tree belongs to the Hyper-V smoke lab, which builds its own disposable copy under `.mos-smoke/`.
+
+## Checks (`checks.cjs`)
+
+`checks.cjs` is the single definition of the checks that gate a change. `npm test`, the `CI` workflow, the release gate in `release.yml` and the `pre-push` hook all run this one file, so a check cannot be enforced in one place and be quietly missing from another.
+
+```powershell
+npm test                              # every lane, what the release gate runs
+npm run check:workspace               # the workspace lane, what the pre-push hook runs
+npm run check:site                    # installs, site and planner build, planner tests
+npm run check -- --list               # what the lanes contain
+npm run check -- --only typecheck     # re-run one check by id
+npm run check -- --keep-going         # run past the first failure for a full report
+npm run check -- --heavy              # include the browser-driven checks CI always runs
+```
+
+Two lanes, matching CI's two jobs: `workspace` runs against a root `npm ci`, `site` needs the built site. Checks marked `heavy` (currently the pa11y accessibility pass, which downloads its own Chromium) always run in CI and are skipped elsewhere unless asked for — every skip is printed, so the gap is visible rather than silent.
+
+Add a check by adding an entry to the `CHECKS` table, never by adding a gating step to the workflow file. On GitHub Actions the run folds each check into its own log group and writes a pass/fail table to the job summary.
+
+`MOS_SKIP_CHECKS=1 git push` skips the pre-push run when you genuinely need to push something red.
+
 ## No-Preconfig Bootstrap Contract
 
 The first MOS installer surface bootstraps only the control plane:

@@ -7,6 +7,7 @@ const { packageImageTag } = require('./agent-core.cjs');
 const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
+const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -270,19 +271,27 @@ class SystemAppAdapter {
     appsRoot = APPS_ROOT,
     appCandidateRoot = APP_CANDIDATE_ROOT,
     appPackageRoot = APP_PACKAGE_ROOT,
+    // How long each app took to build and come up on this machine, beside the
+    // package root, i.e. in the state root: the backup agent reads it to say
+    // what rebuilding the apps will cost, and it stays out of every backup
+    // because these numbers are about this CPU, not about the suite.
+    buildTimingsPath = path.join(path.dirname(appPackageRoot), BUILD_TIMINGS_FILENAME),
     caddyBinary = CADDY_BINARY,
     dockerBinary = DOCKER_BINARY,
     execute = exec,
     executeCapture = undefined,
+    now = () => Date.now(),
     routesPath = APP_ROUTES_PATH,
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
     this.appCandidateRoot = appCandidateRoot;
     this.appPackageRoot = appPackageRoot;
+    this.buildTimingsPath = buildTimingsPath;
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
     this.execute = execute;
+    this.now = now;
     // Derived from the plain runner rather than defaulted to the real system,
     // so a harness that stubs only `execute` sees the explicit labeled
     // `volume create` instead of this adapter reaching around the stub to the
@@ -502,12 +511,14 @@ class SystemAppAdapter {
     }
   }
 
+  // Every package gets its own network, whether it runs one service or ten. A
+  // package left on Docker's default bridge is reachable by every other package
+  // there, which is access no owner granted: connecting two apps is what joins
+  // them, and nothing else should.
   async startPackageContainers({ instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const serviceCount = services.length;
     const networkName = this.networkName(packageId);
-    if (serviceCount > 1) {
-      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
-    }
+    await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
     await this.ensureAppVolumes({ instanceId, packageId, services });
     for (const service of services) {
       const volumeArgs = [];
@@ -518,7 +529,7 @@ class SystemAppAdapter {
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
         ...CONTAINER_LOG_ARGS,
-        ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+        '--network', networkName, '--network-alias', service.id,
         ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
         '--label', `mos.package=${packageId}`,
         '--label', `mos.service=${service.id}`,
@@ -799,12 +810,27 @@ class SystemAppAdapter {
     });
   }
 
+  // What one app cost to bring up, from the first `docker build` to healthy,
+  // recorded only when it succeeded: a build that failed after a minute says
+  // nothing about how long a working one takes. The build alone is kept too,
+  // for whoever wants to set install expectations from it.
+  recordAppTiming({ buildSeconds, packageDir, packageId, startedAt }) {
+    let displayName = null;
+    try {
+      const name = JSON.parse(fs.readFileSync(path.join(packageDir, 'manifest.json'), 'utf8')).name;
+      displayName = typeof name === 'string' && name.trim() ? name.trim() : null;
+    } catch {}
+    recordBuildTiming(this.buildTimingsPath, { buildSeconds, displayName, packageId, seconds: (this.now() - startedAt) / 1000 });
+  }
+
   async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const packageDir = path.join(this.appPackageRoot, instanceId, 'installed');
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     let stage = 'build';
     let activity = STAGE_ACTIVITY.build;
+    const startedAt = this.now();
+    let buildSeconds = null;
 
     try {
       verifySnapshotIdentity(packageDir, { errorMessage: 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest: packageDigest, packageId });
@@ -822,14 +848,13 @@ class SystemAppAdapter {
           '.',
         ], { cwd: packageDir, timeoutMs: 300000 });
       }
+      buildSeconds = (this.now() - startedAt) / 1000;
 
       stage = 'run';
       activity = STAGE_ACTIVITY.run;
       await this.removePackageContainers({ packageId, serviceIds: services.map((service) => service.id), serviceCount });
       const networkName = this.networkName(packageId);
-      if (serviceCount > 1) {
-        await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
-      }
+      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
 
       await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
@@ -848,7 +873,7 @@ class SystemAppAdapter {
           '--name', containerName,
           '--restart', 'unless-stopped',
           ...CONTAINER_LOG_ARGS,
-          ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+          '--network', networkName, '--network-alias', service.id,
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
           '--label', `mos.package=${packageId}`,
           '--label', `mos.service=${service.id}`,
@@ -864,6 +889,7 @@ class SystemAppAdapter {
       stage = 'health';
       activity = STAGE_ACTIVITY.health;
       await this.waitForReady(healthTarget);
+      this.recordAppTiming({ buildSeconds, packageDir, packageId, startedAt });
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId });
@@ -913,15 +939,35 @@ class SystemAppAdapter {
     }
   }
 
-  async connectPackageNetwork({ consumerPackageId, providerPackageId, providerServiceCount, providerServices }) {
-    const networkName = this.networkName(consumerPackageId);
-    let activity = `docker network inspect for ${networkName}`;
+  // The container names attached to a network, empty when there is no such network.
+  async networkMembers(networkName) {
+    const output = await this.executeCapture(this.dockerBinary, ['network', 'inspect', '--format', '{{range .Containers}}{{.Name}} {{end}}', networkName], { timeoutMs: 30000 }).catch(() => '');
+    return String(output).split(/\s+/u).filter(Boolean);
+  }
+
+  // A connection puts the joining package on the network the other one holds, so
+  // that uninstalling the joiner takes nothing away from the app it joined. The
+  // caller decides which side holds: a plugin joins the app it is a plugin for.
+  //
+  // Membership is read rather than assumed, because re-attaching a container that
+  // is already on the network would drop the network out from under a working app
+  // for as long as the reconnect takes, and because the holder is only attached to
+  // its own network from the moment its containers were started with one.
+  async connectPackageNetwork({ holderPackageId, holderServiceCount, holderServices, joinerPackageId, joinerServiceCount, joinerServices }) {
+    const networkName = this.networkName(holderPackageId);
+    const members = [
+      ...holderServices.map((serviceId) => [holderPackageId, serviceId, holderServiceCount]),
+      ...joinerServices.map((serviceId) => [joinerPackageId, serviceId, joinerServiceCount]),
+    ];
+    let activity = `docker network create for ${networkName}`;
     try {
-      await this.execute(this.dockerBinary, ['network', 'inspect', networkName], { timeoutMs: 30000 });
-      for (const serviceId of providerServices) {
-        const containerName = this.containerName(providerPackageId, serviceId, providerServiceCount);
-        const aliases = [...new Set([providerPackageId, serviceId])].flatMap((alias) => ['--alias', alias]);
-        await this.execute(this.dockerBinary, ['network', 'disconnect', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
+      activity = `docker network inspect for ${networkName}`;
+      const attached = await this.networkMembers(networkName);
+      for (const [packageId, serviceId, serviceCount] of members) {
+        const containerName = this.containerName(packageId, serviceId, serviceCount);
+        if (attached.includes(containerName)) continue;
+        const aliases = [...new Set([packageId, serviceId])].flatMap((alias) => ['--alias', alias]);
         activity = `docker network connect for ${containerName}`;
         await this.execute(this.dockerBinary, [
           'network',
@@ -935,6 +981,17 @@ class SystemAppAdapter {
     } catch (error) {
       throw new AppApplyError('network', describeFailure(error, activity));
     }
+  }
+
+  // Removes a package's own network, detaching whatever is still on it first: a
+  // package joined to this one keeps its endpoint until it is disconnected, and
+  // Docker refuses to remove a network that still has one.
+  async removePackageNetwork(packageId) {
+    const networkName = this.networkName(packageId);
+    for (const containerName of await this.networkMembers(networkName)) {
+      await this.execute(this.dockerBinary, ['network', 'disconnect', '--force', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+    }
+    await this.execute(this.dockerBinary, ['network', 'rm', networkName], { timeoutMs: 30000 }).catch(() => {});
   }
 
   async removePackageContainers({ packageId, serviceCount = 1, serviceIds = [] }) {
@@ -953,7 +1010,7 @@ class SystemAppAdapter {
       for (const serviceId of serviceIds) {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
-      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      await this.removePackageNetwork(packageId);
       return { steps: ['stopped'] };
     } catch {
       throw new AppApplyError('stop');
@@ -994,7 +1051,7 @@ class SystemAppAdapter {
       for (const serviceId of serviceIds) {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
-      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      await this.removePackageNetwork(packageId);
       for (const volume of volumes) {
         const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);

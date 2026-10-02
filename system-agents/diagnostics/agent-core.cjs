@@ -41,6 +41,7 @@ const LIMITS = {
   // couple of seconds.
   concurrency: 6,
   containers: 24,
+  networks: 24,
   healthyLines: 40,
   sectionChars: 24_000,
   // A ceiling on the whole collection, not just on each part of it. Per-section
@@ -130,6 +131,13 @@ class DiagnosticsAgentCore {
     return { collectors: await this.adapter.availableCollectors(), ok: true };
   }
 
+  // The cheap read, for the Updates screen. Separate from collect() because a
+  // full collection sweeps every unit and container and an owner opening
+  // Updates is asking one question about the host, not for a bundle.
+  async hostPatches() {
+    return this.adapter.hostPatches();
+  }
+
   // Every collector is best-effort and independent. This runs when something is
   // already broken, so a collector that throws is an expected outcome, not an
   // exceptional one — losing the rest of the bundle to it would defeat the
@@ -151,8 +159,11 @@ class DiagnosticsAgentCore {
     // machine is by definition not well. Serialising forty reads behind a
     // twenty-second timeout each is how a diagnostic becomes a hang; running
     // them all at once is how it becomes the last straw.
-    const [host, units, containers] = await Promise.all([
+    const [host, hostPatches, webServer, networks, units, containers] = await Promise.all([
       attempt('host', () => this.adapter.hostFacts(), {}),
+      attempt('host-patches', () => this.adapter.hostPatches(), null),
+      attempt('web-server', () => this.adapter.webServerConfig(), []),
+      attempt('networks', () => this.adapter.networks(LIMITS.networks), []),
       mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
         const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
@@ -178,8 +189,14 @@ class DiagnosticsAgentCore {
       collectedAt: new Date().toISOString(),
       containers: fitted.containers,
       host,
+      hostPatches,
       incomplete,
+      networks,
       units: fitted.units,
+      // Bounded like a log, and for the same reason: a Caddyfile on a machine
+      // with fifty apps is still the thing worth reading in full, but it must
+      // not be the thing that makes a bundle too large to send.
+      webServer: webServer.map((file) => ({ ...file, content: file.content === null ? null : boundText(file.content) })),
     };
   }
 }

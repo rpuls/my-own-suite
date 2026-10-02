@@ -33,6 +33,59 @@
 // the other's socket path, because a MOS update now backs the suite up first and a
 // scheduled backup waits while an update runs. Two `Environment=` lines; no `echo`
 // line changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved 2026-09-16 for host OS patching (roadmap AL1): the installer now applies
+// Ubuntu's unattended security-upgrade policy, and the diagnostics agent unit
+// carries the state root so it can read the patch state. One command line and
+// one `Environment=` line; no `echo` line changed, so the walkthrough recording
+// still shows what an install prints.
+//
+// Moved 2026-09-17 for restore progress (roadmap C8): every Suite Manager site
+// block gained the route that serves the backup agent's progress file, and the
+// status page gained the inline script that polls it. All five again, for the
+// same reason as 2026-09-07. The thirteen `echo` lines of every rendering were
+// compared before and after and not one changed, so the walkthrough recording
+// still shows what an install prints.
+
+// Moved 2026-09-17 for the encrypted vault (roadmap AL2): the installer installs
+// cryptsetup, writes the two vault units and the Docker drop-ins, and every unit
+// that holds owner data gained `Requires=mos-vault.service`. All five again. The
+// thirteen `echo` lines of every rendering were compared before and after and not
+// one changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved again 2026-09-18, on evidence from the first hardware install: the TPM
+// apt line now names the three tss2 libraries systemd loads on demand (Ubuntu
+// ships them as Suggests; the lab machine had two of three, and enrollment failed
+// with "TPM2 support is not installed") plus tpm2-tools, with a warning `echo`
+// that prints only when that run fails. A normal install prints exactly what it did.
+//
+// Moved once more the same day: the Homepage and lab-reset units gained
+// `Requires=mos-vault.service`, so every unit the installer writes now carries
+// the same requirement (test/unit/vault-gating.test.cjs holds that rule). No
+// `echo` line changed.
+//
+// Moved 2026-09-20 for the recorded suite address (roadmap A11): the installer
+// creates the `suite-address` directory Suite Manager records the address in.
+// One argument on one `install -d` line, in all five renderings; the thirteen
+// `echo` lines were compared before and after and not one changed.
+//
+// Moved 2026-09-22 for grouped restore progress: the status page lists the
+// job's groups rather than its stages, opens the one that is running, and
+// styles the parts inside it. Page markup, CSS and script only, in all five
+// renderings; the thirteen `echo` lines were compared before and after and not
+// one changed.
+//
+// Moved 2026-09-25: each agent unit now declares the `/run` directory its socket
+// lives in, and the eight `install -d` lines that made those directories once at
+// install time are gone — `/run` is emptied by every boot, so they covered the
+// install's own boot and nothing after it. Unit directives and one removed block
+// of `install -d`, in all five renderings; the thirteen `echo` lines were
+// compared before and after and not one changed.
+//
+// Moved 2026-10-02, all five: the vault gate also orders and gates containerd,
+// whose /var/lib/containerd holds Docker 29's image store and container layers,
+// and the Homepage unit re-renders its root page after every start. A drop-in
+// and two unit lines; no `echo` line was added or changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -46,25 +99,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '6cab0c27e37eae5ac8bd21ba12ea5806608bdbfa098b0b2561d091dfc308f2ac',
+    digest: '4a878f7dd76c791a49ca7ff6e39b40c13e91d7391c0291f22bc4b871c36ec5ed',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '932f27b91c2cfde56596504ecd8a41be6b9bd7de85986003938ddad9ef92a352',
+    digest: 'c7c41850f2849e1f0d43b382a92a3eed624d34b708ea3115431451f2b11ed7a0',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '005731a94d3a8bcfd78243ec50a073e769a13543d40f5a4304f3488b61b679d2',
+    digest: 'fc3ba53bafa7cc47c57f861b9373cf4dab4c8aed982bbc51389675d8917d9bc7',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '38949138ef57416977f35a672a7f6f47cbec52607df2f183af4b78cc25f4d599',
+    digest: '80b4174cc660e3966e468abb095c615488f3fe78032d2484f2e2fef05c2d65de',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -74,7 +127,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'a86c09339ea81dcb97bdbe1d9fadddbf3b2e99b22c27111fc577b35684b7322c',
+    digest: '36f80d305ba483825d97d932a8d3b24255a27df50fe5faa1614c7a3c1633bff0',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

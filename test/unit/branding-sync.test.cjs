@@ -18,12 +18,9 @@ test('branding sync writes shared CSS to MOS targets from the canonical source',
   const homepageMark = fs.readFileSync(
     path.join(repoRoot, 'infrastructure', 'homepage', 'images', 'my-own-suite-mark.png'),
   );
-  const ownerSetupSource = fs.readFileSync(
-    path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'features', 'setup', 'OwnerSetupScreen.tsx'),
-    'utf8',
-  );
-  const loginSource = fs.readFileSync(
-    path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'features', 'auth', 'LoginScreen.tsx'),
+  // The one frame every screen outside Suite Manager renders the mark through.
+  const authStageSource = fs.readFileSync(
+    path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'components', 'AuthStage.tsx'),
     'utf8',
   );
 
@@ -38,8 +35,6 @@ test('branding sync writes shared CSS to MOS targets from the canonical source',
   assert.match(homepageCss, /linear-gradient\(155deg/);
   assert.ok(siteCss.endsWith(canonical));
   assert.deepEqual(homepageMark, canonicalMark);
-  for (const source of [ownerSetupSource, loginSource]) {
-    assert.match(source, /\/suite-manager\/assets\/brand\/my-own-suite-mark\.png/);
-    assert.doesNotMatch(source, /src="\/brand\//);
-  }
+  assert.match(authStageSource, /\/suite-manager\/assets\/brand\/my-own-suite-mark\.png/);
+  assert.doesNotMatch(authStageSource, /src="\/brand\//);
 });

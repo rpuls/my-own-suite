@@ -20,7 +20,7 @@ const seed = `# retained comment
         description: Control plane
         icon: mdi:cube
 `;
-const domainState = { baseDomain: 'mos.example.com', tlsMode: 'cloudflare-dns01' };
+const domainState = { baseDomain: 'mos.example.com', scheme: 'https' };
 const link = { description: 'Useful docs', group: 'Links', icon: 'mdi:link', name: 'Docs', url: 'https://example.com/docs' };
 const service = { description: 'Office printer', group: 'Home services', host: '192.168.1.20', icon: 'mdi:printer', name: 'Printer', port: 8080, protocol: 'http', subdomain: 'printer' };
 const calendarLink = {
@@ -96,6 +96,23 @@ test('home services generate a clean projection and a separate escaped Caddy rou
   assert.doesNotMatch(projection, /mos:/u);
   assert.equal(routes, 'https://printer.mos.example.com {\n  reverse_proxy http://192.168.1.20:8080\n}\n');
   assert.deepEqual(publicUrlFor({ subdomain: 'printer' }, domainState), 'https://printer.mos.example.com/');
+});
+
+// An app already served over HTTPS at home is reached at `https://<address>`,
+// with no port in it, and the URL parser drops `:443` from the long form too —
+// so both arrived here as "no port" and the form refused the one address its
+// owner actually uses. The recorded upstream still names a port; the scheme is
+// what supplies it.
+test('an app on its scheme default port is accepted and recorded with that port', () => {
+  for (const [protocol, port] of [['https', 443], ['http', 80]]) {
+    const entry = { ...service, host: '192.168.60.10', port, protocol, subdomain: 'kvm1' };
+    const added = addEntry(seed, entry, { homeService: true, id });
+    assert.equal(
+      renderCaddyRoutes(added.content, domainState),
+      `https://kvm1.mos.example.com {\n  reverse_proxy ${protocol}://192.168.60.10:${port}\n}\n`,
+      `${protocol} on ${port}`,
+    );
+  }
 });
 
 test('strict proxy metadata rejects duplicates, credentials, directives, and reserved hosts', () => {

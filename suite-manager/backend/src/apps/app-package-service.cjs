@@ -25,6 +25,7 @@ const {
   managedEnvNames,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  networkConnectRequest,
   OWNER_ENV_NAME_PATTERN,
   ownerEnvSecretKey,
   primaryProjectedRoute,
@@ -52,10 +53,10 @@ const {
   effectiveRouteHost,
   parseNamespacedPackageId,
   stableJson,
-  validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
+const { declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
 const {
   inspectAppPackages,
   publicPackageSummary,
@@ -77,22 +78,29 @@ class AppPackageService {
     agent = null,
     appsDir,
     catalogService = null,
+    // The packages the owner's added sources publish, read from their cache. A
+    // thunk because the source service installs through this one, so the two are
+    // wired to each other rather than one owning the other.
+    externalCatalog = () => [],
     externalClient = null,
     limiter = new AppOperationLimiter(),
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
     secretDir = null,
     store,
+    suiteAddress = null,
   }) {
     this.agent = agent;
     this.appsDir = appsDir;
     this.catalogService = catalogService;
+    this.externalCatalog = externalCatalog;
     this.externalClient = externalClient;
     this.limiter = limiter;
     this.now = now;
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
+    this.suiteAddress = suiteAddress;
     // The update saga is its own service (see app-update-service.cjs). It needs
     // this instance for install-side work it must not own — runtime apply,
     // integrations, lifecycle — so it is built here with `this` rather than at
@@ -116,19 +124,20 @@ class AppPackageService {
 
   stagePackageUpdate(packageId, input = {}, requestContext = {}) { return this.updates.stagePackageUpdate(packageId, input, requestContext); }
 
-  // A package's base images are pinned by digest, so one that names an
-  // architecture this host is not cannot pull them and will fail in the middle
-  // of `docker build`, after the download, the gate, and the snapshot have all
-  // passed. Refusing up front turns that into an answer the owner can act on.
-  //
-  // An agent that cannot be asked leaves the host unknown, and an unknown host
-  // enforces nothing: this check exists to explain a failure that was already
-  // coming, so it must never invent one.
-  async assertArchitectureSupported(manifest, agentStatus = null) {
-    const status = agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null);
-    const errors = validateArchitectureCompatibility(manifest, hostArchitectureOf(status));
-    if (errors.length) {
-      throw new AppPackageServiceError('APP_ARCHITECTURE_UNSUPPORTED', `This app cannot be installed on this server. ${errors.join(' ')}`, 409);
+  // What this server is, for judging what a package needs from it. The
+  // architecture cannot change while Suite Manager runs, so it is asked once.
+  async hostFacts(agentStatus = null) {
+    this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
+    const scheme = this.suiteAddress?.readOrNull()?.scheme;
+    return { architecture: this.hostArchitecture, https: scheme ? scheme === 'https' : null };
+  }
+
+  // Refusing up front turns a build that cannot pull its images, or an app that
+  // cannot work here, into an answer the owner can act on.
+  async assertHostRequirementsMet(manifest, agentStatus = null) {
+    const unmet = unmetHostRequirements(declaredHostRequirements(manifest), await this.hostFacts(agentStatus));
+    if (unmet.length) {
+      throw new AppPackageServiceError('APP_HOST_REQUIREMENT_UNMET', `This app cannot be installed on this server. ${unmet.map((item) => item.reason).join(' ')}`, 409);
     }
   }
 
@@ -489,13 +498,10 @@ class AppPackageService {
 
     try {
       const applied = await this.applyPackageRuntime(consumerPackageId, publicUrlFor(consumerPackageId));
-      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
-      const network = await this.agent.connectNetwork({
-        consumerPackageId,
-        providerPackageId,
-        providerServiceCount: providerServices.length,
-        providerServices,
-      });
+      const network = await this.agent.connectNetwork(networkConnectRequest(
+        { manifest: consumerPackage.manifest, packageId: consumerPackageId },
+        { manifest: providerPackage.manifest, packageId: providerPackageId },
+      ));
       this.store.completeAppIntegration({
         at: this.now().toISOString(),
         consumerInstanceId: consumer.id,
@@ -569,14 +575,10 @@ class AppPackageService {
 
     try {
       await this.applyPackageRuntime(consumer.packageId, requestContextForPackage(consumer.packageId, requestContext));
-      const providerPackage = this.installedPackageFor(provider);
-      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
-      const network = await this.agent.connectNetwork({
-        consumerPackageId: consumer.packageId,
-        providerPackageId: provider.packageId,
-        providerServiceCount: providerServices.length,
-        providerServices,
-      });
+      const network = await this.agent.connectNetwork(networkConnectRequest(
+        { manifest: this.installedPackageFor(consumer).manifest, packageId: consumer.packageId },
+        { manifest: this.installedPackageFor(provider).manifest, packageId: provider.packageId },
+      ));
       this.store.completeAppIntegration({
         at: this.now().toISOString(),
         consumerInstanceId: consumer.id,
@@ -957,6 +959,13 @@ class AppPackageService {
       return (candidateVersion && privacyReviewPresentation(path.join(this.appsDir, packageId), { id: packageId, version: candidateVersion }))
         || { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' };
     }
+    // Only a MOS-reviewed source may present a package-shipped review as a
+    // review, so an external package's own file is not read at all. Derived from
+    // the source rather than the row: being outside MOS's scope is a property of
+    // where the package came from, true of every such row however it was written.
+    if (instance.sourceTrust !== 'mos-reviewed') {
+      return { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' };
+    }
     const stored = {
       dimensions: null,
       posture: instance.privacyPosture || null,
@@ -964,10 +973,6 @@ class AppPackageService {
       status: instance.privacyStatus || 'review-required',
     };
     if (instance.snapshotState !== 'installed' || !instance.snapshotPath) return stored;
-    // Only a MOS-reviewed source may present a package-shipped review as a
-    // review. An external package can ship a `privacy-review.json` claiming any
-    // posture it likes, so its stored review-required status stands instead.
-    if (instance.sourceTrust !== 'mos-reviewed') return stored;
     return privacyReviewPresentation(instance.snapshotPath, { id: instance.packageId, version: instance.packageVersion }) || stored;
   }
 
@@ -981,19 +986,10 @@ class AppPackageService {
     return this.catalogService?.advisoriesFor(packageId, version) || [];
   }
 
-  // How an installed package compares to what its source offers. An external app
-  // is not in the reviewed catalog and cached catalog metadata can say nothing
-  // about it: only its own repository knows whether a newer package exists, and
-  // finding out costs a network round trip. Report that honestly instead of
-  // "not in catalog", which reads as a fault, and let the owner check on demand
-  // through the ordinary update preview.
-  packageUpdateStatusFor(instance, packageId, checkoutSummary = null) {
+  // How an installed package compares to what its source offers.
+  packageUpdateStatusFor(instance, packageId, checkoutSummary = null, externalCards = null) {
     if (instance?.sourceKind === 'external-git') {
-      return {
-        available: null,
-        installed: { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion },
-        status: 'external-source',
-      };
+      return this.externalUpdateStatusFor(instance, externalCards || this.externalCatalog());
     }
     const catalogStatus = this.catalogService?.updateFor(packageId, instance) || null;
     const checkout = this.checkoutCandidateSummaryFor(packageId, instance, {
@@ -1062,6 +1058,34 @@ class AppPackageService {
     };
   }
 
+  // Read from the source sweep's cached listing, so no network call and no new
+  // polling. That listing is only as new as the last fetch, hence `sourceCheckedAt`:
+  // a weaker promise than the reviewed catalog, and reviewing re-downloads anyway.
+  externalUpdateStatusFor(instance, cards) {
+    const installed = { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion };
+    const card = cards.find((entry) => entry.id === instance.packageId && entry.installStatus === 'external-available');
+    if (!card?.version || compareSemver(card.version, instance.packageVersion) <= 0) {
+      return { available: null, installed, sourceCheckedAt: card?.source?.checkedAt || null, status: 'external-source' };
+    }
+    const minimumMosVersion = card.minimumMosVersion || '0.0.0';
+    return {
+      available: {
+        appVersion: card.appVersion,
+        compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+        minimumMosVersion: card.minimumMosVersion || '',
+        packageDigest: card.packageDigest,
+        packageVersion: card.version,
+        // Its own privacy file is never read as a review (see packagePrivacyFor).
+        privacy: { dimensions: null, posture: null, reviewedAt: null, status: 'not-assessed' },
+        sourceChannel: 'added-source',
+        sourceRevision: card.source?.revision || null,
+      },
+      installed,
+      sourceCheckedAt: card.source?.checkedAt || null,
+      status: 'update-available',
+    };
+  }
+
   // Candidate bytes from this box's own checkout, in the shape every update
   // transaction already consumes. Copied into a candidate directory rather than
   // handed to the agent in place: a platform update landing mid-transaction would
@@ -1101,9 +1125,10 @@ class AppPackageService {
     }
   }
 
-  listPackages() {
+  listPackages(host = {}) {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
+    const externalCards = this.externalCatalog();
     const candidatesByPackage = new Map(inspectAppPackages(this.appsDir).map((summary) => [summary.id, summary]));
     const packageIds = new Set([...candidatesByPackage.keys(), ...instancesByPackage.keys()]);
     const packages = [...packageIds].sort().map((packageId) => {
@@ -1112,9 +1137,13 @@ class AppPackageService {
       // One instance whose snapshot no longer matches its record (a pending
       // update commit, a corrupted snapshot) must degrade to its own recovery
       // card, never take the whole app list down with it.
+      // Summarised under the id the app is installed as, not the id its manifest
+      // claims. For an external package those differ, and the summary's own icon
+      // and screenshot URLs are built from the id it is given: addressed by the
+      // manifest id they resolve to no installed app and 404.
       let installedSummary = null;
       if (instance?.snapshotState === 'installed') {
-        try { installedSummary = publicPackageSummary(this.installedPackageFor(instance).manifest); } catch {}
+        try { installedSummary = publicPackageSummary({ ...this.installedPackageFor(instance).manifest, id: packageId }); } catch {}
       }
       const summary = installedSummary
         || (instance
@@ -1133,7 +1162,7 @@ class AppPackageService {
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
-        catalogUpdate: this.packageUpdateStatusFor(instance, packageId, candidatesByPackage.get(packageId)),
+        catalogUpdate: this.packageUpdateStatusFor(instance, packageId, candidatesByPackage.get(packageId), externalCards),
         external: instance?.sourceKind === 'external-git',
         // The installed identity wins over the id the manifest claims: an
         // external package is managed under its source-namespaced id, and every
@@ -1145,10 +1174,23 @@ class AppPackageService {
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',
         privacy: this.packagePrivacyFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
+        // With no MOS assessment to read, the repository is what the owner judges
+        // instead, so it must not disappear the moment they install the app.
+        ...(instance?.sourceKind === 'external-git' && instance.sourceRepository
+          ? { source: { repository: instance.sourceRepository } }
+          : {}),
         trust: instance?.sourceTrust || 'mos-reviewed',
       };
     });
-    return this.withCompatibility(packages, integrations);
+    // Packages the owner's added sources publish but has not installed. They join
+    // the list *before* compatibility is worked out, which is what lets an external
+    // package take part in "works with" at all — a package that declares it consumes
+    // a capability an installed app exports has to be matched against it while it is
+    // still only an offer. An installed external app already has a row above, so it
+    // is never listed twice.
+    const listed = new Set(packages.map((app) => app.id));
+    const external = externalCards.filter((card) => card.id && !listed.has(card.id));
+    return withUnmetRequirements(this.withCompatibility([...packages, ...external], integrations), host);
   }
 
   withCompatibility(packages, integrations = []) {
@@ -1191,8 +1233,57 @@ class AppPackageService {
       const missingUsefulPeers = (app.capabilities.usefulness.requiresOneOf || [])
         .filter((type) => !packages.some((candidate) => candidate.id !== app.id && (candidate.capabilities.exports || []).some((capability) => capability.type === type)))
         .map((type) => ({ type, message: app.capabilities.usefulness.emptyState || `Install a compatible ${type} app to use this package well.` }));
-      return { ...app, compatibility: { connections, missingUsefulPeers } };
+      // What is connected to this app, for the app that was connected to rather
+      // than the one that did the connecting. Only the connecting side declares
+      // the slot, so without this an owner opening the app a plugin was attached
+      // to has nowhere to see that it was.
+      const connectedBy = app.instance
+        ? integrations
+          .filter((item) => item.status !== 'removed' && item.providerInstanceId === app.instance.id)
+          .map((item) => {
+            const other = packages.find((candidate) => candidate.instance?.id === item.consumerInstanceId);
+            return other ? { id: other.id, name: other.name, status: item.status } : null;
+          })
+          .filter(Boolean)
+        : [];
+      return { ...app, compatibility: { connectedBy, connections, missingUsefulPeers } };
     });
+  }
+
+  // `providedTypes` is what installed versions export — what an app can talk to the
+  // moment its update finishes. `providersByType` is what would provide a missing one.
+  capabilityPeersFor(packageId) {
+    const providedTypes = new Set();
+    const providersByType = new Map();
+    const instances = this.store.getAppInstances().filter((instance) => instance.status !== 'uninstalled');
+    for (const instance of instances) {
+      if (instance.packageId === packageId || instance.snapshotState !== 'installed') continue;
+      let manifest;
+      try { ({ manifest } = this.installedPackageFor(instance)); } catch { continue; }
+      for (const exported of Object.values(manifest.exports || {})) {
+        if (exported?.type) providedTypes.add(exported.type);
+      }
+    }
+    const instancesByPackage = new Map(instances.map((instance) => [instance.packageId, instance]));
+    const offers = [...inspectAppPackages(this.appsDir), ...this.externalCatalog()];
+    for (const offer of offers) {
+      if (!offer.id || offer.id === packageId || offer.validation?.valid === false) continue;
+      const instance = instancesByPackage.get(offer.id);
+      if (instance && (!offer.version || compareSemver(offer.version, instance.packageVersion) <= 0)) continue;
+      for (const exported of offer.capabilities?.exports || []) {
+        if (providedTypes.has(exported.type)) continue;
+        const providers = providersByType.get(exported.type) || [];
+        if (providers.some((item) => item.id === offer.id)) continue;
+        providers.push({
+          action: instance ? 'update' : 'install',
+          id: offer.id,
+          name: offer.name,
+          version: offer.appVersion || offer.version || '',
+        });
+        providersByType.set(exported.type, providers);
+      }
+    }
+    return { providedTypes: [...providedTypes], providersByType: Object.fromEntries(providersByType) };
   }
 
   iconPath(packageId) {
@@ -1276,7 +1367,7 @@ class AppPackageService {
     }
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
-    await this.assertArchitectureSupported(manifest, agentStatus);
+    await this.assertHostRequirementsMet(manifest, agentStatus);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1463,7 +1554,7 @@ class AppPackageService {
     }
     const agentStatus = await this.agent.status().catch(() => null);
     assertAppAgentContract(agentStatus);
-    await this.assertArchitectureSupported(manifest, agentStatus);
+    await this.assertHostRequirementsMet(manifest, agentStatus);
     this.assertRouteHostsAvailable(manifest, packageId);
 
     const at = this.now().toISOString();
@@ -1577,8 +1668,50 @@ class AppPackageService {
     };
   }
 
+  // Everything that baked the suite's address in, rebuilt on the current one:
+  // Homepage's managed entries and routes first, then every installed app's
+  // runtime. Per-app failures are reported, never thrown, because the address
+  // has already changed and each app is one retry away.
   async reconcilePublicUrls(homepageService, requestContext = {}) {
+    const { homepage, homepageEntryFailures } = await this.reconcileHomepageUrls(homepageService, requestContext);
     const runtime = [];
+
+    for (const instance of this.store.getAppInstances()) {
+      if (instance.status !== 'installed') continue;
+      const packageContext = requestContextForPackage(instance.packageId, requestContext);
+      try {
+        const result = await this.applyPackageRuntime(instance.packageId, packageContext);
+        runtime.push({
+          appHost: result.appHost || packageContext.appHost,
+          packageId: instance.packageId,
+          publicUrl: result.publicUrl || packageContext.publicUrl,
+          status: result.status || 'applied',
+        });
+      } catch (error) {
+        runtime.push({
+          appHost: packageContext.appHost,
+          errorCode: error.code || 'APP_RUNTIME_PUBLIC_URL_REAPPLY_FAILED',
+          packageId: instance.packageId,
+          publicUrl: packageContext.publicUrl,
+          status: 'failed',
+        });
+      }
+    }
+
+    const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
+    const runtimeFailed = runtime.some((item) => item.status === 'failed');
+    return {
+      homepage,
+      homepageEntryFailures,
+      runtime,
+      status: homepageFailed || runtimeFailed ? 'partial' : 'applied',
+    };
+  }
+
+  // The Homepage half alone: the restore calls it after it has rebuilt each app
+  // runtime itself, so the dashboard and its home-service routes come back from
+  // the restored config rather than from whatever the receiving machine had.
+  async reconcileHomepageUrls(homepageService, requestContext = {}) {
     const homepageEntries = [];
     const homepageEntryFailures = [];
     for (const instance of this.store.getAppInstances()) {
@@ -1617,39 +1750,7 @@ class AppPackageService {
         status: 'failed',
       };
     }
-
-    for (const instance of this.store.getAppInstances()) {
-      if (instance.status !== 'installed') continue;
-      const packageContext = requestContextForPackage(instance.packageId, requestContext);
-      try {
-        const result = await this.applyPackageRuntime(instance.packageId, packageContext);
-        runtime.push({
-          appHost: result.appHost || packageContext.appHost,
-          packageId: instance.packageId,
-          publicUrl: result.publicUrl || packageContext.publicUrl,
-          status: result.status || 'applied',
-        });
-      } catch (error) {
-        runtime.push({
-          appHost: packageContext.appHost,
-          errorCode: error.code || 'APP_RUNTIME_PUBLIC_URL_REAPPLY_FAILED',
-          packageId: instance.packageId,
-          publicUrl: packageContext.publicUrl,
-          status: 'failed',
-        });
-      }
-    }
-
-    const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
-    const runtimeFailed = runtime.some((item) => item.status === 'failed');
-    const status = homepageFailed || runtimeFailed ? 'partial' : 'applied';
-
-    return {
-      homepage,
-      homepageEntryFailures,
-      runtime,
-      status,
-    };
+    return { homepage, homepageEntryFailures };
   }
 
   async removePackageFromHomepage(instance, homepageService) {

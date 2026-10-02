@@ -55,6 +55,11 @@ class UpdateAgentClient {
   cancelUpdate(id) { return this.request('POST', `/v1/jobs/${encodeURIComponent(id)}/cancel`, {}); }
   skipBackup(id) { return this.request('POST', `/v1/jobs/${encodeURIComponent(id)}/skip-backup`, {}); }
   configureTrack(input) { return this.request('POST', '/v1/track', input); }
+  // The restart a patched kernel needs, and the packages the signed advisory
+  // feed says not to install. Both are privileged writes to the host, which is
+  // why they go through this agent and not the read-only diagnostics one.
+  restartHost() { return this.request('POST', '/v1/host/restart', {}); }
+  applyHostHolds(input) { return this.request('POST', '/v1/host/holds', input); }
 }
 
 module.exports = { UPDATE_AGENT_TIMEOUT_MS, UpdateAgentClient };

@@ -155,7 +155,7 @@ function PointRow({ backup, busy, checking, locked, onCheck, onDelete, onEditNot
       {elsewhere && !retired ? <p className="suite-bk-detail">Written by another server. Restoring it replaces what is on this machine.</p> : null}
 
       <div className="suite-bk-point-actions">
-        {checking ? <span className="suite-bk-working"><Spinner />Checking this backup — 10 to 20 minutes. You can leave the page.</span> : <>
+        {checking ? <span className="suite-bk-working"><Spinner />Checking this backup. {backup.expect ? `${backup.expect.check.sentence} ${backup.expect.check.note || ''}` : 'You can leave the page; the check carries on.'}</span> : <>
           {retired ? null : <>
             <button className="mos-btn mos-btn-primary mos-btn-sm" disabled={locked} onClick={onRestore} type="button">Restore</button>
             <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onCheck} type="button">Check it</button>

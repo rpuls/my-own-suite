@@ -20,11 +20,32 @@ function adapter(overrides = {}) {
     containerLog: async (name, lines) => `log for ${name} (${lines} lines)`,
     containers: async () => [],
     hostFacts: async () => ({ disk: 'df', kernel: 'linux' }),
+    hostPatches: async () => ({ available: true, managedBy: 'mos', rebootRequired: false, security: [] }),
     journal: async (unit, lines) => `journal for ${unit} (${lines} lines)`,
+    networks: async () => [{ containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'mos-app-vaultwarden' }],
     unitState: async () => ({ active: 'active', enabled: 'enabled', sub: 'running' }),
+    webServerConfig: async () => [{ content: 'home.example.com {\n  reverse_proxy 127.0.0.1:3100\n}', path: '/etc/caddy/Caddyfile' }],
     ...overrides,
   };
 }
+
+// A collector that fails takes its own section and nothing else, and the map is
+// the section most likely to fail on a machine where Docker itself is the problem.
+test('the network map is collected, and a machine that cannot list networks loses only the map', async () => {
+  const core = new DiagnosticsAgentCore(adapter());
+  const collected = await core.collect();
+
+  assert.deepEqual(collected.networks, [{ containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'mos-app-vaultwarden' }]);
+  assert.deepEqual(collected.incomplete, []);
+
+  const broken = new DiagnosticsAgentCore(adapter({ networks: async () => { throw new Error('Cannot connect to the Docker daemon'); } }));
+  const partial = await broken.collect();
+
+  assert.deepEqual(partial.networks, []);
+  assert.deepEqual(partial.incomplete, ['networks']);
+  assert.ok(partial.containers);
+  assert.ok(partial.host.kernel);
+});
 
 test('collect takes no arguments, so no caller can widen what is read', () => {
   // Structural rather than behavioural on purpose. The security argument for a
@@ -201,4 +222,20 @@ test('no section is starved below the point of being worth reading', () => {
   const { containers } = fitLogsToBudget([], many, 1_000);
 
   assert.ok(containers.every((entry) => entry.log.length >= LIMITS.minLogChars));
+});
+
+// An address that answers nothing and an address proxied somewhere wrong look
+// identical from a browser, and the only thing that tells them apart is what
+// the web server was told to serve. Before this it was the one part of the
+// machine a support bundle could not show.
+test('the web server configuration is collected, and a collector that fails says so', async () => {
+  const collected = await new DiagnosticsAgentCore(adapter()).collect();
+  assert.deepEqual(collected.webServer.map((file) => file.path), ['/etc/caddy/Caddyfile']);
+  assert.match(collected.webServer[0].content, /reverse_proxy 127\.0\.0\.1:3100/u);
+
+  const failed = await new DiagnosticsAgentCore(adapter({
+    webServerConfig: async () => { throw new Error('unreadable'); },
+  })).collect();
+  assert.deepEqual(failed.webServer, []);
+  assert.ok(failed.incomplete.includes('web-server'), 'a bundle says what it could not look at');
 });

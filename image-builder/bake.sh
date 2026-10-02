@@ -158,7 +158,9 @@ do_verify() {
   esac
 
   # A copy, grown past the image size, because nobody installs onto a disk exactly
-  # the size of the download — and because that is what exercises mos-grow-root.
+  # the size of the download — and because that is what exercises the first-boot
+  # disk layout: growing the system partition to its cap and giving the rest of
+  # the disk to the encrypted vault.
   local verify_image="$work/verify.img"
   rm -f "$verify_image" "$work/OVMF_VARS_VERIFY.fd"
   cp --sparse=always "$image" "$verify_image"
@@ -171,11 +173,28 @@ do_verify() {
   local home_host
   home_host="$(node -e "process.stdout.write(new URL(require('$seed_dir/bake-summary.json').home).host)")"
 
+  # The verify VM needs a TPM, because a published image now creates an
+  # encrypted vault on its first boot and seals the key to one. Without it the
+  # machine comes up locked, Suite Manager never answers, and the run would fail
+  # for a reason that has nothing to do with the image. With it, the TPM unlock
+  # is exercised on every release instead of being assumed.
+  command -v swtpm >/dev/null 2>&1 || fail 'swtpm is not installed. The verify VM needs a software TPM (apt-get install swtpm).'
+  local tpm_dir="$work/verify-tpm"
+  rm -rf "$tpm_dir"
+  mkdir -p "$tpm_dir"
+  swtpm socket --tpmstate "dir=$tpm_dir" --ctrl "type=unixio,path=$tpm_dir/swtpm-sock" --tpm2 --log level=0 --daemon
+  local tpm_args=(
+    -chardev "socket,id=chrtpm,path=$tpm_dir/swtpm-sock"
+    -tpmdev emulator,id=tpm0,chardev=chrtpm
+    -device tpm-tis,tpmdev=tpm0
+  )
+
   say "Booting the published image on a ${verify_disk_gb} GB disk."
   # shellcheck disable=SC2046
   qemu-system-x86_64 \
     $(kvm_args) \
     "${secure_args[@]}" \
+    "${tpm_args[@]}" \
     -smp 2 -m 4096 \
     -drive "if=pflash,format=raw,unit=0,readonly=on,file=${ovmf[0]}" \
     -drive "if=pflash,format=raw,unit=1,file=$work/OVMF_VARS_VERIFY.fd" \

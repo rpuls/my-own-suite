@@ -14,7 +14,10 @@ class HttpsAgentError extends Error {
 }
 
 class HttpsAgentClient {
-  constructor({ socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock', timeoutMs = 120000 } = {}) {
+  // Long enough for the agent to restart Caddy and wait for the certificate to
+  // be issued, which is part of an apply now rather than something that happens
+  // after success has been reported.
+  constructor({ socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock', timeoutMs = 300000 } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }
@@ -57,6 +60,7 @@ class HttpsAgentClient {
   apply(input) { return this.request('POST', '/v1/https/apply', input); }
   commit(rollbackId) { return this.request('POST', '/v1/https/commit', { rollbackId }); }
   rollback(rollbackId) { return this.request('POST', '/v1/https/rollback', { rollbackId }); }
+  discardParkedCredential() { return this.request('POST', '/v1/https/discard-parked'); }
 }
 
 module.exports = { HttpsAgentClient, HttpsAgentError };

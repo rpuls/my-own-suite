@@ -4,12 +4,11 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const { ConsoleLoginError, ConsoleLoginService } = require('../src/settings/console-login-service.cjs');
 const {
-  ACKNOWLEDGED_FILE,
-  ConsoleLoginError,
-  ConsoleLoginService,
-  HANDOVER_FILE,
-} = require('../src/settings/console-login-service.cjs');
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE: ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE: HANDOVER_FILE,
+} = require('../../../shared/console-login-contract.cjs');
 
 function freshStateDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'mos-console-login-'));
@@ -22,7 +21,7 @@ function withHandover(stateDir, handover = { password: 'abcde-fghij-klmno', user
 
 test('an install with no generated console login reports nothing pending', () => {
   const service = new ConsoleLoginService({ stateDir: freshStateDir() });
-  assert.deepEqual(service.status(), { acknowledged: false, pending: false, unreadable: false, username: '' });
+  assert.deepEqual(service.status(), { pending: false, unreadable: false });
   assert.throws(() => service.reveal(), (error) => error instanceof ConsoleLoginError && error.code === 'CONSOLE_LOGIN_NOT_PENDING');
 });
 
@@ -44,21 +43,21 @@ test('a handover it cannot read is reported as a fault, not as nothing pending',
   if (status.pending) {
     assert.equal(status.unreadable, false);
   } else {
-    assert.deepEqual(status, { acknowledged: false, pending: false, unreadable: true, username: '' });
+    assert.deepEqual(status, { pending: false, unreadable: true });
   }
 
   fs.chmodSync(handoverPath, 0o600);
 });
 
-test('status names the account but never carries the password', () => {
+test('status says a login is waiting but never carries it', () => {
   const stateDir = freshStateDir();
   withHandover(stateDir);
   const status = new ConsoleLoginService({ stateDir }).status();
 
-  assert.deepEqual(status, { acknowledged: false, pending: true, unreadable: false, username: 'mos' });
-  // The dashboard reads this on every load; the password must only ever travel
-  // in the response to an explicit reveal.
-  assert.doesNotMatch(JSON.stringify(status), /abcde-fghij-klmno/u);
+  assert.deepEqual(status, { pending: true, unreadable: false });
+  // The setup status reads this on every load; the password must only ever
+  // travel in the response to an explicit reveal.
+  assert.doesNotMatch(JSON.stringify(status), /abcde-fghij-klmno|mos/u);
 });
 
 test('reveal returns the password the machine generated', () => {
@@ -76,7 +75,7 @@ test('acknowledging destroys the password and leaves the sentinel the installer 
   assert.equal(fs.existsSync(path.join(stateDir, HANDOVER_FILE)), false);
   // The installer's path unit fires on this file and clears the console banner.
   assert.equal(fs.existsSync(path.join(stateDir, ACKNOWLEDGED_FILE)), true);
-  assert.deepEqual(service.status(), { acknowledged: true, pending: false, unreadable: false, username: '' });
+  assert.deepEqual(service.status(), { pending: false, unreadable: false });
   assert.throws(() => service.reveal(), (error) => error.code === 'CONSOLE_LOGIN_NOT_PENDING');
 });
 
