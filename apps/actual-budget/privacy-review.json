@@ -4,8 +4,8 @@
   "reviewedAt": "2026-08-12T00:00:00.000Z",
   "expiresAt": "2027-02-12T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.1.1",
-    "packageDigest": "sha256:81ea284fb1d0d6edcbada395f9a3c18e7553d1142f1cac3fe546d7ee329d4e53",
+    "packageVersion": "0.2.0",
+    "packageDigest": "sha256:67949ec46b3109bb013d8e0d3c4c9fa177e4572a903b9dce4ddfb28fa9b4196b",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",

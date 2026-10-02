@@ -234,7 +234,7 @@ Description=MOS encrypted vault
 DefaultDependencies=no
 Requires=local-fs.target
 After=local-fs.target systemd-udevd.service mos-self-install.service
-Before=basic.target docker.service docker.socket shutdown.target
+Before=basic.target containerd.service docker.service docker.socket shutdown.target
 Conflicts=shutdown.target
 
 [Service]
@@ -501,8 +501,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   // Docker's units are not MOS-owned, so its gate is a drop-in. The socket is
   // gated as well as the service: it is socket-activated, so anything touching
   // /var/run/docker.sock would otherwise start a dockerd whose /var/lib/docker
-  // is the empty directory the vault mounts over.
-  for (const dropIn of ['docker.service.d', 'docker.socket.d']) {
+  // is the empty directory the vault mounts over. containerd holds the image
+  // store and container layers in /var/lib/containerd, gated the same way.
+  for (const dropIn of ['containerd.service.d', 'docker.service.d', 'docker.socket.d']) {
     installDir(`/etc/systemd/system/${dropIn}`, 0o755);
     writeFile(`/etc/systemd/system/${dropIn}/mos-vault.conf`, `[Unit]\n${vaultRequirement()}`, 0o644);
   }

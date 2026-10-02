@@ -117,11 +117,12 @@ test('first boot claims the disk, encrypts the vault and moves owner data into i
   assert.equal(named(fake.calls, 'luksFormat')[0][1].key, KEY, 'the vault is formatted with the recovery key');
 
   const moved = named(fake.calls, 'moveIntoVault').map((call) => call[1].source);
-  assert.deepEqual(moved, ['/var/lib/docker', '/var/lib/mos', '/etc/mos/secrets']);
+  assert.deepEqual(moved, ['/var/lib/docker', '/var/lib/containerd', '/var/lib/mos', '/etc/mos/secrets']);
 
   const bound = named(fake.calls, 'bind').map((call) => call[1]);
   assert.deepEqual(bound, [
     { source: '/var/lib/mos-vault/docker', target: '/var/lib/docker' },
+    { source: '/var/lib/mos-vault/containerd', target: '/var/lib/containerd' },
     { source: '/var/lib/mos-vault/mos', target: '/var/lib/mos' },
     { source: '/var/lib/mos-vault/secrets', target: '/etc/mos/secrets' },
   ]);
@@ -376,7 +377,7 @@ test('status reports what is protected, and whether the machine can open itself'
 
   assert.equal(status.state, STATES.UNLOCKED);
   assert.equal(status.unlocksItself, true);
-  assert.deepEqual(status.protects, ['/var/lib/docker', '/var/lib/mos', '/etc/mos/secrets']);
+  assert.deepEqual(status.protects, ['/var/lib/docker', '/var/lib/containerd', '/var/lib/mos', '/etc/mos/secrets']);
 });
 
 test('status on a machine that has never been laid out is absent, not locked', async () => {

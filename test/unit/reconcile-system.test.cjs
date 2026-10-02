@@ -196,7 +196,7 @@ test('reconciliation gives an existing machine the vault gate the new Caddy rout
   assert.match(gate, /RemainAfterExit=yes/u);
   // Ahead of dockerd and its socket, which is what stops a socket-activated
   // daemon from starting against the directory the vault mounts over.
-  assert.match(gate, /Before=basic\.target docker\.service docker\.socket/u);
+  assert.match(gate, /Before=basic\.target containerd\.service docker\.service docker\.socket/u);
   // Never before the installer: mos-self-install copies this filesystem onto
   // the internal disk, so anything written ahead of it travels in that copy.
   assert.match(gate, /After=.*mos-self-install\.service/u);

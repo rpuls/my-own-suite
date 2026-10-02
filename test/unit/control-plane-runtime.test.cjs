@@ -109,6 +109,13 @@ test('Homepage runtime is pinned and reachable only through loopback', () => {
   assert.doesNotMatch(unit, /0\.0\.0\.0:3200|--network host/);
 });
 
+test('every Homepage start re-renders its root page from the MOS config', () => {
+  const unit = renderHomepageSystemdUnit({ homepagePort: '3200' });
+
+  assert.match(unit, /^ExecStartPost=.*-H "Host: localhost:3000" http:\/\/127\.0\.0\.1:3200\/api\/revalidate/mu);
+  assert.match(unit, /\$\$\(seq 1 60\)/u);
+});
+
 test('Homepage runtime can render concrete update reconciliation paths', () => {
   const unit = renderHomepageSystemdUnit({
     homeHost: 'home.mos.home',

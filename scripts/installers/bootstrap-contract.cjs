@@ -344,7 +344,7 @@ Description=MOS encrypted vault
 DefaultDependencies=no
 Requires=local-fs.target
 After=local-fs.target systemd-udevd.service mos-self-install.service
-Before=basic.target docker.service docker.socket shutdown.target
+Before=basic.target containerd.service docker.service docker.socket shutdown.target
 Conflicts=shutdown.target
 
 [Service]
@@ -393,8 +393,14 @@ MOS_VAULT_AGENT_UNIT
 # Docker's own units, which MOS does not own, reached through drop-ins. The
 # socket is gated as well as the service: it is socket-activated, so anything
 # touching /var/run/docker.sock would otherwise start a dockerd whose
-# /var/lib/docker is the empty directory the vault mounts over.
-install -d -m 0755 /etc/systemd/system/docker.service.d /etc/systemd/system/docker.socket.d
+# /var/lib/docker is the empty directory the vault mounts over. containerd holds
+# the image store and container layers in /var/lib/containerd, gated the same way.
+install -d -m 0755 /etc/systemd/system/containerd.service.d /etc/systemd/system/docker.service.d /etc/systemd/system/docker.socket.d
+cat > /etc/systemd/system/containerd.service.d/mos-vault.conf <<'MOS_CONTAINERD_VAULT'
+[Unit]
+Requires=mos-vault.service
+After=mos-vault.service
+MOS_CONTAINERD_VAULT
 cat > /etc/systemd/system/docker.service.d/mos-vault.conf <<'MOS_DOCKER_VAULT'
 [Unit]
 Requires=mos-vault.service

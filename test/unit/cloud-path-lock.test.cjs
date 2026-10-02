@@ -81,6 +81,11 @@
 // install's own boot and nothing after it. Unit directives and one removed block
 // of `install -d`, in all five renderings; the thirteen `echo` lines were
 // compared before and after and not one changed.
+//
+// Moved 2026-10-02, all five: the vault gate also orders and gates containerd,
+// whose /var/lib/containerd holds Docker 29's image store and container layers,
+// and the Homepage unit re-renders its root page after every start. A drop-in
+// and two unit lines; no `echo` line was added or changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -94,25 +99,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '18c78355052ac018942b659a73458dfc3cf61263115df2514d1efad834877bcb',
+    digest: 'f9a6c02861c1b1ffec7d1ec38234a7c620118c847ca85a9e3f184d07c6af46ba',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '32669b888e28f244480baff1c41d4e4f2fd39647ba3982b3db7657e961d823bf',
+    digest: '055015ae6426cca4d0b28c598500999666f4dcc9425258eddbbd4c409a45c9d6',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '055d263bd69b609dce26e193da83e079cf20a14b07861b7338bf71ec396e121c',
+    digest: '0137adaae03296da053cc7e4fd8a2de663b086fa1e68dc5d55552bc0a25a294a',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'd50e6fe26caadb74bcb71f72459934292b5babf57807cd6a4d3d7a968433a2ab',
+    digest: 'b1c9b778557d3acffc842d124aff5216aac689c93b1d2a7a43ec6c8aaf987aaa',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -122,7 +127,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'de773dca99c02b2e4c211b5def6a6b84b4dca399f77fed4c2ab0af3b5c538e92',
+    digest: '924f701b177f4e710d2d3953d179228edc28a9929c6220c142523e59f474d5a4',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

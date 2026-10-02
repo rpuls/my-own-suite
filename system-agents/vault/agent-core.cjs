@@ -57,6 +57,8 @@ const FILESYSTEM_LABEL = 'mos-vault';
 // keeps using and must never learn to stop using.
 const PROTECTED_PATHS = [
   { mode: 0o710, name: 'docker', source: 'docker', target: '/var/lib/docker' },
+  // Docker 29's image store: images and every container's writable layer.
+  { mode: 0o700, name: 'containerd', source: 'containerd', target: '/var/lib/containerd' },
   { mode: 0o755, name: 'state', source: 'mos', target: '/var/lib/mos' },
   { mode: 0o750, name: 'secrets', source: 'secrets', target: '/etc/mos/secrets' },
 ];

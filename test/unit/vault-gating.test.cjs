@@ -166,13 +166,13 @@ test('every agent unit declares the runtime directory its socket lives in', () =
 // matters as much as the service: it is socket-activated, so anything touching
 // /var/run/docker.sock would otherwise start a dockerd whose /var/lib/docker is
 // the empty directory the vault mounts over.
-test('dockerd and its socket wait for the gate on every path', () => {
+test('containerd, dockerd and its socket wait for the gate on every path', () => {
   const { dropIns } = bootstrapUnits();
-  for (const dropIn of ['docker.service.d', 'docker.socket.d']) {
+  for (const dropIn of ['containerd.service.d', 'docker.service.d', 'docker.socket.d']) {
     assert.match(dropIns[`/etc/systemd/system/${dropIn}/mos-vault.conf`] || '', GATED, `the installer does not gate ${dropIn}`);
   }
   const reconciler = reconcilerSource();
-  assert.match(reconciler, /for \(const dropIn of \['docker\.service\.d', 'docker\.socket\.d'\]\) \{\n\s+installDir\([^\n]+\n\s+writeFile\([^\n]*vaultRequirement\(\)/u);
+  assert.match(reconciler, /for \(const dropIn of \['containerd\.service\.d', 'docker\.service\.d', 'docker\.socket\.d'\]\) \{\n\s+installDir\([^\n]+\n\s+writeFile\([^\n]*vaultRequirement\(\)/u);
 });
 
 // Whether a machine has a vault is never a reason to leave the requirement out:
