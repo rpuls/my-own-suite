@@ -536,6 +536,7 @@ MaxRetentionSec=1month
 
 // Upstream serves "/" as rendered inside its own image build, against the stock
 // config, until something revalidates it; every start re-renders it from ours.
+// No "$" in this unit: the bootstrap writes it through an unquoted heredoc.
 function renderHomepageSystemdUnit({
   homeHost = '$MOS_HOME_HOST',
   homepagePort = HOMEPAGE_PORT,
@@ -553,7 +554,7 @@ Restart=always
 RestartSec=3
 ExecStartPre=-/usr/bin/docker rm -f mos-homepage
 ExecStart=/usr/bin/docker run --rm --name mos-homepage --publish 127.0.0.1:${homepagePort}:3000 --env HOMEPAGE_ALLOWED_HOSTS=${homeHost} --volume ${stateRoot}/homepage/config:/app/config --volume ${stateRoot}/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
-ExecStartPost=/bin/sh -c 'for i in $$(seq 1 60); do curl -fsS -m 5 -o /dev/null -H "Host: localhost:3000" http://127.0.0.1:${homepagePort}/api/revalidate && exit 0; sleep 1; done; exit 0'
+ExecStartPost=-/usr/bin/timeout 60 /bin/sh -c 'until curl -fsS -m 5 -o /dev/null -H "Host: localhost:3000" http://127.0.0.1:${homepagePort}/api/revalidate; do sleep 1; done'
 ExecStop=/usr/bin/docker stop -t 10 mos-homepage
 
 [Install]

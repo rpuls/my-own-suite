@@ -112,8 +112,13 @@ test('Homepage runtime is pinned and reachable only through loopback', () => {
 test('every Homepage start re-renders its root page from the MOS config', () => {
   const unit = renderHomepageSystemdUnit({ homepagePort: '3200' });
 
-  assert.match(unit, /^ExecStartPost=.*-H "Host: localhost:3000" http:\/\/127\.0\.0\.1:3200\/api\/revalidate/mu);
-  assert.match(unit, /\$\$\(seq 1 60\)/u);
+  assert.match(unit, /^ExecStartPost=-\/usr\/bin\/timeout 60 .*-H "Host: localhost:3000" http:\/\/127\.0\.0\.1:3200\/api\/revalidate/mu);
+});
+
+test('the Homepage unit survives the unquoted heredoc the bootstrap writes it through', () => {
+  const unit = renderHomepageSystemdUnit({ homeHost: 'home.mos.home', homepagePort: '3200', stateRoot: '/var/lib/mos' });
+
+  assert.doesNotMatch(unit, /[$`\\]/u);
 });
 
 test('Homepage runtime can render concrete update reconciliation paths', () => {

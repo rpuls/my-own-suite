@@ -99,25 +99,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'f9a6c02861c1b1ffec7d1ec38234a7c620118c847ca85a9e3f184d07c6af46ba',
+    digest: '4a878f7dd76c791a49ca7ff6e39b40c13e91d7391c0291f22bc4b871c36ec5ed',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '055015ae6426cca4d0b28c598500999666f4dcc9425258eddbbd4c409a45c9d6',
+    digest: 'c7c41850f2849e1f0d43b382a92a3eed624d34b708ea3115431451f2b11ed7a0',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '0137adaae03296da053cc7e4fd8a2de663b086fa1e68dc5d55552bc0a25a294a',
+    digest: 'fc3ba53bafa7cc47c57f861b9373cf4dab4c8aed982bbc51389675d8917d9bc7',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'b1c9b778557d3acffc842d124aff5216aac689c93b1d2a7a43ec6c8aaf987aaa',
+    digest: '80b4174cc660e3966e468abb095c615488f3fe78032d2484f2e2fef05c2d65de',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -127,7 +127,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '924f701b177f4e710d2d3953d179228edc28a9929c6220c142523e59f474d5a4',
+    digest: '36f80d305ba483825d97d932a8d3b24255a27df50fe5faa1614c7a3c1633bff0',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

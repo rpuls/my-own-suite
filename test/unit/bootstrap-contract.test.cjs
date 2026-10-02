@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -292,4 +294,14 @@ test('DigitalOcean smoke builds the owner setup URL without persisting token sta
 
 test('DigitalOcean public installer cloud-init rejects non-HTTPS endpoints', () => {
   assert.throws(() => renderPublicInstallerCloudInit('http://example.test/install.sh'), /must use HTTPS/);
+});
+
+test('the image bake refuses a machine whose bootstrap stopped before its last line', () => {
+  const { shell } = renderBootstrapPlan({});
+  const finalize = fs.readFileSync(path.resolve(__dirname, '..', '..', 'image-builder', 'payload', 'mos-image-finalize'), 'utf8');
+  const marker = "MOS_BOOTSTRAP_STATUS='ready-for-owner-setup'";
+
+  assert.ok(shell.includes(marker));
+  assert.ok(finalize.includes(`grep -qx "${marker}"`));
+  assert.ok(finalize.indexOf(marker) < finalize.indexOf("stage 'Installing the tools"));
 });

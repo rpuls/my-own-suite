@@ -35,6 +35,10 @@ stage() { current_stage="$1"; log "$1"; }
 
 export DEBIAN_FRONTEND=noninteractive
 
+stage 'Checking the control plane finished installing'
+# cloud-init carries on past a failed runcmd, so an aborted bootstrap still reaches here.
+grep -qx "MOS_BOOTSTRAP_STATUS='ready-for-owner-setup'" "$(dirname "$state_dir")/bootstrap-contract.env"
+
 stage 'Installing the tools the first-boot units need'
 apt-get update
 apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted efibootmgr dosfstools
