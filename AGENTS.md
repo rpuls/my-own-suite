@@ -46,7 +46,12 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - If repo-owned host agents need new capabilities, update/restart them as part of the same managed update instead of adding UI around the partially applied state.
    - Treat a partially applied managed update as a regression to fix at the update mechanism level.
    - Installed app runtimes are intentionally outside a platform update's scope: each app runs from the package snapshot it was installed with, and app changes apply only through the per-app update transaction. A platform update must not silently rebuild installed apps, and must not claim to have updated them.
-8. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
+8. **Booting the MOS USB stick always reaches the installer, and the installer never exits.**
+   - This holds on every machine, including one already running MOS or Ubuntu: reinstalling and starting over are first-class.
+   - The stick must never run MOS from itself, never exit gracefully, and never fall through to an existing install on another disk. If anything does not go to plan, it stops with the reason on screen and restarts into the installer.
+   - This covers the whole boot chain, not just `image-builder/payload/mos-self-install`: firmware loader, shim, GRUB and the systemd unit. On 2026-10-03, shim's fallback (`EFI/BOOT/fbx64.efi`) restarted a stick into an existing "Ubuntu" boot entry, so the installer never ran.
+   - `test/unit/usb-installer-never-exits.test.cjs` and `image-builder/check-image-payload.sh` guard this. Never weaken them; a gap here is release-blocking.
+9. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
    - `npm test`, the CI workflow, the release gate and the pre-push hook all run that one file. A check that exists in one of them and not the others is the drift that lets a release tag fail on something no push was ever tested against.
    - Add a check by adding an entry to the `CHECKS` table, not by adding a `run:` step to `.github/workflows/ci.yml`. Workflow steps are for setup (checkout, Node, caches) and for reporters that never gate.
    - Pick the lane by what the check needs: `workspace` for anything that runs against a root `npm ci`, `site` for anything that needs the built site. The pre-push hook runs the `workspace` lane, so keep it around a minute.

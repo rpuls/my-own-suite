@@ -66,6 +66,10 @@ if [ -d "$esp/EFI/ubuntu" ]; then
     install -D -m 0644 "$esp/EFI/ubuntu/shimx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
   fi
 fi
+# With fbx64.efi beside it, shim boots none of this: it registers an "Ubuntu"
+# entry and restarts into it, which on a machine already running Ubuntu is the old
+# install, so the stick never reached the installer. The stick must boot itself.
+rm -f "$esp/EFI/BOOT/fbx64.efi"
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/' /etc/default/grub
 sed -i 's/\bconsole=ttyS0[^ "]*//g' /etc/default/grub
 # The console is the only screen this machine has, and the banner mos-first-boot

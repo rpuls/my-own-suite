@@ -2,6 +2,8 @@
 # Runs on every boot, very early. Does nothing unless this machine booted from
 # removable media, in which case the stick is the installer: it copies itself to
 # an internal disk and reboots into it.
+# NEVER let a stick boot exit gracefully, run MOS from the stick, or fall through
+# to an existing install. It installs or it stops on screen and restarts. See AGENTS.md.
 set -euo pipefail
 
 # The copy gives the disk the stick's own filesystem UUIDs, so for a moment two
@@ -50,6 +52,14 @@ restore_after_copy() {
   fi
 }
 
+# The installer never exits. A stick that returned here would let the boot carry
+# on and run MOS from the stick, so a restart that fails holds the machine instead.
+restart_machine() {
+  sync
+  reboot -f || true
+  while :; do sleep 3600; done
+}
+
 # The stick installs or it stops: every way out that is not a finished install
 # leaves its reason on the screen until someone has read it, then restarts.
 # Nothing ever runs from the stick.
@@ -59,8 +69,7 @@ stop_here() {
   fsfreeze -u / 2>/dev/null || true
   restore_after_copy
   release_udev
-  sync
-  reboot -f
+  restart_machine
 }
 
 # A step without a message of its own would otherwise end the script silently.
@@ -80,11 +89,13 @@ stage() {
 image_id_file=/boot/efi/mos-image.json
 
 root_source="$(findmnt -no SOURCE / || true)"
-[ -n "$root_source" ] || exit 0
+[ -n "$root_source" ] || stop_here 'This machine could not tell which disk it started from, so nothing was installed.'
 root_parent="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
-[ -n "$root_parent" ] || exit 0
+[ -n "$root_parent" ] || stop_here "This machine could not tell which disk holds ${root_source}, so nothing was installed."
 root_disk="/dev/$root_parent"
 
+# The only way this script ends without a restart: the machine started from its
+# own internal disk, which is an installed MOS rather than the installer.
 transport="$(lsblk -dno TRAN "$root_disk" 2>/dev/null | tr -d ' ' || true)"
 removable="$(cat "/sys/block/$root_parent/removable" 2>/dev/null || echo 0)"
 if [ "$transport" != "usb" ] && [ "$removable" != "1" ]; then
@@ -444,5 +455,4 @@ printf '  Press Enter to restart. Remove the USB stick as soon as the screen goe
 printf '  dark; the machine then starts from its own disk.\n'
 printf '  > '
 read -r _ || true
-sync
-reboot -f
+restart_machine

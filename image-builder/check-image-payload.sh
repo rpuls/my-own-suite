@@ -50,6 +50,12 @@ else
   fail 'no installer on the image'
 fi
 
+if mdir -i "${image}@@${esp_offset}" ::/EFI/BOOT/fbx64.efi >/dev/null 2>&1; then
+  fail 'the stick carries shim fallback (EFI/BOOT/fbx64.efi), which boots an existing Ubuntu instead of the installer'
+else
+  pass 'the stick boots itself, with no shim fallback to hand off to another disk'
+fi
+
 keys="$(find /mnt/root/home /mnt/root/root -name authorized_keys -size +0 2>/dev/null || true)"
 if [ "$profile" = 'lab' ]; then
   if [ -n "$keys" ]; then
