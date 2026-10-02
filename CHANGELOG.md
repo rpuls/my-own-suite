@@ -4,6 +4,15 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+**Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:
+- We wrote this release's image to a USB stick and installed it onto a bare mini PC.
+- On that machine we restored a production server running 0.20.0 from its offsite bucket backup.
+- We served its domain from the new machine in one click, using the credential the backup kept. No token was needed.
+
+Every app came back with its data. The restored suite runs on an encrypted disk, though the server it came from never had one. So an unencrypted server can move onto encryption the same way: take a fresh backup, reinstall from this image, restore.
+
+This release marks a huge milestone for MOS maturity and robustness! 🎉
+
 ### Added
 
 - **A repository can now publish a whole catalog of apps, not just one.** Paste a GitHub repository into the Apps search and MOS lists every app it publishes — one app with its `manifest.json` at the root of `.mos/`, or many, one folder per app inside it. **Add this source** keeps it, so its apps sit alongside the MOS catalog and you install from them whenever you like; **Settings → App sources you added** lists what you have added, refreshes one on demand, and removes one. Removing a source keeps everything installed from it running with its data and settings, and only stops offering it updates. This makes room for the small services that will never merit official review — someone's curated community collection, or a catalog you keep for yourself — and MOS reviews none of it: they stay labelled unverified everywhere and never carry a privacy grade — not a pending one, because none is coming. Their privacy card says **Not assessed by MOS**, never repeats what the package claims about its own privacy, and instead lists what MOS enforces around it regardless: its own storage, its own addresses, no privileged access. They keep the same restricted runtime profile, and installing one builds its Dockerfiles on your server. MOS remembers what each source publishes instead of asking on every visit, so the Apps page never waits on GitHub and your sources keep working offline; it checks for a new commit every few hours at most, asks a source that stops answering less and less often, and says on the source's row when GitHub will no longer show it. An app installed from one of your sources shows **Update available** as soon as that remembered list holds a newer version, with the version, the commit and when MOS last looked; **Refresh now** says which of three things happened — the source moved and its apps were re-read, it was already current, or it could not be reached and why.
