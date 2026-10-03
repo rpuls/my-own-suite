@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-02
+
 **Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:
 - We wrote this release's image to a USB stick and installed it onto a bare mini PC.
 - On that machine we restored a production server running 0.20.0 from its offsite bucket backup.
