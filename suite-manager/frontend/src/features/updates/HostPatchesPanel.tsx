@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Dialog, Panel, PanelBand, PanelBody, PanelHead, Row, RowValue, Rows, Spinner } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, Panel, PanelBand, PanelBody, Row, RowValue, Rows, Spinner } from '../../components/ui';
 
 export type HostHealth = {
   at: string | null;
@@ -40,6 +40,12 @@ function installedLabel(host: HostPatches, formatDate: (value: string | null) =>
   if (!host.lastInstallAt) return 'Nothing yet';
   const packages = host.lastInstalledPackages.length;
   return `${formatDate(host.lastInstallAt)} — ${packages === 1 ? '1 package' : `${packages} packages`}`;
+}
+
+function headline(host: HostPatches) {
+  if (!host.available) return 'Ubuntu patch state unknown';
+  if (host.securityCount === 0) return 'Ubuntu is up to date';
+  return host.securityCount === 1 ? '1 Ubuntu security update waiting' : `${host.securityCount} Ubuntu security updates waiting`;
 }
 
 // A restart is the one thing on this screen that interrupts everyone using the
@@ -85,6 +91,8 @@ export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRe
   // The same panel is a diagnostic on a server that is not taking patches and
   // ambient detail on one that is, which is why the reveal is computed.
   const troubled = !host.available || host.managedBy === 'none' || host.health?.ok === false;
+  // A server that is not taking patches opens on the evidence.
+  const [open, setOpen] = useState(troubled);
   const facts = [
     { label: 'Security updates waiting', value: waitingLabel(host) },
     { label: 'Other updates available', value: String(host.otherCount) },
@@ -96,9 +104,18 @@ export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRe
 
   return <>
     <Panel>
-      <PanelHead title="Operating system">
-        <p className="suite-meta">{host.summary}</p>
-      </PanelHead>
+      <PanelBody>
+        <div className="suite-updates-hero">
+          <span className="suite-updates-hero-icon is-neutral"><Icon name="shield" /></span>
+          <div>
+            <h2>{headline(host)}</h2>
+            <p className="suite-meta">{host.summary}{host.available && host.lastRunAt ? ` Checked ${formatDate(host.lastRunAt)}.` : ''}</p>
+          </div>
+          <button aria-expanded={open} className="mos-btn mos-btn-ghost" onClick={() => setOpen((current) => !current)} type="button">
+            Details<span className={`suite-updates-chevron${open ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
+          </button>
+        </div>
+      </PanelBody>
 
       {host.rebootRequired ? <PanelBand
         icon="update"
@@ -135,7 +152,7 @@ export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRe
         tone="warning"
       /> : null}
 
-      <PanelBody>
+      {open ? <PanelBody>
         <Rows lead>
           <Row help="Ubuntu's own security fixes, installed on their own. MOS never moves you to a new Ubuntu release, and Docker and Caddy do not come from this channel." label="Waiting to install">
             <RowValue>{waitingLabel(host)}</RowValue>
@@ -157,8 +174,8 @@ export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRe
             summary="Ubuntu patch details"
           />
         </Rows>
-        {restarting ? <p className="suite-meta"><Spinner />Restarting. This page stops responding for a few minutes and comes back on its own.</p> : null}
-      </PanelBody>
+      </PanelBody> : null}
+      {restarting ? <PanelBody><p className="suite-meta"><Spinner />Restarting. This page stops responding for a few minutes and comes back on its own.</p></PanelBody> : null}
     </Panel>
 
     {asking ? <RestartDialog

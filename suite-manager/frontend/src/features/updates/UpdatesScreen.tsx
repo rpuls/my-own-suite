@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
 import { Markdown } from '../../components/Markdown';
-import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
+import { AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner, Stepper } from '../../components/ui';
+import type { IconName } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse } from '../../lib/api';
 import { readVaultView, startupOf } from '../../lib/vault';
@@ -45,39 +46,22 @@ type UpdateStatus = {
   updateAvailable: boolean | null;
 };
 
-
 function formatDate(value: string | null) {
   if (!value) return 'Not available';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
-function shortCommit(value: string | null) {
-  return value ? value.slice(0, 12) : 'Unknown';
-}
-
-function targetLabel(status: UpdateStatus) {
-  if (status.updateAvailable === null) return 'Not checked';
-  return status.track.type === 'branch' ? shortCommit(status.latestRevision) : status.latestRelease.version || 'Unknown';
-}
-
-function updateButtonLabel(status: UpdateStatus, updating: boolean) {
-  if (updating) return 'Updating...';
-  if (status.updateAvailable === null) return 'Could not check';
-  return status.updateAvailable ? 'Update now' : 'Already up to date';
-}
-
-function currentLabel(status: UpdateStatus) {
-  if (status.track.type === 'stable' && status.installedVersion) return status.installedVersion;
-  return shortCommit(status.track.currentCommit);
+function shortCommit(value: string | null, length = 12) {
+  return value ? value.slice(0, length) : 'Unknown';
 }
 
 function isRunning(job: UpdateJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
-// The two stages before anything is fetched read as agent internals otherwise,
-// and they are the ones an owner is most likely to be watching.
+const BACKUP_STAGES = new Set(['taking-checkpoint', 'waiting-for-backup-destination']);
+
 const STAGE_LABELS: Record<string, string> = {
   'taking-checkpoint': 'Taking a backup before updating...',
   'waiting-for-backup-destination': 'Waiting to take a backup before updating...',
@@ -87,7 +71,15 @@ function stageLabel(stage: string | null) {
   return (stage && STAGE_LABELS[stage]) || stage;
 }
 
-// What the checkpoint did, once it is done.
+// The agent's stages, folded into the four an owner can follow.
+const PROGRESS_STEPS = ['Backup', 'Download', 'Build', 'Restart'];
+const STAGE_STEP: Record<string, number> = {
+  'updating-checkout': 1,
+  'installing-dependencies': 2,
+  'building-frontend': 2,
+  'reconciling-system': 3,
+};
+
 function checkpointNote(job: UpdateJob | null) {
   const checkpoint = job?.checkpoint;
   if (checkpoint?.status === 'skipped') return 'No backup was taken before this update.';
@@ -97,12 +89,15 @@ function checkpointNote(job: UpdateJob | null) {
     : 'A backup was taken before this update and is listed on the Backups screen.';
 }
 
-// The tail of the update log, and on a failed job the last lines the failing
-// step wrote. It is a `reveal` computed per render for the reason the prop is a
-// runtime value at all: the same panel is a diagnostic on a failed job and
-// ambient detail on a job that worked. The rendered content and the copied
-// text come from the same values, so a bug report cannot quote something the
-// screen never showed.
+function jobOutcome(job: UpdateJob) {
+  if (job.status === 'failed') return 'The last update failed.';
+  if (job.status === 'cancelled') return 'The last update was cancelled.';
+  if (job.status === 'succeeded') return 'The last update finished.';
+  return stageLabel(job.stage) || 'Update activity received.';
+}
+
+// The same panel is a diagnostic on a failed job and ambient detail on one that
+// worked, which is why `reveal` is computed.
 function UpdateJobLog({ job }: { job: UpdateJob }) {
   const entries = (job.logs || []).slice(-12);
   const output = job.status === 'failed' && job.output ? job.output : '';
@@ -112,6 +107,7 @@ function UpdateJobLog({ job }: { job: UpdateJob }) {
     copyText={() => [steps, output].filter(Boolean).join('\n\n')}
     output={output || undefined}
     reveal={job.status === 'failed' ? 'on-failure' : 'technical-mode'}
+    summary="Update log"
   >
     {entries.length ? <ol className="suite-updates-log">
       {entries.map((entry, index) => <li key={`${entry.at || 'log'}-${index}`}><span>{formatDate(entry.at || null)}</span><code>{entry.message || 'No message'}</code></li>)}
@@ -121,9 +117,113 @@ function UpdateJobLog({ job }: { job: UpdateJob }) {
 
 type TrackChoice = 'stable' | 'main' | 'staging';
 
+const TRACKS: Array<{ help: string; id: TrackChoice; name: string }> = [
+  { help: 'Official tagged releases. Recommended.', id: 'stable', name: 'Stable releases' },
+  { help: 'Reviewed changes, ahead of the next release.', id: 'main', name: 'Main branch' },
+  { help: 'Changes as they land, for early testing.', id: 'staging', name: 'Staging branch' },
+];
+
 function selectedTrack(status: UpdateStatus): TrackChoice {
   if (status.track.type === 'stable') return 'stable';
   return status.track.ref === 'staging' ? 'staging' : 'main';
+}
+
+function asTrackChoice(value: string): TrackChoice {
+  return value === 'stable' || value === 'staging' ? value : 'main';
+}
+
+type Summary = { icon: IconName; meta: string; title: string };
+
+function summarize(status: UpdateStatus, updating: boolean): Summary {
+  const checked = `Checked ${formatDate(status.checkedAt)}`;
+  const branch = status.track.type === 'branch';
+  const version = status.latestRelease.version;
+  const target = branch ? `the newest ${status.track.ref || 'branch'} commit` : `MOS ${version || 'the latest release'}`;
+  if (updating) return { icon: 'refresh', meta: 'Suite Manager may disconnect while MOS restarts. You can leave this page.', title: `Updating to ${target}` };
+  if (!status.serviceAvailable) return { icon: 'update', meta: 'The update agent is not reachable from Suite Manager.', title: 'Updates are unavailable' };
+  if (status.updateAvailable === null) return { icon: 'update', meta: checked, title: 'Could not check for updates' };
+  if (status.updateAvailable) {
+    return branch
+      ? { icon: 'download', meta: `Newest commit on ${status.track.ref || 'the branch'} · ${checked}`, title: 'A newer commit is available' }
+      : { icon: 'download', meta: `Stable release · ${checked}`, title: `MOS ${version || 'update'} is available` };
+  }
+  return branch
+    ? { icon: 'check', meta: `You have the newest commit on ${status.track.ref || 'the branch'} · ${checked}`, title: "You're up to date" }
+    : { icon: 'check', meta: `${status.installedVersion ? `MOS ${status.installedVersion}` : 'This'} is the latest stable release · ${checked}`, title: "You're up to date" };
+}
+
+type Fact = { code?: boolean; label: string; sub?: string; value: string };
+
+function factsOf(status: UpdateStatus, updating: boolean): Fact[] {
+  const branch = status.track.type === 'branch';
+  const available = status.updateAvailable === null ? 'Not checked' : !status.updateAvailable ? '—' : null;
+  return [
+    { label: 'Track', value: status.track.label || 'Unknown' },
+    branch
+      ? { code: true, label: 'Installed', sub: status.installedVersion || undefined, value: shortCommit(status.track.currentCommit, 7) }
+      : { label: 'Installed', value: status.installedVersion || shortCommit(status.track.currentCommit, 7) },
+    branch
+      ? { code: !available, label: 'Available', sub: available ? undefined : 'Unreleased', value: available || shortCommit(status.latestRevision, 7) }
+      : { label: 'Available', value: available || status.latestRelease.version || 'Unknown' },
+    { label: 'Updater', value: updating ? 'Working' : status.managedApplyAvailable ? 'Ready' : 'Unavailable' },
+  ];
+}
+
+function changesHeading(status: UpdateStatus) {
+  if (status.updateAvailable) return "What's in this update";
+  if (status.track.type === 'stable' && status.installedVersion) return `What's new in ${status.installedVersion}`;
+  return status.changeSummary.title;
+}
+
+// The changelog writes each entry as a bold lead sentence and its detail.
+function splitChange(item: string) {
+  const match = /^\*\*(.+?)\*\*\s*(.*)$/su.exec(item);
+  return { body: match?.[2] ?? '', title: match?.[1] ?? item };
+}
+
+const CHANGES_PREVIEW = 3;
+
+function ChangeList({ items }: { items: string[] }) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? items : items.slice(0, CHANGES_PREVIEW);
+  const toggle = (index: number) => setExpanded((current) => ({ ...current, [index]: !current[index] }));
+
+  return <PanelList>
+    {visible.map((item, index) => {
+      const { body, title } = splitChange(item);
+      const open = Boolean(expanded[index]);
+      return <PanelItem flush key={item}>
+        <div className={`suite-updates-change${open ? ' is-open' : ''}`}>
+          {body ? <button aria-expanded={open} className="suite-updates-change-head" onClick={() => toggle(index)} type="button">
+            <strong><Markdown inline>{title}</Markdown></strong>
+            <span className="suite-updates-chevron"><Icon name="chevron-right" /></span>
+          </button> : <strong className="suite-updates-change-head"><Markdown inline>{title}</Markdown></strong>}
+          {body ? <div className="suite-updates-change-body" onClick={open ? undefined : () => toggle(index)}><Markdown inline>{body}</Markdown></div> : null}
+        </div>
+      </PanelItem>;
+    })}
+    {items.length > CHANGES_PREVIEW ? <PanelItem flush>
+      <button aria-expanded={showAll} className="suite-updates-change-more" onClick={() => setShowAll((current) => !current)} type="button">
+        {showAll ? 'Show fewer' : `Show all ${items.length} changes`}
+        <span className={`suite-updates-chevron${showAll ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
+      </button>
+    </PanelItem> : null}
+  </PanelList>;
+}
+
+function BackupBand({ job, status, updating }: { job: UpdateJob | null; status: UpdateStatus; updating: boolean }) {
+  if (!status.checkpoint.supported) return null;
+  const destination = status.checkpoint.destinationLabel || 'where automatic backups go';
+  if (!status.checkpoint.ready) {
+    return <PanelBand icon="backup" note="MOS has nowhere to put one. The update runs either way." title="No backup will be taken first" tone="warning">
+      <a className="mos-btn mos-btn-ghost mos-btn-sm" href="/suite-manager/backups">Choose where backups go</a>
+    </PanelBand>;
+  }
+  if (updating && BACKUP_STAGES.has(job?.stage || '')) {
+    return <PanelBand busy note={`To ${destination}, before anything changes`} title="Backing up your suite" tone="accent" />;
+  }
+  return <PanelBand icon="backup" note={`To ${destination} — MOS waits if it isn't connected`} title="Backed up first" tone="info" />;
 }
 
 export function UpdatesScreen() {
@@ -134,15 +234,14 @@ export function UpdatesScreen() {
   const [checking, setChecking] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
-  // Whether a restart will land on the page that asks for the owner's password.
-  // Read from the one route that answers that question, so this screen does not
-  // decide it for itself; a machine whose vault agent is quiet says no, which
+  // Read from the one route that answers it; a quiet vault agent says no, which
   // understates the interruption rather than promising it away.
   const [asksForPassword, setAsksForPassword] = useState(false);
-  const running = isRunning(status?.currentJob || null);
+  const job = status?.currentJob || null;
+  const running = isRunning(job);
   const updating = running || busy === 'update';
-  const jobStatus = status?.currentJob?.status || null;
-  const waitingReason = running ? status?.currentJob?.checkpoint?.waiting?.reason || '' : '';
+  const jobStatus = job?.status || null;
+  const waitingReason = running ? job?.checkpoint?.waiting?.reason || '' : '';
 
   async function load() {
     const next = await jsonResponse<UpdateStatus>(await fetch('/suite-manager/api/updates/status'), 'Unable to load update status.');
@@ -162,12 +261,8 @@ export function UpdatesScreen() {
     return () => window.clearInterval(timer);
   }, [updating]);
 
-  // The update finished with the owner on this screen watching it, which is the
-  // one place a reload is unambiguously wanted: they started it, nothing here is
-  // half-typed, and the screen is otherwise left reporting success from the code
-  // the update just replaced. Only when the bundle actually changed — an update
-  // that shipped no new frontend has nothing to reload for. The delay is so the
-  // outcome is readable before the page goes.
+  // The owner started this update and watched it finish, so a reload is wanted —
+  // but only when the bundle actually changed. The delay lets the outcome be read.
   useEffect(() => {
     if (jobStatus !== 'succeeded') return undefined;
     let cancelled = false;
@@ -213,9 +308,8 @@ export function UpdatesScreen() {
     });
   }
 
-  // The two answers an owner can give while the update waits for its backup.
   async function answerWait(answer: 'cancel' | 'skip-backup') {
-    const id = status?.currentJob?.id || '';
+    const id = job?.id || '';
     await runAction(answer, async () => {
       await jsonResponse(await fetch(`/suite-manager/api/updates/${answer}`, {
         body: JSON.stringify({ id }),
@@ -226,8 +320,7 @@ export function UpdatesScreen() {
   }
 
   // MOS told the owner a restart was needed, so MOS performs it. Nothing is
-  // reloaded afterwards: the server is going away, and the page saying so is
-  // more use than a page trying to reconnect to it.
+  // reloaded afterwards: the server is going away.
   async function restartHost() {
     setRestarting(true);
     setError('');
@@ -249,11 +342,14 @@ export function UpdatesScreen() {
     });
   }
 
+  const summary = status ? summarize(status, updating) : null;
+  const trackChanged = status ? track !== selectedTrack(status) && !updating : false;
+  const pickedTrack = TRACKS.find((candidate) => candidate.id === track);
+  const sourceMatch = /^(.*?)\s*(\[[^\]]+\])$/u.exec(status?.changeSummary.source || '');
+  const finishedJob = job && !running ? job : null;
+
   return <section aria-busy={updating} className="mos-shell mos-page">
-    <div className="suite-hero">
-      <h1>Updates</h1>
-      <p className="suite-lead mos-body-lg">Update the MOS control plane through a host-owned agent, with live progress, restart-safe feedback, and diagnostics kept visible.</p>
-    </div>
+    <div className="suite-hero"><h1>Updates</h1></div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
     {reloading ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />Reloading Suite Manager</span>} variant="success">
@@ -267,74 +363,90 @@ export function UpdatesScreen() {
         <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void answerWait('skip-backup')} type="button">{busy === 'skip-backup' ? 'Starting...' : 'Update without a backup'}</button>
       </div>
     </Notice> : null}
-    {updating && !waitingReason ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
-    {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
-      <div className="suite-updates-progress-bar" aria-hidden="true" />
-      <div>
-        <strong>{busy === 'update' && !running ? 'Asking the update agent to start...' : stageLabel(status?.currentJob?.stage || null) || 'Refreshing repo-owned services...'}</strong>
-        <span>Keep this page open; progress and failure details will appear below.</span>
-      </div>
-    </div> : null}
 
-    {status ? <div className="suite-updates-layout">
-      <section className="mos-panel suite-card suite-updates-panel">
-        <div className="suite-updates-header">
-          <div>
-            <h2 className="mos-card-title">Control-plane update</h2>
-            <p className="suite-meta">Checked {formatDate(status.checkedAt)}</p>
+    {status && summary ? <div className="suite-updates-layout">
+      <Panel>
+        <PanelBody>
+          <div className="suite-updates-summary">
+            <div className="suite-updates-hero">
+              <span className="suite-updates-hero-icon"><Icon name={summary.icon} /></span>
+              <div>
+                <h2>{summary.title}</h2>
+                <p className="suite-meta">{summary.meta}</p>
+              </div>
+            </div>
+
+            <dl className="suite-updates-facts">
+              {factsOf(status, updating).map((fact) => <div key={fact.label}>
+                <dt>{fact.label}</dt>
+                <dd>{fact.code ? <code>{fact.value}</code> : fact.value}</dd>
+                {fact.sub ? <dd className="suite-updates-fact-sub">{fact.sub}</dd> : null}
+              </div>)}
+            </dl>
+
+            {status.serviceAvailable && status.checkFailure ? <Notice title="Could not check for updates" variant="warning">
+              <p>{status.checkFailure.reason}</p>
+              <AdvancedPanel facts={[{ label: 'Checked', value: formatDate(status.checkedAt) }]} output={status.checkFailure.diagnostics || undefined} reveal="on-failure" />
+            </Notice> : null}
+
+            <div className="suite-updates-actions">
+              <div className="suite-updates-buttons">
+                {status.updateAvailable && !updating ? <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || Boolean(busy) || checking} onClick={() => void startUpdate()} type="button">
+                  {status.track.type === 'stable' && status.latestRelease.version ? `Update to ${status.latestRelease.version}` : 'Update now'}
+                </button> : null}
+                <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running || checking} onClick={() => void checkAgain()} type="button">
+                  <Icon name="refresh" />{checking ? 'Checking...' : 'Check again'}
+                </button>
+              </div>
+              {status.trackConfigurationAvailable ? <div className="suite-updates-track">
+                <label className="suite-meta" htmlFor="suite-updates-track">Update track</label>
+                <Select disabled={Boolean(busy) || updating} id="suite-updates-track" onChange={(event) => setTrack(asTrackChoice(event.currentTarget.value))} value={track}>
+                  {TRACKS.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                </Select>
+                {trackChanged ? <button className="mos-btn mos-btn-secondary" disabled={busy === 'track'} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button> : null}
+              </div> : null}
+            </div>
+            {trackChanged && pickedTrack ? <p className="suite-meta suite-updates-track-help">{pickedTrack.name}: {pickedTrack.help} Switching checks again for updates on that track.</p> : null}
+
+            {updating ? <div aria-live="polite" className="suite-updates-steps" role="status">
+              <Stepper currentStepIndex={STAGE_STEP[job?.stage || ''] ?? 0} steps={PROGRESS_STEPS} />
+            </div> : null}
           </div>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running || checking} onClick={() => void checkAgain()} type="button">{checking ? 'Checking...' : 'Check again'}</button>
-        </div>
+        </PanelBody>
 
-        <dl className="suite-updates-facts">
-          <div><dt>Track</dt><dd>{status.track.label || 'Unknown'}</dd></div>
-          <div><dt>Current</dt><dd>{currentLabel(status)}</dd></div>
-          <div><dt>Target</dt><dd>{targetLabel(status)}</dd></div>
-          <div><dt>Updater</dt><dd>{status.managedApplyAvailable ? 'Ready' : 'Unavailable'}</dd></div>
-        </dl>
+        <BackupBand job={job} status={status} updating={updating} />
 
-        {status.serviceAvailable && status.checkFailure ? <Notice title="Could not check for updates" variant="warning">
-          <p>{status.checkFailure.reason}</p>
-          <AdvancedPanel facts={[{ label: 'Checked', value: formatDate(status.checkedAt) }]} output={status.checkFailure.diagnostics || undefined} reveal="on-failure" />
-        </Notice> : null}
+        {finishedJob ? <PanelBody>
+          <div className="suite-updates-outcome">
+            <p><strong>{jobOutcome(finishedJob)}</strong></p>
+            {finishedJob.error ? <p className="suite-error">{finishedJob.error}</p> : null}
+            {finishedJob.status === 'failed' && finishedJob.stage === 'taking-checkpoint' ? <p className="suite-meta">Nothing on this machine was changed: the update stops before it fetches or builds anything if it cannot back up first. Fix the problem on the Backups screen and start the update again.</p> : null}
+            {checkpointNote(finishedJob) ? <p className="suite-meta">{checkpointNote(finishedJob)}</p> : null}
+            <UpdateJobLog job={finishedJob} />
+          </div>
+        </PanelBody> : null}
 
-        {status.trackConfigurationAvailable ? <div className="suite-updates-track">
-          <Select disabled={Boolean(busy) || running} helperText="Stable follows official tagged releases and is the default for fresh installs. Main carries reviewed changes ahead of the next release. Staging receives changes earlier for testing." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
-            <option value="stable">Stable releases</option>
-            <option value="main">Main branch</option>
-            <option value="staging">Staging branch (early testing)</option>
-          </Select>
-          <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
-        </div> : null}
+        <PanelHead title={changesHeading(status)}>
+          {sourceMatch ? <p className="suite-meta">From {sourceMatch[1]} <code>{sourceMatch[2]}</code></p> : status.changeSummary.source ? <p className="suite-meta">From {status.changeSummary.source}</p> : null}
+        </PanelHead>
+        {status.changeSummary.items.length
+          ? <ChangeList items={status.changeSummary.items} key={status.changeSummary.source || ''} />
+          : <PanelBody><p className="suite-meta">No changelog summary is available for this target.</p></PanelBody>}
 
-        {status.checkpoint.supported && !status.checkpoint.ready ? <Notice title="No backup will be taken first" variant="warning">
-          <p>MOS has nowhere to put a backup before this update. <a href="/suite-manager/backups">Choose where automatic backups go</a> to change that; the update runs either way.</p>
-        </Notice> : null}
-
-        <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running || checking} onClick={() => void startUpdate()} type="button">
-          {updateButtonLabel(status, updating)}
-        </button>
-        {status.checkpoint.supported && status.checkpoint.ready ? <p className="suite-meta">MOS backs up the whole suite to {status.checkpoint.destinationLabel || 'where automatic backups go'} before it updates itself, and waits if that is not connected. App updates are separate and are not backed up first.</p> : null}
-        <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their installed package snapshots; app updates are applied separately from the Apps screen.</p>
-      </section>
-
-      <section className="mos-panel suite-card suite-updates-panel">
-        <h2 className="mos-card-title">{status.changeSummary.title}</h2>
-        {status.changeSummary.source ? <p className="suite-meta">From {status.changeSummary.source}</p> : null}
-        {status.changeSummary.items.length ? <ul className="suite-updates-change-list">{status.changeSummary.items.map((item) => <li key={item}><Markdown inline>{item}</Markdown></li>)}</ul> : <p className="suite-meta">No local changelog summary is available for this target.</p>}
-      </section>
-
+        <PanelBody><AdvancedPanel
+          facts={[
+            { code: true, label: 'Installed', value: [status.installedVersion, shortCommit(status.track.currentCommit, status.track.type === 'branch' ? 40 : 12)].filter(Boolean).join(' · ') },
+            { code: true, label: 'Available', value: status.track.type === 'branch' ? shortCommit(status.latestRevision, 40) : status.latestRelease.version || 'Unknown' },
+            { label: 'Updater', value: status.managedApplyAvailable ? 'Ready · host-owned agent' : 'Unavailable' },
+            { label: 'Last checked', value: formatDate(status.checkedAt) },
+          ]}
+          reveal="technical-mode"
+        >
+          <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their package snapshots; app updates are applied separately from the Apps screen and are not backed up first.</p>
+        </AdvancedPanel></PanelBody>
+      </Panel>
 
       <HostPatchesPanel asksForPassword={asksForPassword} busy={busy} formatDate={formatDate} host={status.host} onRestart={() => void restartHost()} restarting={restarting} />
-
-      {status.currentJob ? <section className="mos-panel suite-card suite-updates-panel">
-        <h2 className="mos-card-title">Update activity</h2>
-        <p>{status.currentJob.status === 'failed' ? 'The last update failed.' : status.currentJob.status === 'cancelled' ? 'The last update was cancelled.' : status.currentJob.status === 'succeeded' ? 'The last update finished.' : stageLabel(status.currentJob.stage) || 'Update activity received.'}</p>
-        {status.currentJob.error ? <p className="suite-error">{status.currentJob.error}</p> : null}
-        {status.currentJob.status === 'failed' && status.currentJob.stage === 'taking-checkpoint' ? <p className="suite-meta">Nothing on this machine was changed: the update stops before it fetches or builds anything if it cannot back up first. Fix the problem on the Backups screen and start the update again.</p> : null}
-        {checkpointNote(status.currentJob) ? <p className="suite-meta">{checkpointNote(status.currentJob)}</p> : null}
-        <UpdateJobLog job={status.currentJob} />
-      </section> : null}
     </div> : <p className="suite-meta">Loading update status...</p>}
   </section>;
 }
