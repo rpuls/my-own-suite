@@ -4,6 +4,14 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings is one grouped page you can search.** Settings are grouped under Your suite, Account & security, Apps, Advanced and Help, with a sidebar that lists every setting, follows where you are, and filters as you type (press `/` to search). Forms such as the suite address, the email relay and the owner password stay closed behind **Edit** or **Change** until you need them, while each card keeps its current status in view.
+
+### Fixed
+
+- **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
+
 ## [0.21.0] - 2026-10-02
 
 **Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:

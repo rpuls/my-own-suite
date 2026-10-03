@@ -88,12 +88,13 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page).toHaveURL(/\/suite-manager\/settings$/u);
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-  await page.getByLabel('MOS base domain').fill('not a domain');
-  await page.getByLabel('ACME contact email').fill('owner@example.com');
+  await page.locator('#set-address').getByRole('button', { name: /^(Edit|Use your own domain)$/u }).click();
+  await page.getByLabel('Base domain').fill('not a domain');
+  await page.getByLabel('Certificate contact email').fill('owner@example.com');
   await page.getByLabel('Cloudflare API token').fill('token_value_1234567890');
   await page.getByRole('button', { name: 'Move my suite to this domain' }).click();
   await expect(page.getByText('Enter a valid Cloudflare-managed base domain.')).toBeVisible();
-  await page.getByLabel('MOS base domain').fill('mos.example.com');
+  await page.getByLabel('Base domain').fill('mos.example.com');
   await page.getByRole('button', { name: 'Move my suite to this domain' }).click();
   await expect(page.getByText(/HTTPS system agent is unavailable/i)).toBeVisible();
   await expect(page.getByLabel('Cloudflare API token')).toHaveValue('token_value_1234567890');

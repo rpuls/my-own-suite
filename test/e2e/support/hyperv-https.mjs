@@ -65,8 +65,9 @@ export async function applyDns01IfConfigured(page, env) {
   const status = await apiJson(page, '/suite-manager/api/settings/address');
   expect(status.agentAvailable, 'HTTPS agent should be available before DNS-01 apply').toBe(true);
 
-  await page.getByLabel('MOS base domain').fill(env.dns01BaseDomain);
-  await page.getByLabel('ACME contact email').fill(env.dns01AcmeEmail);
+  await page.locator('#set-address').getByRole('button', { name: /^(Edit|Use your own domain)$/u }).click();
+  await page.getByLabel('Base domain').fill(env.dns01BaseDomain);
+  await page.getByLabel('Certificate contact email').fill(env.dns01AcmeEmail);
   await page.getByLabel('Cloudflare API token').fill(env.cloudflareApiToken);
   await page.getByRole('button', { name: 'Move my suite to this domain' }).click();
   const result = await waitForAddressChange(page, env);

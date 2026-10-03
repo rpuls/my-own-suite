@@ -18,12 +18,12 @@ import { openSuiteManager } from './hyperv-navigation.mjs';
 export async function exportDiagnosticsBundle(page, entryUrl = '/') {
   await openSuiteManager(page, 'Settings', entryUrl);
 
-  const panel = page.getByRole('heading', { exact: true, level: 2, name: 'When something is not working' });
+  const panel = page.getByRole('heading', { exact: true, level: 3, name: 'Diagnostics file' });
   await expect(panel).toBeVisible();
 
   const download = await Promise.all([
     page.waitForEvent('download', { timeout: 180_000 }),
-    page.getByRole('button', { name: 'Create diagnostics file' }).click(),
+    page.getByRole('button', { name: 'Create file' }).click(),
   ]).then(([event]) => event);
 
   expect(download.suggestedFilename()).toMatch(/^mos-diagnostics-[\d-]+\.txt$/u);

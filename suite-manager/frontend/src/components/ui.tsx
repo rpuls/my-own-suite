@@ -1,11 +1,12 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'key' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     apps: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><path d="M14 17.5h7M17.5 14v7" /></>,
+    'arrow-right': <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
@@ -13,18 +14,24 @@ export function Icon({ name }: { name: IconName }) {
     copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
     dashboard: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><rect height="7" rx="1" width="7" x="14" y="14" /></>,
+    download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M4 21h16" /></>,
     external: <path d="M7 17L17 7M9 7h8v8" />,
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
+    globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
     'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
+    lock: <><rect height="11" rx="2" width="16" x="4" y="11" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+    mail: <><rect height="14" rx="2" width="18" x="3" y="5" /><path d="m3 7 9 6 9-6" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
     'network-drive': <><circle cx="12" cy="12" r="3" /><path d="M12 1v4" /><path d="M12 19v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" /><path d="M1 12h4" /><path d="M19 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     screens: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" /></>,
+    shield: <><path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6l-8-3Z" /><path d="m9 12 2 2 4-4" /></>,
     'sign-out': <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
     update: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>,
     upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" /></>,
@@ -94,6 +101,26 @@ export function Drawer({ children, onClose, open, title }: { children: ReactNode
 
 export function TextInput({ helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: ReactNode; label: string }) {
   return <label className="suite-control"><span className="suite-field-label">{label}</span><input className="suite-input" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+}
+
+// A field with the one action that acts on it. Only the input and the button
+// share a row, so the button lines up with the input rather than with the whole
+// label-input-help stack, which is what the hand-built pairs got wrong.
+export function InputAction({ action, attached = false, helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & {
+  action: ReactNode;
+  attached?: boolean;
+  helperText?: ReactNode;
+  label: string;
+}) {
+  const id = useId();
+  return <div className="suite-control">
+    <label className="suite-field-label" htmlFor={id}>{label}</label>
+    <div className={`suite-input-action${attached ? ' suite-input-action-attached' : ''}`}>
+      <input className="suite-input" id={id} {...props} />
+      {action}
+    </div>
+    {helperText ? <span className="suite-control-help">{helperText}</span> : null}
+  </div>;
 }
 
 export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { helperText?: ReactNode; label: string }) {
@@ -179,16 +206,19 @@ export function Panel({ children, className, density = 'regular' }: {
 }
 
 // The padded header of a section: what this region is on the left, what you can
-// do to it on the right. `title` is an eyebrow rather than a card title,
-// because it labels a region of a panel the owner is already reading.
-export function PanelHead({ actions, children, title }: {
+// do to it on the right. `title` is an eyebrow by default, because it labels a
+// region of a panel the owner is already reading; `heading` makes it the title
+// of a panel that is itself one item in a longer page, such as one setting.
+export function PanelHead({ actions, children, heading, title }: {
   actions?: ReactNode;
   children?: ReactNode;
+  heading?: 'h2' | 'h3';
   title: ReactNode;
 }) {
+  const Heading = heading;
   return <div className="mos-panel-head">
     <div>
-      <p className="mos-eyebrow">{title}</p>
+      {Heading ? <Heading className="mos-card-title">{title}</Heading> : <p className="mos-eyebrow">{title}</p>}
       {children}
     </div>
     {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}

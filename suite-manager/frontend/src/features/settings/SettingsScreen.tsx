@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
-import { AdvancedPanel, Checkbox, Dialog, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, InputAction, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Switch, TextInput, useTechnicalControls, type IconName } from '../../components/ui';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { jsonResponse } from '../../lib/api';
 import { readVaultView, type VaultView } from '../../lib/vault';
@@ -77,6 +77,42 @@ type AppReconciliationResult = {
   status?: string;
 };
 
+type GroupId = 'advanced' | 'apps' | 'help' | 'security' | 'suite';
+type SettingId = 'activity' | 'address' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'technical';
+
+const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
+  { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
+  { description: 'Who controls this suite and how it protects your data.', id: 'security', title: 'Account & security' },
+  { description: 'Where your apps come from.', id: 'apps', title: 'Apps' },
+  { description: 'Extra detail for people who want to see under the hood.', id: 'advanced', title: 'Advanced' },
+  { description: 'For when something is not working.', id: 'help', title: 'Help' },
+];
+
+// The one index of this page: it drives the sidebar, the search and the order of
+// the cards, so a new setting is one entry here and one card in SETTING_CARDS.
+const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords: string; title: string }> = [
+  { group: 'suite', icon: 'globe', id: 'address', keywords: 'domain certificate https url cloudflare acme dns token home where lives move easy door', title: 'Suite address' },
+  { group: 'suite', icon: 'mail', id: 'email', keywords: 'smtp mail email relay host port username password from sender test notifications', title: 'Email relay' },
+  { group: 'security', icon: 'key', id: 'password', keywords: 'password owner account login change sign in', title: 'Owner password' },
+  { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
+  { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
+  { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
+  { group: 'advanced', icon: 'settings', id: 'technical', keywords: 'technical controls advanced logs config developer overrides expert', title: 'Technical controls' },
+  { group: 'help', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
+];
+
+// Every whitespace-separated term has to appear somewhere in the setting.
+function matchesQuery(setting: typeof SETTINGS[number], query: string) {
+  const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
+  const groupTitle = GROUPS.find((group) => group.id === setting.group)?.title || '';
+  const haystack = `${setting.title} ${groupTitle} ${setting.keywords}`.toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function EditToggle({ editing, label, onToggle }: { editing: boolean; label: string; onToggle: () => void }) {
+  return <button aria-expanded={editing} className={`mos-btn ${editing ? 'mos-btn-ghost' : 'mos-btn-secondary'}`} onClick={onToggle} type="button">{editing ? 'Cancel' : label}</button>;
+}
+
 function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; serverAddress: string }) {
   return <>
     <p>MOS serves HTTPS at <strong>{homeHost}</strong>, but your devices or local network still have to learn where that name lives.</p>
@@ -116,6 +152,219 @@ function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppRecon
     <p>Your suite is on its new address. The apps named below could not be rebuilt on it; open them under Apps and apply their runtime again.</p>
     {details ? <p className="suite-meta">{details}</p> : null}
   </Notice>;
+}
+
+const ADDRESS_INTRO = 'Where every app and your Homepage are published. MOS itself also keeps answering on the Easy Door and the name it was installed with, so you can always get back here.';
+
+function SuiteAddressPanel() {
+  const [status, setStatus] = useState<AddressStatus | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [contact, setContact] = useState<Contact>('ok');
+  const [editing, setEditing] = useState(false);
+  const [baseDomain, setBaseDomain] = useState('');
+  const [acmeEmail, setAcmeEmail] = useState('');
+  const [token, setToken] = useState('');
+  const [formError, setFormError] = useState('');
+  const [busy, setBusy] = useState<'' | 'change' | 'dismiss'>('');
+  // The change this screen started, so its outcome is shown once and the
+  // history of an earlier one is not mistaken for it.
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+
+  // One read of the address status, and the screen is told where it ended:
+  // signed out, refused at this address, unreachable, or answered. A domain
+  // change restarts the web server under this connection, so a poll that fails
+  // is expected for a while and is never rendered as anything it did not see.
+  async function load(): Promise<AddressStatus | null> {
+    let response: Response;
+    try {
+      response = await fetch('/suite-manager/api/settings/address', { cache: 'no-store' });
+    } catch {
+      setContact('unreachable');
+      return null;
+    }
+    if (response.status === 401) { setContact('signed-out'); return null; }
+    if (response.status === 421) { setContact('refused'); return null; }
+    if (!response.ok) {
+      setContact('unreachable');
+      if (!status) setLoadError((await response.json().catch(() => ({}))).error || 'Unable to load the suite address.');
+      return null;
+    }
+    const next = await jsonResponse<AddressStatus>(response, 'Unable to load the suite address.');
+    setContact('ok');
+    setLoadError('');
+    setStatus(next);
+    return next;
+  }
+
+  useEffect(() => {
+    void load().then((next) => {
+      if (!next) return;
+      setBaseDomain(next.address.baseDomain || next.offered?.baseDomain || '');
+      setAcmeEmail(next.address.acmeEmail || next.offered?.acmeEmail || '');
+    });
+  }, []);
+
+  const applying = status?.lastChange.status === 'applying';
+  // While a change runs the screen polls, through whatever the web server
+  // answers on, until the change has an outcome.
+  useEffect(() => {
+    if (!applying && contact !== 'unreachable') return undefined;
+    const timer = window.setInterval(() => { void load(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [applying, contact]);
+
+  // Every way of moving the suite is the same request with a different body,
+  // and every one of them is answered before it finishes.
+  async function startChange(body: Record<string, unknown>) {
+    setFormError('');
+    setBusy('change');
+    try {
+      const started = await jsonResponse<{ startedAt: string }>(await fetch('/suite-manager/api/settings/address/change', {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'The address could not be changed.');
+      setStartedAt(started.startedAt);
+      setEditing(false);
+      await load();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'The address could not be changed.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const normalizedDomain = baseDomain.trim().toLowerCase().replace(/\.$/u, '');
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(normalizedDomain)) {
+      setFormError('Enter a valid Cloudflare-managed base domain.'); return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(acmeEmail.trim())) {
+      setFormError('Enter a valid ACME contact email address.'); return;
+    }
+    if (!/^[A-Za-z0-9_-]{20,4096}$/u.test(token.trim())) {
+      setFormError('A valid Cloudflare API token is required.'); return;
+    }
+    if (!status?.agentAvailable) {
+      setFormError('The HTTPS system agent is unavailable. Update or repair the MOS control plane, then try again.'); return;
+    }
+    const submittedToken = token.trim();
+    setToken('');
+    await startChange({ acmeEmail: acmeEmail.trim(), baseDomain: normalizedDomain, cloudflareApiToken: submittedToken, kind: 'domain' });
+  }
+
+  // The offered domain is served with the credential the restore kept for it,
+  // so this needs no token. An offer that came without a contact address takes
+  // the one in the form.
+  async function useOffered() {
+    if (!status?.offered) return;
+    const email = (status.offered.acmeEmail || acmeEmail).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) { setFormError('Enter a valid ACME contact email address for the offered domain.'); return; }
+    await startChange({ acmeEmail: email, kind: 'domain', useOffered: true });
+  }
+
+  async function dismissOffer() {
+    setFormError('');
+    setBusy('dismiss');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/settings/address/offer/dismiss', { method: 'POST' }), 'The offer could not be dismissed.');
+      await load();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'The offer could not be dismissed.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  const address = status?.address;
+  const change = status?.lastChange;
+  const dnsAddress = status?.serverAddress || '<server-ip>';
+  // The outcome of the change this screen started, shown until the next one.
+  const outcome = change && startedAt && change.at && change.at >= startedAt && change.status !== 'applying' ? change : null;
+  const canApplyHttps = Boolean(status?.agentAvailable && baseDomain.trim() && acmeEmail.trim() && token.trim() && !busy && !applying);
+
+  const contactNotices = <>
+    {contact === 'signed-out' ? <Notice title="Your session ended" variant="warning"><p>Sign in again to see where the address change ended up.</p><a className="mos-btn mos-btn-primary" href="/suite-manager/">Sign in</a></Notice> : null}
+    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${change.target.scheme}://${change.target.host}/suite-manager/settings`}>{`${change.target.scheme}://${change.target.host}/`}</a>.</p></Notice> : null}
+  </>;
+
+  if (!status || !address || !change) {
+    return <Panel>
+      <PanelHead heading="h3" title="Suite address"><p>{ADDRESS_INTRO}</p></PanelHead>
+      <PanelBody>
+        {loadError ? <Notice title="The suite address could not be loaded" variant="error"><p>{loadError}</p></Notice> : null}
+        {contactNotices}
+        {contact === 'ok' && !loadError ? <p className="suite-meta">Loading the suite address...</p> : null}
+      </PanelBody>
+    </Panel>;
+  }
+
+  if (!status.privateHttpsAvailable) {
+    return <Panel>
+      <PanelHead heading="h3" title="Suite address"><p>This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></PanelHead>
+      <PanelBand icon="globe" note="Custom domains are handled by your provider." title={address.url} />
+      <PanelBody>
+        <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider&apos;s custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>
+        <AddressDiagnostics status={status} />
+      </PanelBody>
+    </Panel>;
+  }
+
+  const notices = [
+    outcome?.status === 'applied' ? <Notice key="moved" title="Your suite moved" variant="success">
+      <p>It is now published at <a href={address.url}>{address.url}</a>.</p>
+      {address.kind === 'domain' && address.resolvesHere !== true ? <LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /> : null}
+      <a className="mos-btn mos-btn-primary" href={address.url}>Open {address.host}</a>
+    </Notice> : null,
+    outcome?.status === 'applied' ? <AppReconciliationNotice key="reconciliation" reconciliation={outcome.result} /> : null,
+    outcome?.status === 'failed' ? <Notice key="failed" title="The address was not changed" variant="error"><p>Your suite is still at <a href={address.url}>{address.url}</a>. The reason is in the details below.</p></Notice> : null,
+    !outcome && !applying && address.kind === 'domain' && address.resolvesHere === false ? <Notice key="dns" title={`${address.host} does not point at this server`} variant="warning"><LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /></Notice> : null,
+    status.drifted && !applying ? <Notice key="drifted" title="This server's address changed" variant="warning">
+      <p>Your suite was set up on <strong>{status.drifted.from}</strong>, but this server now answers on <strong>{status.drifted.to}</strong>. Your apps still name the old address until the suite follows. A fixed address for this server on your router prevents this.</p>
+      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void startChange({ kind: 'easy-door' })} type="button">{busy === 'change' ? 'Moving...' : `Move to ${status.drifted.to}`}</button>
+    </Notice> : null,
+    status.offered && !applying ? <Notice key="offered" title={`This backup was set up for ${status.offered.baseDomain}`} variant="info">
+      <p>This machine serves <strong>{address.host}</strong>. Anything set up against <strong>home.{status.offered.baseDomain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points here and this server serves it. MOS kept that domain&apos;s credential from the backup, so serving it here needs no token; pointing the name at this server is the part MOS cannot do for you.</p>
+      {!status.offered.acmeEmail ? <TextInput autoComplete="email" helperText="The backup did not carry one." label="ACME contact email for the offered domain" onChange={(event) => setAcmeEmail(event.target.value)} type="email" value={acmeEmail} /> : null}
+      <p>
+        <button className="mos-btn mos-btn-primary" disabled={Boolean(busy) || !status.agentAvailable} onClick={() => void useOffered()} type="button">{busy === 'change' ? 'Moving...' : `Serve ${status.offered.baseDomain} from here`}</button>
+        {' '}
+        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void dismissOffer()} type="button">{busy === 'dismiss' ? 'Dismissing...' : 'Not on this server'}</button>
+      </p>
+    </Notice> : null,
+    // A form error from the drift or offer buttons has no open form to show in.
+    formError && !editing ? <Notice key="error" title="The address was not changed" variant="error"><p>{formError}</p></Notice> : null,
+  ].filter(Boolean);
+
+  return <Panel>
+    <PanelHead
+      actions={applying ? null : <EditToggle editing={editing} label={address.kind === 'domain' ? 'Edit' : 'Use your own domain'} onToggle={() => { setEditing(!editing); setFormError(''); }} />}
+      heading="h3"
+      title="Suite address"
+    ><p>{ADDRESS_INTRO}</p></PanelHead>
+    {applying
+      ? <PanelBand busy note={`${CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.'}${contact === 'unreachable' ? ' The web server is restarting, so this page has no answer for a moment. It keeps asking.' : ''}`} title={`Moving your suite to ${change.target?.host || 'its new address'}`} tone="info" />
+      : <PanelBand icon="check" note={ADDRESS_KIND_SENTENCES[address.kind]} title={<a href={address.url}>{address.url}</a>} tone="accent" />}
+    {notices.length || editing || contact !== 'ok' ? <PanelBody>
+      {contactNotices}
+      {notices}
+      {editing ? <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
+        <p className="suite-meta">MOS uses Cloudflare DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access. Your apps move to the new address with it.</p>
+        {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
+        <div className="suite-settings-fields">
+          <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="Base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
+          <TextInput autoComplete="email" helperText="For account notices from the certificate authority." label="Certificate contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />
+        </div>
+        <TextInput autoComplete="off" helperText="Needs Zone Read and DNS Edit for the relevant Cloudflare zone. Used once, never shown again." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={address.kind === 'domain' ? 'Paste a token to apply again' : 'Paste token once'} type="password" value={token} />
+        {formError ? <Notice title="The address was not changed" variant="error"><p>{formError}</p></Notice> : null}
+        <div className="suite-settings-actions">
+          <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">Move my suite to this domain</button>
+        </div>
+      </form> : null}
+    </PanelBody> : null}
+    <PanelBody><AddressDiagnostics status={status} /></PanelBody>
+  </Panel>;
 }
 
 type SmtpStatus = {
@@ -165,6 +414,7 @@ function SmtpDiagnostics({ status }: { status: SmtpStatus }) {
 // exposes it to those apps and nothing else.
 function EmailRelayPanel() {
   const [status, setStatus] = useState<SmtpStatus | null>(null);
+  const [editing, setEditing] = useState(false);
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [security, setSecurity] = useState<SmtpSecurityChoice>('auto');
@@ -202,6 +452,15 @@ function EmailRelayPanel() {
 
   useEffect(() => { void load(); }, []);
 
+  function toggleEditing() {
+    // Cancelling puts back what is saved, so a half-typed change is not left
+    // waiting in the form for the next time it opens.
+    if (editing && status) apply(status);
+    setPassword('');
+    setError('');
+    setEditing(!editing);
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setError('');
@@ -217,6 +476,7 @@ function EmailRelayPanel() {
       apply(saved.status);
       setPassword('');
       setResult(saved.verify);
+      setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The email relay could not be saved.');
     } finally {
@@ -251,6 +511,7 @@ function EmailRelayPanel() {
     try {
       apply(await jsonResponse<SmtpStatus>(await fetch('/suite-manager/api/settings/smtp', { method: 'DELETE' }), 'The email relay could not be removed.'));
       setPassword('');
+      setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The email relay could not be removed.');
     } finally {
@@ -261,56 +522,76 @@ function EmailRelayPanel() {
   const busyAny = saving || Boolean(busy);
   const canSave = Boolean(host.trim() && fromAddress.trim() && !busyAny);
   const verified = status?.lastVerify.status === 'verified';
+  const relay = status?.configured ? `${status.host}:${status.port} as ${status.fromAddress}` : '';
 
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div>
-      <h2 className="mos-card-title">Email relay</h2>
-      <p className="suite-meta">Optional. An SMTP relay that apps you install can send email through — password resets, notifications, invitations. MOS shares one relay with every app that asks for it and does not use it for itself. Bring your own mailbox provider, or a service like Fastmail, Mailgun, or your ISP's SMTP server.</p>
-    </div>
-
-    {status?.configured ? <Notice title={verified ? 'Relay configured and verified' : 'Relay configured'} variant={verified ? 'success' : 'info'}>
-      <p>Apps send through <strong>{status.host}:{status.port}</strong> as <strong>{status.fromAddress}</strong>. {verified ? 'It last checked out fine.' : 'It has not been verified since it changed — send a test message to confirm it works.'}</p>
-    </Notice> : null}
-
-    <form className="suite-settings-form" onSubmit={(event) => void save(event)}>
-      <TextInput autoComplete="off" helperText="Hostname or IP of your SMTP server, with no scheme or port." label="Relay host" onChange={(event) => setHost(event.target.value)} placeholder="smtp.fastmail.com" value={host} />
-      <Select helperText="Most providers just give you a host, a port and a login. Leave this on Automatic and MOS matches the encryption to the port. Only change it if your provider tells you to." label="Encryption" onChange={(event) => setSecurity(event.currentTarget.value as SmtpSecurityChoice)} value={security}>
-        <option value="auto">Automatic — match my provider&apos;s port (recommended)</option>
-        <option value="starttls">STARTTLS (upgrade to encrypted, usually port 587)</option>
-        <option value="tls">SSL/TLS (encrypted, usually port 465)</option>
-        <option value="none">None (no encryption — local network only)</option>
-      </Select>
-      <TextInput helperText={security === 'auto' ? 'Enter the port your provider gives you — MOS matches the encryption to it (often 587 or 465).' : `Leave blank to use the usual port for this encryption (${SMTP_DEFAULT_PORTS[security]}).`} inputMode="numeric" label="Port" onChange={(event) => setPort(event.target.value)} placeholder={String(portHint(security))} value={port} />
-      <TextInput autoComplete="off" helperText="Leave both blank for a relay that needs no login." label="Username" onChange={(event) => setUsername(event.target.value)} placeholder="you@example.com" value={username} />
-      <TextInput autoComplete="new-password" helperText={status?.passwordConfigured ? 'A password is saved. Leave blank to keep it, or type a new one to replace it.' : 'Stored like any app secret and never shown again.'} label="Password" onChange={(event) => setPassword(event.target.value)} placeholder={status?.passwordConfigured ? 'Saved — leave blank to keep' : ''} type="password" value={password} />
-      <TextInput autoComplete="off" helperText="The address apps send from. Many relays require this to match the account." label="From address" onChange={(event) => setFromAddress(event.target.value)} placeholder="you@example.com" type="email" value={fromAddress} />
-      <TextInput autoComplete="off" helperText="Optional. The display name recipients see." label="From name" onChange={(event) => setFromName(event.target.value)} placeholder="My Own Suite" value={fromName} />
-      <Checkbox checked={allowInvalidCert} onChange={(event) => setAllowInvalidCert(event.currentTarget.checked)}>
-        Allow an insecure relay: one whose TLS certificate this server does not trust, or — with encryption set to None — sending your login unencrypted. Only for a relay on your own trusted network.
-      </Checkbox>
-
+  return <Panel>
+    <PanelHead actions={<EditToggle editing={editing} label={status?.configured ? 'Edit' : 'Set up'} onToggle={toggleEditing} />} heading="h3" title="Email relay">
+      <p>Optional. Lets your apps send password resets, notifications and invitations through one mail server. MOS shares it with every app that asks for it and does not use it for itself.</p>
+    </PanelHead>
+    {status?.configured ? verified
+      ? <PanelBand icon="check" note={relay} title="Configured and verified" tone="accent" />
+      : <PanelBand icon="mail" note={`${relay}. Not verified since it changed: send a test message to confirm it works.`} title="Configured" tone="info" /> : null}
+    {editing || error || result ? <PanelBody>
+      {editing ? <form className="suite-settings-form" onSubmit={(event) => void save(event)}>
+        <p className="suite-meta">Bring your own mailbox provider, or a service like Fastmail, Mailgun, or your ISP&apos;s SMTP server.</p>
+        <fieldset className="suite-settings-fieldset">
+          <legend className="suite-field-label">Server</legend>
+          <div className="suite-settings-fields suite-settings-fields-narrow">
+            <TextInput autoComplete="off" helperText="Hostname or IP, with no scheme or port." label="Relay host" onChange={(event) => setHost(event.target.value)} placeholder="smtp.fastmail.com" value={host} />
+            <Select helperText="Leave on Automatic unless your provider tells you otherwise." label="Encryption" onChange={(event) => setSecurity(event.currentTarget.value as SmtpSecurityChoice)} value={security}>
+              <option value="auto">Automatic — match my provider&apos;s port (recommended)</option>
+              <option value="starttls">STARTTLS (upgrade to encrypted, usually port 587)</option>
+              <option value="tls">SSL/TLS (encrypted, usually port 465)</option>
+              <option value="none">None (no encryption — local network only)</option>
+            </Select>
+            <TextInput helperText={security === 'auto' ? 'MOS matches the encryption to it, often 587 or 465.' : `Blank uses the usual port, ${SMTP_DEFAULT_PORTS[security]}.`} inputMode="numeric" label="Port" onChange={(event) => setPort(event.target.value)} placeholder={String(portHint(security))} value={port} />
+          </div>
+        </fieldset>
+        <fieldset className="suite-settings-fieldset">
+          <legend className="suite-field-label">Sign-in</legend>
+          <div className="suite-settings-fields">
+            <TextInput autoComplete="off" helperText="Leave both blank for a relay that needs no login." label="Username" onChange={(event) => setUsername(event.target.value)} placeholder="you@example.com" value={username} />
+            <TextInput autoComplete="new-password" helperText={status?.passwordConfigured ? 'A password is saved. Type a new one to replace it.' : 'Stored like any app secret and never shown again.'} label="Password" onChange={(event) => setPassword(event.target.value)} placeholder={status?.passwordConfigured ? 'Saved — leave blank to keep' : ''} type="password" value={password} />
+          </div>
+        </fieldset>
+        <fieldset className="suite-settings-fieldset">
+          <legend className="suite-field-label">Sender</legend>
+          <div className="suite-settings-fields">
+            <TextInput autoComplete="off" helperText="Many relays require this to match the account." label="From address" onChange={(event) => setFromAddress(event.target.value)} placeholder="you@example.com" type="email" value={fromAddress} />
+            <TextInput autoComplete="off" helperText="Optional. The name recipients see." label="From name" onChange={(event) => setFromName(event.target.value)} placeholder="My Own Suite" value={fromName} />
+          </div>
+        </fieldset>
+        <Checkbox checked={allowInvalidCert} onChange={(event) => setAllowInvalidCert(event.currentTarget.checked)}>
+          Allow an insecure relay: one whose TLS certificate this server does not trust, or — with encryption set to None — sending your login unencrypted. Only for a relay on your own trusted network.
+        </Checkbox>
+        <div className={`suite-settings-actions${status?.configured ? ' suite-settings-actions-split' : ''}`}>
+          {status?.configured ? <button className="mos-btn mos-btn-ghost" disabled={busyAny} onClick={() => void remove()} type="button">{busy === 'remove' ? 'Removing...' : 'Remove relay'}</button> : null}
+          <button className="mos-btn mos-btn-primary" disabled={!canSave} type="submit">{saving ? 'Saving and verifying...' : status?.configured ? 'Save changes' : 'Save relay'}</button>
+        </div>
+      </form> : null}
       {error ? <Notice title="Something went wrong" variant="error"><p>{error}</p></Notice> : null}
       {result && result.status === 'verified' ? <Notice title="Relay saved and verified" variant="success"><p>MOS connected to the relay and its login was accepted. Send a test message to confirm mail is delivered.</p></Notice> : null}
       {result && result.status !== 'verified' ? <Notice title="Relay saved, but it could not be verified" variant="warning">
         <p>{result.reason || 'MOS could not confirm the relay.'} Your settings are saved; apps will use them. Fix the relay and save again, or send a test message once it is reachable.</p>
       </Notice> : null}
-
-      <div className="suite-updates-track">
-        <button className="mos-btn mos-btn-primary" disabled={!canSave} type="submit">{saving ? 'Saving and verifying...' : status?.configured ? 'Save changes' : 'Save relay'}</button>
-        {status?.configured ? <button className="mos-btn mos-btn-secondary" disabled={busyAny} onClick={() => void remove()} type="button">{busy === 'remove' ? 'Removing...' : 'Remove relay'}</button> : null}
+    </PanelBody> : null}
+    {status?.configured ? <PanelList><PanelItem>
+      <div className="suite-settings-form">
+        <InputAction
+          action={<button className="mos-btn mos-btn-secondary" disabled={busyAny || !testTo.trim()} onClick={() => void sendTest()} type="button">{busy === 'test' ? 'Sending...' : 'Send test'}</button>}
+          autoComplete="off"
+          helperText="Sends the fixed MOS test message to this address so you can confirm delivery."
+          label="Send a test message to"
+          onChange={(event) => setTestTo(event.target.value)}
+          placeholder={status.ownerEmail || 'you@example.com'}
+          type="email"
+          value={testTo}
+        />
+        {testResult ? <Notice title="Test message sent" variant="success"><p>The relay accepted a message to <strong>{testResult}</strong>. If it does not arrive, check the recipient&apos;s spam folder and that the from address is one the relay allows.</p></Notice> : null}
       </div>
-    </form>
-
-    {status?.configured ? <div className="suite-settings-form">
-      <TextInput autoComplete="off" helperText="Sends the fixed MOS test message to this address so you can confirm delivery." label="Send a test message to" onChange={(event) => setTestTo(event.target.value)} placeholder={status.ownerEmail || 'you@example.com'} type="email" value={testTo} />
-      {testResult ? <Notice title="Test message sent" variant="success"><p>The relay accepted a message to <strong>{testResult}</strong>. If it does not arrive, check the recipient's spam folder and that the from address is one the relay allows.</p></Notice> : null}
-      <div className="suite-updates-track">
-        <button className="mos-btn mos-btn-secondary" disabled={busyAny || !testTo.trim()} onClick={() => void sendTest()} type="button">{busy === 'test' ? 'Sending...' : 'Send test message'}</button>
-      </div>
-    </div> : null}
-
-    {status ? <SmtpDiagnostics status={status} /> : null}
-  </div>;
+    </PanelItem></PanelList> : null}
+    {status ? <PanelBody><SmtpDiagnostics status={status} /></PanelBody> : null}
+  </Panel>;
 }
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -416,35 +697,38 @@ function EncryptionPanel() {
     ? 'MOS could not read how this server\'s disk is set up just now. Reload in a moment.'
     : view.vault.sentence || 'This server keeps its app data on an unencrypted disk. Your backups are still encrypted with your recovery key.';
 
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div>
-      <h2 className="mos-card-title">Disk encryption</h2>
-      {view.encrypted
-        ? <p className="suite-meta">Your apps' data, your Suite Manager settings and your apps' secrets are all held on an encrypted part of this server's disk. Everything below is about when it opens.</p>
-        : <p className="suite-meta">{unencryptedSentence}</p>}
-    </div>
+  return <Panel>
+    <PanelHead heading="h3" title="Disk encryption">
+      <p>{view.encrypted
+        ? "Your apps' data, your Suite Manager settings and your apps' secrets are all held on an encrypted part of this server's disk. A disk pulled out and read elsewhere gives up nothing."
+        : unencryptedSentence}</p>
+    </PanelHead>
 
-    {view.encrypted ? <>
-      {view.chipNeedsRepair ? <Notice title="This server will ask for your recovery key after a restart" variant="warning">
-        <p>Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit.</p>
-      </Notice> : null}
+    {view.encrypted && view.chipNeedsRepair ? <PanelBand
+      icon="key"
+      note="Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit."
+      title="This server will ask for your recovery key after a restart"
+      tone="warning"
+    /> : null}
 
-      {!hasChip ? <p>This machine has no security chip, so it cannot open its own disk. It asks for your recovery key on a web page after every restart, and your apps start once you enter it.</p>
-        : asksForPassword
-          ? <p>This server asks for your password after every restart, including a power cut, and opens your data once you type it on its own web page. If it is stolen, nobody gets in: the disk stays closed, and so do the backups whose key is inside it.</p>
-          : <p>This server opens its own disk when it starts, so a power cut needs nothing from you. A disk pulled out and read elsewhere, moved into another machine, or sold with this one gives up nothing — but a thief who takes the whole machine, switches it on and knows Linux can get into it.</p>}
-
-      {hasChip ? <Switch
-        checked={asksForPassword}
-        description={asksForPassword
-          ? 'Your apps stay off after a restart until you type your password. Turning this off means the server opens itself again, and a stolen machine can be got into.'
-          : 'The only thing that makes this machine useless to someone who steals it. The cost is that your apps stay off after every restart, including a power cut, until you are somewhere you can type your password.'}
-        label="Ask for my password when this server starts"
-        onChange={(event) => setAsking(event.currentTarget.checked ? 'on' : 'off')}
-      /> : null}
-
-      <p className="suite-meta">Your recovery key opens this disk and your backups whatever happens to the chip, and it is the only way in if you forget your password. It is under Backup &amp; Restore, where you can see it again and print a new kit.</p>
-    </> : null}
+    {view.encrypted ? <PanelList>
+      <PanelItem>
+        {hasChip ? <Switch
+          checked={asksForPassword}
+          description={asksForPassword
+            ? 'Your apps stay off after a restart until you type your password. If it is stolen, nobody gets in: the disk stays closed, and so do the backups whose key is inside it. Turning this off means the server opens itself again, and a stolen machine can be got into.'
+            : 'This server opens its own disk when it starts, so a power cut needs nothing from you, but a thief who takes the whole machine and knows Linux can get into it. Turning this on is the only thing that makes it useless to someone who steals it; the cost is that your apps stay off after every restart until you type your password.'}
+          label="Ask for my password when this server starts"
+          onChange={(event) => setAsking(event.currentTarget.checked ? 'on' : 'off')}
+        /> : <p className="suite-meta">This machine has no security chip, so it cannot open its own disk. It asks for your recovery key on a web page after every restart, and your apps start once you enter it.</p>}
+      </PanelItem>
+      <PanelItem>
+        <div className="suite-settings-row">
+          <p className="suite-meta">Your recovery key opens this disk and your backups whatever happens to the chip, and it is the only way in if you forget your password.</p>
+          <a className="mos-link suite-settings-link" href="/suite-manager/backups">Recovery key in Backup &amp; Restore<Icon name="arrow-right" /></a>
+        </div>
+      </PanelItem>
+    </PanelList> : null}
 
     {asking ? <StartupProtectionDialog
       enabling={asking === 'on'}
@@ -454,7 +738,7 @@ function EncryptionPanel() {
       onClose={() => { setAsking(null); void load(); }}
       onDone={() => { setAsking(null); void load(); }}
     /> : null}
-  </div>;
+  </Panel>;
 }
 
 // Rotating the owner password matters most on the installs where it was created
@@ -462,6 +746,7 @@ function EncryptionPanel() {
 // The first password travelled the LAN in the clear; this is how it stops being
 // the password that guards everything.
 function OwnerAccountPanel() {
+  const [editing, setEditing] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -478,6 +763,13 @@ function OwnerAccountPanel() {
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
   const canSubmit = Boolean(currentPassword && newPassword.length >= MIN_PASSWORD_LENGTH && newPassword === confirmPassword && !saving);
 
+  function clearForm() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setError('');
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError('');
@@ -493,12 +785,11 @@ function OwnerAccountPanel() {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Your password could not be changed.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      clearForm();
       const protection = result.startupProtection;
       setChipFailed(!protection || protection.ok ? null : protection.reason === 'vault-agent-unavailable' ? 'unreachable' : 'refused');
       setChanged(true);
+      setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Your password could not be changed.');
     } finally {
@@ -506,25 +797,33 @@ function OwnerAccountPanel() {
     }
   }
 
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div><h2 className="mos-card-title">Owner password</h2><p className="suite-meta">Change the password for the account that controls Suite Manager and every app you install.</p></div>
-    <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
-      <TextInput autoComplete="current-password" label="Current password" onChange={(event) => { setCurrentPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={currentPassword} />
-      <TextInput autoComplete="new-password" helperText={tooShort ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : `At least ${MIN_PASSWORD_LENGTH} characters.`} label="New password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setNewPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={newPassword} />
-      <TextInput autoComplete="new-password" helperText={mismatch ? "Those passwords don't match." : 'Retype it to catch typos.'} label="Confirm new password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setConfirmPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={confirmPassword} />
-      {error ? <Notice title="Your password was not changed" variant="error"><p>{error}</p></Notice> : null}
+  return <Panel>
+    <PanelHead actions={<EditToggle editing={editing} label="Change" onToggle={() => { clearForm(); setChanged(false); setEditing(!editing); }} />} heading="h3" title="Owner password">
+      <p>The password for the account that controls Suite Manager and every app you install.</p>
+    </PanelHead>
+    {editing || changed ? <PanelBody>
+      {editing ? <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
+        <TextInput autoComplete="current-password" autoFocus label="Current password" onChange={(event) => { setCurrentPassword(event.target.value); setError(''); }} type="password" value={currentPassword} />
+        <div className="suite-settings-fields">
+          <TextInput autoComplete="new-password" helperText={tooShort ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : `At least ${MIN_PASSWORD_LENGTH} characters.`} label="New password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setNewPassword(event.target.value); setError(''); }} type="password" value={newPassword} />
+          <TextInput autoComplete="new-password" helperText={mismatch ? "Those passwords don't match." : 'Retype it to catch typos.'} label="Confirm new password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setConfirmPassword(event.target.value); setError(''); }} type="password" value={confirmPassword} />
+        </div>
+        {error ? <Notice title="Your password was not changed" variant="error"><p>{error}</p></Notice> : null}
+        <div className="suite-settings-actions">
+          <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
+        </div>
+      </form> : null}
       {changed ? <Notice title="Password changed" variant="success"><p>Your new password is active. Every other signed-in browser was signed out; this one stays signed in.</p></Notice> : null}
-      {chipFailed === 'refused' ? <Notice title="Your server's chip did not follow the change" variant="warning">
-        <p>Your password changed, and your old one no longer opens anything. But this server's security chip would not take the new one, so it now opens nothing on its own: after a restart it asks for the recovery key from your recovery kit instead of your password.</p>
+      {changed && chipFailed === 'refused' ? <Notice title="Your server's chip did not follow the change" variant="warning">
+        <p>Your password changed, and your old one no longer opens anything. But this server&apos;s security chip would not take the new one, so it now opens nothing on its own: after a restart it asks for the recovery key from your recovery kit instead of your password.</p>
         <p>MOS tries again the next time you sign in, so signing out and back in is usually the whole fix.</p>
       </Notice> : null}
-      {chipFailed === 'unreachable' ? <Notice title="Your server's chip was not told about the change" variant="warning">
-        <p>Your password changed, but the part of MOS that manages this server's disk was not answering, so its security chip was not taught the new one. If this server is set to ask for your password when it starts, it may still want your previous password after a restart; your recovery key opens it either way.</p>
+      {changed && chipFailed === 'unreachable' ? <Notice title="Your server's chip was not told about the change" variant="warning">
+        <p>Your password changed, but the part of MOS that manages this server&apos;s disk was not answering, so its security chip was not taught the new one. If this server is set to ask for your password when it starts, it may still want your previous password after a restart; your recovery key opens it either way.</p>
         <p>Once MOS is answering again, turning <strong>Ask for my password when this server starts</strong> off and on in Disk encryption teaches the chip your current password.</p>
       </Notice> : null}
-      <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
-    </form>
-  </div>;
+    </PanelBody> : null}
+  </Panel>;
 }
 
 // The one place the technical-controls preference is written, and the only way
@@ -536,24 +835,25 @@ function TechnicalControlsPanel() {
   const { enabled, setEnabled } = useTechnicalControls();
   const [error, setError] = useState('');
 
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div>
-      <h2 className="mos-card-title">Technical controls</h2>
-      <p className="suite-meta">Everything MOS does works the same either way; this only changes what you can see. You can turn it off again at any time without losing anything.</p>
-    </div>
-    <Switch
-      checked={enabled}
-      description="Adds panels showing what MOS generated for your apps and system — package details, addresses, configuration and raw logs — plus manual overrides."
-      label="Show technical controls"
-      onChange={(event) => {
-        setError('');
-        void setEnabled(event.currentTarget.checked).catch((caught: unknown) => {
-          setError(caught instanceof Error ? caught.message : 'Your preference could not be saved.');
-        });
-      }}
-    />
-    {error ? <Notice title="Your preference was not saved" variant="error"><p>{error}</p></Notice> : null}
-  </div>;
+  return <Panel>
+    <PanelHead heading="h3" title="Technical controls">
+      <p>Everything MOS does works the same either way; this only changes what you can see. You can turn it off again at any time without losing anything.</p>
+    </PanelHead>
+    <PanelList><PanelItem>
+      <Switch
+        checked={enabled}
+        description="Adds panels showing what MOS generated for your apps and system — package details, addresses, configuration and raw logs — plus manual overrides."
+        label="Show technical controls"
+        onChange={(event) => {
+          setError('');
+          void setEnabled(event.currentTarget.checked).catch((caught: unknown) => {
+            setError(caught instanceof Error ? caught.message : 'Your preference could not be saved.');
+          });
+        }}
+      />
+    </PanelItem></PanelList>
+    {error ? <PanelBody><Notice title="Your preference was not saved" variant="error"><p>{error}</p></Notice></PanelBody> : null}
+  </Panel>;
 }
 
 const securityEventLabels: Record<string, { description: string; label: string }> = {
@@ -563,20 +863,43 @@ const securityEventLabels: Record<string, { description: string; label: string }
   'login-throttled': { description: 'Repeated failed sign-in attempts were temporarily slowed down.', label: 'Throttled sign-in attempts' },
 };
 
-function SecurityActivity({ error, summary }: { error: string; summary: SecurityEventSummary | null }) {
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div><h2 className="mos-card-title">Recent security activity</h2><p className="suite-meta">Bounded security signals recorded during the last 30 days. Counts identify patterns without showing IP addresses, repository URLs, or internal subject identifiers.</p></div>
-    {error ? <Notice title="Security activity unavailable" variant="warning"><p>{error}</p></Notice> : null}
-    {!error && !summary ? <p className="suite-meta">Loading security activity...</p> : null}
-    {summary && summary.eventCount === 0 ? <Notice title="No recorded security events" variant="success"><p>MOS has not recorded any of the monitored events during this period.</p></Notice> : null}
-    {summary && summary.eventCount > 0 ? <Notice title={`${summary.eventCount} security event${summary.eventCount === 1 ? '' : 's'} recorded`} variant="warning">
-      <p>Review repeated or recent entries. These signals mean MOS slowed or refused an action; they do not by themselves prove that the server was compromised.</p>
-      <dl>{summary.byType.map((event) => {
+function SecurityActivityPanel() {
+  const [summary, setSummary] = useState<SecurityEventSummary | null>(null);
+  const [error, setError] = useState('');
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    void fetch('/suite-manager/api/settings/security-events')
+      .then((response) => jsonResponse<SecurityEventSummary>(response, 'Unable to load recent security activity.'))
+      .then((next) => { setSummary(next); setError(''); })
+      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load recent security activity.'));
+  }, []);
+
+  const count = summary?.eventCount ?? 0;
+
+  return <Panel>
+    <PanelHead actions={count > 0 ? <EditToggle editing={open} label="View" onToggle={() => setOpen(!open)} /> : null} heading="h3" title="Security activity">
+      <p>Times MOS slowed or refused an action in the last 30 days. Counts show patterns without IP addresses, repository URLs, or internal subject identifiers.</p>
+    </PanelHead>
+    {error ? <PanelBand icon="shield" note={error} title="Security activity unavailable" tone="warning" />
+      : !summary ? <PanelBand busy title="Loading security activity" />
+        : count === 0 ? <PanelBand icon="check" note="MOS has not recorded any of the monitored events during this period." title="No recorded security events" tone="accent" />
+          : <PanelBand icon="shield" note="These mean MOS slowed or refused an action. They do not by themselves prove the server was compromised." title={`${count} security event${count === 1 ? '' : 's'} recorded`} tone="warning" />}
+    {summary && count > 0 && open ? <PanelList>
+      {summary.byType.map((event) => {
         const copy = securityEventLabels[event.eventType] || { description: 'MOS recorded a security-relevant refusal.', label: event.eventType };
-        return <div key={event.eventType}><dt>{copy.label}</dt><dd>{event.eventCount} event{event.eventCount === 1 ? '' : 's'} across {event.subjectCount} subject{event.subjectCount === 1 ? '' : 's'}; last seen {event.lastSeenAt ? new Date(event.lastSeenAt).toLocaleString() : 'unknown'}. {copy.description}</dd></div>;
-      })}</dl>
-    </Notice> : null}
-  </div>;
+        return <PanelItem key={event.eventType}>
+          <div className="suite-settings-row">
+            <div className="suite-settings-row-main">
+              <strong>{copy.label}</strong>
+              <span className="suite-meta">{copy.description} Across {event.subjectCount} subject{event.subjectCount === 1 ? '' : 's'}; last seen {event.lastSeenAt ? new Date(event.lastSeenAt).toLocaleString() : 'unknown'}.</span>
+            </div>
+            <span className="mos-pill" title={`${event.eventCount} event${event.eventCount === 1 ? '' : 's'}`}>{event.eventCount}</span>
+          </div>
+        </PanelItem>;
+      })}
+    </PanelList> : null}
+  </Panel>;
 }
 
 // Deliberately not behind Technical controls, and the one place in Suite Manager
@@ -588,7 +911,7 @@ function SecurityActivity({ error, summary }: { error: string; summary: Security
 // The copy names all three readers on purpose. An owner who can debug their own
 // server is as likely to press this as one who cannot, and wording that assumed
 // somebody was being asked for help read as strange to everyone else.
-function GetHelpPanel() {
+function DiagnosticsPanel() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState('');
@@ -622,205 +945,168 @@ function GetHelpPanel() {
     }
   }
 
-  return <div className="mos-panel suite-card suite-settings-panel">
-    <div>
-      <h2 className="mos-card-title">When something is not working</h2>
-      <p className="suite-meta">MOS can gather what it knows about the problem into one file: what is running, what failed recently, and why. Read it yourself, send it to someone helping you, or give it to an AI assistant. Passwords and app secrets are removed before the file is written.</p>
+  return <Panel>
+    <PanelHead actions={<button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button"><Icon name="download" />{creating ? 'Collecting...' : 'Create file'}</button>} heading="h3" title="Diagnostics file">
+      <p>One file with what is running, what failed recently, and why. Read it yourself, send it to someone helping you, or give it to an AI assistant. Passwords and app secrets are removed before the file is written.</p>
+    </PanelHead>
+    {error || created ? <PanelBody>
+      {error ? <Notice title="The file could not be created" variant="error"><p>{error}</p></Notice> : null}
+      {created ? <Notice title="Saved to your downloads" variant="success"><p><strong>{created}</strong> is plain text, so you can open and read it yourself, pass it on, or paste it somewhere that can help.</p></Notice> : null}
+    </PanelBody> : null}
+  </Panel>;
+}
+
+const SETTING_CARDS: Record<SettingId, () => ReactNode> = {
+  activity: () => <SecurityActivityPanel />,
+  address: () => <SuiteAddressPanel />,
+  diagnostics: () => <DiagnosticsPanel />,
+  email: () => <EmailRelayPanel />,
+  encryption: () => <EncryptionPanel />,
+  password: () => <OwnerAccountPanel />,
+  sources: () => <AppSourcesPanel />,
+  technical: () => <TechnicalControlsPanel />,
+};
+
+// Distance from the top of the viewport at which a card counts as the one being
+// read, and the margin a jump leaves above it.
+const READING_LINE = 160;
+
+function scrollToAnchor(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// The setting being read: the last visible card whose top has passed the reading
+// line, or the last card once the page cannot scroll any further.
+function useActiveSetting(visible: SettingId[]) {
+  const [active, setActive] = useState<SettingId | null>(visible[0] ?? null);
+  const key = visible.join(' ');
+  useEffect(() => {
+    function update() {
+      let current = visible[0] ?? null;
+      for (const id of visible) {
+        const card = document.getElementById(`set-${id}`);
+        if (card && card.getBoundingClientRect().top < READING_LINE) current = id;
+      }
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = visible.at(-1) ?? current;
+      setActive(current);
+    }
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [key]);
+  return [active, setActive] as const;
+}
+
+function SettingsSidebar({ active, onClear, onJump, onQuery, query, visible }: {
+  active: SettingId | null;
+  onClear: () => void;
+  onJump: (id: SettingId) => void;
+  onQuery: (query: string) => void;
+  query: string;
+  visible: SettingId[];
+}) {
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target?.tagName || '');
+      if (event.key === '/' && !typing) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  return <aside className="suite-settings-aside">
+    <div className="suite-settings-search">
+      <Icon name="search" />
+      <input
+        aria-label="Search settings"
+        className="suite-input"
+        onChange={(event) => onQuery(event.target.value)}
+        onKeyDown={(event) => { if (event.key === 'Escape') onClear(); }}
+        placeholder="Search settings"
+        ref={searchRef}
+        type="search"
+        value={query}
+      />
+      {query ? <button aria-label="Clear search" className="suite-settings-search-clear" onClick={onClear} type="button"><Icon name="x" /></button> : <kbd aria-hidden="true">/</kbd>}
     </div>
-    {error ? <Notice title="The file could not be created" variant="error"><p>{error}</p></Notice> : null}
-    {created ? <Notice title="Saved to your downloads" variant="success"><p><strong>{created}</strong> is plain text, so you can open and read it yourself, pass it on, or paste it somewhere that can help.</p></Notice> : null}
-    <button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button">{creating ? 'Collecting...' : 'Create diagnostics file'}</button>
-  </div>;
+    {query.trim() ? <p className="suite-meta suite-settings-found" role="status">{visible.length === 1 ? '1 setting found' : `${visible.length} settings found`}</p> : null}
+
+    <nav aria-label="Settings sections" className="suite-settings-nav">
+      {GROUPS.map((group) => {
+        const items = SETTINGS.filter((setting) => setting.group === group.id && visible.includes(setting.id));
+        if (!items.length) return null;
+        return <div className="suite-settings-nav-group" key={group.id}>
+          <button className="mos-eyebrow suite-settings-nav-heading" onClick={() => scrollToAnchor(`grp-${group.id}`)} type="button">{group.title}</button>
+          {items.map((setting) => <button aria-current={active === setting.id ? 'location' : undefined} className="suite-settings-nav-item" key={setting.id} onClick={() => onJump(setting.id)} type="button">
+            <Icon name={setting.icon} />{setting.title}
+          </button>)}
+        </div>;
+      })}
+    </nav>
+
+    <div className="suite-settings-aside-help">
+      <strong>Something not working?</strong>
+      <p className="suite-meta">Gather what MOS knows into one file you can share.</p>
+      <a className="mos-link suite-settings-link" href="#set-diagnostics" onClick={(event) => { event.preventDefault(); onClear(); onJump('diagnostics'); }}>Create diagnostics file<Icon name="arrow-right" /></a>
+    </div>
+  </aside>;
 }
 
 export function SettingsScreen() {
-  const [status, setStatus] = useState<AddressStatus | null>(null);
-  const [loadError, setLoadError] = useState('');
-  const [contact, setContact] = useState<Contact>('ok');
-  const [baseDomain, setBaseDomain] = useState('');
-  const [acmeEmail, setAcmeEmail] = useState('');
-  const [token, setToken] = useState('');
-  const [formError, setFormError] = useState('');
-  const [busy, setBusy] = useState<'' | 'change' | 'dismiss'>('');
-  // The change this screen started, so its outcome is shown once and the
-  // history of an earlier one is not mistaken for it.
-  const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [securitySummary, setSecuritySummary] = useState<SecurityEventSummary | null>(null);
-  const [securityError, setSecurityError] = useState('');
+  const [query, setQuery] = useState('');
+  const visible = useMemo(() => SETTINGS.filter((setting) => matchesQuery(setting, query)).map((setting) => setting.id), [query]);
+  const [active, setActive] = useActiveSetting(visible);
 
-  // One read of the address status, and the screen is told where it ended:
-  // signed out, refused at this address, unreachable, or answered. A domain
-  // change restarts the web server under this connection, so a poll that fails
-  // is expected for a while and is never rendered as anything it did not see.
-  async function load(): Promise<AddressStatus | null> {
-    let response: Response;
-    try {
-      response = await fetch('/suite-manager/api/settings/address', { cache: 'no-store' });
-    } catch {
-      setContact('unreachable');
-      return null;
-    }
-    if (response.status === 401) { setContact('signed-out'); return null; }
-    if (response.status === 421) { setContact('refused'); return null; }
-    if (!response.ok) {
-      setContact('unreachable');
-      if (!status) setLoadError((await response.json().catch(() => ({}))).error || 'Unable to load the suite address.');
-      return null;
-    }
-    const next = await jsonResponse<AddressStatus>(response, 'Unable to load the suite address.');
-    setContact('ok');
-    setLoadError('');
-    setStatus(next);
-    return next;
+  function jump(id: SettingId) {
+    setActive(id);
+    // A cleared search re-shows the target in the same render, so wait for it.
+    window.requestAnimationFrame(() => scrollToAnchor(`set-${id}`));
   }
 
-  useEffect(() => {
-    void load().then((next) => {
-      if (!next) return;
-      setBaseDomain(next.address.baseDomain || next.offered?.baseDomain || '');
-      setAcmeEmail(next.address.acmeEmail || next.offered?.acmeEmail || '');
-    });
-    void fetch('/suite-manager/api/settings/security-events')
-      .then((response) => jsonResponse<SecurityEventSummary>(response, 'Unable to load recent security activity.'))
-      .then((summary) => { setSecuritySummary(summary); setSecurityError(''); })
-      .catch((error) => setSecurityError(error instanceof Error ? error.message : 'Unable to load recent security activity.'));
-  }, []);
+  return <section className="mos-shell mos-page mos-page-wider">
+    <div className="suite-settings-layout">
+      <SettingsSidebar
+        active={active}
+        onClear={() => setQuery('')}
+        onJump={jump}
+        onQuery={(next) => { setQuery(next); window.scrollTo({ top: 0 }); }}
+        query={query}
+        visible={visible}
+      />
 
-  const applying = status?.lastChange.status === 'applying';
-  // While a change runs the screen polls, through whatever the web server
-  // answers on, until the change has an outcome.
-  useEffect(() => {
-    if (!applying && contact !== 'unreachable') return undefined;
-    const timer = window.setInterval(() => { void load(); }, 2000);
-    return () => window.clearInterval(timer);
-  }, [applying, contact]);
+      <div className="suite-settings-main">
+        <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">How your suite is reached, who controls it, and how it keeps itself safe.</p></div>
 
-  // Every way of moving the suite is the same request with a different body,
-  // and every one of them is answered before it finishes.
-  async function startChange(body: Record<string, unknown>) {
-    setFormError('');
-    setBusy('change');
-    try {
-      const started = await jsonResponse<{ startedAt: string }>(await fetch('/suite-manager/api/settings/address/change', {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'The address could not be changed.');
-      setStartedAt(started.startedAt);
-      await load();
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'The address could not be changed.');
-    } finally {
-      setBusy('');
-    }
-  }
+        {!visible.length ? <Panel><PanelBody>
+          <h2 className="mos-card-title">No settings match &ldquo;{query.trim()}&rdquo;</h2>
+          <p className="suite-meta">Try a broader word like &ldquo;email&rdquo;, &ldquo;password&rdquo; or &ldquo;domain&rdquo;.</p>
+          <div><button className="mos-btn mos-btn-secondary" onClick={() => setQuery('')} type="button">Clear search</button></div>
+        </PanelBody></Panel> : null}
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const normalizedDomain = baseDomain.trim().toLowerCase().replace(/\.$/u, '');
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(normalizedDomain)) {
-      setFormError('Enter a valid Cloudflare-managed base domain.'); return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(acmeEmail.trim())) {
-      setFormError('Enter a valid ACME contact email address.'); return;
-    }
-    if (!/^[A-Za-z0-9_-]{20,4096}$/u.test(token.trim())) {
-      setFormError('A valid Cloudflare API token is required.'); return;
-    }
-    if (!status?.agentAvailable) {
-      setFormError('The HTTPS system agent is unavailable. Update or repair the MOS control plane, then try again.'); return;
-    }
-    const submittedToken = token.trim();
-    setToken('');
-    await startChange({ acmeEmail: acmeEmail.trim(), baseDomain: normalizedDomain, cloudflareApiToken: submittedToken, kind: 'domain' });
-  }
-
-  // The offered domain is served with the credential the restore kept for it,
-  // so this needs no token. An offer that came without a contact address takes
-  // the one in the form.
-  async function useOffered() {
-    if (!status?.offered) return;
-    const email = (status.offered.acmeEmail || acmeEmail).trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) { setFormError('Enter a valid ACME contact email address for the offered domain.'); return; }
-    await startChange({ acmeEmail: email, kind: 'domain', useOffered: true });
-  }
-
-  async function dismissOffer() {
-    setFormError('');
-    setBusy('dismiss');
-    try {
-      await jsonResponse(await fetch('/suite-manager/api/settings/address/offer/dismiss', { method: 'POST' }), 'The offer could not be dismissed.');
-      await load();
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'The offer could not be dismissed.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  const address = status?.address;
-  const change = status?.lastChange;
-  const dnsAddress = status?.serverAddress || '<server-ip>';
-  // The outcome of the change this screen started, shown until the next one.
-  const outcome = change && startedAt && change.at && change.at >= startedAt && change.status !== 'applying' ? change : null;
-  const canApplyHttps = Boolean(status?.agentAvailable && baseDomain.trim() && acmeEmail.trim() && token.trim() && !busy && !applying);
-
-  return <section className="mos-shell mos-page">
-    <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser, and the owner account that controls it.</p></div>
-    <GetHelpPanel />
-    {loadError && !status ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
-    {contact === 'signed-out' ? <Notice title="Your session ended" variant="warning"><p>Sign in again to see where the address change ended up.</p><a className="mos-btn mos-btn-primary" href="/suite-manager/">Sign in</a></Notice> : null}
-    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${change.target.scheme}://${change.target.host}/suite-manager/settings`}>{`${change.target.scheme}://${change.target.host}/`}</a>.</p></Notice> : null}
-    {status && address && change ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
-      <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
-      <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider's custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>
-      <AddressDiagnostics status={status} />
-    </div> : <div className="mos-panel suite-card suite-settings-panel">
-      <div>
-        <h2 className="mos-card-title">Where your suite lives</h2>
-        <p className="suite-meta">Your suite is published at <a href={address.url}><strong>{address.url}</strong></a>. {ADDRESS_KIND_SENTENCES[address.kind]} Every app and your Homepage use this address; MOS itself also keeps answering on the Easy Door and the name it was installed with, so you can always get back here.</p>
+        {/* Hidden rather than unmounted, so a search never throws away a half-typed form. */}
+        {GROUPS.map((group) => {
+          const settings = SETTINGS.filter((setting) => setting.group === group.id);
+          return <section className="suite-settings-group" hidden={!settings.some((setting) => visible.includes(setting.id))} id={`grp-${group.id}`} key={group.id}>
+            <div className="suite-settings-group-head">
+              <h2 className="mos-eyebrow">{group.title}</h2>
+              <p className="suite-meta">{group.description}</p>
+            </div>
+            {settings.map((setting) => <div className="suite-setting" hidden={!visible.includes(setting.id)} id={`set-${setting.id}`} key={setting.id}>
+              {SETTING_CARDS[setting.id]()}
+            </div>)}
+          </section>;
+        })}
       </div>
-      {applying ? <Notice title={`Moving your suite to ${change.target?.host || 'its new address'}`} variant="info">
-        <p>{CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.'}</p>
-        {contact === 'unreachable' ? <p className="suite-meta">The web server is restarting, so this page has no answer for a moment. It keeps asking.</p> : null}
-      </Notice> : null}
-      {outcome?.status === 'applied' ? <Notice title="Your suite moved" variant="success">
-        <p>It is now published at <a href={address.url}>{address.url}</a>.</p>
-        {address.kind === 'domain' && address.resolvesHere !== true ? <LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /> : null}
-        <a className="mos-btn mos-btn-primary" href={address.url}>Open {address.host}</a>
-      </Notice> : null}
-      {outcome?.status === 'applied' ? <AppReconciliationNotice reconciliation={outcome.result} /> : null}
-      {outcome?.status === 'failed' ? <Notice title="The address was not changed" variant="error"><p>Your suite is still at <a href={address.url}>{address.url}</a>. The reason is in the details below.</p></Notice> : null}
-      {!outcome && !applying && address.kind === 'domain' && address.resolvesHere === false ? <Notice title={`${address.host} does not point at this server`} variant="warning"><LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /></Notice> : null}
-      {status.drifted && !applying ? <Notice title="This server's address changed" variant="warning">
-        <p>Your suite was set up on <strong>{status.drifted.from}</strong>, but this server now answers on <strong>{status.drifted.to}</strong>. Your apps still name the old address until the suite follows. A fixed address for this server on your router prevents this.</p>
-        <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void startChange({ kind: 'easy-door' })} type="button">{busy === 'change' ? 'Moving...' : `Move to ${status.drifted.to}`}</button>
-      </Notice> : null}
-      {status.offered && !applying ? <Notice title={`This backup was set up for ${status.offered.baseDomain}`} variant="info">
-        <p>This machine serves <strong>{address.host}</strong>. Anything set up against <strong>home.{status.offered.baseDomain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points here and this server serves it. MOS kept that domain's credential from the backup, so serving it here needs no token; pointing the name at this server is the part MOS cannot do for you.</p>
-        {!status.offered.acmeEmail ? <TextInput autoComplete="email" helperText="The backup did not carry one." label="ACME contact email for the offered domain" onChange={(event) => setAcmeEmail(event.target.value)} type="email" value={acmeEmail} /> : null}
-        <p>
-          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy) || !status.agentAvailable} onClick={() => void useOffered()} type="button">{busy === 'change' ? 'Moving...' : `Serve ${status.offered.baseDomain} from here`}</button>
-          {' '}
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void dismissOffer()} type="button">{busy === 'dismiss' ? 'Dismissing...' : 'Not on this server'}</button>
-        </p>
-      </Notice> : null}
-      <div><h3 className="mos-card-title">{address.kind === 'domain' ? 'Change or renew your domain' : 'Use your own domain with HTTPS'}</h3><p className="suite-meta">MOS uses Cloudflare DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access. Your apps move to the new address with it.</p></div>
-      {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
-      <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
-        <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="MOS base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
-        <TextInput autoComplete="email" helperText="Used by the ACME certificate authority for account notices." label="ACME contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />
-        <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The token is used once and never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={address.kind === 'domain' ? 'Paste a token to apply again' : 'Paste token once'} type="password" value={token} />
-        {formError ? <Notice title="The address was not changed" variant="error"><p>{formError}</p></Notice> : null}
-        <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Moving...' : 'Move my suite to this domain'}</button>
-      </form>
-      <AddressDiagnostics status={status} />
-    </div> : contact === 'ok' && !loadError ? <p className="suite-meta">Loading the suite address...</p> : null}
-    <EmailRelayPanel />
-    <AppSourcesPanel />
-    <EncryptionPanel />
-    <TechnicalControlsPanel />
-    <OwnerAccountPanel />
-    <SecurityActivity error={securityError} summary={securitySummary} />
+    </div>
   </section>;
 }

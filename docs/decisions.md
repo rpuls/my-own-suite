@@ -20,7 +20,7 @@ Consequences:
 - A package the source publishes but MOS refuses is listed **with its reasons** rather than dropped. Omitting it would tell the owner the app was never offered and its publisher nothing at all.
 - An install must name the package whenever a source publishes more than one; MOS refuses to choose. An install whose identity depended on directory order would be a different app after the next push. The same naming makes a multi-package source updatable: an update re-resolves *that* package, and a source that no longer publishes it fails rather than reaching an update operation.
 - Sources that are not installable contribute no cards at all. A card that looks installable and refuses at the last step is worse than no card.
-- Adding a source and installing an app are separate acts. Adding is offered on the Apps page, where the repository's packages are already on screen; the standing list, Refresh and removal live in **Settings → App sources you added**. Removal stays metadata-only and still reports the installs it orphans.
+- Adding a source and installing an app are separate acts. Adding is offered on the Apps page, where the repository's packages are already on screen; the standing list, Refresh and removal live in **Settings → App sources**. Removal stays metadata-only and still reports the installs it orphans.
 - A source's status (`active`/`unavailable`/`compromised`) is never changed by a failed fetch. Status is a consent decision the owner owns; the fetch result is a fact about the network. An owner who changed nothing must not have to re-confirm a source because a host had a bad hour.
 
 ## 2026-09-20: The Suite Has One Recorded Address, A Door Is Not An Address, And Changing It Is One Transaction

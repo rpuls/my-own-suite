@@ -37,7 +37,7 @@ A repository can publish **one app or a whole catalog of them**. That second sha
 
 You can install straight from the preview, or click **Add this source** to keep it. An added source's apps sit in their own section of the Apps screen, under the publisher's name, so you can install from them whenever you like without pasting the URL again — and so you can tell at a glance which apps came from where.
 
-**Settings → App sources you added** is the standing list of what you've added. Each row says how many apps the source publishes and when MOS last checked it, with **Refresh now** and **Remove source**.
+**Settings → App sources** is the standing list of what you've added. Each row says how many apps the source publishes and when MOS last checked it, with **Refresh now** and **Remove source**.
 
 Removing a source stops offering its apps. **Anything you already installed from it keeps running**, with its settings and its data untouched — the only thing you lose is updates, because only that source knows when a newer version exists. You can add the same repository again later; nothing is deleted from your server by removing it.
 
