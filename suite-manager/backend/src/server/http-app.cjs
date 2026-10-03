@@ -546,7 +546,6 @@ function createMOSServer({
     suiteAddress,
   });
   addressService.start();
-  addressService.watchEasyDoor();
   const publicUrls =() => appPublicUrlResolver(suiteAddress.read(), appHostFor);
   const publicUrlOf = (packageId) => publicUrls()(packageId);
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -1820,7 +1819,7 @@ function createMOSServer({
     homepage.proxyUpgrade(request, socket, head);
   });
 
-  server.on('close', () => { catalogService.stop(); setup.close(); });
+  server.on('close', () => { catalogService.stop(); addressService.stopWatchingEasyDoor(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
     publicUrlFor: publicUrls(),
@@ -1837,6 +1836,7 @@ function createMOSServer({
     catalogService.schedule();
     return result;
   };
+  server.watchEasyDoor = () => addressService.watchEasyDoor();
 
   return server;
 }

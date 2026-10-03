@@ -75,7 +75,7 @@ async function withServer(fn, options = {}) {
   const baseUrl = await listen(server);
 
   try {
-    await fn(baseUrl);
+    await fn(baseUrl, server);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -3336,7 +3336,8 @@ test('the vault route answers whether this machine waits for a password', async 
 test('once the Easy Door certificate is held, its pages redirect to HTTPS and its API answers where it is', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl) => {
+  await withServer(async (baseUrl, server) => {
+    server.watchEasyDoor();
     let page;
     for (let attempt = 0; attempt < 50; attempt += 1) {
       page = await hostRequest(baseUrl, '/suite-manager/setup?step=1', { headers: { Host: host } });
@@ -3356,7 +3357,8 @@ test('once the Easy Door certificate is held, its pages redirect to HTTPS and it
 test('an Easy Door without a certificate yet is served over HTTP as before', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl) => {
+  await withServer(async (baseUrl, server) => {
+    server.watchEasyDoor();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const page = await hostRequest(baseUrl, '/suite-manager/setup', { headers: { Host: host } });
     assert.notEqual(page.status, 308);

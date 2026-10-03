@@ -122,6 +122,10 @@ class SuiteAddressService {
     this.watchTimer.unref?.();
   }
 
+  stopWatchingEasyDoor() {
+    clearInterval(this.watchTimer);
+  }
+
   async watchTick() {
     if (this.running) return;
     await this.agent.ensure();

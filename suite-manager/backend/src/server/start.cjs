@@ -23,6 +23,7 @@ async function start() {
   const sweptCandidates = server.sweepAppCandidates();
   if (sweptCandidates.length) logger.info('app-candidates-reclaimed', { count: sweptCandidates.length });
   void server.startCatalogRefresh();
+  server.watchEasyDoor();
   server.listen(port, host, () => {
     logger.info('listening', {
       host,
