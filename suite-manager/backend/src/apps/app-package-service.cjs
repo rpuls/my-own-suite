@@ -128,8 +128,9 @@ class AppPackageService {
   // architecture cannot change while Suite Manager runs, so it is asked once.
   async hostFacts(agentStatus = null) {
     this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
-    const scheme = this.suiteAddress?.readOrNull()?.scheme;
-    return { architecture: this.hostArchitecture, https: scheme ? scheme === 'https' : null };
+    const address = this.suiteAddress?.readOrNull();
+    // On the Easy Door over HTTP the certificate is on its way and the switch is automatic.
+    return { architecture: this.hostArchitecture, https: address ? address.scheme === 'https' : null, httpsPending: address?.kind === 'easy-door' && address.scheme === 'http' };
   }
 
   // Refusing up front turns a build that cannot pull its images, or an app that

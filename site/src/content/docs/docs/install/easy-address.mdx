@@ -6,7 +6,7 @@ description: My Own Suite gives every server a working web address without you b
 Your suite has an address that looks a bit odd:
 
 ```
-http://home.192-168-20-175.local.myownsuite.org/
+https://home.192-168-20-175.local.myownsuite.org/
 ```
 
 Those numbers are your server's own address on your network, with dashes instead of dots. This page explains why, what it means for your privacy, and what to do if it stops working.
@@ -31,9 +31,23 @@ It resolves to `192.168.20.175` — an address that only exists inside your own 
 The **name** is public. What it points at is not. Nobody outside your home can open your suite through it.
 :::
 
+## The lock in the address bar
+
+Your suite gets a certificate that every browser trusts, with nothing to buy and nothing to set up. A few minutes after the server first starts, the address switches from `http://` to `https://` by itself, and your apps follow. Until then everything works over plain `http://`, and the few apps that need a secure connection, password managers in particular, wait and become available on their own.
+
+What the lock gives you:
+
+- **Your connection is encrypted.** Someone else on your network cannot read what passes between your devices and your suite.
+- **Apps that need a secure connection work.** Browsers hold back parts of their security features from `http://` addresses, and password managers will not run without them.
+- **No warnings.** The certificate comes from Let's Encrypt, the same free certificate authority most of the web uses.
+
+What it does not prove is that the server is *yours*. Every household whose server got the same address on its own network, `192.168.1.100` say, gets a valid certificate for the same name. Someone on your own network who also runs My Own Suite could therefore present a valid certificate for your address. They would still need to redirect your traffic to their machine first, which they could already do against plain `http://`. So this is strictly better than no lock, but it is not the proof of identity that [your own domain](/docs/guides/https-domain/) gives.
+
+If the lock does not arrive, nothing else changes: your suite keeps working over `http://`, and **Settings → Suite address** says the certificate is on its way. Your server keeps asking for it, and the switch happens by itself when it comes.
+
 ## What actually leaves your network
 
-One thing, and it is worth being precise about it.
+Two things, and it is worth being precise about both.
 
 When a device on your network opens `photos.192-168-20-175.local.myownsuite.org`, it first has to ask *what address is that?* That question — and only that question — goes out to a nameserver My Own Suite operates. The answer comes back: `192.168.20.175`. Your device then connects to your own server directly, and everything after that stays inside your house.
 
@@ -45,6 +59,8 @@ What that means in practice:
 - **We cannot see inside your suite**, and nothing about this address gives us a way in.
 
 What is technically visible to whoever runs that nameserver is *which app names get asked about* — that `photos.` and `documents.` were looked up by someone. That is a property of how naming works on the internet generally, not something specific to us, and it is why the other option below exists.
+
+The second is the certificate. A few times a year your server asks Let's Encrypt for a fresh one. To prove it may have it, your server leaves a short-lived code with a second small service My Own Suite runs, and Let's Encrypt checks that code. That service sees your home's public internet address and the code, keeps neither, and is told nothing else: no email address, no account, nothing about your apps. Let's Encrypt sees your home's public address for the same reason, and publishes every certificate it issues in public logs, so those logs show that *some* server used your private address. Nothing more.
 
 ## If you would rather nothing left at all
 
@@ -80,11 +96,11 @@ https://home.203-0-113-9.sslip.io/
 Same idea — your server's address, in the name, so it works immediately with no domain to buy. Three differences:
 
 - **The address is public**, because a rented server has a public address. Your suite is reachable from anywhere, which is what you are paying for.
-- **HTTPS is automatic.** Because the address is publicly reachable, My Own Suite can obtain a real certificate for it, and your connection is encrypted. Home installs are plain HTTP until you add a domain of your own.
+- **HTTPS is automatic here too**, and proves more. The address is publicly reachable and belongs to your server alone, so the certificate is yours, not one shared with anyone else on the same private address.
 - **The naming service is [sslip.io](https://sslip.io/)**, a long-running public utility, not something we run.
 
 ## Using your own domain
 
-Whichever way you installed, you can buy a domain and use it instead. That gives you an address you chose, and — on a home server — encrypted HTTPS connections that the generated address cannot provide.
+Whichever way you installed, you can buy a domain and use it instead. That gives you an address you chose, and a certificate that proves the server is yours.
 
-See [Use your own domain with HTTPS](/docs/guides/https-domain/). Your apps are moved across for you; you do not reinstall anything. When you do, the generated address stops being served, because there is no longer a reason to keep a plain HTTP door open.
+See [Use your own domain with HTTPS](/docs/guides/https-domain/). Your apps are moved across for you; you do not reinstall anything. The generated address keeps working for the suite's own settings page, so you can always get back to it.

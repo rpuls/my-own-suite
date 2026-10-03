@@ -1,10 +1,10 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const tls = require('node:tls');
 
 const { HttpsAgentError } = require('./agent-core.cjs');
 const { describeFailure, indent, runCommand } = require('../lib/command-output.cjs');
+const { tlsHandshake } = require('../../shared/tls-handshake.cjs');
 
 const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
 const CADDYFILE_PATH = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
@@ -23,21 +23,12 @@ const CERTIFICATE_WAIT_MS = 180_000;
 const CERTIFICATE_POLL_MS = 3_000;
 const PARKED_MARKER = 'uses-parked-credential';
 
-function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+// How far back the journal is searched for a certificate's own lines, and how
+// many of them are kept: enough for the last attempt and the reason it failed.
+const CERTIFICATE_LOG_SCAN = 400;
+const CERTIFICATE_LOG_LINES = 8;
 
-// One TLS handshake to the local Caddy for the name, verified against the
-// system's trust store: it succeeds only once a real certificate is being
-// served for exactly that host.
-function tlsHandshake({ host, port, servername, timeoutMs = 10_000 }) {
-  return new Promise((resolve, reject) => {
-    const socket = tls.connect({ host, port, rejectUnauthorized: true, servername, timeout: timeoutMs }, () => {
-      socket.end();
-      resolve();
-    });
-    socket.on('timeout', () => socket.destroy(new Error('the TLS handshake timed out')));
-    socket.on('error', reject);
-  });
-}
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function atomicWrite(filePath, content, mode) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
@@ -165,13 +156,61 @@ class SystemHttpsAdapter {
     }
   }
 
-  async hasCloudflareModule() {
+  async caddyModules() {
     const { stdout } = await this.run(this.caddyBinary, ['list-modules'], {
       code: 'CADDY_MODULE_UNAVAILABLE',
-      message: 'The installed Caddy build has no Cloudflare DNS module.',
+      message: 'The installed Caddy build could not list its modules.',
       what: 'caddy list-modules',
     });
-    return stdout.split(/\r?\n/u).includes('dns.providers.cloudflare');
+    return stdout.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  }
+
+  // Writes the rendering only when it differs from the live file, and puts the
+  // previous file back if Caddy will not reload with it. `adapt` checks the
+  // syntax without provisioning the Cloudflare module, which needs the token;
+  // the reload is what proves the rest.
+  async ensureCaddyfile(caddyfile) {
+    const current = fs.existsSync(this.caddyfilePath) ? await fsp.readFile(this.caddyfilePath, 'utf8') : null;
+    if (current === caddyfile) return false;
+
+    const candidate = `${this.caddyfilePath}.mos-next`;
+    await atomicWrite(candidate, caddyfile, 0o644);
+    try {
+      await this.run(this.caddyBinary, ['adapt', '--adapter', 'caddyfile', '--config', candidate], {
+        code: 'HTTPS_CADDY_VALIDATION_FAILED',
+        message: 'Caddy rejected the rendered configuration.',
+        what: 'caddy adapt for the rendered configuration',
+      });
+    } catch (error) {
+      await fsp.rm(candidate, { force: true });
+      throw error;
+    }
+    await fsp.rename(candidate, this.caddyfilePath);
+    try {
+      await this.run(SYSTEMCTL_BINARY, ['reload', 'caddy.service'], {
+        code: 'HTTPS_CADDY_RELOAD_FAILED',
+        message: 'Caddy did not reload with the rendered configuration.',
+        what: 'systemctl reload caddy.service',
+      });
+    } catch (error) {
+      if (current === null) await fsp.rm(this.caddyfilePath, { force: true });
+      else await atomicWrite(this.caddyfilePath, current, 0o644);
+      await this.execute(SYSTEMCTL_BINARY, ['reload', 'caddy.service']).catch(() => {});
+      const log = await this.caddyLog();
+      if (log) error.details.push(`Caddy's last log lines:\n${indent(log)}`);
+      throw error;
+    }
+    return true;
+  }
+
+  // Caddy's newest lines naming this certificate, oldest first.
+  async certificateLog(identifier) {
+    try {
+      const { stdout } = await this.execute(JOURNALCTL_BINARY, ['-u', 'caddy.service', '-n', String(CERTIFICATE_LOG_SCAN), '--no-pager', '-o', 'cat'], {});
+      return stdout.split(/\r?\n/u).filter((line) => line.includes(identifier)).slice(-CERTIFICATE_LOG_LINES);
+    } catch {
+      return [];
+    }
   }
 
   async verifyCloudflareAccess(token, baseDomain) {
@@ -270,4 +309,4 @@ class SystemHttpsAdapter {
   }
 }
 
-module.exports = { PARKED_SECRET_ENV_PATH, SystemHttpsAdapter, atomicWrite, tlsHandshake };
+module.exports = { PARKED_SECRET_ENV_PATH, SystemHttpsAdapter, atomicWrite };

@@ -28,6 +28,13 @@ out `login.203-0-113-9.local.myownsuite.org`, a URL that reads as `myownsuite.or
 the vector, because an attacker would need the victim already on their LAN, where they have better
 options anyway.
 
+**One name is not stateless, and it does not live here.** A box's wildcard certificate is proved
+with a DNS-01 TXT record at `_acme-challenge.<a>-<b>-<c>-<d>.local.myownsuite.org`, and this zone holds no
+state. So that one name, for the same three RFC1918 ranges, is answered with a CNAME derived from the
+name, exactly as the A answer is, into `<a>-<b>-<c>-<d>.acme.myownsuite.org`. The token itself lives
+on the ACME responder (`infrastructure/acme-responder/`), a separate box with its own delegation.
+This one still writes nothing and holds nothing.
+
 Queries for names outside the zone are REFUSED. This is authoritative-only and is not a resolver.
 
 ## Why CoreDNS rather than sslip.io
@@ -130,7 +137,8 @@ node infrastructure/nameserver/verify.cjs 1.1.1.1 --via-resolver     # the publi
 ```
 
 The checks cover the encoded address resolving under any app label, every RFC1918 range including
-both edges of `172.16/12`, public addresses returning NXDOMAIN, a name that exists returning NODATA
+both edges of `172.16/12`, public addresses returning NXDOMAIN, the challenge name returning only its
+CNAME for every type, a name that exists returning NODATA
 rather than NXDOMAIN for AAAA, the apex SOA, and recursion being refused. The equivalent with `dig`:
 
 ```bash
@@ -229,13 +237,3 @@ changed and surface the new URL on the console and in Suite Manager.
 whoever operates this zone can see which apps an install runs and roughly when they are used. This
 cannot be engineered away while public DNS is the mechanism. The answer is the no-log commitment
 above, stated in the privacy policy and in the sovereignty document.
-
-**No HTTPS yet, and that is not a regression.** Own-hardware installs serve plain HTTP at
-`home.mos.home` today. Two things stand in the way, and the second is the harder one. Certificates
-need a Public Suffix List entry to escape Let's Encrypt's 50-certificates-per-registered-domain
-limit, and the PSL guidelines explicitly decline beta-stage projects. And a LAN box is not publicly
-reachable, so HTTP-01 and TLS-ALPN-01 cannot work and DNS-01 is the only challenge left — but DNS-01
-writes a `_acme-challenge` TXT record, and this zone is stateless by design with no writable path and
-no credential that could edit it. Certificates therefore need something that holds per-install
-challenge state: either a full registry, or an `acme-dns`-style responder whose only job is TXT
-challenges under per-install credentials. Deliberately out of scope here; tracked in **H8**.

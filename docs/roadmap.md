@@ -83,8 +83,9 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   as a cookie-isolation fix: Google Analytics cookies land on install domains because sslip.io is not
   on the PSL — inert, but it contradicts the promise for anyone who opens DevTools. It is now
   load-bearing for the whole own-hardware path, because without the listing one install's suite can
-  set cookies another install's suite reads, and Let's Encrypt's fifty-certificates-per-registered-
-  domain limit keeps **H8** on plain HTTP. The entry is a pull request against `publicsuffix/list`
+  set cookies another install's suite reads, and every Easy Door certificate draws on Let's Encrypt's
+  fifty-certificates-per-registered-domain budget for all of `myownsuite.org`; the listing makes that
+  budget per LAN address. The entry is a pull request against `publicsuffix/list`
   that then waits on browser release cycles, so the lead time is months and it has to start early —
   and the PSL guidelines decline beta-stage projects, so the submission needs the project to look
   like something first. The remaining non-PSL work is disclosure: MOS receives the queries, and the
@@ -191,14 +192,11 @@ on its own: machines that install but will not boot, and reaching the suite once
   contract is in `docs/decisions.md`. It left two things behind: rebinding protection, which belongs
   to **H7**, and address instability, which is **H9**.
 
-  **The HTTPS half is a separate and larger problem than it looked.** A LAN box is not publicly
-  reachable, so HTTP-01 and TLS-ALPN-01 are out and DNS-01 is the only challenge left — but DNS-01
-  means writing a `_acme-challenge` TXT record, and the MOS zone is deliberately stateless with no
-  writable path and no zone-editing credential anywhere. So certificates need something that stores
-  per-install challenge state: either the registry declined below, or an `acme-dns`-style responder
-  whose entire scope is holding TXT challenges under per-install credentials, which is the narrower
-  and more defensible shape. That is on top of the PSL entry in **B2**, not instead of it. The
-  existing Cloudflare flow stays for owners bringing their own domain. *(Large)*
+  **The certificate half is built** (decision 2026-10-03): one wildcard per box through a token-only
+  ACME responder, and the suite switches to HTTPS by itself. The gate is the rest: the responder
+  Droplet and its two parent-zone records live, an issuance against Let's Encrypt staging and then
+  production from the lab box, the lab drills, and the Let's Encrypt rate-limit adjustment request
+  filed. *(Large)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
@@ -276,6 +274,22 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   preview refuses with a sentence naming the version the owner has to reach first. What that owner then
   does is the undecided half and gates the design: a published waypoint package, or a restore-and-climb
   path. *(Medium — needs a decision first)*
+
+### AL-R — Reliability hazards
+
+- **AL14 — Stop spending GitHub's unauthenticated API budget at runtime.** The installer endpoint, the
+  catalog refresh, every catalog app install and the update agent all call `api.github.com` without a
+  token, which GitHub caps at 60 calls an hour per source address. A Worker shares its address with
+  everyone on the colo — on 2026-10-03 both `get.` and `get-dev.myownsuite.org` answered 503 because
+  GitHub returned 403, while the same call from a workstation got 200 — and a household or CGNAT
+  address shares it with every machine behind it, while one catalog install spends a call per package
+  directory. Candidate: the site deploy publishes a static release feed (`stable.json`, catalog and
+  advisories with their signatures, one archive per package named by its digest) and every consumer
+  reads that instead; the installer becomes a static script rendered at deploy time. The signature and
+  `packageDigest` already make the transport untrusted, so the security cost is one gap to close in
+  the same slice: a mirror can replay an older signed catalog, which GitHub's commit resolution
+  prevents today, so the catalog needs a signed sequence MOS refuses to go backwards on. Platform code
+  stays a `git` fetch, which is not on the REST budget. Gated by **OQ3**. *(Medium)*
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
@@ -408,6 +422,18 @@ that compares declared totals against the machine, and eventually against measur
 candidate; it is only worth building once most of the catalog declares figures, since a total that
 silently omits undeclared apps is worse than no total. Catalog-card RAM badges were considered and
 left out: the card is the scanning surface and already carries category, status and summary.
+
+**OQ3 — Whether servers may fetch from a host the project runs.** **AL14** moves the catalog, packages
+and release lookups from GitHub to a feed on `myownsuite.org`, and the privacy page promises "no server
+of ours that your installation reports back to." The Easy Door is no precedent: it is an optional way
+in for owners who do not mind, beside the recommended one. Install, update status and the catalog are
+not optional, so every server would contact a host the project runs, with no way to decline. The feed
+is static files with no code of ours reading the request, but the host still sees each server's
+address and how often it asks. Options: (a) accept it, list it among the outward contacts and state
+what it sees; (b) keep the feed on a host the project does not run — GitHub Pages or a bucket under a
+third-party name — which keeps the promise literal and leaves the address with a provider, as GitHub
+holds it today; (c) make the source owner-overridable, so an owner can point at a mirror of their own
+or keep GitHub, alongside either. *(Owner decision; gates AL14)*
 
 ---
 

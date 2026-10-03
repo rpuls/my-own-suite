@@ -57,6 +57,8 @@ class HttpsAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
+  ensure() { return this.request('POST', '/v1/https/ensure'); }
+  easyDoorStatus() { return this.request('GET', '/v1/https/easy-door'); }
   apply(input) { return this.request('POST', '/v1/https/apply', input); }
   commit(rollbackId) { return this.request('POST', '/v1/https/commit', { rollbackId }); }
   rollback(rollbackId) { return this.request('POST', '/v1/https/rollback', { rollbackId }); }

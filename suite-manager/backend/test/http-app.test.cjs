@@ -2229,6 +2229,8 @@ function fakeHttpsAgent(overrides = {}) {
       apply: async (input) => { calls.apply.push(input); return { rollbackId: 'rollback-one' }; },
       commit: async (id) => { calls.commit.push(id); return { status: 'committed' }; },
       discardParkedCredential: async () => { calls.discard.push(true); return { status: 'discarded' }; },
+      easyDoorStatus: async () => ({ easyDoorBase: null, log: [] }),
+      ensure: async () => ({ changed: false, easyDoorBase: null }),
       rollback: async (id) => { calls.rollback.push(id); return { status: 'rolled-back' }; },
       status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
       ...overrides,
@@ -2291,7 +2293,7 @@ test('the suite address API requires authentication, changes to a domain in the 
     assert.ok(['boolean', 'object'].includes(typeof status.address.resolvesHere));
     assert.doesNotMatch(JSON.stringify(status), new RegExp(token, 'u'));
     assert.equal(calls.apply[0].cloudflareApiToken, token);
-    assert.equal(calls.apply[0].bootstrapHost, 'home.test');
+    assert.equal(Object.hasOwn(calls.apply[0], 'bootstrapHost'), false, 'the agent reads the install-time name from its own unit');
     assert.deepEqual(calls.commit, ['rollback-one']);
 
     // A door is not an address: the install-time name still answers for Suite
@@ -2614,7 +2616,7 @@ test('onboarding records the Easy Door, and an offered domain is adopted with it
     assert.equal(status.lastChange.status, 'applied');
     assert.equal(status.address.url, 'https://home.old.example.com/');
     assert.equal(status.offered, null);
-    assert.deepEqual(calls.apply[0], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', bootstrapHost: 'home.test', useParkedCredential: true });
+    assert.deepEqual(calls.apply[0], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', useParkedCredential: true });
     // The Easy Door the owner is standing on still answers.
     assert.equal(status.address.kind, 'domain');
   }, { homeHost: 'home.test', homepageAgent, httpsAgent, suiteAddress });
@@ -3327,4 +3329,36 @@ test('the vault route answers whether this machine waits for a password', async 
     assert.equal(view.json().chipNeedsRepair, true);
     assert.equal(view.json().encrypted, true);
   }, { homeHost: 'home.test', vaultAgent });
+});
+
+// The console banner keeps printing the HTTP address; the redirect is what puts
+// the owner on HTTPS, so onboarding records the door they really came through.
+test('once the Easy Door certificate is held, its pages redirect to HTTPS and its API answers where it is', async () => {
+  const host = 'home.192-168-30-104.local.myownsuite.org';
+  const { agent } = fakeHttpsAgent();
+  await withServer(async (baseUrl) => {
+    let page;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      page = await hostRequest(baseUrl, '/suite-manager/setup?step=1', { headers: { Host: host } });
+      if (page.status === 308) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(page.status, 308);
+    assert.equal(page.headers.location, `https://${host}/suite-manager/setup?step=1`);
+
+    const api = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: host } });
+    assert.equal(api.status, 200);
+    const overHttps = await hostRequest(baseUrl, '/suite-manager/setup', { headers: { Host: host, 'X-Forwarded-Proto': 'https' } });
+    assert.notEqual(overHttps.status, 308);
+  }, { detectAddress: () => '192.168.30.104', httpsAgent: agent, probeEasyDoorCertificate: async () => ({ valid_to: 'Dec 31 12:00:00 2026 GMT' }) });
+});
+
+test('an Easy Door without a certificate yet is served over HTTP as before', async () => {
+  const host = 'home.192-168-30-104.local.myownsuite.org';
+  const { agent } = fakeHttpsAgent();
+  await withServer(async (baseUrl) => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const page = await hostRequest(baseUrl, '/suite-manager/setup', { headers: { Host: host } });
+    assert.notEqual(page.status, 308);
+  }, { detectAddress: () => '192.168.30.104', httpsAgent: agent, probeEasyDoorCertificate: async () => { throw new Error('unable to verify the first certificate'); } });
 });

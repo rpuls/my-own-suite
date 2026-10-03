@@ -15,6 +15,7 @@ const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
+const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { SuiteAddressFile, baseHostOf, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
@@ -53,8 +54,6 @@ const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
-// Front doors whose install-time name is served over HTTPS from the first boot.
-const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
 
 // The directory the machine-local state lives under. Suite Manager's own state
 // is one directory inside it, so the root is that directory's parent unless the
@@ -380,6 +379,8 @@ function createMOSServer({
   ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
   suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRootOf(stateDir)) }),
+  detectAddress = undefined,
+  probeEasyDoorCertificate = undefined,
   officialCatalog = null,
   externalSources = null,
 } = {}) {
@@ -536,14 +537,17 @@ function createMOSServer({
     agent: httpsAgent,
     bootstrapHost: homeHost,
     bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
+    detectAddress,
     frontDoor,
+    probeCertificate: probeEasyDoorCertificate,
     logger,
     rebake: (address) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, appHostFor) }),
     store: setup.store,
     suiteAddress,
   });
   addressService.start();
-  const publicUrls = () => appPublicUrlResolver(suiteAddress.read(), appHostFor);
+  addressService.watchEasyDoor();
+  const publicUrls =() => appPublicUrlResolver(suiteAddress.read(), appHostFor);
   const publicUrlOf = (packageId) => publicUrls()(packageId);
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
@@ -572,6 +576,13 @@ function createMOSServer({
     try {
       if (!addressService.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
+        return;
+      }
+
+      const httpsOrigin = isHttpsRequest(request) ? null : addressService.httpsRedirectFor(requestHost);
+      if (httpsOrigin && ['GET', 'HEAD'].includes(request.method) && !url.pathname.startsWith(SUITE_MANAGER_API_PREFIX)) {
+        response.writeHead(308, { 'Cache-Control': 'no-store', Location: `${httpsOrigin}${request.url || '/'}` });
+        response.end();
         return;
       }
 

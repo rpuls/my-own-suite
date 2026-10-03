@@ -1,7 +1,21 @@
-const { EASY_DOOR_CADDY_MARKER, EASY_DOOR_HOME_HOST_REGEXP } = require('../shared/easy-door.cjs');
+const {
+  EASY_DOOR_ACME_SERVER,
+  EASY_DOOR_CADDY_MARKER,
+  EASY_DOOR_HOME_HOST_REGEXP,
+  EASY_DOOR_ZONE,
+  easyDoorAddressOf,
+  easyDoorBaseDomain,
+} = require('../shared/easy-door.cjs');
 
 const HOMEPAGE_IMAGE = 'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c7734353701ccbaa24ed02dacb0d119114e50e4251e2005f3990a';
 const HOMEPAGE_PORT = 3200;
+
+// The installs that front Suite Manager with their own public name and never
+// have an Easy Door.
+const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'digitalocean-smoke', 'public-vps']);
+// Install and every managed update refuse a Caddy binary without both: an owned
+// domain proves itself through Cloudflare, the Easy Door through the ACME responder.
+const CADDY_REQUIRED_MODULES = Object.freeze(['dns.providers.cloudflare', 'dns.providers.acmedns']);
 
 const UNAVAILABLE_PAGE_ROOT = '/etc/caddy/mos-status';
 const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
@@ -86,75 +100,6 @@ function unavailableHandler(indent = '  ') {
     '  }',
     '}',
   ].map((line) => `${indent}${line}`).join('\n');
-}
-
-// An installed machine's Caddyfile is written once and then belongs to whatever
-// last rendered it — applying HTTPS replaces the whole file — which is why
-// reconciliation deliberately never rewrites it. That would have left the status
-// handler reaching new installs only, and a managed update that applies half of
-// a change is a regression rather than a limitation.
-//
-// So the file that is already there is upgraded in place: every top-level block
-// that proxies Suite Manager gets the progress route at its start and the error
-// handler at its end, whichever it is missing and whichever of the three
-// renderings produced it. A file that already has both comes back unchanged,
-// so this is safe to run on every reconcile. Blocks are found by brace depth
-// rather than by matching a known rendering, because the installed file has
-// been through `envsubst` and names a real host and port.
-//
-// The handler goes at the end of the site block, never beside the `reverse_proxy`
-// line: in the Easy Door block that line sits inside a `handle`, and
-// `handle_errors` is not valid there.
-function withUnavailableHandler(caddyfile) {
-  const lines = caddyfile.split(/\r?\n/u);
-  const blocks = [];
-  let depth = 0;
-  let start = -1;
-
-  lines.forEach((line, index) => {
-    const opens = (line.match(/\{/gu) || []).length;
-    const closes = (line.match(/\}/gu) || []).length;
-    if (depth === 0 && opens > closes) start = index;
-    depth = Math.max(0, depth + opens - closes);
-    if (depth === 0 && start !== -1) {
-      blocks.push({ end: index, start });
-      start = -1;
-    }
-  });
-
-  let updated = lines;
-  // Late blocks first, and the end of a block before its start, so an
-  // insertion never moves an index still to be used.
-  for (const block of blocks.reverse()) {
-    const body = updated.slice(block.start, block.end + 1).join('\n');
-    if (!/reverse_proxy\s+127\.0\.0\.1:/u.test(body)) continue;
-    if (!/handle_errors/u.test(body)) {
-      updated = [
-        ...updated.slice(0, block.end),
-        ...unavailableHandler().split('\n'),
-        ...updated.slice(block.end),
-      ];
-    }
-    // Each route is checked on its own, because a machine installed before the
-    // vault existed has the progress route and not the unlock one, and an
-    // all-or-nothing test would leave exactly those machines unable to serve the
-    // only screen that can open their disk.
-    if (!body.includes(VAULT_UNLOCK_ROUTE)) {
-      updated = [
-        ...updated.slice(0, block.start + 1),
-        ...unlockRoute().split('\n'),
-        ...updated.slice(block.start + 1),
-      ];
-    }
-    if (!body.includes(PROGRESS_ROUTE)) {
-      updated = [
-        ...updated.slice(0, block.start + 1),
-        ...progressRoute().split('\n'),
-        ...updated.slice(block.start + 1),
-      ];
-    }
-  }
-  return updated.join('\n');
 }
 
 // Served by Caddy with nothing else running, so it carries no font, no image
@@ -439,70 +384,108 @@ ${unavailableHandler()}
 }`;
 }
 
-function renderCaddyfile() {
-  return `http://$MOS_HOME_HOST {
+function suiteManagerSite(siteAddress, suiteManagerPort) {
+  return `${siteAddress} {
 ${statusRoutes()}
-  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
+  reverse_proxy 127.0.0.1:${suiteManagerPort}
+${unavailableHandler()}
+}`;
+}
+
+// Trusted HTTPS on the Easy Door for one concrete LAN address: one wildcard,
+// proved through the ACME responder, so every app alias under it shares it and
+// none is ever ordered on its own. The named HTTP site is what keeps Caddy from
+// redirecting the home name to HTTPS before the certificate exists, or forever
+// when it never arrives. No ACME email of its own: the box has none at first boot.
+function easyDoorTlsSites(address, suiteManagerPort) {
+  const base = easyDoorBaseDomain(address);
+  const homeHost = `home.${base}`;
+  return `http://${homeHost} {
+${statusRoutes()}
+  reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
 
-${easyDoorSiteBlock()}
-
-import /etc/caddy/mos-homepage-routes.caddy
-import /etc/caddy/mos-app-routes.caddy
-`;
-}
-
-function renderPublicCloudCaddyfile() {
-  return `http://$MOS_HOME_HOST {
+https://*.${base} {
+  tls {
+    dns acmedns {
+      server_url ${EASY_DOOR_ACME_SERVER}
+      subdomain ${base.slice(0, -EASY_DOOR_ZONE.length - 1)}
+      username mos
+      password mos
+    }
+  }
 ${statusRoutes()}
-  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
+  @mos-easy-door-home host ${homeHost}
+  handle @mos-easy-door-home {
+    reverse_proxy 127.0.0.1:${suiteManagerPort}
+  }
+  handle {
+    respond 404
+  }
 ${unavailableHandler()}
+}`;
 }
 
-https://$MOS_HOME_HOST {
-${statusRoutes()}
-  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
-${unavailableHandler()}
-}
-
-import /etc/caddy/mos-homepage-routes.caddy
-import /etc/caddy/mos-app-routes.caddy
-`;
-}
-
-// The install-time name and the Easy Door stay open for Suite Manager beside the
+// Every Caddyfile MOS writes, as one function of the machine's facts. The
+// installer bakes it with no Easy Door address, because the image cannot know
+// the one it will get; the HTTPS agent re-renders it with the live address (and
+// the Easy Door address still recorded, until the owner moves), and with the
+// recorded domain when there is one.
+//
+// The install-time name and the Easy Door stay open for Suite Manager beside a
 // domain: an owner who applied HTTPS from either door keeps a working page while
-// their devices learn the new name, and the apps — single-addressed on the
-// domain — are what the door does not carry.
-function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_SUITE_MANAGER_PORT' }) {
-  const homeHost = `home.${baseDomain}`;
-  return `{
-  email ${acmeEmail}
-  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-}
-
-http://${bootstrapHost} {
-${statusRoutes()}
-  reverse_proxy 127.0.0.1:${suiteManagerPort}
-${unavailableHandler()}
-}
-
-${easyDoorSiteBlock(suiteManagerPort)}
-
-http://${homeHost} {
+// their devices learn the new name. A public cloud install never has a door.
+function renderCaddyfile({
+  bootstrapHost = '$MOS_HOME_HOST',
+  domain = null,
+  easyDoorAddresses = [],
+  publicCloud = false,
+  suiteManagerPort = '$MOS_SUITE_MANAGER_PORT',
+} = {}) {
+  const sites = [suiteManagerSite(`http://${bootstrapHost}`, suiteManagerPort)];
+  if (publicCloud) {
+    sites.push(suiteManagerSite(`https://${bootstrapHost}`, suiteManagerPort));
+  } else {
+    sites.push(easyDoorSiteBlock(suiteManagerPort));
+    for (const address of new Set(easyDoorAddresses.filter((address) => easyDoorBaseDomain(address)))) {
+      sites.push(easyDoorTlsSites(address, suiteManagerPort));
+    }
+  }
+  if (domain) {
+    const homeHost = `home.${domain.baseDomain}`;
+    sites.push(`http://${homeHost} {
   redir https://${homeHost}{uri} permanent
-}
-
-https://${homeHost} {
-${statusRoutes()}
-  reverse_proxy 127.0.0.1:${suiteManagerPort}
-${unavailableHandler()}
-}
+}`, suiteManagerSite(`https://${homeHost}`, suiteManagerPort));
+  }
+  const email = domain?.acmeEmail ? `  email ${domain.acmeEmail}\n` : '';
+  const globals = domain ? `{\n${email}  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}\n}\n\n` : '';
+  return `${globals}${sites.join('\n\n')}
 
 import /etc/caddy/mos-homepage-routes.caddy
 import /etc/caddy/mos-app-routes.caddy
 `;
+}
+
+// An installed machine's Caddyfile from where its facts live: the install
+// contract, the recorded address and the live LAN address. Both writers render
+// through here, the update path on every managed update and the HTTPS agent
+// whenever they change, so neither can leave the file behind the other.
+//
+// The certificate follows the live address. The recorded Easy Door address
+// keeps its own until the owner moves the suite, because its app routes are
+// still served under it. `domain` is passed only by an apply that has not
+// recorded the domain yet.
+function renderMachineCaddyfile({ bootstrapHost, domain, frontDoor, liveAddress, recorded, suiteManagerPort }) {
+  const recordedDomain = recorded?.kind === 'domain' ? { acmeEmail: recorded.acmeEmail, baseDomain: recorded.baseDomain } : null;
+  const recordedEasyDoor = recorded?.kind === 'easy-door' ? easyDoorAddressOf(recorded.host) : null;
+  return renderCaddyfile({
+    bootstrapHost,
+    domain: domain === undefined ? recordedDomain : domain,
+    easyDoorAddresses: [liveAddress, recordedEasyDoor].filter(Boolean),
+    publicCloud: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor),
+    suiteManagerPort,
+  });
 }
 
 // The journal is where the reason something failed ends up, so both halves of
@@ -563,6 +546,7 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   VAULT_AGENT_PORT,
@@ -571,6 +555,7 @@ module.exports = {
   PROGRESS_FILENAME,
   PROGRESS_ROUTE,
   PROGRESS_STALE_MINUTES,
+  PUBLIC_CLOUD_FRONT_DOORS,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
   renderCaddyfile,
@@ -578,9 +563,7 @@ module.exports = {
   renderUnavailablePageScript,
   statusRoutes,
   unlockRoute,
-  withUnavailableHandler,
   renderJournaldConfig,
-  renderHttpsCaddyfile,
+  renderMachineCaddyfile,
   renderHomepageSystemdUnit,
-  renderPublicCloudCaddyfile,
 };

@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Added
+
+- **Your suite's generated address gets trusted HTTPS by itself, with nothing to buy.** A server on your home network serves `https://home.192-168-…-….local.myownsuite.org` with a certificate every browser trusts. It switches over a few minutes after the certificate arrives, takes your apps with it, and enables apps that need HTTPS, such as password managers. Until it arrives, everything works over HTTP as before and **Settings → Suite address** says the certificate is on its way. **Compatibility:** the platform update rebuilds Caddy on 2.11.6 with a new DNS module, renders the whole Caddyfile from the machine's settings on every update, and stops sending `bootstrapHost` to the HTTPS agent. Existing home servers recorded on the generated address switch to HTTPS on their own, which restarts each installed app once. Caddy 2.11 caps request headers at 16 KiB, aborts stalled transfers after a minute and drops header names containing `_` or `.`, for every app.
+
 ### Changed
 
 - **Settings is one grouped page you can search.** Settings are grouped under Your suite, Account & security, Apps, Advanced and Help, with a sidebar that lists every setting, follows where you are, and filters as you type (press `/` to search). Forms such as the suite address, the email relay and the owner password stay closed behind **Edit** or **Change** until you need them, while each card keeps its current status in view.

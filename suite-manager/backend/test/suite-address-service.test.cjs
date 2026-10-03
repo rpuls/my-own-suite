@@ -26,6 +26,8 @@ function fakeAgent(overrides = {}) {
     apply: record('apply', { rollbackId: 'rollback-one' }),
     commit: record('commit', { status: 'committed' }),
     discardParkedCredential: record('discardParkedCredential', { status: 'discarded' }),
+    easyDoorStatus: record('easyDoorStatus', { easyDoorBase: '192-168-30-104.local.myownsuite.org', log: ['{"msg":"will retry","identifier":"*.192-168-30-104.local.myownsuite.org"}'] }),
+    ensure: record('ensure', { changed: false, easyDoorBase: '192-168-30-104.local.myownsuite.org' }),
     rollback: record('rollback', { status: 'rolled-back' }),
     status: record('status', { capabilities: ['cloudflare-dns01.apply'] }),
     ...overrides,
@@ -135,7 +137,7 @@ test('a domain change runs its stages in order, records the address only after t
   assert.equal(status.lastChange.stage, 'apps');
   assert.deepEqual(status.lastChange.result, { status: 'applied' });
   assert.deepEqual(order.map((entry) => entry[0]), ['apply', 'commit', 'rebake']);
-  assert.deepEqual(order[0][1], { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', bootstrapHost: 'home.mos.home', cloudflareApiToken: 'cloudflare_token_1234567890' });
+  assert.deepEqual(order[0][1], { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'cloudflare_token_1234567890' });
   const recorded = suiteAddress.read();
   assert.deepEqual({ acmeEmail: recorded.acmeEmail, baseDomain: recorded.baseDomain, by: recorded.by, host: recorded.host, kind: recorded.kind, provider: recorded.provider, scheme: recorded.scheme },
     { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', by: 'change-suite-address', host: 'home.mos.example.com', kind: 'domain', provider: 'cloudflare', scheme: 'https' });
@@ -212,7 +214,7 @@ test('an offered domain is served with the parked credential and the offer is cl
   await service.change({ kind: 'domain', useOffered: true });
   status = await settled(service);
   assert.equal(status.lastChange.status, 'applied');
-  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', bootstrapHost: 'home.mos.home', useParkedCredential: true });
+  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', useParkedCredential: true });
   assert.equal(status.address.baseDomain, 'old.example.com');
   assert.equal(status.offered, null);
 
@@ -297,4 +299,74 @@ test('status says whether a domain resolves to this machine, and says nothing fo
   const doorStatus = await door.service.status();
   assert.equal(doorStatus.address.resolvesHere, null);
   assert.equal(doorStatus.agentAvailable, false);
+});
+
+const EASY_DOOR = 'home.192-168-30-104.local.myownsuite.org';
+const held = async () => ({ valid_to: 'Dec 31 12:00:00 2026 GMT' });
+const missing = async () => { throw new Error('unable to verify the first certificate'); };
+
+test('once the Easy Door certificate is held, a suite recorded on that door moves to HTTPS by itself', async () => {
+  const { agent, service, suiteAddress } = makeService({ probeCertificate: held });
+  service.start();
+  service.recordDoor(EASY_DOOR, { scheme: 'http' });
+
+  await service.watchTick();
+  await service.running;
+
+  assert.equal(agent.calls[0][0], 'ensure');
+  assert.deepEqual({ host: suiteAddress.read().host, scheme: suiteAddress.read().scheme }, { host: EASY_DOOR, scheme: 'https' });
+  const status = await service.status();
+  assert.equal(status.lastChange.status, 'applied');
+  assert.deepEqual({ notAfter: status.easyDoorCertificate.notAfter, state: status.easyDoorCertificate.state }, { notAfter: '2026-12-31T12:00:00.000Z', state: 'held' });
+  assert.equal(status.easyDoorUrl, `https://${EASY_DOOR}/`);
+  assert.equal(service.httpsRedirectFor(EASY_DOOR), `https://${EASY_DOOR}`);
+
+  await service.watchTick();
+  assert.equal(agent.calls.filter(([name]) => name === 'apply').length, 0);
+  assert.equal(service.running, null, 'a suite already on HTTPS is left alone');
+});
+
+test('while the certificate is pending the suite stays on HTTP and the status carries Caddy\'s reason', async () => {
+  const { service, suiteAddress } = makeService({ probeCertificate: missing });
+  service.start();
+  service.recordDoor(EASY_DOOR, { scheme: 'http' });
+
+  await service.watchTick();
+  assert.equal(service.running, null);
+  assert.equal(suiteAddress.read().scheme, 'http');
+  assert.equal(service.httpsRedirectFor(EASY_DOOR), null);
+  const status = await service.status();
+  assert.equal(status.easyDoorCertificate.state, 'pending');
+  assert.match(status.easyDoorCertificate.log[0], /will retry/u);
+  assert.equal(status.easyDoorUrl, `http://${EASY_DOOR}/`);
+});
+
+test('a moved address, a public cloud install and a running change never switch the suite', async () => {
+  const moved = makeService({ detectAddress: () => '192.168.30.200', probeCertificate: held });
+  moved.service.start();
+  moved.service.recordDoor(EASY_DOOR, { scheme: 'http' });
+  await moved.service.watchTick();
+  assert.equal(moved.service.running, null, 'the certificate follows the live address; moving the suite stays the owner\'s button');
+  assert.equal(moved.suiteAddress.read().scheme, 'http');
+
+  let probed = false;
+  const cloud = makeService({ frontDoor: 'cloud-init', probeCertificate: async () => { probed = true; return held(); } });
+  cloud.service.start();
+  await cloud.service.watchTick();
+  assert.equal(probed, false);
+  assert.equal((await cloud.service.status()).easyDoorCertificate.state, 'not-applicable');
+
+  const busy = makeService({ probeCertificate: held });
+  busy.service.start();
+  busy.service.running = new Promise(() => {});
+  await busy.service.watchTick();
+  assert.equal(busy.agent.calls.some(([name]) => name === 'ensure'), false);
+});
+
+test('moving to the Easy Door lands on HTTPS when its certificate is already held', async () => {
+  const { service, suiteAddress } = makeService({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, probeCertificate: held });
+  await service.refreshCertificate();
+  await service.change({ kind: 'easy-door' });
+  await service.running;
+  assert.deepEqual({ host: suiteAddress.read().host, scheme: suiteAddress.read().scheme }, { host: EASY_DOOR, scheme: 'https' });
 });

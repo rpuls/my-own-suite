@@ -89,6 +89,28 @@ checks.push({
   },
 });
 
+// The DNS-01 challenge name is a CNAME into the ACME responder's zone, for every
+// query type, and never also an A record. Public addresses get no challenge name.
+for (const method of ['resolveTxt', 'resolve4']) {
+  const name = `_acme-challenge.192-168-123-45.${ZONE}`;
+  checks.push({
+    name,
+    label: `${method === 'resolveTxt' ? 'TXT' : 'A'} ${name} -> CNAME into acme.myownsuite.org`,
+    run: async () => {
+      const { records, code } = await query('resolveCname', name);
+      if (code) return `expected a CNAME, got ${code}`;
+      if (records.length !== 1 || records[0] !== '192-168-123-45.acme.myownsuite.org') {
+        return `expected 192-168-123-45.acme.myownsuite.org, got ${records.join(', ')}`;
+      }
+      if (viaResolver) return null;
+      const typed = await query(method, name);
+      if (typed.records && typed.records.length) return `also answered ${typed.records.join(', ')}`;
+      return null;
+    },
+  });
+}
+refuses(`_acme-challenge.203-0-113-9.${ZONE}`, 'no challenge name for a public address');
+
 // The zone apex answers for itself, so resolvers see a real zone rather than a hole.
 checks.push({
   name: `SOA ${ZONE}`,

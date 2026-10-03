@@ -11,8 +11,10 @@
 const dns = require('node:dns');
 const os = require('node:os');
 
+const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { HttpsSettingsError, normalizeBaseDomain, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
+const { tlsHandshake } = require('../../../../shared/tls-handshake.cjs');
 const { SuiteAddressError, addressForHost, domainAddress } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { HttpsAgentError } = require('../settings/https-agent-client.cjs');
@@ -47,6 +49,13 @@ async function resolvesHere(host, resolveHost) {
   return (addresses || []).some((address) => local.has(address));
 }
 
+// Held only when the local web server presents a certificate for exactly this
+// name that the system trusts. Anything else means the certificate has not
+// arrived yet; Caddy keeps trying on its own.
+function probeLocalCertificate(host) {
+  return tlsHandshake({ host: '127.0.0.1', port: 443, servername: host, timeoutMs: 5_000 });
+}
+
 function defaultResolver() {
   const resolver = new dns.promises.Resolver({ timeout: 2_000, tries: 1 });
   return (host) => resolver.resolve4(host);
@@ -61,10 +70,12 @@ class SuiteAddressService {
     frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
     logger = null,
     now = () => new Date(),
+    probeCertificate = probeLocalCertificate,
     rebake = async () => ({ skipped: true }),
     resolveHost = defaultResolver(),
     store,
     suiteAddress,
+    watchIntervalMs = 60_000,
   }) {
     this.agent = agent;
     this.bootstrapHost = String(bootstrapHost || '').toLowerCase().replace(/:\d+$/u, '');
@@ -78,6 +89,9 @@ class SuiteAddressService {
     this.store = store;
     this.suiteAddress = suiteAddress;
     this.running = null;
+    this.probeCertificate = probeCertificate;
+    this.watchIntervalMs = watchIntervalMs;
+    this.certificate = { host: null, notAfter: null, state: 'pending' };
   }
 
   // A machine always has a recorded address once Suite Manager has started on
@@ -96,6 +110,55 @@ class SuiteAddressService {
 
   address() {
     return this.suiteAddress.read();
+  }
+
+  // Keeps the web server rendered for the machine's live facts, and the suite
+  // on HTTPS once the Easy Door certificate arrives. Never during an address
+  // change, which owns the web server until it finishes.
+  watchEasyDoor() {
+    const tick = () => this.watchTick().catch((error) => this.logger?.warn('easy-door-watch-failed', { code: error?.code, error }));
+    tick();
+    this.watchTimer = setInterval(tick, this.watchIntervalMs);
+    this.watchTimer.unref?.();
+  }
+
+  async watchTick() {
+    if (this.running) return;
+    await this.agent.ensure();
+    await this.refreshCertificate();
+    if (this.running) return;
+    const address = this.address();
+    const held = this.certificate.state === 'held' && this.certificate.host === address.host;
+    if (held && address.kind === 'easy-door' && address.scheme === 'http') await this.change({ kind: 'easy-door' });
+  }
+
+  // The Easy Door name a trusted certificate is possible for: none on a public
+  // cloud install, which has no door, or off a private network.
+  easyDoorTlsHost() {
+    return PUBLIC_CLOUD_FRONT_DOORS.includes(this.frontDoor) ? null : this.easyDoorHost();
+  }
+
+  async refreshCertificate() {
+    const host = this.easyDoorTlsHost();
+    if (!host) {
+      this.certificate = { host: null, notAfter: null, state: 'not-applicable' };
+      return this.certificate;
+    }
+    try {
+      const leaf = await this.probeCertificate(host);
+      const notAfter = Date.parse(leaf?.valid_to);
+      this.certificate = { host, notAfter: Number.isFinite(notAfter) ? new Date(notAfter).toISOString() : null, state: 'held' };
+    } catch {
+      this.certificate = { host, notAfter: null, state: 'pending' };
+    }
+    return this.certificate;
+  }
+
+  // A page asked for over plain HTTP on a door whose certificate is held goes to
+  // the same page over HTTPS. Only page loads: an API call from a tab opened
+  // over HTTP would fail the cross-origin redirect, so it is answered where it is.
+  httpsRedirectFor(host) {
+    return this.certificate.state === 'held' && this.certificate.host === host ? `https://${host}` : null;
   }
 
   // The Easy Door name this machine answers on right now, or null off a private
@@ -142,6 +205,11 @@ class SuiteAddressService {
     const address = this.address();
     const easyDoorHost = this.easyDoorHost();
     const change = this.store.getAddressChange();
+    const certificate = this.certificate;
+    let certificateLog = [];
+    if (certificate.state === 'pending') {
+      try { certificateLog = (await this.agent.easyDoorStatus())?.log || []; } catch {}
+    }
     return {
       address: {
         ...address,
@@ -151,7 +219,8 @@ class SuiteAddressService {
       agentAvailable,
       bootstrapUrl: `${this.bootstrapScheme}://${this.bootstrapHost}/`,
       drifted: this.drift(address),
-      easyDoorUrl: easyDoorHost ? `http://${easyDoorHost}/` : null,
+      easyDoorCertificate: { ...certificate, log: certificateLog },
+      easyDoorUrl: easyDoorHost ? `${this.httpsRedirectFor(easyDoorHost) ? 'https' : 'http'}://${easyDoorHost}/` : null,
       installContext: this.frontDoor,
       lastChange: {
         at: change.finishedAt || change.startedAt,
@@ -207,10 +276,12 @@ class SuiteAddressService {
     return { credential: { cloudflareApiToken: valid.cloudflareApiToken }, target: domainAddress({ acmeEmail: valid.acmeEmail, baseDomain: valid.baseDomain, provider: 'cloudflare' }) };
   }
 
+  // Served over HTTPS exactly when the certificate for that name is already
+  // held; otherwise over HTTP, and the watch switches it once the lock arrives.
   easyDoorTarget() {
     const host = this.easyDoorHost();
     if (!host) throw new HttpsSettingsError('EASY_DOOR_UNAVAILABLE', 'This machine has no Easy Door name: it is not on a private network.', 409);
-    return { credential: null, target: addressForHost(host, { scheme: 'http' }) };
+    return { credential: null, target: addressForHost(host, { scheme: this.httpsRedirectFor(host) ? 'https' : 'http' }) };
   }
 
   async run(target, credential) {
@@ -223,7 +294,6 @@ class SuiteAddressService {
         const result = await this.agent.apply({
           acmeEmail: target.acmeEmail,
           baseDomain: target.baseDomain,
-          bootstrapHost: this.bootstrapHost,
           ...(credential.parked ? { useParkedCredential: true } : { cloudflareApiToken: credential.cloudflareApiToken }),
         });
         rollbackId = typeof result?.rollbackId === 'string' ? result.rollbackId : null;

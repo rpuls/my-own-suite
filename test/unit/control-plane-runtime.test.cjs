@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   PROGRESS_FILENAME,
   PROGRESS_ROUTE,
@@ -13,10 +14,8 @@ const {
   renderCaddyfile,
   renderUnavailablePage,
   renderUnavailablePageScript,
-  withUnavailableHandler,
-  renderHttpsCaddyfile,
-  renderPublicCloudCaddyfile,
   renderHomepageSystemdUnit,
+  renderMachineCaddyfile,
 } = require('../../infrastructure/control-plane-runtime.cjs');
 
 test('Caddy exposes the single Home origin only through Suite Manager', () => {
@@ -46,12 +45,7 @@ test('the Easy Door serves Suite Manager without changing what an unmatched host
 // Easy Door or the install-time name keeps a working Suite Manager page there;
 // only the apps move to the domain. A cloud install never had the door.
 test('the Easy Door and the install-time name stay open for Suite Manager under a domain, and never open on a cloud install', () => {
-  const https = renderHttpsCaddyfile({
-    acmeEmail: 'owner@example.com',
-    baseDomain: 'mos.example.com',
-    bootstrapHost: 'home.mos.home',
-    suiteManagerPort: '3100',
-  });
+  const https = renderCaddyfile({ bootstrapHost: 'home.mos.home', domain: { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com' }, suiteManagerPort: '3100' });
 
   assert.match(https, /# mos-easy-door\nhttp:\/\/ \{/u);
   assert.match(https, /@mos-easy-door header_regexp Host \^home\\\./u);
@@ -61,11 +55,11 @@ test('the Easy Door and the install-time name stay open for Suite Manager under 
   // Easy Door and the domain; the port is the resolved one throughout.
   assert.equal((https.match(/reverse_proxy 127\.0\.0\.1:3100/gu) || []).length, 3);
   assert.doesNotMatch(https, /\$MOS_SUITE_MANAGER_PORT/u);
-  assert.doesNotMatch(renderPublicCloudCaddyfile(), /mos-easy-door|myownsuite\.org/u);
+  assert.doesNotMatch(renderCaddyfile({ publicCloud: true }), /mos-easy-door|myownsuite\.org/u);
 });
 
 test('public-cloud Caddy serves diagnostics on HTTP and owner setup on automatic HTTPS', () => {
-  const caddyfile = renderPublicCloudCaddyfile();
+  const caddyfile = renderCaddyfile({ publicCloud: true });
   assert.match(caddyfile, /http:\/\/\$MOS_HOME_HOST/u);
   assert.match(caddyfile, /https:\/\/\$MOS_HOME_HOST/u);
   assert.equal((caddyfile.match(/reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/gu) || []).length, 2);
@@ -73,12 +67,7 @@ test('public-cloud Caddy serves diagnostics on HTTP and owner setup on automatic
 });
 
 test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage bypass or secret', () => {
-  const caddyfile = renderHttpsCaddyfile({
-    acmeEmail: 'owner@example.com',
-    baseDomain: 'mos.example.com',
-    bootstrapHost: 'home.203.0.113.42.sslip.io',
-    suiteManagerPort: '3100',
-  });
+  const caddyfile = renderCaddyfile({ bootstrapHost: 'home.203.0.113.42.sslip.io', domain: { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com' }, suiteManagerPort: '3100' });
 
   assert.match(caddyfile, /http:\/\/home\.203\.0\.113\.42\.sslip\.io/);
   assert.match(caddyfile, /http:\/\/home\.mos\.example\.com/);
@@ -89,13 +78,57 @@ test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage byp
   assert.doesNotMatch(caddyfile, /3200|very-secret/u);
 });
 
-test('Caddy build pins the builder digest, Caddy version, and Cloudflare module version', () => {
+test('Caddy build pins the builder digest, Caddy version, and both DNS modules by tag', () => {
   const dockerfile = fs.readFileSync(path.join(__dirname, '..', '..', 'infrastructure', 'caddy', 'Dockerfile'), 'utf8');
-  assert.match(dockerfile, /caddy:2\.10\.2-builder@sha256:[a-f0-9]{64}/u);
-  assert.match(dockerfile, /xcaddy build v2\.10\.2/u);
-  assert.match(dockerfile, /github\.com\/caddy-dns\/cloudflare@v0\.2\.4/u);
+  const [, builder, xcaddy] = /caddy:(2\.\d+\.\d+)-builder@sha256:[a-f0-9]{64}[\s\S]*xcaddy build v(2\.\d+\.\d+)/u.exec(dockerfile) || [];
+  assert.equal(builder, xcaddy, 'the builder image and the built version are one version');
+  // 2.10 let a domain's global acme_dns override the wildcard's own provider.
+  assert.ok(Number(builder.split('.')[1]) >= 11, `Caddy ${builder} is older than 2.11`);
+  assert.match(dockerfile, /github\.com\/caddy-dns\/cloudflare@v\d+\.\d+\.\d+/u);
+  assert.match(dockerfile, /github\.com\/caddy-dns\/acmedns@v\d+\.\d+\.\d+/u);
+  assert.deepEqual(CADDY_REQUIRED_MODULES, ['dns.providers.cloudflare', 'dns.providers.acmedns']);
   assert.doesNotMatch(dockerfile, /BUILDPLATFORM/u);
   assert.doesNotMatch(dockerfile, /latest/u);
+});
+
+test('an Easy Door address gets one wildcard through the ACME responder and a named HTTP door', () => {
+  const caddyfile = renderCaddyfile({ bootstrapHost: 'home.mos.home', easyDoorAddresses: ['192.168.68.123'], suiteManagerPort: '3100' });
+
+  assert.match(caddyfile, /^http:\/\/home\.192-168-68-123\.local\.myownsuite\.org \{\n[\s\S]*?reverse_proxy 127\.0\.0\.1:3100/mu);
+  assert.match(caddyfile, /^https:\/\/\*\.192-168-68-123\.local\.myownsuite\.org \{\n {2}tls \{\n {4}dns acmedns \{\n {6}server_url https:\/\/acme\.myownsuite\.org\n {6}subdomain 192-168-68-123\n/mu);
+  assert.match(caddyfile, /@mos-easy-door-home host home\.192-168-68-123\.local\.myownsuite\.org/u);
+  // No email and no global options before a domain: the box has no owner address at first boot.
+  assert.doesNotMatch(caddyfile, /email|acme_dns|auto_https/u);
+  assert.equal(caddyfile.match(/handle_errors/gu).length, 4);
+});
+
+test('only private Easy Door addresses render, each once, and never on a public cloud install', () => {
+  const caddyfile = renderCaddyfile({ easyDoorAddresses: ['192.168.1.5', '192.168.1.5', '203.0.113.9', '10.0.0.7'] });
+  assert.deepEqual(caddyfile.match(/^https:\/\/\S+/gmu), ['https://*.192-168-1-5.local.myownsuite.org', 'https://*.10-0-0-7.local.myownsuite.org']);
+  assert.doesNotMatch(renderCaddyfile({ easyDoorAddresses: ['192.168.1.5'], publicCloud: true }), /myownsuite\.org/u);
+});
+
+test('a domain keeps its global Cloudflare challenge beside the Easy Door wildcard', () => {
+  const caddyfile = renderCaddyfile({ domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' }, easyDoorAddresses: ['192.168.1.5'] });
+  assert.match(caddyfile, /^\{\n {2}email owner@example\.com\n {2}acme_dns cloudflare \{env\.CLOUDFLARE_API_TOKEN\}\n\}/u);
+  assert.match(caddyfile, /dns acmedns \{/u);
+  assert.match(caddyfile, /^https:\/\/home\.example\.com \{/mu);
+});
+
+test('a machine\'s Caddyfile follows the live address and keeps the recorded Easy Door until the owner moves', () => {
+  const facts = { bootstrapHost: 'home.mos.home', frontDoor: 'usb-autoinstall', liveAddress: '192.168.1.9', suiteManagerPort: '3100' };
+  const sites = (caddyfile) => caddyfile.match(/^https:\/\/\S+/gmu);
+
+  assert.deepEqual(sites(renderMachineCaddyfile({ ...facts, recorded: { host: 'home.192-168-1-5.local.myownsuite.org', kind: 'easy-door', scheme: 'https' } })), [
+    'https://*.192-168-1-9.local.myownsuite.org',
+    'https://*.192-168-1-5.local.myownsuite.org',
+  ]);
+  const onDomain = renderMachineCaddyfile({ ...facts, recorded: { acmeEmail: 'owner@example.com', baseDomain: 'example.com', host: 'home.example.com', kind: 'domain', scheme: 'https' } });
+  assert.deepEqual(sites(onDomain), ['https://*.192-168-1-9.local.myownsuite.org', 'https://home.example.com']);
+  // An apply renders the domain it is about to record.
+  const applying = renderMachineCaddyfile({ ...facts, domain: { acmeEmail: 'owner@example.com', baseDomain: 'new.example' }, recorded: null });
+  assert.match(applying, /^https:\/\/home\.new\.example \{/mu);
+  assert.equal(renderMachineCaddyfile({ ...facts, frontDoor: 'cloud-init', liveAddress: '10.0.0.5', recorded: null }), renderCaddyfile({ bootstrapHost: 'home.mos.home', publicCloud: true, suiteManagerPort: '3100' }));
 });
 
 test('Homepage runtime is pinned and reachable only through loopback', () => {
@@ -184,13 +217,13 @@ test('every Suite Manager entrance answers a control-plane outage with the statu
   assert.equal(defaultFile.match(/handle_errors/gu).length, 2);
   assert.match(defaultFile, expected);
 
-  const cloud = renderPublicCloudCaddyfile();
+  const cloud = renderCaddyfile({ publicCloud: true });
   assert.equal(cloud.match(/handle_errors/gu).length, 2);
   assert.match(cloud, expected);
 
   // On HTTPS, the three proxying blocks get it; the plain-HTTP redirect has no
   // upstream to fail, so it stays a redirect.
-  const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' });
+  const https = renderCaddyfile({ bootstrapHost: 'boot.example.com', domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' } });
   assert.equal(https.match(/handle_errors/gu).length, 3);
   assert.match(https, expected);
   assert.match(https, /http:\/\/home\.example\.com \{\s*redir https:\/\/home\.example\.com\{uri\} permanent\s*\}/u);
@@ -226,13 +259,15 @@ test('the status page stands alone and asks the browser to come back', () => {
 test('the progress file has its own route in every proxying block, ahead of the proxy and outside the error handler', () => {
   const route = new RegExp(String.raw`handle ${PROGRESS_ROUTE.replace(/\./gu, '\\.')} \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*@present file /${PROGRESS_FILENAME.replace(/\./gu, '\\.')}\s*handle @present \{\s*header Cache-Control no-store\s*rewrite \* /${PROGRESS_FILENAME.replace(/\./gu, '\\.')}\s*file_server\s*\}\s*handle \{\s*respond 204\s*\}\s*\}`, 'u');
   const renderings = {
-    cloud: renderPublicCloudCaddyfile(),
+    cloud: renderCaddyfile({ publicCloud: true }),
     default: renderCaddyfile(),
-    https: renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' }),
+    https: renderCaddyfile({ bootstrapHost: 'boot.example.com', domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' } }),
+    easyDoor: renderCaddyfile({ easyDoorAddresses: ['192.168.1.5'] }),
   };
+  const proxyingBlocks = { cloud: 2, default: 2, easyDoor: 4, https: 3 };
   for (const [name, rendered] of Object.entries(renderings)) {
     assert.match(rendered, route, `${name}: the route is rendered in full`);
-    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, name === 'https' ? 3 : 2, `${name}: one route per proxying block`);
+    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, proxyingBlocks[name], `${name}: one route per proxying block`);
     for (const block of siteBlocks(rendered)) {
       const proxies = /reverse_proxy\s+127\.0\.0\.1:/u.test(block);
       const routeAt = block.indexOf(`handle ${PROGRESS_ROUTE} {`);
@@ -454,125 +489,4 @@ test('a progress file a dead worker left behind does not make the page claim a j
   live.timers[0].callback();
   await settle();
   assert.equal(live.nodes.get('mos-progress').hidden, true);
-});
-
-// The installed Caddyfile is never re-rendered by reconciliation, because
-// applying HTTPS owns that file. Without an in-place upgrade the status handler
-// would have reached new installs only, which is a partly applied update.
-const INSTALLED_BEFORE_THE_HANDLER = `http://home.mos.home {
-  reverse_proxy 127.0.0.1:8890
-}
-
-# mos-easy-door
-http:// {
-  @mos-easy-door header_regexp Host ^home\.10-0-0-5\.local\.myownsuite\.org$
-  handle @mos-easy-door {
-    reverse_proxy 127.0.0.1:8890
-  }
-  handle {
-    respond 404
-  }
-}
-`;
-
-const INSTALLED_HTTPS_BEFORE_THE_HANDLER = `{
-  email owner@example.com
-  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-}
-
-http://boot.example.com {
-  reverse_proxy 127.0.0.1:8890
-}
-
-http://home.example.com {
-  redir https://home.example.com{uri} permanent
-}
-
-https://home.example.com {
-  reverse_proxy 127.0.0.1:8890
-}
-`;
-
-test('an already-installed Caddyfile gains the handler and the progress route in every proxying block', () => {
-  const upgraded = withUnavailableHandler(INSTALLED_BEFORE_THE_HANDLER);
-  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
-  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
-
-  // In the Easy Door the proxy sits inside a `handle`, where `handle_errors` is
-  // not valid, so it has to land at the end of the site block instead.
-  assert.match(upgraded, /  \}\n  handle_errors \{/u);
-  assert.doesNotMatch(upgraded, /handle @mos-easy-door \{\s*\n\s*handle_errors/u);
-  // The route opens each site block, ahead of the proxy and of the Easy Door's
-  // own handle blocks, which is where Caddy evaluates it first.
-  assert.match(upgraded, /http:\/\/home\.mos\.home \{\n  handle \/mos-status\/progress\.json \{/u);
-  assert.match(upgraded, /http:\/\/ \{\n  handle \/mos-status\/progress\.json \{/u);
-  assert.ok(upgraded.indexOf('handle /mos-status/progress.json') < upgraded.indexOf('reverse_proxy'));
-});
-
-// What a server updated to the release with the handler but not the route
-// has on disk: the reconcile must add the route without stacking a second
-// handler.
-test('an installed Caddyfile with the handler but not the route gains only the route', () => {
-  const withHandlerOnly = `http://home.mos.home {
-  reverse_proxy 127.0.0.1:8890
-  handle_errors {
-    root * /etc/caddy/mos-status
-    rewrite * /unavailable.html
-    header Retry-After 15
-    file_server {
-      status 503
-    }
-  }
-}
-
-# mos-easy-door
-http:// {
-  @mos-easy-door header_regexp Host ^home\.10-0-0-5\.local\.myownsuite\.org$
-  handle @mos-easy-door {
-    reverse_proxy 127.0.0.1:8890
-  }
-  handle {
-    respond 404
-  }
-  handle_errors {
-    root * /etc/caddy/mos-status
-    rewrite * /unavailable.html
-    header Retry-After 15
-    file_server {
-      status 503
-    }
-  }
-}
-`;
-  const upgraded = withUnavailableHandler(withHandlerOnly);
-  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
-  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
-  assert.equal(withUnavailableHandler(upgraded), upgraded);
-});
-
-test('the upgrade skips blocks with no upstream to fail', () => {
-  const upgraded = withUnavailableHandler(INSTALLED_HTTPS_BEFORE_THE_HANDLER);
-  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
-  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
-
-  // The global options block is not a site, and the plain-HTTP block only
-  // redirects — neither can produce an upstream error.
-  const beforeFirstSite = upgraded.slice(0, upgraded.indexOf('http://boot.example.com'));
-  assert.doesNotMatch(beforeFirstSite, /handle_errors|mos-status/u);
-  const redirect = upgraded.slice(upgraded.indexOf('http://home.example.com {'), upgraded.indexOf('https://home.example.com {'));
-  assert.doesNotMatch(redirect, /handle_errors|mos-status/u);
-});
-
-test('the upgrade is a no-op on every current rendering and on its own output', () => {
-  // Runs on every reconcile, so a second pass must never stack a second handler.
-  for (const rendered of [
-    renderCaddyfile(),
-    renderPublicCloudCaddyfile(),
-    renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' }),
-  ]) {
-    assert.equal(withUnavailableHandler(rendered), rendered);
-  }
-
-  const once = withUnavailableHandler(INSTALLED_BEFORE_THE_HANDLER);
-  assert.equal(withUnavailableHandler(once), once);
 });

@@ -86,6 +86,12 @@
 // whose /var/lib/containerd holds Docker 29's image store and container layers,
 // and the Homepage unit re-renders its root page after every start. A drop-in
 // and two unit lines; no `echo` line was added or changed.
+//
+// Moved 2026-10-03, all five, for trusted HTTPS on the Easy Door (roadmap H8):
+// the Caddy build gained the acme-dns module and the installer refuses a binary
+// without it, one more check beside the Cloudflare one, whose `echo` writes to
+// stderr only when the build is wrong; and the HTTPS agent unit gained three
+// `Environment=` lines. No existing `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -99,25 +105,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '4a878f7dd76c791a49ca7ff6e39b40c13e91d7391c0291f22bc4b871c36ec5ed',
+    digest: 'd1697ada7e42f1e3c8c10ed89e306e07220c9af6a25c58c5f5be691ca43da24c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'c7c41850f2849e1f0d43b382a92a3eed624d34b708ea3115431451f2b11ed7a0',
+    digest: '0c781262e86b2114548d356bdd99bd4a0a68d455aafa690f59114fb55483dc8b',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'fc3ba53bafa7cc47c57f861b9373cf4dab4c8aed982bbc51389675d8917d9bc7',
+    digest: '0513586098b9a512e7f1ede0427b8b2e65d6b7d1aea89bc6b5a49f623e23b1ee',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '80b4174cc660e3966e468abb095c615488f3fe78032d2484f2e2fef05c2d65de',
+    digest: '3d0cb32fc607ae2f80323da20eb12380c6fb9fc4b8bcdee10d1e3f6742e19f51',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -127,7 +133,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '36f80d305ba483825d97d932a8d3b24255a27df50fe5faa1614c7a3c1633bff0',
+    digest: '1956090957625de1b2d28fa6c86e7367eebf586a8ed25919723b7e8bed7645b4',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

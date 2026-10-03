@@ -2493,3 +2493,11 @@ test('the app list carries each package\'s declared app version', async () => {
   assert.notEqual(immich.appVersion, immich.version);
   store.close();
 });
+
+test('an HTTPS-only app on the Easy Door says its certificate is on its way, and elsewhere says where HTTPS comes from', () => {
+  const { unmetHostRequirements } = require('../src/apps/host-requirements.cjs');
+  const [pending] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: true });
+  assert.match(pending.reason, /on its way/u);
+  const [elsewhere] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: false });
+  assert.match(elsewhere.reason, /Easy Door or your own domain/u);
+});

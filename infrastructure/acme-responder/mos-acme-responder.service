@@ -1,0 +1,45 @@
+[Unit]
+Description=MOS ACME responder (DNS-01 tokens for Easy Door certificates)
+Documentation=https://github.com/rpuls/my-own-suite/blob/main/infrastructure/acme-responder/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mos-acme
+Group=mos-acme
+Environment=MOS_ACME_LISTEN=127.0.0.1:8053
+Environment=MOS_ACME_ZONE_FILE=/var/lib/mos-acme/acme.myownsuite.org.zone
+ExecStart=/usr/bin/node /opt/mos-acme/infrastructure/acme-responder/responder.cjs
+Restart=on-failure
+RestartSec=5s
+# Abuse of the API may slow issuance, never the DNS sharing this box.
+MemoryMax=128M
+CPUQuota=25%
+
+StateDirectory=mos-acme
+StateDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=true
+CapabilityBoundingSet=
+
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/mos-acme
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# V8 probes pkey_alloc at startup and copes with a refusal; a kill would not.
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

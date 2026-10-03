@@ -36,6 +36,9 @@ type AddressStatus = {
   // The recorded Easy Door name no longer matches the live one: the machine's
   // address moved under it.
   drifted: { from: string; to: string } | null;
+  // The trusted certificate for the Easy Door. `log` is Caddy's own lines about
+  // it while it has not arrived, for the technical panel only.
+  easyDoorCertificate: { host: string | null; log: string[]; notAfter: string | null; state: 'held' | 'not-applicable' | 'pending' };
   easyDoorUrl: string | null;
   installContext: string;
   lastChange: AddressChange;
@@ -135,6 +138,24 @@ function AddressDiagnostics({ status }: { status: AddressStatus }) {
     { label: 'Detected server IP', value: status.serverAddress || 'Not detected' },
     { label: 'Last change', value: `${change.status}${change.target ? ` to ${change.target.host}` : ''}${change.stage ? ` (${change.stage})` : ''}${change.errorCode ? ` (${change.errorCode})` : ''}${change.at ? ` at ${change.at}` : ''}` },
   ]} output={change.diagnostics || undefined} reveal={change.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
+}
+
+// Whether the Easy Door is served with a certificate every browser trusts. Never
+// "failed": Caddy keeps asking for it, and the switch to HTTPS happens by itself.
+function EasyDoorLockBand({ certificate }: { certificate: AddressStatus['easyDoorCertificate'] }) {
+  if (certificate.state === 'held') {
+    const until = certificate.notAfter ? new Date(certificate.notAfter).toLocaleDateString(undefined, { dateStyle: 'long' }) : null;
+    return <PanelBand icon="lock" note={`Every browser trusts this address. The certificate renews itself${until ? `; the current one is valid until ${until}` : ''}.`} title="Trusted HTTPS" />;
+  }
+  return <PanelBand busy note="MOS is getting a trusted certificate for this address. Until it arrives your suite works over plain HTTP, and apps that need HTTPS wait. There is nothing to do: everything switches over by itself." title="HTTPS is on its way" tone="info" />;
+}
+
+function EasyDoorCertificateDetails({ certificate }: { certificate: AddressStatus['easyDoorCertificate'] }) {
+  if (!certificate.log.length) return null;
+  return <AdvancedPanel facts={[
+    { label: 'Certificate', value: certificate.host ? `*.${certificate.host.replace(/^home\./u, '')}` : 'None' },
+    { label: 'State', value: certificate.state },
+  ]} output={certificate.log.join('\n')} reveal="technical-mode" summary="Certificate details" />;
 }
 
 function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult | null }) {
@@ -346,6 +367,7 @@ function SuiteAddressPanel() {
     {applying
       ? <PanelBand busy note={`${CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.'}${contact === 'unreachable' ? ' The web server is restarting, so this page has no answer for a moment. It keeps asking.' : ''}`} title={`Moving your suite to ${change.target?.host || 'its new address'}`} tone="info" />
       : <PanelBand icon="check" note={ADDRESS_KIND_SENTENCES[address.kind]} title={<a href={address.url}>{address.url}</a>} tone="accent" />}
+    {!applying && address.kind === 'easy-door' && status.easyDoorCertificate.state !== 'not-applicable' ? <EasyDoorLockBand certificate={status.easyDoorCertificate} /> : null}
     {notices.length || editing || contact !== 'ok' ? <PanelBody>
       {contactNotices}
       {notices}
@@ -363,7 +385,10 @@ function SuiteAddressPanel() {
         </div>
       </form> : null}
     </PanelBody> : null}
-    <PanelBody><AddressDiagnostics status={status} /></PanelBody>
+    <PanelBody>
+      <AddressDiagnostics status={status} />
+      <EasyDoorCertificateDetails certificate={status.easyDoorCertificate} />
+    </PanelBody>
   </Panel>;
 }
 

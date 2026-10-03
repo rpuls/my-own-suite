@@ -15,7 +15,7 @@ const {
   isPrivateIPv4,
   runCli,
 } = require('../../shared/easy-door.cjs');
-const { renderCaddyfile, renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { renderCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 
 test('only RFC1918 addresses get an Easy Door name', () => {
   for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.123.45']) {
@@ -66,7 +66,7 @@ test('Caddy matches exactly the home names the nameserver answers', () => {
 // rendering and never a signal to read back.
 test('every LAN Caddyfile carries the Easy Door, whatever address the suite is on', () => {
   assert.equal(renderCaddyfile().includes(EASY_DOOR_CADDY_MARKER), true);
-  const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', bootstrapHost: 'home.mos.home', suiteManagerPort: '3100' });
+  const https = renderCaddyfile({ bootstrapHost: 'home.mos.home', domain: { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com' }, suiteManagerPort: '3100' });
   assert.equal(https.includes(EASY_DOOR_CADDY_MARKER), true);
 });
 

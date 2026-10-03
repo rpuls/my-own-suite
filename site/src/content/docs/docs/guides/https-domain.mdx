@@ -5,7 +5,7 @@ description: Give your self-hosted My Own Suite a real domain with trusted HTTPS
 
 import { Steps } from '@astrojs/starlight/components'
 
-Out of the box, a self-hosted suite lives at `http://home.mos.home/` — which works for most apps, but browsers grumble about plain HTTP, and some apps genuinely require a secure origin. Password managers are the clearest case: browsers withhold the cryptography they depend on from insecure addresses, so those apps will not work at all until this is done. If that is why you're here, this guide is not optional.
+Out of the box, a self-hosted suite already gets trusted HTTPS on its [generated address](/docs/install/easy-address/), with nothing to buy. Two things that address cannot give you are what this guide is for: an address you chose, and a certificate that proves the server is yours rather than one shared by every server on the same private address. On `http://home.mos.home/` there is no certificate at all, so apps that need a secure connection, password managers in particular, only work there once this is done.
 
 This guide upgrades your suite to a real domain with a trusted certificate:
 

@@ -39,6 +39,14 @@ const server = http.createServer(async (request, response) => {
       respond(response, 200, await core.status());
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/v1/https/ensure') {
+      respond(response, 200, await core.ensure());
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/v1/https/easy-door') {
+      respond(response, 200, await core.easyDoorStatus());
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/v1/https/apply') {
       respond(response, 200, await core.apply(await readBody(request)));
       return;

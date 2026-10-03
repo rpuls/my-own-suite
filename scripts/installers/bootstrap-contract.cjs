@@ -7,7 +7,6 @@ const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
 const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
-const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
 
 const OWNER_KEYS = [
   'ownerEmail',
@@ -147,7 +146,7 @@ function renderBootstrapEnv(config) {
 function renderBootstrapShell(config) {
   const cloudBootstrap = PUBLIC_CLOUD_FRONT_DOORS.includes(config.frontDoor);
   const initialScheme = cloudBootstrap ? 'https' : 'http';
-  const caddyfile = cloudBootstrap ? renderPublicCloudCaddyfile() : renderCaddyfile();
+  const caddyfile = renderCaddyfile({ publicCloud: cloudBootstrap });
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -257,10 +256,10 @@ docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos/caddy.next
 docker rm "$caddy_builder_container"
 chmod 0755 /usr/local/libexec/mos/caddy.next
 mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
-if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
-  echo '[mos] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
+${CADDY_REQUIRED_MODULES.map((module) => `if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^${module}$'; then
+  echo '[mos] The repo-built Caddy binary is missing ${module}.' >&2
   exit 1
-fi
+fi`).join('\n')}
 
 # The backup agent runs the storage engine binary, which lives beside Caddy and
 # is not a package. reconcile-system.cjs installs it on every managed update; a
@@ -471,6 +470,9 @@ Environment=NODE_ENV=production
 Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
 Environment=MOS_HTTPS_TRANSACTION_ROOT=$MOS_STATE_ROOT/https-agent/transactions
 Environment=MOS_SUITE_MANAGER_PORT=$MOS_SUITE_MANAGER_PORT
+Environment=MOS_HOME_HOST=$MOS_HOME_HOST
+Environment=MOS_FRONT_DOOR=$MOS_FRONT_DOOR
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/https/agent.cjs
 Restart=always
 RestartSec=3
@@ -832,13 +834,14 @@ module.exports = {
   validateBootstrapInput,
 };
 const {
+  CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   JOURNALD_CONFIG_PATH,
+  PUBLIC_CLOUD_FRONT_DOORS,
   renderCaddyfile,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
-  renderPublicCloudCaddyfile,
   renderUnavailablePage,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,

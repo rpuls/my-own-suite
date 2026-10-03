@@ -10,9 +10,10 @@ Placement rule:
 - Shared Caddy/Compose/Docker substrate belongs here.
 - Suite Manager orchestrates state and intent; system agents apply privileged host changes.
 
-One folder here is not installed-platform substrate: `nameserver/` configures a MOS-operated box that
-owner installs resolve names against, rather than anything that ships to an owner's machine. It is
-kept here because it is infrastructure MOS runs; its runbook is `nameserver/README.md`.
+Two folders here are not installed-platform substrate: `nameserver/` and `acme-responder/` configure
+MOS-operated boxes that owner installs depend on, one to resolve Easy Door names and one to hold the
+DNS-01 tokens for their certificates, rather than anything that ships to an owner's machine. They are
+kept here because they are infrastructure MOS runs; each folder's README is its runbook.
 
 ## Control-Plane Bootstrap Shape
 
@@ -46,7 +47,7 @@ The shared runtime renderer is `control-plane-runtime.cjs`. It pulls the pinned 
 
 ## Repo-Built Caddy
 
-Ubuntu's stock Caddy package does not include external DNS providers. `caddy/Dockerfile` therefore pins Caddy 2.10.2, its builder image digest, and `github.com/caddy-dns/cloudflare@v0.2.4`. Bootstrap builds it reproducibly, installs it at `/usr/local/libexec/mos/caddy`, configures the packaged systemd service to use that path, and fails unless `caddy list-modules` contains `dns.providers.cloudflare`. Managed bootstrap/update runs rebuild and refresh the same binary.
+Ubuntu's stock Caddy package does not include external DNS providers. `caddy/Dockerfile` therefore pins Caddy, its builder image digest, `github.com/caddy-dns/cloudflare` (an owned domain's DNS-01) and `github.com/caddy-dns/acmedns` (the Easy Door wildcard's DNS-01 through `infrastructure/acme-responder/`). Bootstrap builds it reproducibly, installs it at `/usr/local/libexec/mos/caddy`, and configures the packaged systemd service to use that path. Bootstrap and every managed update refuse a binary whose `caddy list-modules` lacks either provider (`CADDY_REQUIRED_MODULES` in `control-plane-runtime.cjs`). Caddy 2.11 or later is required: 2.10's global `acme_dns` overrode a site's own DNS provider, so an owned domain would have taken over the Easy Door wildcard.
 
 The HTTPS renderer emits only MOS-owned configuration. It retains the original HTTP bootstrap host, redirects the configured HTTP Home host to HTTPS, sends HTTPS Home traffic only to Suite Manager, and references the Cloudflare token only through `{env.CLOUDFLARE_API_TOKEN}`. Caddy owns certificate issuance and renewal after a validated reload; there is never a direct Caddy-to-Homepage route.
 

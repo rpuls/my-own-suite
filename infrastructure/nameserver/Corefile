@@ -17,6 +17,17 @@ local.myownsuite.org.:53 {
     health 127.0.0.1:8080
     prometheus 127.0.0.1:9153
 
+    # The DNS-01 challenge name for a box's wildcard certificate points into the
+    # ACME responder's zone. Every query type, and first: the A template below
+    # would otherwise answer here, and a name carrying a CNAME may hold nothing else.
+    template IN ANY local.myownsuite.org {
+        match "^_acme-challenge\.(?P<ip>10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<ip>172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<ip>192-168-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        answer "{{ .Name }} 60 IN CNAME {{ .Group.ip }}.acme.myownsuite.org."
+        fallthrough
+    }
+
     # The three RFC1918 ranges, each capturing its four octets as a/b/c/d.
     # A public address matches none of them and falls through to NXDOMAIN below.
     # That restriction is the anti-phishing control: without it the zone is an

@@ -14,6 +14,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | USB/self-host installer support | `infrastructure/self-host/` and `scripts/README.md` |
 | How the own-hardware disk image is built, and which artifact a release publishes | `image-builder/README.md` |
 | MOS-operated nameserver: rebuild, verify, operate | `infrastructure/nameserver/README.md` |
+| MOS-operated ACME responder (Easy Door certificates): rebuild, verify, operate | `infrastructure/acme-responder/README.md` |
 | Host-agent implementation | `system-agents/` |
 | Previous-site rollback/reference source | `site-mos1-reference/` |
 | Durable architecture decisions | `docs/decisions.md` |
