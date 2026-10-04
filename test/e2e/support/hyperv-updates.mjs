@@ -63,7 +63,8 @@ export async function capturePlatformUpdateScreenshot(page, entryUrl = '/') {
       await expect(facts.nth(0)).toHaveText('Stable releases');
       await expect(facts.nth(1)).toHaveText(releases[1].version);
       await expect(facts.nth(2)).toHaveText(releases[0].version);
-      await expect(page.getByRole('heading', { name: `Changes in ${releases[0].version}` })).toBeVisible();
+      await expect(page.getByRole('heading', { name: `MOS ${releases[0].version} is available` })).toBeVisible();
+      await expect(page.getByText(`[${releases[0].version}]`, { exact: true })).toBeVisible();
       await capturePageShot(page, 'platform-update', { fullPage: true });
       announceArrangedCapture('platform-update', `the stable track sitting on ${releases[1].version} with ${releases[0].version} waiting, release notes read from the real CHANGELOG.md`);
     });
