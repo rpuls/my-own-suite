@@ -1,30 +1,30 @@
 {
   "schemaVersion": 1,
   "appId": "immich",
-  "reviewedAt": "2026-08-11T00:00:00.000Z",
-  "expiresAt": "2027-02-11T00:00:00.000Z",
+  "reviewedAt": "2026-10-04T00:00:00.000Z",
+  "expiresAt": "2027-04-04T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.8.1",
-    "packageDigest": "sha256:b6ab5b5fbff3959c93ec54a46b4b584c8cc0486e5c62e9242324ba22f48dd490",
+    "packageVersion": "0.9.0",
+    "packageDigest": "sha256:3d411ac6027d597e7e02d3dc94cb7df9f0f34559b3b138c7c4238e020a62b0e0",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/immich",
-      "revision": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
+      "revision": "7a849dec6d71fe0017501936a3d40b3f8c65368f",
       "trust": "mos-reviewed"
     },
     "components": [
       {
         "name": "Immich Server",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-server",
-        "digest": "sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa"
+        "digest": "sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13"
       },
       {
         "name": "Immich Machine Learning",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-machine-learning",
-        "digest": "sha256:a25ddad7d6d2ab18a161176731dc171bb7e39c0e9dd3884fb1ec629dab535d05"
+        "digest": "sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20"
       },
       {
         "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
@@ -36,7 +36,7 @@
         "name": "Valkey",
         "version": "9",
         "artifact": "docker.io/valkey/valkey",
-        "digest": "sha256:64f6e8025b9a798061c8c79e73a7a79dbc8cca437e6af682e9f7605ff334615d"
+        "digest": "sha256:c7f03d95d897f97eef7ec2d4a6a1e2c0cbe62a36a56b00f304aa536cbe3ec9c1"
       }
     ],
     "clientsExcluded": [
@@ -116,6 +116,18 @@
       "retrievedAt": "2026-08-11"
     },
     {
+      "type": "observed",
+      "claim": "Re-check for Immich v3.2.4, against the network captures above, which were taken at v3.1.0 and not repeated. Every http(s) host named in the v3.2.4 server code and web bundle matches v3.1.0 except two plain text links: f-droid.org is gone, and wiki.openstreetmap.org appears in a 'this map requires WebGL' error message. Neither is fetched. server/helmet.json is byte-identical, and so are the version-check endpoints (version.immich.cloud, version.dev.immich.cloud) and the map style URLs the server hands the browser (tiles.immich.cloud). The image contains no new telemetry, analytics or crash-reporting host.",
+      "source": "grep of /usr/src/app/server/dist and /build/www in the pinned immich-server v3.1.0 (sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa) and v3.2.4 (sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13) images, and GET /api/server/config on a running v3.2.4 package",
+      "retrievedAt": "2026-10-04"
+    },
+    {
+      "type": "observed",
+      "claim": "MOS's configuration file still has the same effect at v3.2.4. After an upgrade from the v3.1.0 package, the running server reported newVersionCheck.enabled false and the owner's relay in notifications.smtp, and refused configuration changes. Without a relay the generated file holds only the version-check setting and loads without validation errors. v3.2.0 added an unauthenticated GET /api/public/config, which returns only the login-page settings: the OAuth button, whether password login is on, custom CSS and the login message. That is no more than the existing /api/server/config, and it carries no SMTP or other secret.",
+      "source": "MOS runtime projection of apps/immich at v3.2.4, upgraded in place from the 0.8.1 (v3.1.0) package and installed fresh, observed 2026-10-04",
+      "retrievedAt": "2026-10-04"
+    },
+    {
       "type": "documented",
       "claim": "Immich's published privacy policy discloses the tile service collection accurately and completely, and the disclosure matches what was independently measured. The policy states that requests to tiles.immich.cloud collect the requested tile, the IP address and timing metrics, and marks the feature optional with a link to the setting that disables it. The runtime capture found exactly that and nothing further: no cookie, no identifier, no request body, no additional field. The same policy section states that hosted services including the Tile Server and the Version Service collect request metadata 'in order to better understand our user base', which is the publisher characterising this metadata as analytics rather than purely operational data. Immich publishes no separate terms of service: the privacy policy is the only policy document on its site, and the AGPL licence is the only other instrument that binds an operator. The policy exposure recorded here is therefore complete rather than partially surveyed.",
       "source": "Immich Privacy Policy, last updated 6 April 2026 (source text at immich-app/static-pages, apps/root.immich.app/src/routes/privacy-policy/+page.md)",
@@ -159,8 +171,8 @@
     },
     {
       "type": "configured",
-      "claim": "MOS keeps the map enabled by decision, and its packaging makes that a property of the app as shipped rather than a per-owner setting. MOS points IMMICH_CONFIG_FILE at a baked-in configuration file, and Immich treats that file as the authority for system settings: updateSystemConfig() returns BadRequestException('Cannot update configuration while IMMICH_CONFIG_FILE is in use') instead of accepting a change. map.enabled is a system setting with no per-user equivalent, since Immich's user-preference schema covers albums, avatar, cast, download, email notifications, folders, memories, people, purchase, ratings, shared links and tags but not the map. The tile requests are therefore part of the package rather than something an owner opts into, which is why this review records telemetry as unavoidable rather than optional; changing it would be a package decision. This follows from MOS's packaging rather than from Immich, which lets an administrator toggle the map in the settings UI when no config file is in use.",
-      "source": "server/src/services/system-config.service.ts and server/src/dtos/user-preferences.dto.ts at v3.1.0, apps/immich/manifest.json (IMMICH_CONFIG_FILE), and apps/immich/immich-config.json",
+      "claim": "MOS keeps the map enabled by decision, and its packaging makes that a property of the app as shipped rather than a per-owner setting. MOS points IMMICH_CONFIG_FILE at a baked-in configuration file, and Immich treats that file as the authority for system settings: updateSystemConfig() returns BadRequestException('Cannot update configuration while IMMICH_CONFIG_FILE is in use') instead of accepting a change; at v3.2.4 the server still answers PUT /api/system-config with 400 while the file is set. map.enabled is a system setting with no per-user equivalent, since Immich's user-preference schema covers albums, avatar, cast, download, email notifications, folders, memories, people, purchase, ratings, shared links and tags but not the map. The tile requests are therefore part of the package rather than something an owner opts into, which is why this review records telemetry as unavoidable rather than optional; changing it would be a package decision. This follows from MOS's packaging rather than from Immich, which lets an administrator toggle the map in the settings UI when no config file is in use.",
+      "source": "server/src/services/system-config.service.ts and server/src/dtos/user-preferences.dto.ts at v3.1.0 and v3.2.4, apps/immich/manifest.json (IMMICH_CONFIG_FILE), and apps/immich/immich-config.json",
       "retrievedAt": "2026-08-11"
     },
     {
@@ -199,29 +211,29 @@
     {
       "kind": "privacy",
       "url": "https://immich.app/privacy-policy/",
-      "retrievedAt": "2026-08-11",
+      "retrievedAt": "2026-10-04",
       "publisher": "Immich project (FUTO)",
       "effectiveDate": "2026-04-06"
     },
     {
       "kind": "license",
-      "url": "https://github.com/immich-app/immich/blob/v3.1.0/LICENSE",
-      "retrievedAt": "2026-08-11",
+      "url": "https://github.com/immich-app/immich/blob/v3.2.4/LICENSE",
+      "retrievedAt": "2026-10-04",
       "publisher": "Immich project"
     }
   ],
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 5",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
-    "humanReviewed": true,
-    "humanReviewer": "Rasmus Puls"
+    "skillRevision": "7a849dec6d71fe0017501936a3d40b3f8c65368f",
+    "repositoryCommit": "7a849dec6d71fe0017501936a3d40b3f8c65368f",
+    "humanReviewed": false
   },
   "openQuestions": [
+    "The v3.2.4 re-check rests on static comparison with the v3.1.0 image and on boot-time observation, not on a new network capture. The server- and browser-side captures in this review were taken at v3.1.0, and a human reviewer checked them then. The v3.2.4 delta has not had a human check.",
     "MOS's use of IMMICH_CONFIG_FILE to disable the version check has a wider effect than the privacy control it was chosen for: while that variable is set Immich rejects every system-configuration change, so storage templates, transcoding, machine-learning options, job concurrency, the backup schedule and the map are all frozen for the owner as well. Whether MOS should keep that trade, expose the settings it freezes, or disable the version check by another means is a packaging decision outside the scope of this review.",
     "Requests to the tile service carry a Referer header identifying the origin the Immich web client is served from. The capture was taken over loopback, so only http://127.0.0.1:2283/ was sent; a MOS deployment reached through a public domain would send that domain to Cloudflare alongside the tile coordinates under the browser default referrer policy. This is an inference from the observed header rather than a measured result, and has not been confirmed against a domain-based deployment.",
     "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined.",

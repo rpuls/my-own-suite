@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.8.1",
-  "appVersion": "3.1.0",
+  "version": "0.9.0",
+  "appVersion": "3.2.4",
   "minimumMosVersion": "0.20.0",
   "architectures": [
     "amd64"
@@ -238,6 +238,14 @@
   "health": {
     "type": "http",
     "url": "http://immich-server:2283/api/server/ping"
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "unsupported",
+    "migrations": [
+      "Immich migrates its database on first start of the new version, and the previous version refuses to start on the migrated database. Going back means restoring a backup taken before the update."
+    ]
   },
   "onboarding": {
     "title": "Set up Immich",

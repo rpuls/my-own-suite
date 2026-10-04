@@ -17,6 +17,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 - **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
 - **An app install finishes even if you close the page.** Suite Manager now runs the whole install itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build.
 
+### Security
+
+- **Immich package 0.9.0 updates Immich to v3.2.4, closing two holes in the version you run now.** Someone signed in to your Immich, even without admin rights, could upload a crafted SVG file that ran code inside the server (GHSA-q89f-h332-8q2h). Separately, one click on a crafted link to your Immich address could take over the account of whoever opened it (GHSA-h5w4-vjv4-9r5q). Apply it from **Apps → Immich → Update**. **Take a full MOS backup first: Immich migrates its database on first start, and the previous version cannot start afterwards, so going back means restoring that backup.** The update preview now says this, where it used to say a backup was not required.
+
 ## [0.21.0] - 2026-10-02
 
 **Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:
