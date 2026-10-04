@@ -161,6 +161,7 @@ test('the console banner clears itself once the owner confirms', () => {
   assert.match(clear.content, new RegExp(`rm -f ${CONSOLE_LOGIN_ISSUE_PATH}`, 'u'));
   assert.doesNotMatch(clear.content, /awk/u, 'nothing is edited out of /etc/issue, because nothing was put in it');
   assert.match(clear.content, new RegExp(`rm -f .*${CONSOLE_LOGIN_HANDOVER_FILE}`, 'u'));
+  assert.match(clear.content, /agetty --reload/u, 'the prompt already on screen still shows the password until it is redrawn');
   // Suite Manager runs unprivileged and cannot edit /etc/issue, so the sentinel
   // it can write is what triggers the root-side cleanup.
   assert.match(pathUnit.content, new RegExp(`PathExists=/var/lib/mos/suite-manager/${CONSOLE_LOGIN_ACKNOWLEDGED_FILE}`, 'u'));

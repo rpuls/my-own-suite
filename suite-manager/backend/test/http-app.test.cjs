@@ -1011,6 +1011,38 @@ test('Vaultwarden install generates a redacted secret and materializes it only f
   }, { appAgent, homeHost: 'home.test' });
 });
 
+test('an install job finishes on the server and its progress reads back from the app list', async () => {
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
+    const headers = { Cookie: cookie, Host: 'home.test', 'Content-Type': 'application/json' };
+    const begun = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install-job', {
+      body: JSON.stringify({ config: {}, showOnHomepage: false }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(begun.status, 202);
+    assert.equal(begun.json().installJob.status, 'running');
+
+    let job = null;
+    for (let attempt = 0; attempt < 50 && job?.status !== 'succeeded'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', { headers });
+      job = listed.json().packages.find((app) => app.id === 'vaultwarden').installJob;
+    }
+    assert.equal(job.status, 'succeeded');
+    assert.deepEqual(job.steps.map((step) => `${step.id}:${step.status}`), ['prepare:complete', 'runtime:complete', 'ready:complete']);
+    assert.equal(calls.length, 1);
+  }, { appAgent, homeHost: 'home.test' });
+});
+
 test('Vaultwarden runtime apply returns a controlled redacted error when its secret file is missing', async () => {
   const stateDir = await tempStateDir();
   const calls = [];

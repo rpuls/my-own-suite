@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, sha256, validatePackagePayloads } = require('./agent.cjs');
+const { driveCandidates, isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, sha256, validatePackagePayloads } = require('./agent.cjs');
 
 // The gate exists so nobody ends up with backups only a machine they no longer
 // have can open. It must not reach any further than that: a machine in the
@@ -192,4 +192,19 @@ test('the mount test fails safe, answering mounted whenever it cannot tell', asy
     fsSync.statSync = originalStat;
   }
   assert.equal(fsSync.readFileSync(path.join(guarded, 'drive-data'), 'utf8'), 'precious');
+});
+
+test('a partition is named after the drive it is on, not its kernel name', () => {
+  // The HP lab's install stick, as lsblk reported it: only the disk has a model.
+  const stick = {
+    children: [
+      { fstype: 'vfat', name: 'sdb1', path: '/dev/sdb1', rm: true, size: 800000000, type: 'part', uuid: '21A9-69FB' },
+      { fstype: 'ext4', name: 'sdb2', path: '/dev/sdb2', rm: true, size: 7516192768, type: 'part', uuid: '723ed40b' },
+    ],
+    model: 'SanDisk 3.2Gen1', name: 'sdb', path: '/dev/sdb', rm: true, size: 30816600064, tran: 'usb', type: 'disk',
+  };
+  const data = driveCandidates([stick]).find((item) => item.devicePath === '/dev/sdb2');
+  assert.equal(data.label, 'SanDisk 3.2Gen1');
+  assert.equal(data.canMount, true);
+  assert.equal(data.storageKind, 'external');
 });

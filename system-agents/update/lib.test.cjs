@@ -61,6 +61,26 @@ test('status reports branch target without a manual app runtime reconciliation w
   }
 });
 
+test('a branch head moved only by site, docs and tests is not offered as an update', async () => {
+  const upstream = makeRepo();
+  const installed = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-installed-'));
+  run(installed, ['clone', '--quiet', '--branch', 'staging', upstream, '.']);
+  const paths = buildPaths(installed, fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-')));
+  const commit = (file) => {
+    write(path.join(upstream, file), `${file}\n`);
+    run(upstream, ['add', '.']);
+    run(upstream, ['commit', '-m', file]);
+  };
+
+  commit('site/src/assets/screenshots/backups.png');
+  commit('test/e2e/support/hyperv-updates.mjs');
+  commit('docs/roadmap.md');
+  assert.equal((await collectStatus(paths)).updateAvailable, false);
+
+  commit('suite-manager/backend/src/server/start.cjs');
+  assert.equal((await collectStatus(paths)).updateAvailable, true);
+});
+
 test('apply refuses dirty working trees before running host reconciliation', async () => {
   const repo = makeRepo();
   const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));

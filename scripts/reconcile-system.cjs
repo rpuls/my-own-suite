@@ -8,6 +8,7 @@ const { ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
 const { applyHostPatching } = require('../infrastructure/host-patching.cjs');
 
 const {
+  CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   JOURNALD_CONFIG_PATH,
@@ -307,6 +308,7 @@ function refreshCaddyBinary() {
   installDir('/usr/local/libexec/mos', 0o755);
   run('docker', ['cp', `${container}:/caddy`, `${CADDY_BINARY}.next`]);
   run('docker', ['rm', container]);
+  run('docker', ['image', 'rm', ...CADDY_BUILD_IMAGES], { allowFailure: true, stdio: 'ignore' });
   if (!dryRun) {
     fs.chmodSync(`${CADDY_BINARY}.next`, 0o755);
     const modules = execFileSync(`${CADDY_BINARY}.next`, ['list-modules'], { encoding: 'utf8' }).split(/\r?\n/u);

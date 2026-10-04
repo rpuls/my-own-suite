@@ -23,6 +23,7 @@ const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
 const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
 const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
 const {
@@ -551,6 +552,13 @@ function createMOSServer({
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
   const withPublicUrl = (app) => ({ ...app, publicUrl: appHostFor(app.id) ? publicUrlOf(app.id).publicUrl : '' });
+  const installJobs = new AppInstallJobs({
+    addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, publicUrlOf(packageId)),
+    logger,
+    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
+    progressOf: (packageId) => appPackages.installProgressOf(packageId),
+    start: (packageId) => appPackages.startPackageRuntime(packageId, { ...publicUrlOf(packageId), publicUrlFor: publicUrls() }),
+  });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -1400,7 +1408,10 @@ function createMOSServer({
         // check catch up behind the response. Deliberately not awaited: the Apps
         // page must never wait on a git host, and a source found to have moved
         // shows up on the next load.
-        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages(await appPackages.hostFacts()).map(withPublicUrl) });
+        jsonResponse(response, 200, {
+          catalog: catalogService.status(),
+          packages: appPackages.listPackages(await appPackages.hostFacts()).map((app) => ({ ...withPublicUrl(app), installJob: installJobs.get(app.id) })),
+        });
         externalSourceService.sweep();
         return;
       }
@@ -1567,6 +1578,18 @@ function createMOSServer({
         return;
       }
 
+      const appInstallJobMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install-job$/u);
+      if (request.method === 'POST' && appInstallJobMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to install app packages.' });
+          return;
+        }
+        const body = await readJsonBody(request, 64 * 1024);
+        const packageId = decodeURIComponent(appInstallJobMatch[1]);
+        jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: body.config || {}, showOnHomepage: body.showOnHomepage === true }) });
+        return;
+      }
+
       const appHomepageMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/add-to-homepage$/u);
       if (request.method === 'POST' && appHomepageMatch) {
         if (!isSignedIn(setup, sessionToken)) {
@@ -1585,7 +1608,7 @@ function createMOSServer({
           return;
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
-        jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
+        jsonResponse(response, 200, await appPackages.startPackageRuntime(packageId, {
           ...publicUrlOf(packageId),
           publicUrlFor: publicUrls(),
         }));

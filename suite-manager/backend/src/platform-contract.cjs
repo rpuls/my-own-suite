@@ -10,7 +10,6 @@ function createInitialPlatformContract() {
       sharedRuntime: 'ubuntu-24.04-own-infra',
     },
     oldSystemPolicy: {
-      mos1SiteReferencePath: 'site-mos1-reference',
       runtimeImportsFromOldSuiteManager: false,
       snapshotBranch: 'archive/mos1-main-snapshot',
     },

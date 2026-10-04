@@ -203,7 +203,6 @@ function renderSeed(config, options = {}) {
       content: renderConsoleLoginInitScript({
         fixedPassword,
         runtimeUser: plan.config.runtimeUser,
-        setupUrl: plan.config.publicUrls.setup,
         stateDir: suiteManagerStateDir,
         username,
       }),

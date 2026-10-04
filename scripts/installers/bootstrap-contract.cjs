@@ -254,6 +254,7 @@ caddy_builder_container="$(docker create mos-caddy-builder)"
 install -d -m 0755 /usr/local/libexec/mos
 docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos/caddy.next
 docker rm "$caddy_builder_container"
+docker image rm ${CADDY_BUILD_IMAGES.join(' ')} >/dev/null 2>&1 || true
 chmod 0755 /usr/local/libexec/mos/caddy.next
 mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
 ${CADDY_REQUIRED_MODULES.map((module) => `if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^${module}$'; then
@@ -834,6 +835,7 @@ module.exports = {
   validateBootstrapInput,
 };
 const {
+  CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,

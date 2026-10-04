@@ -184,15 +184,17 @@ function reclaimUnmountedDestinations(root = managedMountRoot) {
 function logReclaimed(reclaimed) {
   for (const entry of reclaimed) process.stdout.write(`[mos-backup-agent] reclaimed ${entry.bytes} bytes an interrupted backup left under ${entry.path}\n`);
 }
-async function listDestinations() {
-  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
+// Every drive and partition lsblk reports, as a destination candidate.
+function driveCandidates(blockdevices = []) {
   const candidates = new Map();
   function add(destination) { if (destination.id) candidates.set(destination.id, destination); }
-  function visit(device, inheritedExternal = false) {
+  // A partition has no model of its own, so it is named after the drive it is on
+  // rather than shown to the owner as `sdb2`.
+  function visit(device, inheritedExternal = false, driveModel = null) {
     const external = inheritedExternal || device.tran === 'usb' || device.rm === true || device.rm === 1 || device.rm === '1';
     const points = Array.isArray(device.mountpoints) ? device.mountpoints : [];
     const devicePath = device.path || (device.name ? `/dev/${device.name}` : null);
-    const label = device.label || device.model || device.name || devicePath || 'Backup storage';
+    const label = device.label || device.model || driveModel || device.name || devicePath || 'Backup storage';
     let mounted = false;
     for (const point of points) {
       const mountPath = normalizeDestination(point);
@@ -205,14 +207,19 @@ async function listDestinations() {
       const blocked = mountBlockReason(device);
       add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
     }
-    for (const child of device.children || []) visit(child, external);
+    for (const child of device.children || []) visit(child, external, device.model || driveModel);
   }
-  for (const device of lsblk?.blockdevices || []) visit(device);
+  for (const device of blockdevices) visit(device);
+  return [...candidates.values()];
+}
+async function listDestinations() {
+  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
+  const candidates = driveCandidates(lsblk?.blockdevices);
   // `ready` is the single question every destination answers, so nothing above
   // this has to know that one kind proves itself by being mounted and another by
   // answering a request. A drive holding another server's backups is neither
   // ready nor a failure: it is one recovery key away from both.
-  const disks = await Promise.all([...candidates.values()].filter((item) => item.mountState === 'mounted' || item.canMount === true)
+  const disks = await Promise.all(candidates.filter((item) => item.mountState === 'mounted' || item.canMount === true)
     .map(async (item) => {
       const notReadyReason = item.mountState !== 'mounted'
         ? item.mountBlockedReason || 'This drive is not mounted.'
@@ -1319,4 +1326,4 @@ if (require.main === module && process.argv[2] === '--worker') {
   process.on('SIGTERM', shutdown);
 }
 
-module.exports = { isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };
+module.exports = { driveCandidates, isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };

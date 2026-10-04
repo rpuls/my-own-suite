@@ -303,6 +303,22 @@ class AppPackageService {
     return smtpTemplateValues(relay);
   }
 
+  installProgressOf(packageId) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    const projections = instance ? this.store.getAppProjections(instance.id) : [];
+    return {
+      homepageApplied: homepageProjectionApplied(projections),
+      installed: instance?.status === 'installed',
+      runtimeApplied: Boolean(instance) && runtimeApplied(projections),
+    };
+  }
+
+  // The install flow's apply runs for minutes, so a second tab or a reload can
+  // ask again mid-build. Its own key refuses that without gating stop or uninstall.
+  async startPackageRuntime(packageId, requestContext = {}) {
+    return this.limiter.runExclusive(`start:${packageId}`, () => this.applyPackageRuntime(packageId, requestContext));
+  }
+
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);

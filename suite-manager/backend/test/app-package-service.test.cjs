@@ -915,6 +915,39 @@ test('an app cannot run two update transactions at once', async () => {
   store.close();
 });
 
+test('a second start while the first is still building is refused, not run alongside it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const calls = [];
+  let releaseBuild;
+  const building = new Promise((resolve) => { releaseBuild = resolve; });
+  const service = new AppPackageService({
+    agent: {
+      ...externalUpdateAgent(root, calls, installedPackage.packageDir),
+      async apply(input) { calls.push(['apply', input]); await building; return { publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
+      async stop() { calls.push(['stop']); return { status: 'stopped', steps: [] }; },
+      async checkHealth() { return { status: 'healthy' }; },
+      async status() { return agentStatus(); },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+
+  const first = service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes'));
+  await assert.rejects(
+    () => service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
+  );
+  await service.disablePackage('x-abcdef01-community-notes', null);
+
+  releaseBuild();
+  await first.catch(() => {});
+  assert.equal(calls.filter(([kind]) => kind === 'apply').length, 1);
+  store.close();
+});
+
 test('lifecycle operations are refused while an update transaction holds the app', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));

@@ -86,7 +86,6 @@ Use these locations:
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
 - `site/`: MOS public/end-user documentation source; the deployed public site. GitHub Actions builds it and deploys to Cloudflare Pages from `main` and `staging` only (`.github/workflows/deploy-site.yml`).
-- `site-mos1-reference/`: preserved MOS1 public site source; no longer built or deployed. Frozen content only; no new product docs.
 - `apps/<app>/README.md`: app-level technical reference.
 - `scripts/README.md`: MOS operator/developer script and smoke-harness guidance.
 - `infrastructure/`: shared MOS runtime and installer substrate.
@@ -278,6 +277,7 @@ The repo includes real black-box Playwright tests for MOS flows without test-onl
 - Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
 - Do not run `npm run smoke:do:reset` automatically as an agent. It creates or replaces a paid smoke Droplet, destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling, and produces noisy logs. Ask the user to run it and paste only the relevant failure output or final readiness summary.
 - `npm run smoke:do:destroy` may be run by an agent only when explicitly asked or confirmed by the user, because it is a paid-resource cleanup command.
+- Backup and restore drills on lab and smoke servers use only the disposable lab bucket in the git-ignored `.local-tools/lab-bucket/bucket.env`, never a personal or production bucket. Never print its keys.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
 - Keep E2E tooling isolated under `test/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.

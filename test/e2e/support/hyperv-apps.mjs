@@ -160,20 +160,22 @@ async function installAppViaUi(page, app, env) {
   }
 
   const install = details.getByRole('button', { name: /^Install$/iu });
-  // The frontend applies the runtime right after install. A rejected apply — a
-  // build the registry refused, an agent that is down — leaves the app
-  // "installed" with nothing running, which the status poll would wait twelve
-  // minutes for while its own refreshes bury the real failure under validate
-  // failures. So a refused apply fails the step at once, with the answer.
+  // The server runs the install as one job. A failed job - a build the registry
+  // refused, an agent that is down - ends the step at once with the job's own
+  // answer, rather than leaving the status poll to wait twelve minutes for it.
+  let settled = false;
   let refused = new Promise(() => {});
   if (await install.isVisible().catch(() => false)) {
-    refused = page.waitForResponse(
-      (response) => response.url().endsWith(`/apps/packages/${encodeURIComponent(app.id)}/apply-runtime`),
-      { timeout: 12 * 60 * 1000 },
-    ).then(async (response) => {
-      if (response.status() < 400) return new Promise(() => {});
-      throw new Error(`${app.id} runtime apply was refused with ${response.status()}: ${await response.text()}`);
-    });
+    refused = (async () => {
+      while (!settled) {
+        await page.waitForTimeout(3000);
+        const job = (await packageById(page, app.id)).installJob;
+        if (job?.status === 'failed') {
+          throw new Error(`${app.id} install failed at ${job.steps.find((step) => step.status === 'failed')?.id}: ${job.error?.message}`);
+        }
+      }
+      return new Promise(() => {});
+    })();
     refused.catch(() => undefined);
     await install.click();
 
@@ -207,6 +209,7 @@ async function installAppViaUi(page, app, env) {
   }
 
   const running = await Promise.race([waitForRunning(page, app.id), refused]);
+  settled = true;
   await details.getByLabel('Close app details').click();
   await expect(details).toBeHidden({ timeout: 30000 });
   return running;

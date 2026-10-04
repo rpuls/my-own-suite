@@ -1,3 +1,6 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
 const {
   EASY_DOOR_ACME_SERVER,
   EASY_DOOR_CADDY_MARKER,
@@ -16,6 +19,14 @@ const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'digitalocean-smok
 // Install and every managed update refuse a Caddy binary without both: an owned
 // domain proves itself through Cloudflare, the Easy Door through the ACME responder.
 const CADDY_REQUIRED_MODULES = Object.freeze(['dns.providers.cloudflare', 'dns.providers.acmedns']);
+// Scaffolding for one binary, removed once it is copied out: left behind, the
+// builder base alone keeps about 400 MB on every machine.
+const CADDY_BUILD_IMAGES = Object.freeze(['mos-caddy-builder', caddyBuilderBaseImage()]);
+
+function caddyBuilderBaseImage() {
+  const dockerfile = fs.readFileSync(path.join(__dirname, 'caddy', 'Dockerfile'), 'utf8');
+  return dockerfile.match(/^FROM (\S+) AS builder\b/mu)[1];
+}
 
 const UNAVAILABLE_PAGE_ROOT = '/etc/caddy/mos-status';
 const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
@@ -546,6 +557,7 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,

@@ -63,6 +63,11 @@ type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
   // MOS package version.
   appVersion: string | null;
+  installJob?: {
+    error: { code: string; message: string } | null;
+    status: 'failed' | 'running' | 'succeeded';
+    steps: Array<{ id: InstallStep['id']; status: ProgressStep['status'] }>;
+  } | null;
   capabilities: {
     exports: Array<{ features: Record<string, unknown>; id: string; implementation: string; interfaceVersion: number | null; protocol: string; title: string; type: string }>;
     integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; title: string }>;
@@ -347,6 +352,7 @@ function statusFor(app: AppPackageSummary) {
   if (app.instance?.status === 'uninstalled') return { className: 'is-available', label: 'Uninstalled', tone: 'info' };
   if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Stopped', tone: 'info' };
   if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
+  if (app.installJob?.status === 'running') return { className: 'is-progress', label: 'Installing', tone: 'info' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
@@ -477,6 +483,19 @@ function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
     } satisfies InstallStep] : []),
     { detail: 'The app is ready to open.', id: 'ready', label: 'Ready', status: 'pending' },
   ];
+}
+
+// The server runs the install, so a reload or a second tab draws the same
+// progress. A finished job has nothing left to show; a failed one keeps its steps.
+function installJobSteps(app: AppPackageSummary): InstallStep[] {
+  const job = app.installJob;
+  if (!job || job.status === 'succeeded') return [];
+  const templates = defaultInstallSteps(true);
+  return job.steps.map((step) => ({ ...templates.find((template) => template.id === step.id)!, status: step.status }));
+}
+
+function installJobError(app: AppPackageSummary) {
+  return app.installJob?.status === 'failed' ? app.installJob.error?.message || `Unable to install ${app.name}.` : '';
 }
 
 function sleep(ms: number) {
@@ -1498,6 +1517,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  const installRunning = packages.some((app) => app.installJob?.status === 'running');
+  useEffect(() => {
+    if (!installRunning) return undefined;
+    const timer = window.setTimeout(() => void load({ silent: true }), 1500);
+    return () => window.clearTimeout(timer);
+  }, [installRunning, packages]);
+
   // The catalog and advisory feed are a convenience on top of the signed catalog
   // the release already ships, so a stale or failed fetch goes to the console
   // rather than interrupting normal users with a banner.
@@ -1659,82 +1685,34 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     setSelectedId(app.id);
     setInstallingId(app.id);
     setInstallError('');
-    setInstallSteps(defaultInstallSteps(showOnHomepage));
-
-    let current = app;
+    setInstallSteps([]);
     try {
-      if (current.installStatus !== 'installed') {
-        setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
-        // An app offered by one of the owner's added sources is not in the reviewed
-        // catalog, so it is installed by re-resolving its own repository through the
-        // external gate rather than from a package this MOS already holds. Once that
-        // returns, it is an ordinary instance under its namespaced id and the rest of
-        // this flow is identical.
-        const external = current.external && current.source ? current.source : null;
-        const installed = await withMinimumInstallStep(async () =>
-          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(external ? '/suite-manager/api/apps/sources/install' : `/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
-              body: JSON.stringify(external
-                ? { config: setupConfig, packageId: current.id, url: external.repository }
-                : { config: setupConfig }),
-              headers: { 'Content-Type': 'application/json' },
-              method: 'POST',
-            }),
-            `Unable to prepare ${current.name}.`,
-          ),
+      // An app offered by one of the owner's added sources is not in the reviewed
+      // catalog, so it is first fetched through the external gate. After that it
+      // is an ordinary instance under its namespaced id and installs like any other.
+      const external = app.installStatus !== 'installed' && app.external && app.source ? app.source : null;
+      if (external) {
+        await jsonResponse(
+          await fetch('/suite-manager/api/apps/sources/install', {
+            body: JSON.stringify({ config: setupConfig, packageId: app.id, url: external.repository }),
+            headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+          }),
+          `Unable to prepare ${app.name}.`,
         );
-        current = { ...current, installStatus: 'installed', instance: installed.instance };
-        setInstallSteps((steps) => setStep(steps, 'prepare', 'complete'));
-      } else {
-        setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
-        await withMinimumInstallStep(async () => undefined);
-        setInstallSteps((steps) => setStep(steps, 'prepare', 'skipped'));
       }
-
-      if (!runtimeApplied(current)) {
-        setInstallSteps((steps) => setStep(steps, 'runtime', 'running'));
-        const applied = await withMinimumInstallStep(async () =>
-          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/apply-runtime`, { method: 'POST' }),
-            `Unable to start ${current.name}.`,
-          ),
-        );
-        current = { ...current, instance: applied.instance };
-        setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
-      } else {
-        setInstallSteps((steps) => setStep(steps, 'runtime', 'running'));
-        await withMinimumInstallStep(async () => undefined);
-        setInstallSteps((steps) => setStep(steps, 'runtime', 'skipped'));
-      }
-
-      if (showOnHomepage && !homepageApplied(current)) {
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
-        const homepage = await withMinimumInstallStep(async () =>
-          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/add-to-homepage`, { method: 'POST' }),
-            `Unable to add ${current.name} to Homepage.`,
-          ),
-        );
-        current = { ...current, instance: homepage.instance };
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'complete'));
-      } else if (showOnHomepage) {
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
-        await withMinimumInstallStep(async () => undefined);
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'skipped'));
-      }
-
-      setInstallSteps((steps) => setStep(steps, 'ready', 'running'));
-      await withMinimumInstallStep(async () => undefined);
-      setInstallSteps((steps) => setStep(steps, 'ready', 'complete'));
-      await load();
+      await jsonResponse(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install-job`, {
+          body: JSON.stringify({ config: setupConfig, showOnHomepage }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        `Unable to install ${app.name}.`,
+      );
     } catch (caught) {
       setInstallError(caught instanceof Error ? caught.message : `Unable to install ${app.name}.`);
-      setInstallSteps((steps) => {
-        const running = steps.find((step) => step.status === 'running');
-        return running ? setStep(steps, running.id, 'failed') : steps;
-      });
-      await load();
     } finally {
+      await load({ silent: true });
       setInstallingId('');
     }
   }
@@ -1923,6 +1901,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       source={externalResolved.source}
     /> : null}
 
-    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} onUpdated={() => load()} owner={owner} packages={packages} /> : null}
+    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || selected.installJob?.status === 'running'} installError={installError || installJobError(selected)} installSteps={installJobSteps(selected).length ? installJobSteps(selected) : installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} onUpdated={() => load()} owner={owner} packages={packages} /> : null}
   </section>;
 }

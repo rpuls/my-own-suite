@@ -17,6 +17,9 @@ const FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_BRANCH_REF = 'main';
 const SAFE_BRANCH_REF = /^[A-Za-z0-9._/-]+$/u;
 const SAFE_RELEASE_VERSION = /^\d+\.\d+\.\d+$/u;
+// Never reaches an installed machine: the public site, docs, tests, CI and the
+// image build. A branch head that moved only through these is not an update.
+const UNSHIPPED_PATHS = [/^site\//u,/^docs\//u, /^\.github\//u, /^\.claude\//u, /^image-builder\//u, /(^|\/)test\//u, /\.test\.c?js$/u, /\.md$/iu];
 
 function now() {
   return new Date().toISOString();
@@ -354,6 +357,13 @@ async function ensureCleanWorkingTree(paths) {
 // null for a check that could not be completed, with `checkFailure` saying
 // why; a branch track asks the origin for the branch head, a stable track asks
 // GitHub for the latest release, and neither asks for what it does not show.
+// A diff that cannot be read counts as a change, so a doubt offers the update.
+function changesShippedCode(repoRoot, fromCommit, toCommit) {
+  const diff = safeRunCommand(repoRoot, 'git', ['diff', '--name-only', `${fromCommit}..${toCommit}`]);
+  if (!diff.ok) return true;
+  return diff.value.split('\n').filter(Boolean).some((file) => !UNSHIPPED_PATHS.some((pattern) => pattern.test(file)));
+}
+
 async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatestRelease, retryDelaysMs } = {}) {
   ensurePrerequisites(paths);
   const track = resolveTrack(paths);
@@ -388,7 +398,7 @@ async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatest
     updateAvailable: checkFailure
       ? null
       : track.type === 'branch'
-        ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
+        ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision && changesShippedCode(paths.repoRoot, track.currentCommit, latestRevision))
         : Boolean(latestRelease?.version && latestRelease.version !== installedVersion),
   };
   writeJson(path.join(paths.updateStateDir, 'state.json'), status);

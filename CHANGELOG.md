@@ -15,6 +15,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 ### Fixed
 
 - **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
+- **An app install finishes even if you close the page.** Suite Manager now runs the whole install itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build.
 
 ## [0.21.0] - 2026-10-02
 
