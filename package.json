@@ -13,6 +13,7 @@
     "acme-responder:ssh-open": "node scripts/acme-responder.cjs ssh-open",
     "acme-responder:status": "node scripts/acme-responder.cjs status",
     "acme-responder:verify": "node scripts/acme-responder.cjs verify",
+    "apps:bump": "node scripts/app-bump.cjs",
     "apps:catalog": "node scripts/app-package-catalog.cjs",
     "apps:catalog:check": "node scripts/app-package-catalog.cjs --check && node scripts/sign-app-catalog.cjs --check",
     "apps:catalog:sign": "node scripts/sign-app-catalog.cjs",
