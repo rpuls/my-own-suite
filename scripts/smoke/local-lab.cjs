@@ -63,9 +63,22 @@ async function waitForSuiteManager() {
   throw new Error(`Suite Manager did not answer at ${HOME_URL} within ${READY_MINUTES} minutes.`);
 }
 
+// A CI runner ships its own Docker and containerd, which conflict with the ones the
+// bootstrap installs from Docker's repository. A machine MOS really installs on has neither.
+function removeForeignEngine() {
+  const installed = run('dpkg-query', ['-W', '-f=${db:Status-Abbrev}|${Package}\\n'], { capture: true }).split('\n')
+    .filter((line) => line.startsWith('ii')).map((line) => line.split('|')[1]);
+  if (installed.includes('containerd.io')) return;
+  const engine = installed.filter((name) => /^(?:moby-.+|docker.*|containerd|runc|podman-docker)$/u.test(name));
+  if (!engine.length) return;
+  run('sudo', ['apt-get', 'purge', '--yes', '--quiet', ...engine]);
+  console.log(`[local-lab] removed this machine's own container engine: ${engine.join(', ')}`);
+}
+
 async function install(base) {
   move(base);
   writeHosts();
+  removeForeignEngine();
   const script = run(process.execPath, [
     'scripts/installers/render-bootstrap.cjs', '--target', 'shell', '--repo-url', LAB_REPO, '--repo-ref', LAB_BRANCH,
     '--domain', DOMAIN, '--front-door', 'ssh-bootstrap', '--disposable-lab',
