@@ -97,6 +97,10 @@
 // removes the two build images it came from, about 480 MB left on every machine.
 // One `docker image rm` line with its output sent to /dev/null; no `echo` line
 // was added or changed.
+//
+// Moved 2026-10-06, all five: the installer fetches Node unless /usr/bin/node, the
+// path every MOS unit runs, is 22 or newer, not unless any Node on the PATH is. A
+// fresh machine has neither, so it installs exactly as before; no `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -110,25 +114,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '3de1165f8ffe99e7473a5aa47b05bc33decf11d2e6dacb96f995de9bf900a721',
+    digest: 'faead784f8b720d0fd79631daeb9e3a72960be232339b9917ef2d60b7530dd76',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'be344563c79179e87c1bfa7afb596a08634f7b89f2ca686749864ca1ab97e0d8',
+    digest: '71dc8344afd24383c092e4939e7e1288336515062a8a93e76055d43063d75321',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'ea1def3f9f65a721a7e78c7b8c0caeb4180e2c7506183a2d057b7175d1161bb7',
+    digest: '6dde516cb14bd190eb06ceb8d253648c9f55cd681be2dacc798677484010ca07',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '62c0a092f0721312bfb71c225c039d99cee86cc1b2bdb7edacec8e535b761333',
+    digest: '2f2d6e50b66bffff32505668ddd0172d8bd69d0ef5b2f81ca6af74ec7d4b223e',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -138,7 +142,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '9d6581212a19b32736d546c701926be21d1ce71627544d22b1d0499b236868ca',
+    digest: '208df9590b65778f1f279e70c2e5a81384db0b9cdecb3ec9903afba5a802f995',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',
