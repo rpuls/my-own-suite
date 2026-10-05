@@ -35,6 +35,7 @@ export function createContext({ browser, page, plan, runId }) {
     shots: (carried.shots || []).map((shot) => ({ ...shot, carried: true })),
     step: null,
     stepIndex: -1,
+    timeline: [],
 
     state(appId) {
       ctx.appState[appId] ||= {};

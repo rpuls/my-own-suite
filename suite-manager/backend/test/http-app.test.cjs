@@ -473,9 +473,9 @@ test('App package catalog API requires authentication and exposes safe manifest 
   }, { homeHost: 'home.test' });
 });
 
-test('app update staging endpoint requires owner authentication', async () => {
+test('app update endpoint requires owner authentication', async () => {
   await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/stage-update', {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/update-job', {
       body: JSON.stringify({ confirmationToken: '0'.repeat(64) }),
       headers: { 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
@@ -1041,6 +1041,30 @@ test('an install job finishes on the server and its progress reads back from the
     assert.deepEqual(job.steps.map((step) => `${step.id}:${step.status}`), ['prepare:complete', 'runtime:complete', 'ready:complete']);
     assert.equal(calls.length, 1);
   }, { appAgent, homeHost: 'home.test' });
+});
+
+test('an update answers at once, and why it failed reads back from the app list', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
+    const headers = { Cookie: cookie, Host: 'home.test', 'Content-Type': 'application/json' };
+    const begun = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/update-job', {
+      body: JSON.stringify({ confirmationToken: '0'.repeat(64) }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(begun.status, 202);
+    assert.equal(begun.json().updateJob.status, 'running');
+
+    let job = null;
+    for (let attempt = 0; attempt < 50 && job?.status !== 'failed'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', { headers });
+      job = listed.json().packages.find((app) => app.id === 'stirling-pdf').updateJob;
+    }
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error.code, 'APP_NOT_INSTALLED');
+    assert.deepEqual(job.steps.map((step) => `${step.id}:${step.status}`), ['check:failed', 'build:pending', 'switch:pending', 'finish:pending']);
+  }, { homeHost: 'home.test' });
 });
 
 test('Vaultwarden runtime apply returns a controlled redacted error when its secret file is missing', async () => {

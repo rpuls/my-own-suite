@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "radicale",
-  "reviewedAt": "2026-07-31T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.5.1",
-    "packageDigest": "sha256:b171c2f3aa808b7ec8801a3beee61625b1490de8a719d1241352d4de53896e03",
+    "packageVersion": "0.5.2",
+    "packageDigest": "sha256:0f476f68e0434850d660573326e44f7eb693c4d53c64ab4254a287a4fb40ffdf",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -33,7 +33,7 @@
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "self-hosted-software-only",
-    "confidence": "documented"
+    "confidence": "verified"
   },
   "evidence": [
     {
@@ -89,8 +89,15 @@
       "type": "configured",
       "claim": "MOS wires Radicale's [hook] email notifications to the shared, optional MOS email relay. Radicale can email the attendees of a calendar event when it changes; the entrypoint writes this [hook] configuration only when the owner has set a relay under Settings → Email relay, and removes it when they have not, so Radicale sends no mail by default. When set, notices go through the owner's own chosen provider. This is the narrowest of Radicale's outbound features — attendee notices only — and is separate from the authentication backends above; MOS never uses the relay itself.",
       "source": "apps/radicale/entrypoint.sh and apps/radicale/manifest.json"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, creating a calendar and an address book in the web UI, and putting an event over CalDAV and a contact over CardDAV), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The container made no lookup and no connection, and the browser made no request outside the suite.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle radicale`, run 20261005-112126-app-cycle-radicale (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
     }
   ],
+  "outbound": [],
   "telemetryControls": [
     {
       "type": "documented",
@@ -117,12 +124,12 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Fable 5",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "59a4e004337e5f72e7f9b24107dab376cdd7af5a",
-    "humanReviewed": true,
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "humanReviewed": false,
     "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [

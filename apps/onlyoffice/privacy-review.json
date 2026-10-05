@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "onlyoffice",
-  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.5",
-    "packageDigest": "sha256:cfa1c3a88b53e7a6caddfc276de2f7e984336984e9e08bc4766c588a5542416d",
+    "packageVersion": "0.2.6",
+    "packageDigest": "sha256:cd3ec6dcdacc359682c783939ed6839db3cc86f6f76fdee7f6a4f95699fcb2c0",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -35,7 +35,7 @@
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "upstream-services-involved",
-    "confidence": "documented"
+    "confidence": "verified"
   },
   "evidence": [
     {
@@ -87,8 +87,21 @@
       "type": "inferred",
       "claim": "The Document Server can still issue outbound requests driven by content and configuration - fetching external resources referenced inside documents and, where a user enables them, editor plugins or AI features that call third-party services - so external touchpoints exist but are content- or user-initiated rather than required for the packaged default.",
       "source": "ONLYOFFICE Docs documentation on request filtering and editor plugins, correlated with apps/onlyoffice/manifest.json"
+    },
+    {
+      "type": "observed",
+      "claim": "On the package version reviewed before this revision, the MOS E2E network capture (2026-10-05) found the Document Server container opening 159 connections to onlyoffice.github.io and 33 each to github.com and release-assets.githubusercontent.com. They started during install, with no user action, and went on through the run. The welcome page loaded a stylesheet from fonts.googleapis.com and a font from fonts.gstatic.com. The pinned image's start script, /app/ds/run-document-server.sh, runs documentserver-pluginsmanager.sh at every start while PLUGINS_ENABLED is true, its default, and that downloads the default plugin list and plugins from the ONLYOFFICE marketplace on GitHub. The welcome page, /var/www/onlyoffice/documentserver-example/welcome/docker.html, links Google Fonts. This contradicts the earlier conclusion, drawn without a capture, that the packaged default contacts nothing.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle onlyoffice`, run 20261005-111309-app-cycle-onlyoffice (network/report.md); /app/ds/run-document-server.sh line 807 in the pinned image",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "This package version sets PLUGINS_ENABLED=false and removes the Google Fonts link from the welcome pages. Its image, built on the lab and run for four minutes with the welcome page loaded, made no DNS lookup and opened no connection to a public address, apart from a control lookup and connection sent from inside the container, which both showed up. The welcome page still answered and no longer referenced Google Fonts, and the plugin manager did not run.",
+      "source": "apps/onlyoffice/Dockerfile and manifest.json, built and captured on the MOS Hyper-V lab",
+      "retrievedAt": "2026-10-05"
     }
   ],
+  "outbound": [],
   "telemetryControls": [
     {
       "type": "configured",
@@ -96,6 +109,18 @@
       "source": "apps/onlyoffice/manifest.json and apps/onlyoffice/entrypoint.sh",
       "url": "https://github.com/ONLYOFFICE/Docker-DocumentServer",
       "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS sets PLUGINS_ENABLED=false, so the start script no longer runs the plugin manager, which otherwise downloads the default plugins from the ONLYOFFICE marketplace on GitHub at every start. The plugins already in the image still load.",
+      "source": "apps/onlyoffice/manifest.json",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "configured",
+      "claim": "The package removes the Google Fonts stylesheet link from the Document Server welcome pages, which otherwise tell Google about every visit; the pages use the system font.",
+      "source": "apps/onlyoffice/Dockerfile",
+      "retrievedAt": "2026-10-05"
     }
   ],
   "policies": [
@@ -109,16 +134,16 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 4.8",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
     "humanReviewed": false
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned 9.3.1 image; the no-backend-telemetry conclusion rests on the image's default configuration (empty license file, StatsD disabled and localhost-only, no documented analytics or update endpoint) plus the MOS METRICS_ENABLED=false pin, not on observed network silence.",
     "Document content transits and is temporarily held by the Document Server during editing; the exact retention and cleanup of cached documents in the data volume was not independently verified for this version.",
-    "External resources referenced inside documents, and optional editor plugins or AI features, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent."
+    "External resources referenced inside documents, and optional editor plugins or AI features, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent.",
+    "The 2026-10-05 captures covered install, start-up and the welcome page. Documents edited through a connected app were not captured, so requests driven by document content, such as external images, remain documented rather than observed."
   ]
 }

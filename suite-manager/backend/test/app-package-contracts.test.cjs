@@ -226,6 +226,10 @@ test('privacy assessment document validation rejects every class of authoring de
     ['a malformed package digest', (review) => { review.scope.packageDigest = 'sha256:nope'; }, 'review.scope.packageDigest must be a SHA-256 digest.'],
     ['evidence with no source', (review) => { delete review.evidence[0].source; }, 'review.evidence[0].source is required.'],
     ['a trust level MOS cannot verify', (review) => { review.scope.source.trust = 'publisher-signed'; }, 'review.scope.source.trust must be one of mos-reviewed, unverified.'],
+    ['no outbound list', (review) => { delete review.outbound; }, 'review.outbound is required.'],
+    ['an outbound URL instead of a host', (review) => { review.outbound = [{ from: 'server', host: 'example.com/api', purpose: 'Checks.', receiver: 'Example' }]; }, 'review.outbound[0].host must be a lowercase host name, *. and a domain, or *.'],
+    ['an outbound request from nowhere known', (review) => { review.outbound = [{ from: 'cloud', host: 'example.com', purpose: 'Checks.', receiver: 'Example' }]; }, 'review.outbound[0].from must be one of server, browser.'],
+    ['an outbound host nobody explains', (review) => { review.outbound = [{ from: 'browser', host: 'example.com', purpose: ' ', receiver: 'Example' }]; }, 'review.outbound[0].purpose must be a non-empty string.'],
   ];
   for (const [description, mutate, expected] of cases) {
     const review = structuredClone(contractFixtures.validPrivacyReview);
@@ -308,6 +312,21 @@ test('assessment validation rejects postures its dimensions do not derive and po
   // Every posture now needs evidence: there is no longer an evidence-free
   // posture to fall back to.
   assert.ok(validatePrivacyAssessment({ dimensions: {}, evidence: [], posture: 'private-by-default' }).length >= 2);
+});
+
+test('an outbound list must agree with whether anything leaves by default', () => {
+  const dimensions = { accountDependency: 'local-only', confidence: 'verified', control: 'nothing-to-decide', dataProcessing: 'local', defaultEgress: 'none', policyExposure: 'self-hosted-software-only' };
+  const evidence = [{ claim: 'A capture saw nothing leave.', source: 'capture', type: 'observed' }];
+  const tiles = { from: 'browser', host: 'tiles.example.net', purpose: 'Map tiles.', receiver: 'Example' };
+  const leaving = { ...dimensions, control: 'accepted-by-mos', defaultEgress: 'external-contact' };
+  assert.deepEqual(validatePrivacyAssessment({ dimensions, evidence, outbound: [], posture: 'private-by-default' }), []);
+  assert.deepEqual(validatePrivacyAssessment({ dimensions: leaving, evidence, outbound: [tiles], posture: 'external-dependency' }), []);
+  assert.ok(validatePrivacyAssessment({ dimensions, evidence, outbound: [tiles], posture: 'private-by-default' })
+    .some((error) => error.includes('says nothing leaves by default')));
+  assert.ok(validatePrivacyAssessment({ dimensions: leaving, evidence, outbound: [], posture: 'external-dependency' })
+    .some((error) => error.includes('lists no outbound host')));
+  // A review written before the list existed stays valid on the servers that installed it.
+  assert.deepEqual(validatePrivacyAssessment({ dimensions: leaving, evidence, posture: 'external-dependency' }), []);
 });
 
 test('privacy-invalidated advisories apply only to their bounded package versions', () => {

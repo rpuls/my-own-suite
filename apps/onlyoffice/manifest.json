@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "appVersion": "9.3.1",
   "minimumMosVersion": "0.20.0",
   "packageFiles": [
@@ -75,9 +75,10 @@
       "description": "Document Server is heavier than small utility packages and may take several minutes to start cold."
     },
     "privacy": {
-      "summary": "ONLYOFFICE Document Server runs on your own MOS server and edits documents the connected file app sends it. It needs no ONLYOFFICE account, processes documents inside the container, and MOS pins its optional StatsD metrics off. The trackers ONLYOFFICE is known for live in its desktop and mobile apps, which MOS does not ship.",
+      "summary": "ONLYOFFICE Document Server runs on your own MOS server and edits documents the connected file app sends it. It needs no ONLYOFFICE account, processes documents inside the container, and MOS turns off its optional StatsD metrics, its plugin downloads from GitHub at every start, and its welcome page's Google Font. The trackers ONLYOFFICE is known for live in its desktop and mobile apps, which MOS does not ship.",
       "notes": [
         "MOS sets METRICS_ENABLED=false so the server's optional StatsD metrics stay off.",
+        "MOS sets PLUGINS_ENABLED=false, so the server no longer downloads its default plugins from the ONLYOFFICE marketplace on GitHub every time it starts.",
         "No ONLYOFFICE account or license server is contacted; the Community Edition enforces its limits locally.",
         "Opening documents that reference external images or links, or enabling editor plugins or AI, can still make the server reach out to third-party sites."
       ]
@@ -131,6 +132,7 @@
           "ALLOW_PRIVATE_IP_ADDRESS": "true",
           "ALLOW_META_IP_ADDRESS": "false",
           "METRICS_ENABLED": "false",
+          "PLUGINS_ENABLED": "false",
           "JWT_ENABLED": "true",
           "JWT_SECRET": "${secret.jwtSecret}",
           "SECURE_LINK_SECRET": "${secret.secureLinkSecret}"

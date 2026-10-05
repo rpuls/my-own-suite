@@ -31,7 +31,18 @@ Classify each relevant change as automatically handled, migration required, oper
 4. Update Dockerfiles, manifests, runtime wiring, README, Dependabot, and tests together; bump the package version according to the package-level compatibility impact. Manifest edits must stay inside the locked generation-1 contract (`apps/manifest.schema.json`, reference at `site/src/content/docs/docs/reference/manifest.md`); run `npm run apps:manifest:check -- apps/<app>` and declare structural changes in `update.breakingChanges`.
 5. Preserve public Dockerfile paths and volume semantics; call compatibility changes out in `CHANGELOG.md`.
 6. Verify that installed instances can compare their preserved installed snapshot with this candidate without replacing installed settings or privacy information before apply.
-7. Test fresh install and supported upgrade paths, including health, integrations, backup assumptions, and failures.
-8. Run `npm run apps:bump -- <app>` after package changes: it moves the package version past the published one, sets `appVersion`, re-stamps the review's components, `scope.packageVersion` and `scope.packageDigest`, and regenerates the catalog. A moved pin with no tag needs `--app-version` or `--component <image>=<version>`; it re-binds the review and never re-assesses it. Then run `npm run apps:catalog:check`, privacy/manifest tests, `npm run typecheck`, and the relevant build. Ask the user to run relevant E2E or hardware validation. Regenerating the catalog invalidates its committed Ed25519 signature; the signature half of `apps:catalog:check` fails until the key holder runs `npm run apps:catalog:sign` (prompts to paste the key). Without the key, treat that failure as expected and report re-signing as a required pre-merge step — never edit `.sig` files by hand.
+7. Run `npm run apps:bump -- <app>` after package changes: it moves the package version past the published one, sets `appVersion`, re-stamps the review's components, `scope.packageVersion` and `scope.packageDigest`, and regenerates the catalog. A moved pin with no tag needs `--app-version` or `--component <image>=<version>`; it re-binds the review and never re-assesses it. Then run `npm run apps:catalog:check`, privacy/manifest tests, `npm run typecheck`, and the relevant build. Regenerating the catalog invalidates its committed Ed25519 signature; the signature half of `apps:catalog:check` fails until the key holder runs `npm run apps:catalog:sign` (prompts to paste the key). Without the key, treat that failure as expected and report re-signing as a required pre-merge step — never edit `.sig` files by hand.
+8. Pass the E2E evidence gate below. Changes that depend on particular hardware still need the user's hardware validation.
 
 Never refresh a digest without identifying the resolved version and reviewing the releases it crosses.
+
+## E2E evidence gate
+
+An app update is ready for review only with these two runs, against a lab (`test/README.md`), of the same candidate commit:
+
+- `npm run e2e -- @update <app>`: on a lab installed from the base branch, the app's journey runs on the old version. The lab then takes the platform update to the candidate (push the candidate to the lab's branch while `platform-update:wait` waits), applies the app update from the Apps screen, and checks the journey's data on the new version.
+- `npm run e2e -- @app-dr <app>` on the candidate: a fresh install's data survives a bucket backup, a wiped lab and a restore.
+
+Both end with the `network` step, which must pass. Read each run's outcome from `test/e2e/results/<run>/`: `summary.json`, `network/report.md` and `compare/compare.json`.
+
+The pull request's report gives, for each run, its result and run folder, every host that is new after the update, and the screens that changed. A host the network step rejects is a privacy finding. Re-assess it with `assess-app-privacy`, then record it in the review's `outbound` list with its evidence, or stop the app from contacting it. Never add a host just to make the step pass. With no lab to run against, list "E2E not run" under what was not tested: the update is not ready until both runs pass.

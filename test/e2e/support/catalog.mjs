@@ -23,6 +23,7 @@ export function catalogApps() {
         name: manifest.name,
         needsHttps: manifest.requirements?.https === true,
         role: manifest.role || 'standalone',
+        routeHosts: (manifest.routes || []).map((route) => route.host).filter(Boolean),
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id, 'en'));

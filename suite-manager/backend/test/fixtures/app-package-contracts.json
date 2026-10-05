@@ -103,6 +103,7 @@
       }
     ],
     "openQuestions": [],
+    "outbound": [],
     "policies": [
       {
         "kind": "privacy",

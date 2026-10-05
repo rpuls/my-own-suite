@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "seafile",
-  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.1",
-    "packageDigest": "sha256:7b7e4b5ac62755a089eb980e168049b0fb24cfd097e2f2521b33cf4ec7b51248",
+    "packageVersion": "0.3.2",
+    "packageDigest": "sha256:9def3fd401ae5f29e00cbfa96cda5b85dcaf30c57c0d360712efcfdae3ae35a6",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -46,7 +46,7 @@
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "self-hosted-software-only",
-    "confidence": "documented"
+    "confidence": "verified"
   },
   "evidence": [
     {
@@ -91,8 +91,15 @@
       "source": "Seafile 13.0 configuration and Docker deployment documentation, correlated with apps/seafile/manifest.json",
       "url": "https://manual.seafile.com/13.0/config/seahub_settings_py/",
       "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, creating a library and a file, uploading, downloading and sharing a file publicly), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. No container made a lookup or a connection, and the browser made no request outside the suite.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle seafile`, run 20261005-112356-app-cycle-seafile (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
     }
   ],
+  "outbound": [],
   "telemetryControls": [
     {
       "type": "documented",
@@ -119,17 +126,17 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 4.8",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
     "humanReviewed": false
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned 13.0.21 image; the finding of no server telemetry or phone-home rests on the Seafile configuration reference and upstream documentation rather than observed packet silence.",
     "Seafile's optional integrations - SMTP, ONLYOFFICE/Collabora, S3/object storage, LDAP, external SSO, and Google Maps - are inactive in the packaged default but become external data dependencies with their own terms if an operator later enables them.",
     "The excluded proprietary desktop and mobile clients contact Seafile-operated servers for update checks and are governed by Seafile's client terms; only the self-hosted server package is assessed here.",
-    "The pinned image is Seafile CE 13.0.21, a few patch releases behind the newest 13.0.x line (13.0.25 as of 2026-07-13); a future package update should re-pin and re-verify this assessment."
+    "The pinned image is Seafile CE 13.0.21, a few patch releases behind the newest 13.0.x line (13.0.25 as of 2026-07-13); a future package update should re-pin and re-verify this assessment.",
+    "The 2026-10-05 capture ran without ONLYOFFICE connected, so Seafile's traffic while documents are edited in a connected editor was not part of it."
   ]
 }

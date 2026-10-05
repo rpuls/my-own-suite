@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { labSshKeyPath } from '../../../scripts/smoke/lab-ssh-key.cjs';
+
 export const e2eRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const repoRoot = path.resolve(e2eRoot, '..', '..');
 const localEnvPath = path.join(e2eRoot, '.env');
@@ -66,8 +68,9 @@ export function loadEnv() {
   loadLocalEnv();
   const cloudflareApiToken = envString('CLOUDFLARE_API_TOKEN');
   const dns01BaseDomain = envString('MOS_E2E_DNS01_BASE_DOMAIN');
+  const baseURL = normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv'));
   return {
-    baseURL: normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv')),
+    baseURL,
     bucket: readBucket,
     cloudflareApiToken,
     dns01AcmeEmail: envString('MOS_E2E_DNS01_ACME_EMAIL', envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com')),
@@ -78,8 +81,18 @@ export function loadEnv() {
       name: envString('MOS_E2E_OWNER_NAME', 'MOS Owner'),
       password: envString('MOS_E2E_OWNER_PASSWORD', 'correct horse battery'),
     },
+    labShell: labShell(baseURL),
     read: envString,
   };
+}
+
+// Root on the lab, for checks that read the machine itself. The Hyper-V lab is built to
+// trust the key at labSshKeyPath; any other lab names its own login and key, or `local`
+// when the tests run on the lab itself.
+function labShell(baseURL) {
+  const key = envString('MOS_E2E_LAB_SSH_KEY', labSshKeyPath);
+  const target = envString('MOS_E2E_LAB_SSH', fs.existsSync(key) ? `mos@${new URL(baseURL).hostname}` : '');
+  return target ? { key, target } : null;
 }
 
 export function redact(value) {

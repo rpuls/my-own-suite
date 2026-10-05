@@ -30,8 +30,17 @@ export type PrivacyProvenance = {
   sourceRevision: string | null;
 };
 
+export type OutboundDestination = {
+  from: 'browser' | 'server';
+  host: string;
+  purpose: string;
+  receiver: string;
+};
+
 export type PrivacyReviewSummary = {
   dimensions: Record<string, string> | null;
+  // Null when the review was written before reviews listed their outside hosts.
+  outbound?: OutboundDestination[] | null;
   posture: string | null;
   provenance?: PrivacyProvenance | null;
   reviewedAt: string | null;
@@ -305,6 +314,40 @@ export function privacyChanged(installed: PrivacyReviewSummary, candidate: Priva
   return installed.posture !== candidate.posture || privacyGrade(installed) !== privacyGrade(candidate);
 }
 
+export const OUTBOUND_FROM_LABEL: Record<OutboundDestination['from'], string> = {
+  browser: 'From your browser',
+  server: 'From the app',
+};
+
+export function outboundHostLabel(host: string): string {
+  return host === '*' ? 'Any website' : host;
+}
+
+export function outboundSummary(privacy: PrivacyReviewSummary | null | undefined): string | null {
+  if (!isRated(privacy)) return null;
+  const outbound = privacy?.outbound;
+  if (!Array.isArray(outbound)) return 'This version\'s assessment was written before MOS listed the hosts each app contacts. Updating the app brings one that does.';
+  if (!outbound.length) return 'Contacts nothing outside your server in normal use.';
+  return `Contacts ${outbound.length === 1 ? 'one host' : `${outbound.length} hosts`} outside your server in normal use, before you turn anything on.`;
+}
+
+// Null when either version's review predates the list, so there is nothing to compare.
+export function outboundChanges(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): { added: OutboundDestination[]; removed: OutboundDestination[] } | null {
+  if (!Array.isArray(installed.outbound) || !Array.isArray(candidate.outbound)) return null;
+  const key = (item: OutboundDestination) => `${item.from} ${item.host}`;
+  const before = new Set(installed.outbound.map(key));
+  const after = new Set(candidate.outbound.map(key));
+  return {
+    added: candidate.outbound.filter((item) => !before.has(key(item))),
+    removed: installed.outbound.filter((item) => !after.has(key(item))),
+  };
+}
+
+export function outboundChanged(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): boolean {
+  const changes = outboundChanges(installed, candidate);
+  return Boolean(changes && (changes.added.length || changes.removed.length));
+}
+
 // Advisories are current, source-trusted notices about the installed version.
 // They are presented separately from the installed assessment so a corrected
 // advisory changes what the owner sees without implying the runtime changed.
@@ -351,8 +394,9 @@ export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate
   }
   if (!privacyChanged(installed, candidate)) {
     // Two unrated packages share no score to "keep".
-    return privacyScore(installed) === null
-      ? 'Neither the version you run today nor this update has been rated by MOS yet.'
+    if (privacyScore(installed) === null) return 'Neither the version you run today nor this update has been rated by MOS yet.';
+    return outboundChanged(installed, candidate)
+      ? 'This update keeps the same privacy grade, but changes which hosts outside your server it contacts.'
       : 'This update keeps the same privacy grade as the version you run today.';
   }
   const before = privacyScore(installed);

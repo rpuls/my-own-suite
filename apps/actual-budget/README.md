@@ -35,6 +35,10 @@ This single volume is the backup target; losing it loses the budgets. Disable st
 
 Actual is local-first: each browser holds its own copy of the budget and syncs changes to the server. A restored server volume is authoritative, but a client that still has newer local changes will try to sync them on next open.
 
+## Release Check Turned Off
+
+The web client asks `https://api.github.com/repos/actualbudget/actual/releases/latest` for Actual's latest version, gated on the browser preference `notifyWhenUpdateIsAvailable`, which defaults to on, and announces any newer release in a banner. Owners get new versions through MOS, so the `Dockerfile` patches the compiled client in `/app/node_modules/@actual-app/web/build`. The preference now defaults to off, in the `kcab` worker, and the check itself never runs. The build stops if upstream renames either line. The Settings checkbox for update notifications still shows but does nothing.
+
 ## HTTPS Requirement
 
 The manifest declares `requirements.https`, so Suite Manager refuses the install on a suite served over plain http, such as the Easy Door. The web client needs `SharedArrayBuffer`, which browsers grant only to a cross-origin-isolated secure context, so over http it stops at a fatal error before the budget opens.

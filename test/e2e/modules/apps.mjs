@@ -180,6 +180,7 @@ function appContext(ctx, id, module, opened, freshContexts) {
       const { deviceScaleFactor, viewport } = test.info().project.use;
       const context = await ctx.browser.newContext({ deviceScaleFactor, ignoreHTTPSErrors: true, viewport });
       freshContexts.push(context);
+      ctx.network?.watch(context);
       return context.newPage();
     },
     make: fixtureMaker(ctx, id),

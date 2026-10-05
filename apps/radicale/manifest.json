@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "appVersion": "3.7.6",
   "minimumMosVersion": "0.20.0",
   "packageFiles": [

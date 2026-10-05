@@ -65,6 +65,8 @@ No dimension may be `unknown`. An unestablished fact is not a posture — it mea
 
 Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence, so `defaultEgress: none` is only credible with an `observed` capture behind it. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
 
+`outbound` lists every host the app contacts in normal use as MOS ships it, before the owner turns anything on. Each entry has a `host`, which is exact, `*.domain` when the hosts vary, or `*` for behaviour that follows stored content. It also says whether the app's `server` or the owner's `browser` makes the request (`from`), the `purpose` in plain words, and the `receiver`. The list is empty exactly when `defaultEgress` is `none`. Suite Manager and the site show it beside the posture, an update's review shows the hosts it adds and drops, and the E2E `network` step fails on any host the list does not name. The publishing check requires it. Installed servers accept reviews written before it existed.
+
 Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots, marketing assets, and `catalog.demoDeployTargets` are optional catalog metadata, not required package scaffolding. Demo deployment targets are public-site previews on third-party providers; they are not MOS installation instructions.
 
 The first package is `stirling-pdf`, intentionally chosen as a boring app to prove discovery, manifest validation, projections, and lifecycle behavior before MOS grows a catalog.

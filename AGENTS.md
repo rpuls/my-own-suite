@@ -274,7 +274,8 @@ For each app page:
 
 The repo includes real black-box Playwright tests for MOS flows without test-only application bypasses.
 
-- Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
+- Run lab E2E as an agent only when a skill requires it (the `update-mos-app` evidence gate) or the user asks. Read the outcome from `test/e2e/results/<run>/` (`summary.json`, `network/report.md`, `failures/`), never from the streamed Playwright and Docker output, which floods the context window. Otherwise ask the user to run the relevant command and paste only the failure.
+- The `network` step holds every app to the `outbound` list in its `privacy-review.json`, the same list owners read in Suite Manager and on the site. A host the step rejects is a privacy finding: assess it before recording it, and never add one just so the step passes.
 - Do not run `npm run smoke:do:reset` automatically as an agent. It creates or replaces a paid smoke Droplet, destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling, and produces noisy logs. Ask the user to run it and paste only the relevant failure output or final readiness summary.
 - `npm run smoke:do:destroy` may be run by an agent only when explicitly asked or confirmed by the user, because it is a paid-resource cleanup command.
 - Backup and restore drills on lab and smoke servers use only the disposable lab bucket in the git-ignored `.local-tools/lab-bucket/bucket.env`, never a personal or production bucket. Never print its keys.

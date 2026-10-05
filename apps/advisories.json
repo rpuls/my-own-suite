@@ -1,4 +1,41 @@
 {
-  "advisories": [],
+  "advisories": [
+    {
+      "schemaVersion": 1,
+      "id": "MOS-PRIV-2026-001",
+      "packageId": "onlyoffice",
+      "affectedVersions": "<=0.2.5",
+      "severity": "low",
+      "type": "privacy-review-invalidated",
+      "summary": "A network capture found this version contacting GitHub at every start, to download plugins from the ONLYOFFICE marketplace, and its welcome page loading a font from Google. Its review said nothing leaves the server.",
+      "remediation": "Update ONLYOFFICE to package 0.2.6, which turns both off. No documents left the server.",
+      "publishedAt": "2026-10-05T00:00:00Z",
+      "evidenceUrl": "https://myownsuite.org/docs/apps/onlyoffice/#privacy-assessment"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "MOS-PRIV-2026-002",
+      "packageId": "stirling-pdf",
+      "affectedVersions": "<=0.2.6",
+      "severity": "medium",
+      "type": "privacy-review-invalidated",
+      "summary": "A network capture found Stirling PDF's pages loading Stripe's payment library, which sends fraud-detection signals about the browser, along with PostHog's error reporting and Iconify's icons. Its review said nothing leaves.",
+      "remediation": "Update Stirling PDF to package 0.2.7, which keeps PostHog and Stripe on your server. Its pages still fetch icons from Iconify.",
+      "publishedAt": "2026-10-05T00:00:00Z",
+      "evidenceUrl": "https://myownsuite.org/docs/apps/stirling-pdf/#privacy-assessment"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "MOS-PRIV-2026-003",
+      "packageId": "vaultwarden",
+      "affectedVersions": "<=0.4.0",
+      "severity": "low",
+      "type": "privacy-review-invalidated",
+      "summary": "The web vault checks passwords against Have I Been Pwned, at sign-up and when a login is opened, which this version's review said was inactive. Only the first five characters of each password's hash are sent.",
+      "remediation": "Update Vaultwarden to package 0.4.1, whose review lists the check. At sign-up the box can be unticked.",
+      "publishedAt": "2026-10-05T00:00:00Z",
+      "evidenceUrl": "https://myownsuite.org/docs/apps/vaultwarden/#privacy-assessment"
+    }
+  ],
   "schemaVersion": 1
 }

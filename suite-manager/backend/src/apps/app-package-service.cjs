@@ -122,7 +122,7 @@ class AppPackageService {
 
   preparePackageUpdate(packageId) { return this.updates.preparePackageUpdate(packageId); }
 
-  stagePackageUpdate(packageId, input = {}, requestContext = {}) { return this.updates.stagePackageUpdate(packageId, input, requestContext); }
+  stagePackageUpdate(packageId, input = {}, requestContext = {}, onStage = undefined) { return this.updates.stagePackageUpdate(packageId, input, requestContext, onStage); }
 
   // What this server is, for judging what a package needs from it. The
   // architecture cannot change while Suite Manager runs, so it is asked once.

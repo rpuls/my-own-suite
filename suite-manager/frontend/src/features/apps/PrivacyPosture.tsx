@@ -27,6 +27,11 @@ import {
   gradeScaleLabel,
   isNotAssessed,
   isRated,
+  OUTBOUND_FROM_LABEL,
+  outboundChanged,
+  outboundChanges,
+  outboundHostLabel,
+  outboundSummary,
   postureFor,
   privacyChangeSentence,
   privacyChanged,
@@ -36,12 +41,58 @@ import {
   sortedAdvisories,
   tileLabelFor,
   tileMetaLine,
+  type OutboundDestination,
   type PrivacyAdvisory,
   type PrivacyReviewSummary,
 } from './privacy-posture';
 
 function Glyph({ className, path }: { className?: string; path: string }) {
   return <svg aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24"><path d={path} /></svg>;
+}
+
+function OutboundList({ outbound }: { outbound: OutboundDestination[] }) {
+  return <ul className="suite-privacy-outbound-list">
+    {outbound.map((item) => <li key={`${item.from} ${item.host}`}>
+      <span className="suite-privacy-outbound-head">
+        <code>{outboundHostLabel(item.host)}</code>
+        <span className="suite-privacy-outbound-from">{OUTBOUND_FROM_LABEL[item.from]}</span>
+      </span>
+      <span>{item.purpose}</span>
+      <span className="suite-privacy-outbound-receiver">Received by {item.receiver}</span>
+    </li>)}
+  </ul>;
+}
+
+function OutboundSection({ privacy }: { privacy: PrivacyReviewSummary | null | undefined }) {
+  const summary = outboundSummary(privacy);
+  if (!summary) return null;
+  return <div className="suite-privacy-outbound">
+    <span className="suite-privacy-rows-label">What it connects to</span>
+    <p className="suite-privacy-why">{summary}</p>
+    {privacy?.outbound?.length ? <OutboundList outbound={privacy.outbound} /> : null}
+  </div>;
+}
+
+// The hosts an update adds and drops; when the installed review predates the list, the new list whole.
+function OutboundChange({ candidate, installed }: { candidate: PrivacyReviewSummary; installed: PrivacyReviewSummary }) {
+  const changes = outboundChanges(installed, candidate);
+  if (!changes) {
+    if (!Array.isArray(candidate.outbound)) return null;
+    return <div className="suite-privacy-outbound">
+      <span className="suite-privacy-change-label">What the new version connects to</span>
+      {candidate.outbound.length ? <OutboundList outbound={candidate.outbound} /> : <p>Nothing outside your server in normal use.</p>}
+    </div>;
+  }
+  return <>
+    {changes.added.length ? <div className="suite-privacy-outbound">
+      <span className="suite-privacy-change-label">Starts connecting to</span>
+      <OutboundList outbound={changes.added} />
+    </div> : null}
+    {changes.removed.length ? <div className="suite-privacy-outbound">
+      <span className="suite-privacy-change-label">Stops connecting to</span>
+      <OutboundList outbound={changes.removed} />
+    </div> : null}
+  </>;
 }
 
 export function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSummary | null | undefined; size: 'dialog' | 'row' | 'tile' }) {
@@ -170,6 +221,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
         <span className="suite-privacy-verdict" style={{ background: row.verdict.soft, borderColor: row.verdict.border, color: row.verdict.color }}>{row.verdict.word}</span>
       </div>)}
     </div>}
+    <OutboundSection privacy={privacy} />
     <AdvisoryNotices advisories={advisories || []} />
     {packageId && isRated(privacy) ? <a
       className="suite-privacy-report-link"
@@ -209,7 +261,7 @@ export function PrivacyChangeRow({ candidate, candidateVersion, installed, insta
 }) {
   const changed = privacyChanged(installed, candidate);
   const versions = installedVersion && candidateVersion ? (installedVersion === candidateVersion ? installedVersion : `${installedVersion} → ${candidateVersion}`) : null;
-  return <div className={`suite-privacy-change${changed ? ' is-changed' : ''}`}>
+  return <div className={`suite-privacy-change${changed || outboundChanged(installed, candidate) ? ' is-changed' : ''}`}>
     <span className="suite-privacy-change-label">Privacy change{versions ? ` · ${versions}` : ''}</span>
     <div className="suite-privacy-change-row">
       <span className="suite-privacy-change-side">
@@ -228,5 +280,6 @@ export function PrivacyChangeRow({ candidate, candidateVersion, installed, insta
       </span>}
     </div>
     <p>{privacyChangeSentence(installed, candidate)}</p>
+    <OutboundChange candidate={candidate} installed={installed} />
   </div>;
 }

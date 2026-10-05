@@ -34,12 +34,13 @@ function appPackage(version, mutate = (manifest) => manifest, source = OFFICIAL_
   return { manifest, packageDigest: digestAppPackage(packageDir), packageDir, source };
 }
 
-function writePrivacyReview(appPkg, posture, dimensions) {
+function writePrivacyReview(appPkg, posture, dimensions, outbound) {
   fs.writeFileSync(path.join(appPkg.packageDir, 'privacy-review.json'), `${JSON.stringify({
     appId: appPkg.manifest.id,
     dimensions,
     evidence: [],
     openQuestions: [],
+    ...(outbound ? { outbound } : {}),
     policies: [],
     posture,
     provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test', skill: 'assess-app-privacy', skillRevision: '1' },
@@ -117,6 +118,41 @@ test('privacy assessments carry their dimensions into both sides of the comparis
   assert.equal(comparison.candidate.privacy.dimensions.externalServices, 'required');
   const change = comparison.changes.find((item) => item.area === 'privacy');
   assert.match(change.summary, /from private-by-default to external-dependency/u);
+});
+
+const LEAVING = { accountDependency: 'local-only', confidence: 'verified', control: 'accepted-by-mos', dataProcessing: 'local', defaultEgress: 'external-contact', policyExposure: 'upstream-services-involved' };
+const TILES = { from: 'browser', host: 'tiles.example.net', purpose: 'Map tiles.', receiver: 'Example Maps' };
+const MODELS = { from: 'server', host: 'models.example.org', purpose: 'Model downloads.', receiver: 'Example Models' };
+
+test('an update that starts contacting a new outside host carries both lists and asks the owner to review it', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.1.0');
+  writePrivacyReview(installed, 'external-dependency', LEAVING, [TILES]);
+  writePrivacyReview(candidate, 'external-dependency', LEAVING, [TILES, MODELS]);
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
+  assert.deepEqual(comparison.installed.privacy.outbound, [TILES]);
+  assert.deepEqual(comparison.candidate.privacy.outbound, [TILES, MODELS]);
+  const network = comparison.changes.find((item) => item.area === 'network');
+  assert.equal(network.classification, 'operator-action-required');
+  assert.match(network.summary, /starts contacting models\.example\.org\./u);
+  assert.equal(comparison.compatibility, 'owner-action-required');
+});
+
+test('a dropped outside host, or an installed review written before the list, asks nothing of the owner', (t) => {
+  const installed = appPackage('1.0.0');
+  const dropping = appPackage('1.1.0');
+  const listing = appPackage('1.1.0');
+  writePrivacyReview(installed, 'external-dependency', LEAVING, [TILES, MODELS]);
+  writePrivacyReview(dropping, 'external-dependency', LEAVING, [TILES]);
+  t.after(() => [installed, dropping, listing].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  assert.ok(!compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate: dropping, installed, platformVersion: '0.11.0' }).changes.some((item) => item.area === 'network'));
+
+  writePrivacyReview(installed, 'external-dependency', LEAVING);
+  writePrivacyReview(listing, 'external-dependency', LEAVING, [TILES]);
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate: listing, installed, platformVersion: '0.11.0' });
+  assert.equal(comparison.installed.privacy.outbound, null, 'an older review never claimed to contact nothing');
+  assert.ok(!comparison.changes.some((item) => item.area === 'network'));
 });
 
 test('an unverified package cannot present its own privacy review as a MOS review', (t) => {

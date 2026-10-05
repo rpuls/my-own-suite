@@ -3203,6 +3203,46 @@ button.suite-updates-change-head {
   white-space: nowrap;
 }
 
+.suite-privacy-outbound {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-privacy-outbound-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-privacy-outbound-list li {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--mos-space-2) 0;
+  border-bottom: var(--mos-border-hairline);
+  color: var(--mos-color-text);
+  font-size: var(--mos-text-small);
+  line-height: 1.5;
+}
+
+.suite-privacy-outbound-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--mos-space-2);
+}
+
+.suite-privacy-outbound-head code {
+  color: var(--mos-color-text-strong);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.suite-privacy-outbound-from,
+.suite-privacy-outbound-receiver {
+  color: var(--mos-color-text-muted);
+}
+
 .suite-privacy-advisory-flag {
   display: inline-flex;
   align-items: center;

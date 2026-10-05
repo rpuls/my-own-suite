@@ -629,9 +629,15 @@ test('an external app updates from its own source through the same update transa
     'x-abcdef01-community-notes',
     { confirmationToken: comparison.confirmationToken },
     requestContext().publicUrlFor('notes'),
+    (stage) => calls.push(['stage-reached', stage]),
   );
 
   assert.equal(result.operation.status, 'succeeded');
+  // The owner's progress names each stage before the agent starts on it.
+  assert.deepEqual(
+    calls.filter(([kind]) => ['stage-reached', 'stage', 'activate', 'promote'].includes(kind)).map(([kind, input]) => (kind === 'stage-reached' ? input : kind)),
+    ['build', 'stage', 'switch', 'activate', 'finish', 'promote'],
+  );
   const updated = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
   assert.equal(updated.packageVersion, '1.1.0');
   assert.equal(updated.packageDigest, next.packageDigest);
@@ -1498,7 +1504,7 @@ test('new installs snapshot package contents before persisting configuration and
   assert.equal(installed.snapshotPath, path.join(v2AppsDir, 'stirling-pdf'));
   assert.equal(installed.snapshotState, 'installed');
   assert.equal(installed.privacyStatus, 'reviewed');
-  assert.equal(installed.privacyPosture, 'privacy-configured');
+  assert.equal(installed.privacyPosture, 'external-dependency');
 
   store.close();
 });

@@ -24,6 +24,7 @@ export const STEPS = {
   diagnostics: { arg: 'none', budgetMinutes: 8, describe: 'Export the diagnostics file and check it for leaked secrets, crashes and missing sections.' },
   marketing: { arg: 'none', budgetMinutes: 10, describe: 'Refresh the public site screenshots from the installed suite.' },
   compare: { arg: 'none', budgetMinutes: 5, describe: 'Pair every app screenshot taken earlier with the same one taken later; writes compare.html and compare.png.' },
+  network: { arg: 'none', budgetMinutes: 2, describe: 'Check every host each app contacted, from the lab or in the browser, against the outbound list in its privacy review. The capture runs from the first step.' },
   cleanup: { arg: 'none', budgetMinutes: 10, describe: 'Delete the restore points and bucket folder this run made.' },
 };
 
@@ -37,17 +38,17 @@ export const NAMED_PATHS = {
   'app-cycle': {
     app: true,
     describe: 'One app on a clean lab: back up, install, use it, restore, and prove the restore removed it.',
-    build: (app) => ['reset', 'owner', 'homepage', 'backup', `install:${app}`, `app:${app}`, 'tiles', 'routes', 'restore', 'homepage-check', `absent:${app}`, 'cleanup'],
+    build: (app) => ['reset', 'owner', 'homepage', 'backup', `install:${app}`, `app:${app}`, 'tiles', 'routes', 'restore', 'homepage-check', `absent:${app}`, 'network', 'cleanup'],
   },
   'app-dr': {
     app: true,
     describe: "Disaster recovery: the app's data survives a bucket backup, a wiped lab and a restore from the bucket.",
-    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'backup:bucket', 'reset', 'owner', 'restore:bucket', `verify:${app}`, 'routes', 'cleanup'],
+    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'backup:bucket', 'reset', 'owner', 'restore:bucket', `verify:${app}`, 'routes', 'network', 'cleanup'],
   },
   update: {
     app: true,
-    describe: 'Update insurance: the app journey, the platform update, the app update, the app check, and a before/after screenshot report.',
-    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'platform-update:wait', `update:${app}`, `verify:${app}`, 'routes', 'compare'],
+    describe: 'Update insurance: the app journey, the platform update, the app update, the app check, and before/after screenshot and network reports.',
+    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'platform-update:wait', `update:${app}`, `verify:${app}`, 'routes', 'compare', 'network'],
   },
   full: {
     apps: true,

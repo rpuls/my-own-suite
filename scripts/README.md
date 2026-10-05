@@ -119,6 +119,8 @@ The installer seed clones a Git ref inside the guest. It uses `MOS_SMOKE_REPO_RE
 
 `destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the hosts-file entries written by `reset`.
 
+`reset` also bakes the lab-only key it makes at `.mos-smoke/lab-ssh/id_ed25519` (git-ignored) into the seed, which gives the lab user passwordless `sudo`. The E2E network capture uses it to read the lab as root (`ssh -i .mos-smoke/lab-ssh/id_ed25519 mos@home.mos.hyperv`); only the lab profile accepts a key, so no release seed can carry one.
+
 The smoke VM intentionally follows the USB install shape instead of the abandoned Azure/cloud-image path. The blank disk is first in the boot order and the installer ISO is second: on first boot the blank disk falls through to the DVD, and after installation the populated disk wins so the VM does not loop back into the installer.
 
 The harness also attaches `backup.vhdx` as a second disk and the MOS seed formats/mounts that empty disk at `/media/mos-backup` on first boot. This gives the Backup page a ready-made external-style destination for testing backup, download, and restore flows without opening Hyper-V Manager. The default backup disk is 16 GB; set `MOS_HYPERV_BACKUP_DISK_GB` to a whole number from 4 to 256 to change it.
@@ -134,6 +136,19 @@ cmd /c npm run e2e -- --list                  # every step and named path
 The E2E command reads ignored local config from `test/e2e/.env` and never creates or destroys Hyper-V. Paths that start with `reset` call the lab-only reset endpoint to clear Suite Manager, Homepage and app state first; a path without it continues on the lab as it is. See `test/README.md` for paths, app modules and results.
 
 To test a platform or app update before it is merged, install the lab from a branch of its own (`MOS_SMOKE_REPO_REF=lab/<name> npm run smoke:hyperv:reset`, with the branch at the commit to update from). The lab then follows that branch, and moving the branch to the commit under test while `npm run e2e -- @update <app>` waits at `platform-update:wait` delivers the update.
+
+### Local lab (a throwaway Linux machine or CI runner)
+
+`scripts/smoke/local-lab.cjs` turns the Ubuntu machine it runs on into a disposable lab and runs the update drill there, with no VM, no droplet and no GitHub login:
+
+```sh
+node scripts/smoke/local-lab.cjs install <base>             # MOS from <base>, at http://home.mos.lab
+node scripts/smoke/local-lab.cjs drill <app> <candidate>    # @update <app> onto <candidate>, then @app-dr <app>
+```
+
+- `install` puts both commits in a local repository (`/srv/mos-lab.git`, fetched from the public repository) and installs MOS from its `lab` branch with the `--disposable-lab` bootstrap, so the lab reset agent is there. The app hosts resolve to the machine's own address through `/etc/hosts`.
+- `drill` runs `@update <app>`, moves `lab` to `<candidate>` when `platform-update` starts, then runs `@app-dr <app>` if the platform update went through. Each run's results land in `test/e2e/results/` as usual, with `drill.json` beside them listing both runs. The tests run on the lab itself, so the network capture reads it with `sudo` directly (`MOS_E2E_LAB_SSH=local`).
+- It needs `sudo` without a password, and the lab bucket in `.local-tools/lab-bucket/bucket.env` for `@app-dr`. Never run it on a machine you want to keep: it installs MOS as root and its lab reset agent can wipe that MOS.
 
 ### Marketing screenshot pipeline
 

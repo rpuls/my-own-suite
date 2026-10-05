@@ -24,6 +24,7 @@ const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
+const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
 const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
 const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
 const {
@@ -558,6 +559,14 @@ function createMOSServer({
     prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
     progressOf: (packageId) => appPackages.installProgressOf(packageId),
     start: (packageId) => appPackages.startPackageRuntime(packageId, { ...publicUrlOf(packageId), publicUrlFor: publicUrls() }),
+  });
+  const updateJobs = new AppUpdateJobs({
+    logger,
+    stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
+      ...publicUrlOf(packageId),
+      homepageService: homepageConfig,
+      publicUrlFor: publicUrls(),
+    }, onStage),
   });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
@@ -1410,7 +1419,7 @@ function createMOSServer({
         // shows up on the next load.
         jsonResponse(response, 200, {
           catalog: catalogService.status(),
-          packages: appPackages.listPackages(await appPackages.hostFacts()).map((app) => ({ ...withPublicUrl(app), installJob: installJobs.get(app.id) })),
+          packages: appPackages.listPackages(await appPackages.hostFacts()).map((app) => ({ ...withPublicUrl(app), installJob: installJobs.get(app.id), updateJob: updateJobs.get(app.id) })),
         });
         externalSourceService.sweep();
         return;
@@ -1528,7 +1537,7 @@ function createMOSServer({
 
       const appInstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install$/u);
       const appPrepareUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/prepare-update$/u);
-      const appStageUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stage-update$/u);
+      const appUpdateJobMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/update-job$/u);
       if (request.method === 'POST' && appPrepareUpdateMatch) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app updates.' });
@@ -1538,18 +1547,13 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'POST' && appStageUpdateMatch) {
+      if (request.method === 'POST' && appUpdateJobMatch) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update app packages.' });
           return;
         }
         const body = await readJsonBody(request, 4 * 1024);
-        const packageId = decodeURIComponent(appStageUpdateMatch[1]);
-        jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
-          ...publicUrlOf(packageId),
-          homepageService: homepageConfig,
-          publicUrlFor: publicUrls(),
-        }));
+        jsonResponse(response, 202, { updateJob: updateJobs.begin(decodeURIComponent(appUpdateJobMatch[1]), body) });
         return;
       }
 

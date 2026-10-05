@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-08-11T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.2",
-    "packageDigest": "sha256:b036fcc99fb2394ffac7b27f397b75f5a2f5822a98174b9bd888f5df27afb63f",
+    "packageVersion": "0.3.3",
+    "packageDigest": "sha256:ad4bbf4caaf1d9e2a828cccfa766a5b3adf881a39e8727f3be6bcc4726cdc8b2",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -138,8 +138,15 @@
       "type": "configured",
       "claim": "MOS wires Paperless's outbound email settings (PAPERLESS_EMAIL_HOST and related) to the shared, optional MOS email relay. They resolve empty unless the owner configures a relay under Settings → Email relay, so Paperless sends no mail by default, and the ten-minute mail-account job remains inbound-only and unaffected. When a relay is set, Paperless sends password-reset, share and workflow mail through the owner's own chosen provider, which handles that mail; MOS never uses the relay itself.",
       "source": "apps/paperless-ngx/manifest.json"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, uploading a document, finding it by its contents, and checking its original and thumbnail), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. Neither container made a lookup or a connection, and the browser made no request outside the suite.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle paperless-ngx`, run 20261005-111758-app-cycle-paperless-ngx (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
     }
   ],
+  "outbound": [],
   "telemetryControls": [
     {
       "type": "configured",
@@ -166,12 +173,12 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 5",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "3fa1119973bac8c2065806961736c66996543978",
-    "humanReviewed": true,
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "humanReviewed": false,
     "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [

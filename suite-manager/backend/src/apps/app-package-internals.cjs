@@ -15,6 +15,7 @@ const { appAgentContractFailure } = require('../../../../shared/app-agent-contra
 const {
   SUPPORTED_ARCHITECTURES,
   effectiveRouteHost,
+  reviewOutbound,
   stableJson,
 } = require('./package-contracts.cjs');
 
@@ -323,7 +324,7 @@ function privacyReviewPresentation(packageDir, { id, version }) {
   try {
     const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
     if (review?.schemaVersion !== 1 || review.appId !== id || review.scope?.packageVersion !== version) return null;
-    return { dimensions: review.dimensions || null, posture: review.posture, provenance: reviewProvenance(review), reviewedAt: review.reviewedAt, status: 'reviewed' };
+    return { dimensions: review.dimensions || null, outbound: reviewOutbound(review), posture: review.posture, provenance: reviewProvenance(review), reviewedAt: review.reviewedAt, status: 'reviewed' };
   } catch {
     return null;
   }

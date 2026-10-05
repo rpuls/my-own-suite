@@ -6,7 +6,7 @@
 // summary — including the open questions, which are the part a sceptic should
 // read first.
 import type { PrivacyAssessment, PrivacyEvidence } from '../lib/app-catalog'
-import { reviewDateLabel } from '../lib/privacy-posture'
+import { OUTBOUND_FROM_LABEL, outboundHostLabel, reviewDateLabel } from '../lib/privacy-posture'
 
 interface Props {
   appName: string
@@ -66,6 +66,31 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
       <ul class="privacy-report-excluded">
         {assessment.clientsExcluded.map((item) => <li>{item}</li>)}
       </ul>
+    </>
+  )}
+
+  {assessment.outbound && (
+    <>
+      <h3 id="privacy-assessment-outbound">What it connects to</h3>
+      {assessment.outbound.length === 0 ? (
+        <p>Nothing outside your server, in normal use as MOS ships it.</p>
+      ) : (
+        <>
+          <p class="privacy-report-note">
+            Every host {appName} contacts in normal use as MOS ships it, before you turn anything on.
+            The MOS test suite fails this package if it contacts a host this list does not name.
+          </p>
+          <ul class="privacy-report-outbound">
+            {assessment.outbound.map((item) => (
+              <li>
+                <p><code>{outboundHostLabel(item.host)}</code> <span class="privacy-report-source">{OUTBOUND_FROM_LABEL[item.from]}</span></p>
+                <p>{item.purpose}</p>
+                <p class="privacy-report-source">Received by {item.receiver}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   )}
 
@@ -204,5 +229,18 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
   .privacy-report-open > li,
   .privacy-report-excluded > li {
     color: var(--mos-color-text-muted);
+  }
+
+  .privacy-report-outbound > li {
+    margin-bottom: var(--mos-space-3);
+  }
+
+  .privacy-report-outbound p {
+    margin: 0;
+  }
+
+  .privacy-report-outbound code {
+    font-weight: 700;
+    overflow-wrap: anywhere;
   }
 </style>

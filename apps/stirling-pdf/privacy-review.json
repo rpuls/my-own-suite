@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "stirling-pdf",
-  "reviewedAt": "2026-07-16T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T18:16:29.734Z",
   "expiresAt": "2027-01-16T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.6",
-    "packageDigest": "sha256:1d49a3cf0a99d92c1af3394a4cc0049128ca5c679e4c620f4a85f548f0d4d743",
+    "packageVersion": "0.2.7",
+    "packageDigest": "sha256:59204755a8b56a0a37c239d027a3a8745127d7c11be6b01f3f11fa71b6018db2",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -27,14 +27,14 @@
       "Third-party API clients"
     ]
   },
-  "posture": "privacy-configured",
+  "posture": "external-dependency",
   "dimensions": {
-    "defaultEgress": "none",
-    "control": "disabled-by-mos",
+    "defaultEgress": "external-contact",
+    "control": "accepted-by-mos",
     "accountDependency": "local-only",
     "dataProcessing": "optional-external",
     "policyExposure": "upstream-services-involved",
-    "confidence": "documented"
+    "confidence": "verified"
   },
   "evidence": [
     {
@@ -62,15 +62,34 @@
       "source": "Stirling PDF Security feature documentation",
       "url": "https://docs.stirlingpdf.com/Functionality/Security/",
       "retrievedAt": "2026-07-16"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in and replacing the default password, then merging two PDFs and downloading the result), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The server container made no lookup and no connection. The browser, on Stirling PDF's own pages, loaded https://js.stripe.com/basil/stripe.js, sent requests to r.stripe.com and m.stripe.com and loaded m.stripe.network/inner.html, which are Stripe's fraud-detection signals. It also loaded https://eu-assets.i.posthog.com/static/exception-autocapture.js and fetched https://api.iconify.design/material-symbols.json, all with SYSTEM_ENABLEANALYTICS=false applied. A browser capture on 2026-08-13, over a longer session, also saw eu.i.posthog.com. SYSTEM_ENABLEANALYTICS=false therefore does not stop the web client from loading PostHog or Stripe, and the package offers no other switch that does.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle stirling-pdf`, run 20261005-112726-app-cycle-stirling-pdf (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "The package now patches the web client at build time, pointing PostHog's host and Stripe's script host at paths on Stirling PDF's own server, where those requests fail. Two builds were compared on the MOS lab, each with SYSTEM_ENABLEANALYTICS=false and its sign-in page open in a browser for 25 seconds. The unpatched image loaded js.stripe.com, m.stripe.network, m.stripe.com and r.stripe.com, and a script from eu-assets.i.posthog.com, before anyone signed in. The patched image made no request outside the server. Stirling PDF's in-app licence purchase, which uses Stripe, no longer works. Icons the interface fetches from api.iconify.design are unchanged.",
+      "source": "apps/stirling-pdf/Dockerfile and patch-web-client.py, both builds opened in Chromium against the MOS Hyper-V lab",
+      "retrievedAt": "2026-10-05"
+    }
+  ],
+  "outbound": [
+    {
+      "from": "browser",
+      "host": "api.iconify.design",
+      "purpose": "Fetches some of the interface's icons. It sees the browser's address and which icons were asked for.",
+      "receiver": "Iconify"
     }
   ],
   "telemetryControls": [
     {
       "type": "configured",
-      "claim": "Known optional analytics are disabled through the upstream-supported SYSTEM_ENABLEANALYTICS setting.",
-      "source": "apps/stirling-pdf/manifest.json",
-      "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
-      "retrievedAt": "2026-07-16"
+      "claim": "MOS points the web client's PostHog and Stripe at Stirling PDF's own server, so neither is contacted. The client starts both on every page, and SYSTEM_ENABLEANALYTICS=false, which MOS also sets, does not reach them. The build stops if upstream changes either host.",
+      "source": "apps/stirling-pdf/patch-web-client.py",
+      "retrievedAt": "2026-10-05"
     }
   ],
   "policies": [
@@ -83,16 +102,16 @@
   ],
   "provenance": {
     "method": "ai-assisted",
-    "provider": "OpenAI",
-    "model": "GPT-5",
+    "provider": "Anthropic",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "7b1c74a74a2bcdee2c2015c7b8e6414c5aedecbb",
-    "repositoryCommit": "ef5027cc1528b516edbd03c6a7e65349adbcc4b4",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
     "humanReviewed": false
   },
   "openQuestions": [
-    "No runtime network capture was performed for the pinned image; the assessment relies on package configuration and upstream documentation.",
-    "Optional tools may contact services beyond the documented timestamp-authority example when explicitly invoked."
+    "Optional tools may contact services beyond the documented timestamp-authority example when explicitly invoked.",
+    "The interface fetches some of its icons from api.iconify.design, which sees the browser's address and the icon names. Serving them from the package would need the icon data bundled, which was not attempted."
   ]
 }

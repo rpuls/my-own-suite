@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "appVersion": "1.37.0",
   "minimumMosVersion": "0.21.0",
   "requirements": {
@@ -91,7 +91,8 @@
         "Use a strong, unique master password.",
         "Enable two-factor authentication where possible.",
         "Keep backups, because losing the app data volume can mean losing the vault.",
-        "By default the server fetches website icons from the sites you save, which can reveal those domains to third parties; you can turn icon downloading off in Vaultwarden if you prefer."
+        "By default the server fetches website icons from the sites you save, which can reveal those domains to third parties; you can turn icon downloading off in Vaultwarden if you prefer.",
+        "The web vault checks passwords against Have I Been Pwned, at sign-up unless you untick the box and when you open a login. Only the first five characters of the password's hash are sent."
       ]
     },
     "links": {

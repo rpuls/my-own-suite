@@ -63,11 +63,8 @@ type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
   // MOS package version.
   appVersion: string | null;
-  installJob?: {
-    error: { code: string; message: string } | null;
-    status: 'failed' | 'running' | 'succeeded';
-    steps: Array<{ id: InstallStep['id']; status: ProgressStep['status'] }>;
-  } | null;
+  installJob?: AppJob<InstallStep> | null;
+  updateJob?: AppJob<UpdateStep> | null;
   capabilities: {
     exports: Array<{ features: Record<string, unknown>; id: string; implementation: string; interfaceVersion: number | null; protocol: string; title: string; type: string }>;
     integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; title: string }>;
@@ -195,6 +192,27 @@ type ExternalResolveResponse = {
 };
 
 type InstallStep = ProgressStep & { id: 'prepare' | 'runtime' | 'homepage' | 'ready' };
+
+type UpdateStep = ProgressStep & { id: 'check' | 'build' | 'switch' | 'finish' };
+
+// An install or update the server runs, read back from the app list.
+type AppJob<Step extends ProgressStep> = {
+  error: { code: string; message: string } | null;
+  startedAt: string;
+  status: 'failed' | 'running' | 'succeeded';
+  steps: Array<{ id: Step['id']; status: ProgressStep['status'] }>;
+};
+
+const UPDATE_STEPS: UpdateStep[] = [
+  { detail: 'Making sure both versions are still the ones you reviewed.', id: 'check', label: 'Checking the update', status: 'pending' },
+  { detail: 'Building the new version on your server. This is the long part.', id: 'build', label: 'Building the new version', status: 'pending' },
+  { detail: 'Starting the new version in place of the current one and checking it works. The app is briefly unavailable.', id: 'switch', label: 'Switching over', status: 'pending' },
+  { detail: 'Recording the new version.', id: 'finish', label: 'Finishing', status: 'pending' },
+];
+
+function updateJobSteps(job: AppJob<UpdateStep> | null | undefined): UpdateStep[] {
+  return job ? job.steps.map((step) => ({ ...UPDATE_STEPS.find((template) => template.id === step.id)!, status: step.status })) : [];
+}
 
 const INSTALL_STEP_MIN_MS = 1000;
 
@@ -353,6 +371,7 @@ function statusFor(app: AppPackageSummary) {
   if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Stopped', tone: 'info' };
   if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (app.installJob?.status === 'running') return { className: 'is-progress', label: 'Installing', tone: 'info' };
+  if (app.updateJob?.status === 'running') return { className: 'is-progress', label: 'Updating', tone: 'info' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
@@ -732,12 +751,17 @@ function AppDetail({
   const [comparisonError, setComparisonError] = useState('');
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [updateInput, setUpdateInput] = useState<Record<string, string>>({});
-  const [applying, setApplying] = useState(false);
+  const [startingUpdate, setStartingUpdate] = useState(false);
+  const [updateStartedAt, setUpdateStartedAt] = useState('');
   const [applyError, setApplyError] = useState('');
   const [recovering, setRecovering] = useState(false);
   const [recoverError, setRecoverError] = useState('');
   const ready = runtimeApplied(app);
   const requirements = requirementsFor(app);
+  const updateRunning = app.updateJob?.status === 'running';
+  const updating = startingUpdate || updateRunning;
+  // The job this dialog started, as opposed to one begun in another tab or before a reload.
+  const dialogJob = updateStartedAt && app.updateJob?.startedAt === updateStartedAt ? app.updateJob : null;
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
   const uninstalled = app.instance?.status === 'uninstalled';
@@ -756,7 +780,7 @@ function AppDetail({
     && comparison!.updateStatus === 'update-available'
     && comparison!.compatibility !== 'unsupported'
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
-    && !applying;
+    && !updating;
   const ownerChanges = comparison ? comparison.changes.filter((change) => change.classification !== 'automatically-handled') : [];
   const handledChanges = comparison ? comparison.changes.filter((change) => change.classification === 'automatically-handled') : [];
   const connections = app.compatibility?.connections || [];
@@ -774,9 +798,17 @@ function AppDetail({
     setComparison(null);
     setComparisonError('');
     setUpdateInput({});
+    setUpdateStartedAt('');
     setApplyError('');
     setRecoverError('');
   }, [app.id, owner]);
+
+  useEffect(() => {
+    if (dialogJob?.status !== 'succeeded') return;
+    setComparison(null);
+    setUpdateInput({});
+    setUpdateStartedAt('');
+  }, [dialogJob?.status]);
 
   async function prepareUpdate() {
     setComparisonLoading(true);
@@ -793,25 +825,25 @@ function AppDetail({
   // Applying is bound to the exact pair of packages this dialog compared. The
   // backend re-downloads and re-compares both sides and refuses the token if
   // either moved, so an update can only ever apply what the owner just reviewed.
+  // The server runs the update and the dialog follows it through the app list.
   async function applyUpdate() {
     if (!comparison) return;
-    setApplying(true);
+    setStartingUpdate(true);
     setApplyError('');
     try {
-      await jsonResponse(
-        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/stage-update`, {
+      const { updateJob } = await jsonResponse<{ updateJob: AppJob<UpdateStep> }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/update-job`, {
           body: JSON.stringify({ config: updateInput, confirmationToken: comparison.confirmationToken }),
           headers: { 'Content-Type': 'application/json' },
           method: 'POST',
         }),
         `Unable to update ${app.name}.`,
       );
-      setComparison(null);
-      setUpdateInput({});
+      setUpdateStartedAt(updateJob.startedAt);
       await onUpdated();
     } catch (caught) {
       setApplyError(caught instanceof Error ? caught.message : `Unable to update ${app.name}.`);
-    } finally { setApplying(false); }
+    } finally { setStartingUpdate(false); }
   }
 
   // One action for both recovery states: the backend inspects what the failed
@@ -903,12 +935,12 @@ function AppDetail({
             owner has read. */}
         <div className="suite-app-action-bar">
           {updateWaiting ? <>
-            <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
+            <button className="mos-btn mos-btn-primary" disabled={comparisonLoading || updateRunning} onClick={() => void prepareUpdate()} type="button">{updateRunning ? 'Updating...' : comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
           </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || uninstalled || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
-          {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
+          {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating || updateRunning} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
             footer={<>
               <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => { setConfirmUninstall(false); onLifecycle(app, 'uninstall'); }} type="button">Uninstall and delete data</button>
@@ -970,6 +1002,8 @@ function AppDetail({
         </Notice> : null}
 
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
+        {/* An update left running when its dialog closed, or begun before a reload. */}
+        {!comparison && updateRunning ? <ProgressSteps error="" errorTitle="" steps={updateJobSteps(app.updateJob)} /> : null}
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {app.packageErrors?.length ? <Notice title="This package cannot be installed" variant="warning">
@@ -1221,10 +1255,10 @@ function AppDetail({
     </Dialog> : null}
     {comparison ? <Dialog
       footer={<>
-        <button className="mos-btn mos-btn-secondary" disabled={applying} onClick={() => setComparison(null)} type="button">{comparison.updateStatus === 'update-available' ? 'Cancel' : 'Close'}</button>
-        {comparison.updateStatus === 'update-available' ? <button className="mos-btn mos-btn-primary" disabled={!canApplyUpdate} onClick={() => void applyUpdate()} type="button">{applying ? 'Updating...' : 'Update'}</button> : null}
+        <button className="mos-btn mos-btn-secondary" disabled={startingUpdate} onClick={() => setComparison(null)} type="button">{comparison.updateStatus === 'update-available' && !updating ? 'Cancel' : 'Close'}</button>
+        {comparison.updateStatus === 'update-available' ? <button className="mos-btn mos-btn-primary" disabled={!canApplyUpdate} onClick={() => void applyUpdate()} type="button">{updating ? 'Updating...' : 'Update'}</button> : null}
       </>}
-      onClose={() => { if (!applying) setComparison(null); }}
+      onClose={() => { if (!startingUpdate) setComparison(null); }}
       title={`Review ${app.name} update`}
     >
       <div className="suite-app-update-dialog">
@@ -1276,9 +1310,13 @@ function AppDetail({
             <ul>{handledChanges.map((change, index) => <li key={`auto-${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul>
           </div> : null}
         </> : <p>No structural changes detected.</p>}
-        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
+        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={updating} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
+        {dialogJob ? <>
+          <ProgressSteps error={dialogJob.error?.message || (dialogJob.status === 'failed' ? `Unable to update ${app.name}.` : '')} errorTitle="The update did not finish" steps={updateJobSteps(dialogJob)} />
+          {dialogJob.status === 'running' ? <p className="suite-meta">You can close this window. The update carries on, and its progress stays on this page.</p> : null}
+        </> : null}
         <AdvancedPanel output={JSON.stringify(comparison, null, 2)} reveal="technical-mode" />
       </div>
     </Dialog> : null}
@@ -1517,12 +1555,12 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  const installRunning = packages.some((app) => app.installJob?.status === 'running');
+  const jobRunning = packages.some((app) => app.installJob?.status === 'running' || app.updateJob?.status === 'running');
   useEffect(() => {
-    if (!installRunning) return undefined;
+    if (!jobRunning) return undefined;
     const timer = window.setTimeout(() => void load({ silent: true }), 1500);
     return () => window.clearTimeout(timer);
-  }, [installRunning, packages]);
+  }, [jobRunning, packages]);
 
   // The catalog and advisory feed are a convenience on top of the signed catalog
   // the release already ships, so a stale or failed fetch goes to the console

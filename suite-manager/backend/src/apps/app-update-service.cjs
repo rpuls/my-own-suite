@@ -439,11 +439,12 @@ class AppUpdateService {
   // The whole update transaction is held under the app's key, not just its
   // durable part: the download, build, and runtime swap all happen before the
   // store has a record it could refuse a second update against.
-  async stagePackageUpdate(packageId, input = {}, requestContext = {}) {
-    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext));
+  // `onStage` hears 'build', 'switch' and 'finish' as the saga reaches them.
+  async stagePackageUpdate(packageId, input = {}, requestContext = {}, onStage = () => {}) {
+    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext, onStage));
   }
 
-  async performStageUpdate(packageId, input = {}, requestContext = {}) {
+  async performStageUpdate(packageId, input = {}, requestContext = {}, onStage = () => {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
     // Activation starts the candidate's containers, so updating a disabled app
@@ -624,6 +625,7 @@ class AppUpdateService {
         throw error;
       }
       operationId = newOperationId;
+      onStage('build');
       const staged = await this.agent.stagePackageUpdate({
         candidateDigest: candidate.packageDigest,
         candidatePath: candidate.packageDir,
@@ -681,10 +683,12 @@ class AppUpdateService {
         smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: candidate.source.revision,
       });
+      onStage('switch');
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
       activatedRuntimes = { candidate: candidateRuntime, installed: installedRuntime };
       operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-healthy' });
       lastDurableStage = 'candidate-healthy';
+      onStage('finish');
 
       let homepage = { skipped: true };
       if (homepageWasApplied) {

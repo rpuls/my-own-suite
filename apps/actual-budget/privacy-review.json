@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "actual-budget",
-  "reviewedAt": "2026-08-12T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T18:16:29.734Z",
   "expiresAt": "2027-02-12T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.0",
-    "packageDigest": "sha256:67949ec46b3109bb013d8e0d3c4c9fa177e4572a903b9dce4ddfb28fa9b4196b",
+    "packageVersion": "0.2.1",
+    "packageDigest": "sha256:34cb000bcd8c5420242b84a5efe122b964a7fea19d727932ae32b7547ffe8632",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -27,10 +27,10 @@
       "Bank aggregation providers an owner signs up with and configures after installation"
     ]
   },
-  "posture": "owner-disableable",
+  "posture": "privacy-configured",
   "dimensions": {
-    "defaultEgress": "external-contact",
-    "control": "left-to-owner",
+    "defaultEgress": "none",
+    "control": "disabled-by-mos",
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "upstream-services-involved",
@@ -116,8 +116,21 @@
       "claim": "The bank-sync status probes stay local and produce no egress. The reviewer session posted twice each to /gocardless/status, /simplefin/status and /pluggyai/status while opening the bank-connection screens; every one went to the app on localhost, and the packet capture recorded no outbound connection from the container in the same window. With no provider credentials entered there is no code path that reaches a bank.",
       "source": "reviewer-session.har local endpoint list, cross-checked against actual-pass2.pcap over the same window",
       "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (setting the server password, opening a budget, an account with an opening balance, a payment, budgeting to a category, and downloading the budget), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The server container made no lookup and no connection. The browser made one request outside the suite: the web app's release check to api.github.com.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle actual-budget`, run 20261005-113211-app-cycle-actual-budget (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "The package now patches the web client at build time so the release check never runs: the preference that gates it defaults to off, and the check itself is disabled. Two builds were compared on the MOS lab, each opened in a browser from first-run setup to an open budget. The unpatched image requested https://api.github.com/repos/actualbudget/actual/releases/latest and showed a \"new version\" banner. The patched image made no request outside the server and showed no banner. The Settings checkbox for update notifications still shows, but no longer turns the check on.",
+      "source": "apps/actual-budget/Dockerfile, both builds opened in Chromium against the MOS Hyper-V lab",
+      "retrievedAt": "2026-10-05"
     }
   ],
+  "outbound": [],
   "policies": [
     {
       "kind": "license",
@@ -129,20 +142,26 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 5",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "c48bb6242a7768c61699567457fe966b01ebdb11",
-    "humanReviewed": true,
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "humanReviewed": false,
     "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [
-    "The reviewer session ran over loopback, so the Referer and Origin the release check sends were http://localhost:18881. A deployment reached through a public domain would send that domain to GitHub instead; this is a reasoned extension of what was measured, not itself measured.",
     "The plugin store was never exercised. /cors-proxy is the server’s only non-bank egress path, it is gated behind a session, a rate limit, an SSRF check and a repository allow-list, and nothing in either capture invoked it - but that means its behaviour is read from source rather than observed.",
     "No HAR was retained for the second pass, so the client-side claims rest on the first reviewer session. The second pass is covered at the packet level only.",
-    "Whether the update-notification preference is stored per browser or on the server has not been established; the code path writes it through the client’s own key-value store, but the sync server also gained a server_prefs table in a recent release. An owner who turns it off may have to do so again in another browser.",
     "TLS payloads were not decrypted, so conclusions bound behaviour by destination, method, header content and volume rather than by asserting the contents of encrypted bodies.",
     "The captures span 27 minutes and cover first boot, bootstrap, budget creation and normal use. A scheduled task with a period longer than that would not have been seen."
+  ],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "MOS turns off the web client's release check, which asked GitHub for Actual's latest version and announced releases that MOS does not offer yet; owners get new versions through MOS. The build stops if upstream renames either line it changes.",
+      "source": "apps/actual-budget/Dockerfile",
+      "retrievedAt": "2026-10-05"
+    }
   ]
 }

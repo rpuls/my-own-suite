@@ -14,6 +14,7 @@ Options:
   --domain <domain>                       Base domain. Defaults to <public-ip>.sslip.io or localhost.
   --public-ipv4 <ip>                      Public IPv4 used to derive an sslip.io smoke domain.
   --front-door <name>                     cloud-init, public-vps, usb-autoinstall, ssh-bootstrap, or digitalocean-smoke.
+  --disposable-lab                        Install the lab reset agent, which can wipe the machine's MOS state. Test machines only.
   --help                                  Show this help.
 `);
 }
@@ -47,6 +48,8 @@ function parseArgs(argv) {
       input.publicIpv4 = next();
     } else if (arg === '--front-door') {
       input.frontDoor = next();
+    } else if (arg === '--disposable-lab') {
+      input.disposableLab = true;
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option: ${arg}.`);
     } else {

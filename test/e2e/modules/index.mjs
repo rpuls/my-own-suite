@@ -6,6 +6,7 @@ import { homepage, homepageCheck } from './homepage.mjs';
 import { dns01 } from './https.mjs';
 import { reset } from './lab.mjs';
 import { marketing } from './marketing.mjs';
+import { network } from './network.mjs';
 import { owner } from './owner.mjs';
 import { platformUpdate } from './platform.mjs';
 
@@ -25,6 +26,7 @@ export const MODULES = {
   installed,
   lifecycle,
   marketing,
+  network,
   owner,
   'platform-update': platformUpdate,
   reset,

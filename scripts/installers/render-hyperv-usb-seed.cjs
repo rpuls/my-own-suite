@@ -274,7 +274,9 @@ function renderSeed(config, options = {}) {
 function main() {
   const smokeRepoRef = resolveSmokeRepoRef();
   assertSmokeRepoRefIsPushed(smokeRepoRef, DEFAULT_REPO_URL);
-  const rendered = renderSeed(loadSmokeConfig(), { repoRef: smokeRepoRef });
+  const keyFile = String(process.env.MOS_SEED_AUTHORIZED_KEY_FILE || '').trim();
+  const authorizedKeys = keyFile ? [fs.readFileSync(keyFile, 'utf8').trim()] : [];
+  const rendered = renderSeed(loadSmokeConfig(), { authorizedKeys, repoRef: smokeRepoRef });
   fs.rmSync(defaultOutputDir, { force: true, recursive: true });
   fs.mkdirSync(defaultOutputDir, { recursive: true });
   fs.writeFileSync(path.join(defaultOutputDir, 'user-data'), rendered.userData, 'utf8');

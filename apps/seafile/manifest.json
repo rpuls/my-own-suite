@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "appVersion": "13.0.21",
   "minimumMosVersion": "0.20.0",
   "packageFiles": [

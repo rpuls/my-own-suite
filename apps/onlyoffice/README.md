@@ -4,6 +4,7 @@
 - `ALLOW_PRIVATE_IP_ADDRESS`: Allows document callbacks to private network addresses for self-hosted app integrations.
 - `ALLOW_META_IP_ADDRESS`: Keeps metadata-address callbacks disabled.
 - `METRICS_ENABLED`: Set to `false` so the Document Server's optional StatsD metrics emitter stays off (upstream default is also `false`).
+- `PLUGINS_ENABLED`: Set to `false`. The upstream default `true` makes the image's start script run `documentserver-pluginsmanager.sh` at every start, which downloads the default plugin list from `onlyoffice.github.io` and the plugins from GitHub releases. The plugins already in the image still load.
 - `JWT_ENABLED`: Enables JWT protection.
 - `JWT_SECRET`: Stable provider-instance JWT secret shared with connected document platforms through MOS integration grants.
 - `SECURE_LINK_SECRET`: Stable nginx secure-link secret for `/cache/files/...` URLs.
@@ -22,3 +23,4 @@
 - Startup wrapper normalizes selected environment values.
 - Synchronizes nginx `secure_link_secret` with `SECURE_LINK_SECRET`.
 - Prepares admin-panel supervisor log directories expected by current ONLYOFFICE images.
+- Removes the Google Fonts stylesheet link from the welcome pages under `/var/www/onlyoffice/documentserver-example/welcome/`, so they render in the system font.

@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "vaultwarden",
-  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.0",
-    "packageDigest": "sha256:0cab31376903af13a57e3d9eccc2b5e9e121fd5760e7725f4d8159bf4786b53e",
+    "packageVersion": "0.4.1",
+    "packageDigest": "sha256:7408f8fcefbc1369a2808f1df6e46ab9ed7a93601500f498c0ce7c78e9beb1e6",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -22,9 +22,9 @@
       }
     ],
     "clientsExcluded": [
-      "Bitwarden browser, desktop, mobile, and web vault clients",
+      "Bitwarden browser extensions and desktop and mobile apps (the web vault this package serves is in scope)",
       "Bitwarden-hosted push relay and identity services",
-      "HaveIBeenPwned breach service",
+      "What Have I Been Pwned does with the range queries it receives",
       "Third-party API clients"
     ]
   },
@@ -66,7 +66,7 @@
     },
     {
       "type": "documented",
-      "claim": "Mobile push notifications (PUSH_ENABLED) default to false and HaveIBeenPwned breach checking requires an unset HIBP_API_KEY, so both optional Bitwarden and HIBP integrations are inactive in the packaged default.",
+      "claim": "Mobile push notifications (PUSH_ENABLED) default to false and HaveIBeenPwned breach checking requires an unset HIBP_API_KEY, so both optional Bitwarden and HIBP integrations are inactive in the packaged default. That covers the server's own integrations; the web vault's breach checks run in the browser and are recorded below.",
       "source": "Vaultwarden .env.template (v1.36.0)",
       "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
       "retrievedAt": "2026-07-23"
@@ -75,6 +75,26 @@
       "type": "configured",
       "claim": "MOS wires Vaultwarden's SMTP settings to the shared, optional MOS email relay, used for invitations, address verification and two-factor codes. They are empty and inactive unless the owner configures a relay under Settings → Email relay; when set, that mail goes through the owner's own chosen provider. This is separate from the website-icon fetch described above, and MOS never uses the relay itself.",
       "source": "apps/vaultwarden/entrypoint.sh and apps/vaultwarden/manifest.json"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (creating the vault account, saving a login item with no website address, and signing in from a new device), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The server container made no lookup and no connection; the saved login has no website address, so the icon fetching documented above was not exercised. The browser sent requests to api.pwnedpasswords.com while the vault account was created, because the web vault's sign-up form ticks \"Check known data breaches for this password\" by default. A browser capture on 2026-08-13 saw GET https://api.pwnedpasswords.com/range/<5 hex characters> when a login item was opened. Both are Pwned Passwords range queries, which receive only the first five characters of the password's SHA-1 hash. This is the web vault the package serves, and it is separate from the server-side HIBP_API_KEY integration, which stays inactive.",
+      "source": "MOS E2E `npm run e2e -- @app-cycle vaultwarden`, run 20261005-113053-app-cycle-vaultwarden (network/report.md), on the package version reviewed before this revision",
+      "retrievedAt": "2026-10-05"
+    }
+  ],
+  "outbound": [
+    {
+      "from": "server",
+      "host": "*",
+      "purpose": "Fetches the icon of each website saved in the vault, from that website, so the vault can show it. The website sees this server's address and that its icon was asked for.",
+      "receiver": "the websites saved in the vault"
+    },
+    {
+      "from": "browser",
+      "host": "api.pwnedpasswords.com",
+      "purpose": "Checks passwords against known breaches: by default when a vault account is created, and when a login item is opened. Only the first five characters of the password's SHA-1 hash are sent.",
+      "receiver": "Have I Been Pwned (Pwned Passwords)"
     }
   ],
   "telemetryControls": [
@@ -97,16 +117,16 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 4.8",
+    "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
     "humanReviewed": false
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned 1.36.0 image; conclusions rely on package configuration and upstream documentation.",
     "With the default ICON_SERVICE=internal and DISABLE_ICON_DOWNLOAD=false, the server fetches favicons from third-party websites for saved vault URLs, which can reveal saved domains to those sites; the package does not currently set DISABLE_ICON_DOWNLOAD=true, and a future revision could harden this default.",
-    "Optional Bitwarden push relay and HaveIBeenPwned breach checking are inactive by default but become external dependencies if an operator later enables them."
+    "Optional Bitwarden push relay and HaveIBeenPwned breach checking are inactive by default but become external dependencies if an operator later enables them.",
+    "The 2026-10-05 capture saved no login with a website address, so the server's icon fetching remains documented rather than observed."
   ]
 }

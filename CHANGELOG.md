@@ -8,6 +8,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 - **Your suite's generated address gets trusted HTTPS by itself, with nothing to buy.** A server on your home network serves `https://home.192-168-…-….local.myownsuite.org` with a certificate every browser trusts. It switches over a few minutes after the certificate arrives, takes your apps with it, and enables apps that need HTTPS, such as password managers. Until it arrives, everything works over HTTP as before and **Settings → Suite address** says the certificate is on its way. **Compatibility:** the platform update rebuilds Caddy on 2.11.6 with a new DNS module, renders the whole Caddyfile from the machine's settings on every update, and stops sending `bootstrapHost` to the HTTPS agent. Existing home servers recorded on the generated address switch to HTTPS on their own, which restarts each installed app once. Caddy 2.11 caps request headers at 16 KiB, aborts stalled transfers after a minute and drops header names containing `_` or `.`, for every app.
 
+- **Each app's privacy details now list every host it contacts.** The app's privacy view in Suite Manager shows what the app connects to, from its server or your browser, why, and who receives it. An update's review names any host the new version starts or stops contacting, and asks you to review the update when it adds one. Lists come with each app's next package version, and an app installed before then says its assessment predates them.
+
 ### Changed
 
 - **Settings is one grouped page you can search.** Settings are grouped under Your suite, Account & security, Apps, Advanced and Help, with a sidebar that lists every setting, follows where you are, and filters as you type (press `/` to search). Forms such as the suite address, the email relay and the owner password stay closed behind **Edit** or **Change** until you need them, while each card keeps its current status in view.
@@ -15,7 +17,14 @@ Updater-facing software changes only — documentation, site, repository, and co
 ### Fixed
 
 - **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
-- **An app install finishes even if you close the page.** Suite Manager now runs the whole install itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build.
+- **Three app privacy assessments said less left your server than does, and are corrected.** A network capture found these:
+  - Stirling PDF's pages loaded Stripe and PostHog despite its analytics setting. Its new package keeps both on your server, though its pages still fetch icons from Iconify, so it is rated External dependency.
+  - ONLYOFFICE downloaded plugins from GitHub at every start and loaded a Google font. Its new package turns both off.
+  - Vaultwarden's web vault checks passwords against Have I Been Pwned, sending only the first five characters of each password's hash.
+
+  Signed advisories flag the affected versions until you update. **Compatibility:** buying a Stirling PDF licence inside the app no longer works.
+- **Actual Budget no longer announces releases you cannot install yet.** Its new package turns off the check that asked GitHub for Actual's latest version, since new versions come through MOS. It now contacts nothing outside your server.
+- **App installs and updates finish even if you close the page.** Suite Manager now runs the whole install or update itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build. An update that took longer than a minute used to be reported as "Unable to update" although it went on to succeed; it now shows each step through to the end.
 
 ## [0.21.0] - 2026-10-02
 

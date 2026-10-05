@@ -1,6 +1,8 @@
+// After a restore the suite's busy page reloads itself, which can interrupt this navigation;
+// the callers poll, so an interrupted one is just a round that saw nothing yet.
 async function homepageBodyText(page, homeUrl) {
-  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
-  return page.locator('body').innerText().catch(() => '');
+  const loaded = await page.goto(homeUrl, { waitUntil: 'domcontentloaded' }).then(() => true, () => false);
+  return loaded ? page.locator('body').innerText().catch(() => '') : '';
 }
 
 export async function waitForHomepageAvailable(page, homeUrl) {

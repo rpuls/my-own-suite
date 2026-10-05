@@ -4,7 +4,7 @@
 // Manager uses — so adding a new app package to the repo adds it to the
 // site automatically on the next build.
 
-import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
+import type { OutboundDestination, PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
 
 export type CatalogFeature = { title: string; body: string }
 export type DemoDeployTarget = { provider: string; label: string; url: string }
@@ -104,6 +104,7 @@ export type PrivacyAssessment = {
   evidence: PrivacyEvidence[]
   expiresAt: string | null
   openQuestions: string[]
+  outbound: OutboundDestination[] | null
   packageDigest: string
   packageVersion: string
   policies: Array<{ kind: string; publisher?: string; retrievedAt?: string; url: string }>
@@ -135,6 +136,7 @@ function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSum
   const provenance = review.provenance ?? {}
   return {
     dimensions: review.dimensions ?? null,
+    outbound: Array.isArray(review.outbound) ? review.outbound : null,
     posture: review.posture ? String(review.posture) : null,
     provenance: {
       humanReviewed: provenance.humanReviewed === true,
@@ -165,6 +167,7 @@ function privacyAssessmentFor(manifestPath: string, manifest: any): PrivacyAsses
     evidence: review.evidence ?? [],
     expiresAt: review.expiresAt ?? null,
     openQuestions: review.openQuestions ?? [],
+    outbound: Array.isArray(review.outbound) ? review.outbound : null,
     packageDigest: review.scope?.packageDigest ?? '',
     packageVersion: review.scope?.packageVersion ?? '',
     policies: review.policies ?? [],

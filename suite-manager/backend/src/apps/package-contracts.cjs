@@ -355,6 +355,12 @@ function validatePrivacyAssessment(review) {
   const concrete = evidence.filter((entry) => entry && typeof entry === 'object'
     && String(entry.claim || '').trim() && String(entry.source || '').trim());
   if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
+  // Optional here, because reviews written before the list existed are still valid on installed servers.
+  if (Array.isArray(review.outbound)) {
+    const egress = review.dimensions?.defaultEgress;
+    if (egress === 'none' && review.outbound.length) errors.push('privacy review lists outbound hosts but says nothing leaves by default.');
+    if (egress === 'external-contact' && !review.outbound.length) errors.push('privacy review says something leaves by default but lists no outbound host.');
+  }
   return errors;
 }
 
@@ -409,6 +415,31 @@ function isListOf(check, { minItems = 0 } = {}) {
   };
 }
 
+// One host the app contacts in normal use as MOS ships it, before the owner turns anything
+// on, and whether the app's server or the owner's browser makes the request. `*` is any
+// host, for behaviour that follows what people store, such as fetching a saved site's icon.
+const OUTBOUND_SOURCES = Object.freeze(['server', 'browser']);
+const OUTBOUND_HOST_PATTERN = /^(?:\*|(?:\*\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)$/u;
+const isText = (value, pointer) => (NON_EMPTY_STRING(value) ? [] : [`${pointer} must be a non-empty string.`]);
+
+// What the screens show. Null rather than empty for a review written before reviews listed
+// their outside hosts, because "contacts nothing" is a claim that review never made.
+function reviewOutbound(review) {
+  if (!Array.isArray(review?.outbound)) return null;
+  return review.outbound
+    .filter((item) => item && OUTBOUND_SOURCES.includes(item.from) && typeof item.host === 'string')
+    .map((item) => ({ from: item.from, host: item.host, purpose: String(item.purpose || ''), receiver: String(item.receiver || '') }));
+}
+
+const isOutbound = (value, pointer) => checkRecord(value, pointer, {
+  required: {
+    from: isOneOf(OUTBOUND_SOURCES),
+    host: matches(OUTBOUND_HOST_PATTERN, 'a lowercase host name, *. and a domain, or *'),
+    purpose: isText,
+    receiver: isText,
+  },
+});
+
 const isEvidence = (value, pointer) => checkRecord(value, pointer, {
   optional: { retrievedAt: isString, url: isString },
   required: {
@@ -433,6 +464,7 @@ function validatePrivacyAssessmentDocument(review) {
       }),
       evidence: isListOf(isEvidence),
       openQuestions: isListOf(isString),
+      outbound: isListOf(isOutbound),
       policies: isListOf((value, pointer) => checkRecord(value, pointer, {
         optional: { contentHash: isString, effectiveDate: isString, publisher: isString },
         required: { kind: isOneOf(['terms', 'privacy', 'license']), retrievedAt: isString, url: isString },
@@ -808,6 +840,7 @@ module.exports = {
   isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
+  reviewOutbound,
   stableJson,
   validateAdvisory,
   validateAdvisoryIndex,
