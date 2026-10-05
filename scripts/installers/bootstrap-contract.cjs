@@ -209,7 +209,8 @@ echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
 homepage_pull_pid="$!"
 
-if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
+# Every MOS unit runs /usr/bin/node, so a Node elsewhere on the PATH does not count.
+if [ ! -x /usr/bin/node ] || [ "$(/usr/bin/node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
