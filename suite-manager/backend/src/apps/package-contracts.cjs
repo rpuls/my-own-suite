@@ -7,6 +7,9 @@ const DEFAULT_PACKAGE_LIMITS = Object.freeze({
   maxFiles: 256,
   maxPackageBytes: 128 * 1024 * 1024,
 });
+// The package's own end-to-end tests. They describe the package rather than ship
+// with it, so a test edit never changes the digest, the snapshot, or the version.
+const PACKAGE_TESTS_DIR = 'e2e';
 const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|entrypoint\.sh|icon\.(?:avif|gif|jpe?g|png|svg|webp)|manifest\.json|privacy-review\.json)$/iu;
 const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|svg|txt|yaml|yml)$)/iu;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
@@ -95,6 +98,7 @@ function collectPackageFiles(packageDir, { limits = DEFAULT_PACKAGE_LIMITS, mani
     const entries = fs.readdirSync(directory, { withFileTypes: true })
       .sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
+      if (!relativeRoot && entry.name === PACKAGE_TESTS_DIR && entry.isDirectory()) continue;
       const relativePath = canonicalPackagePath(relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name);
       if (!relativePath) {
         errors.push(`Package path is not canonical: ${relativeRoot}/${entry.name}.`);
@@ -788,6 +792,7 @@ module.exports = {
   DEFAULT_PACKAGE_LIMITS,
   EXTERNAL_ROUTE_HOST_MAX_LENGTH,
   EXTERNAL_ROUTE_HOST_PREFIX,
+  PACKAGE_TESTS_DIR,
   SUPPORTED_ARCHITECTURES,
   advisoriesForVersion,
   advisoryAffectsVersion,

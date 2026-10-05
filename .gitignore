@@ -57,3 +57,4 @@ infrastructure/self-host/autoinstall/*.avhdx
 infrastructure/self-host/autoinstall/installer-config/*
 !infrastructure/self-host/autoinstall/installer-config/.gitkeep
 !infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template
+test/e2e/results/

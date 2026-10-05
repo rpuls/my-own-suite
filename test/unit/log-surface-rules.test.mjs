@@ -12,11 +12,14 @@ const { buildSupportBundle } = require('../../suite-manager/backend/src/diagnost
 // reports success. So every rule is tested from both sides — it fires on the bad
 // input, and it stays quiet on the good one.
 
-const env = {
-  cloudflareApiToken: 'cf-token-abcdefghijklmnop',
-  owner: { password: 'correct horse battery' },
-  seafile: { adminPassword: 'seafile-test-password' },
-  vaultwarden: { password: 'MOS-E2E-Master-Password-2026!' },
+const surface = {
+  secrets: [
+    ['owner password', 'correct horse battery'],
+    ['Cloudflare API token', 'cf-token-abcdefghijklmnop'],
+    ['an app master password', 'MOS-E2E-Master-Password-2026!'],
+    ['an app admin password', 'app-admin-test-password'],
+    ['a value too short to search for', 'short'],
+  ],
 };
 
 // Fixtures are rendered by the real bundle builder rather than hand-written. A
@@ -59,17 +62,12 @@ function withUnitLine(line) {
 }
 
 test('a clean bundle raises nothing', () => {
-  assert.deepEqual(inspectLogSurface(bundle(), env).failures, []);
+  assert.deepEqual(inspectLogSurface(bundle(), surface).failures, []);
 });
 
 test('every known secret is caught wherever it appears, and never echoed in the message', () => {
-  for (const [label, value] of [
-    ['owner password', env.owner.password],
-    ['Cloudflare API token', env.cloudflareApiToken],
-    ['Vaultwarden master password', env.vaultwarden.password],
-    ['Seafile admin password', env.seafile.adminPassword],
-  ]) {
-    const { failures } = inspectLogSurface(bundle({ containerLog: `[INFO] connecting with ${value}` }), env);
+  for (const [label, value] of surface.secrets.filter(([, secret]) => secret.length >= 8)) {
+    const { failures } = inspectLogSurface(bundle({ containerLog: `[INFO] connecting with ${value}` }), surface);
     const leak = failures.find((entry) => entry.startsWith('LEAK:'));
 
     assert.ok(leak, `${label} was not detected`);
@@ -101,7 +99,7 @@ test('each catastrophe pattern fires on its own evidence', () => {
   ];
 
   for (const [label, line] of cases) {
-    assert.ok(inspectLogSurface(bundle({ containerLog: line }), env).failures.length > 0, `${label} was not detected`);
+    assert.ok(inspectLogSurface(bundle({ containerLog: line }), surface).failures.length > 0, `${label} was not detected`);
   }
 });
 
@@ -115,14 +113,14 @@ test('ordinary log noise does not trip the catastrophe patterns', () => {
     '[INFO] loaded 12 templates from disk',
   ].join('\n');
 
-  assert.deepEqual(inspectLogSurface(bundle({ containerLog: ordinary }), env).failures, []);
+  assert.deepEqual(inspectLogSurface(bundle({ containerLog: ordinary }), surface).failures, []);
 });
 
 test('an unmasked secret-shaped assignment is caught, and a masked one is not', () => {
-  const leaked = inspectLogSurface(bundle({ containerLog: 'starting with ADMIN_TOKEN=s3cr3t-value-here' }), env);
+  const leaked = inspectLogSurface(bundle({ containerLog: 'starting with ADMIN_TOKEN=s3cr3t-value-here' }), surface);
   assert.ok(leaked.failures.some((entry) => entry.includes('ADMIN_TOKEN')), 'an unmasked ADMIN_TOKEN was not caught');
 
-  const masked = inspectLogSurface(bundle({ containerLog: 'starting with ADMIN_TOKEN=[redacted]' }), env);
+  const masked = inspectLogSurface(bundle({ containerLog: 'starting with ADMIN_TOKEN=[redacted]' }), surface);
   assert.deepEqual(masked.failures, [], 'a correctly masked value should not be reported');
 });
 
@@ -136,24 +134,24 @@ test('cleared and placeholder values are not treated as leaks', () => {
     'MAIL_PASSWORD=changeme',
   ].join('\n');
 
-  assert.deepEqual(inspectLogSurface(bundle({ containerLog: benign }), env).failures, []);
+  assert.deepEqual(inspectLogSurface(bundle({ containerLog: benign }), surface).failures, []);
 });
 
 test('a crash-shaped record fails even though nothing else looks wrong', () => {
-  const { failures } = inspectLogSurface(withUnitLine(record('error', 'unhandled-rejection', { error: 'boom' })), env);
+  const { failures } = inspectLogSurface(withUnitLine(record('error', 'unhandled-rejection', { error: 'boom' })), surface);
 
   assert.ok(failures.some((entry) => entry.includes('crash-shaped record: unhandled-rejection')));
 });
 
 test('any unexpected error record is a finding, and says how to accept it', () => {
-  const { failures } = inspectLogSurface(withUnitLine(record('error', 'request-failed', { statusCode: 500 })), env);
+  const { failures } = inspectLogSurface(withUnitLine(record('error', 'request-failed', { statusCode: 500 })), surface);
 
   assert.ok(failures.some((entry) => entry.includes('request-failed')));
   assert.ok(failures.some((entry) => entry.includes('ALLOWED_ERROR_EVENTS')), 'the message must say how to accept a known-benign event');
 });
 
 test('a warning is not an error', () => {
-  assert.deepEqual(inspectLogSurface(withUnitLine(record('warn', 'backup-agent-unavailable')), env).failures, []);
+  assert.deepEqual(inspectLogSurface(withUnitLine(record('warn', 'backup-agent-unavailable')), surface).failures, []);
 });
 
 test('a logger that stopped emitting JSON is caught', () => {
@@ -161,20 +159,20 @@ test('a logger that stopped emitting JSON is caught', () => {
   // the logs would still read fine to a human and become unparseable to
   // everything else.
   const pretty = '2026-09-01T11:00:00+0000 mos-suite-manager[912]: 11:00:00 info  listening port=3100';
-  const { failures } = inspectLogSurface(bundle({ unitLog: pretty }), env);
+  const { failures } = inspectLogSurface(bundle({ unitLog: pretty }), surface);
 
   assert.ok(failures.some((entry) => entry.includes('not writing JSON to the journal')));
 });
 
 test('a record missing its envelope is caught', () => {
   const line = '2026-09-01T11:01:00+0000 mos-suite-manager[912]: {"ts":"2026-09-01T11:01:00.000Z","level":"info"}';
-  const { failures } = inspectLogSurface(withUnitLine(line), env);
+  const { failures } = inspectLogSurface(withUnitLine(line), surface);
 
   assert.ok(failures.some((entry) => entry.includes('malformed record')));
 });
 
 test('containers that all report no logs are caught', () => {
-  const { failures } = inspectLogSurface(bundle({ containerLog: '' }), env);
+  const { failures } = inspectLogSurface(bundle({ containerLog: '' }), surface);
 
   assert.ok(
     failures.some((entry) => entry.includes('container logging is not reaching the collector')),
@@ -190,7 +188,7 @@ test('one silent container among several is not a failure', () => {
     { image: 'b:1', labels: {}, log: '[INFO] serving', name: 'mos-app-chatty', state: 'running', status: 'Up 2 hours', troubled: false },
   ];
 
-  assert.deepEqual(inspectLogSurface(bundle({ containers }), env).failures, []);
+  assert.deepEqual(inspectLogSurface(bundle({ containers }), surface).failures, []);
 });
 
 test('shape normalization collapses what varies and keeps what does not', () => {
@@ -202,7 +200,7 @@ test('shape normalization collapses what varies and keeps what does not', () => 
 });
 
 test('the inventory reports what was seen so drift is visible between runs', () => {
-  const { inventory } = inspectLogSurface(bundle(), env);
+  const { inventory } = inspectLogSurface(bundle(), surface);
 
   assert.match(inventory, /records parsed: 2/u);
   assert.match(inventory, /info listening/u);

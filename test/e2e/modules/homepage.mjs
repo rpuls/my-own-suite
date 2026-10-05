@@ -1,54 +1,26 @@
 import { expect } from '@playwright/test';
 
-import { openSuiteManager } from './hyperv-navigation.mjs';
+import { waitForHomepageAvailable, waitForHomepageText } from '../support/homepage.mjs';
+import { openSuiteManager } from '../support/navigation.mjs';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-async function homepageBodyText(page, homeUrl = '/') {
-  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
-  return page.locator('body').innerText().catch(() => '');
-}
-
-export async function waitForHomepageAvailable(page, homeUrl = '/') {
-  const deadline = Date.now() + 3 * 60 * 1000;
-  let lastText = '';
-
-  while (Date.now() < deadline) {
-    lastText = await homepageBodyText(page, homeUrl);
-    if (!lastText.includes('Homepage is unavailable.')) return;
-    await page.waitForTimeout(3000);
-  }
-
-  throw new Error(`Homepage did not become available at ${homeUrl}. Last response body: ${lastText.slice(0, 300)}`);
-}
-
-async function waitForHomepageText(page, text, homeUrl = '/') {
-  const deadline = Date.now() + 3 * 60 * 1000;
-  let lastText = '';
-
-  while (Date.now() < deadline) {
-    lastText = await homepageBodyText(page, homeUrl);
-    if (lastText.includes(text)) return;
-    await page.waitForTimeout(3000);
-  }
-
-  throw new Error(`Homepage did not render "${text}" at ${homeUrl}. Last response body: ${lastText.slice(0, 300)}`);
-}
-
-export async function customizeHomepage(page) {
+export async function homepage(ctx) {
+  const { page } = ctx;
+  const home = ctx.url('/');
   const suffix = uniqueSuffix();
   const linkName = `MOS E2E Link ${suffix}`;
   const serviceName = `MOS E2E Service ${suffix}`;
   const serviceSubdomain = `e2e-service-${suffix}`.replace(/[^a-z0-9-]/gu, '').slice(0, 50);
 
-  await waitForHomepageAvailable(page);
-  await openSuiteManager(page, 'Customize');
+  await waitForHomepageAvailable(page, home);
+  await openSuiteManager(page, 'Customize', home);
   await page.getByRole('button', { name: 'Add to Homepage' }).click();
   await page.getByRole('button', { name: /Website/ }).click();
   await page.getByLabel('Name', { exact: true }).fill(linkName);
-  await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the Hyper-V regression suite');
+  await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the MOS E2E suite');
   await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:link');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByLabel('Website address', { exact: true }).fill('https://example.com/');
@@ -71,18 +43,19 @@ export async function customizeHomepage(page) {
   await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
   await expect(page.getByLabel('Homepage YAML')).toContainText(serviceName);
 
-  await waitForHomepageText(page, linkName);
+  await waitForHomepageText(page, linkName, home);
   await expect(page.getByText(linkName)).toBeVisible({ timeout: 60000 });
   await expect(page.getByText(serviceName)).toBeVisible();
-
   const linkHref = await page.getByRole('link', { name: new RegExp(linkName) }).first().getAttribute('href');
   expect(linkHref).toBe('https://example.com/');
 
-  return { linkName, serviceName };
+  ctx.homepageCheckpoint = { linkName, serviceName };
 }
 
-export async function verifyHomepageCustomization(page, checkpoint) {
-  await waitForHomepageText(page, checkpoint.linkName);
-  await expect(page.getByText(checkpoint.linkName)).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText(checkpoint.serviceName)).toBeVisible();
+export async function homepageCheck(ctx) {
+  const checkpoint = ctx.homepageCheckpoint;
+  if (!checkpoint) throw new Error('homepage-check needs an earlier `homepage` step in this run.');
+  await waitForHomepageText(ctx.page, checkpoint.linkName, ctx.url('/'));
+  await expect(ctx.page.getByText(checkpoint.linkName)).toBeVisible({ timeout: 60000 });
+  await expect(ctx.page.getByText(checkpoint.serviceName)).toBeVisible();
 }

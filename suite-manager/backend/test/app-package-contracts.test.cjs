@@ -11,6 +11,7 @@ const {
   hostHeldPackages,
   advisoryAffectsVersion,
   canonicalPackagePath,
+  collectPackageFiles,
   compareSemver,
   describeRequestedPermissions,
   diffRequestedPermissions,
@@ -78,6 +79,31 @@ test('package digest binds file paths and contents', (t) => {
   const before = digestAppPackage(packageDir);
   fs.appendFileSync(path.join(packageDir, 'Dockerfile'), '# changed\n');
   assert.notEqual(digestAppPackage(packageDir), before);
+});
+
+test('a package e2e folder is never package content, so editing a test keeps the digest', (t) => {
+  const packageDir = packageFixture();
+  t.after(() => fs.rmSync(packageDir, { force: true, recursive: true }));
+  const before = digestAppPackage(packageDir);
+  fs.mkdirSync(path.join(packageDir, 'e2e', 'fixtures'), { recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'e2e', 'index.mjs'), 'export default {};\n');
+  fs.writeFileSync(path.join(packageDir, 'e2e', 'fixtures', 'note.txt'), 'test data\n');
+  assert.equal(digestAppPackage(packageDir), before);
+  fs.appendFileSync(path.join(packageDir, 'e2e', 'index.mjs'), '// changed\n');
+  assert.equal(digestAppPackage(packageDir), before);
+  assert.deepEqual(collectPackageFiles(packageDir).map((file) => file.relativePath), ['Dockerfile', 'manifest.json']);
+});
+
+test('only a top-level e2e directory is set aside', (t) => {
+  const packageDir = packageFixture();
+  t.after(() => fs.rmSync(packageDir, { force: true, recursive: true }));
+  fs.mkdirSync(path.join(packageDir, 'assets', 'e2e'), { recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'assets', 'e2e', 'hidden.sh'), 'echo\n');
+  const refusedFor = (relativePath) => (error) => error.details.some((detail) => detail.endsWith(`packageFiles: ${relativePath}.`));
+  assert.throws(() => digestAppPackage(packageDir), refusedFor('assets/e2e/hidden.sh'));
+  fs.rmSync(path.join(packageDir, 'assets'), { force: true, recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'e2e'), 'a file, not the tests folder\n');
+  assert.throws(() => digestAppPackage(packageDir), refusedFor('e2e'));
 });
 
 test('snapshot identity verification resolves bare and namespaced package ids to the manifest id', (t) => {

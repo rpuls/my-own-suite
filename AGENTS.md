@@ -282,14 +282,16 @@ The repo includes real black-box Playwright tests for MOS flows without test-onl
 - Keep E2E tooling isolated under `test/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.
 - When changing onboarding, auth, Homepage routing, or app integration behavior, consider whether `npm run e2e:full` should be rerun before finalizing.
+- **E2E code outside `apps/` names no app.** The lab suite is core steps in `test/e2e/modules/` composed into paths, plus one module per app package at `apps/<id>/e2e/index.mjs` holding everything particular to that app: its sign-in, the data its journey makes, and the check that the data survived. Every catalog app ships one. `test/unit/e2e-app-modules.test.mjs` guards both rules; when an app needs something core does not offer, add a generic capability to core rather than an app branch.
+- A package's `e2e/` folder is not package content (see `docs/decisions.md`), so a test change never needs a package version bump or a catalog re-sign.
 
 Useful commands:
 
 - `npm run e2e:install` installs Playwright browser dependencies.
 - `npm run e2e:local` runs the local MOS browser suite.
 - `npm run e2e:local:headed` runs the local MOS browser suite in a visible browser.
-- `npm run e2e:full` runs the Hyper-V full-platform suite against an already-running VM.
-- `npm run e2e:full:headed` runs the Hyper-V suite in a visible browser.
+- `npm run e2e -- <steps and @paths>` runs a path against an already-running lab: `@full`, `@app-cycle <app>`, `@app-dr <app>`, `@update <app>`, or steps such as `reset owner install:<app> app:<app>`. `--list` shows every step and path, `--dry-run` resolves without a browser, `--each-app` runs a one-app path per catalog app. Results land in `test/e2e/results/<run>/` (see `test/README.md`).
+- `npm run e2e:full` is `npm run e2e -- @full`: the whole platform with every catalog app. `npm run e2e:full:headed` shows the browser.
 
 ## Container and Versioning Rules
 

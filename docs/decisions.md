@@ -1239,3 +1239,16 @@ Consequences:
 - The published image carries two timers of its own that fire apt's daily services shortly after boot, so a freshly flashed machine catches up within the half hour instead of waiting out apt's twelve hours of jitter; apt's own timers and their jitter are untouched. Only the image gets this; a VPS install is patched from the moment it is created.
 - Stock Ubuntu ships an `APT::Periodic` file on every server, so only `Unattended-Upgrade::` keys and `APT::Periodic::Unattended-Upgrade` count as an owner's policy. The hold list is written only where MOS owns the policy; on an owner-managed server it is removed, never applied over theirs.
 - Closes roadmap AL1 (`#277`).
+
+## 2026-10-05: An App's End-To-End Journey Lives In Its Package, And A Package's `e2e/` Folder Is Never Package Content
+
+Decision: the lab E2E suite is core steps in `test/e2e/modules/`, composed into paths (`npm run e2e -- @full`, `@app-cycle <app>`, `@app-dr <app>`, `@update <app>`, or steps listed by hand), plus one module per app package at `apps/<id>/e2e/index.mjs` that signs in to the app, makes real data in it, and checks that data afterwards. Core test code names no app, exactly as MOS outside `apps/` does, and every catalog app ships a module; both are unit-guarded. A top-level `e2e/` folder in a package is never package content: `collectPackageFiles` skips it, so it is not digested, not copied into an installed snapshot, and not downloaded with a catalog candidate, and `packageFiles` may not list anything inside it.
+
+Reason: the E2E suite was the one place outside `apps/` that knew app names, with every app's sign-in and quirks in one shared file, so testing an app more deeply meant editing core and each new app made the file longer. Moving the app half into the package lets an app's test grow as far as the app needs, lets the same journey serve a restore drill, a disaster-recovery drill and an update check, and lets an agent assemble a path to debug one problem. Keeping the folder out of the package is what makes that affordable: a test edit inside the digest would mean a new package version, a re-signed catalog, and an update offered to every owner for a change that touches nothing they run.
+
+Consequences:
+
+- Older MOS releases do not know the rule. A box before the release that adds it refuses a package carrying `e2e/`, both from its own checkout and from a catalog candidate downloaded from `main`, so the folders must reach `main` no earlier than the release that ships the rule, and a box still on an older release cannot take catalog app updates until it updates MOS.
+- A package published outside the official catalog may carry the same folder under the same rule.
+- What an app needs from the suite is added to core as a generic capability (a fresh browser, generated files, a named screenshot), never as a branch on an app id.
+- Which app a public-site screenshot shows is volunteered by the app modules (`showcase`), so core holds no list of favourite apps either.

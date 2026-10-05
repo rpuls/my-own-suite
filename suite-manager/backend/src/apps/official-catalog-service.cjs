@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
+const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, PACKAGE_TESTS_DIR, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
@@ -250,6 +250,7 @@ class OfficialCatalogService {
         const canonical = canonicalPackagePath(relativePath);
         if (!canonical || item.path !== `${entry.path}/${canonical}`) throw new OfficialCatalogError('CANDIDATE_PATH_INVALID', 'Candidate contains a non-canonical path.');
         if (item.type === 'dir') {
+          if (canonical === PACKAGE_TESTS_DIR) continue;
           await visit(item.path);
           continue;
         }

@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 
-import { apiJson, apiPathFor, expectSignedInApi } from './hyperv-api.mjs';
+import { apiJson, apiPathFor, expectSignedInApi } from './api.mjs';
 import { acceptTermsIfPending, saveHandoverIfPending, settleAfterSignIn } from './gates.mjs';
 
 async function expectHomeDashboard(page) {

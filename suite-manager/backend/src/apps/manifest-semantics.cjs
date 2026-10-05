@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SMTP_TEMPLATE_KEYS } = require('../../../../shared/smtp-contract.cjs');
+const { PACKAGE_TESTS_DIR } = require('./package-contracts.cjs');
 
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const FIELD_ID_PATTERN = /^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$/u;
@@ -77,6 +78,10 @@ function serviceIdsOf(manifest) {
 function validatePackageFiles(manifest, packageDir, errors) {
   if (!isStringArray(manifest.packageFiles)) return;
   for (const [index, packageFile] of manifest.packageFiles.entries()) {
+    if (packageFile === PACKAGE_TESTS_DIR || String(packageFile).startsWith(`${PACKAGE_TESTS_DIR}/`)) {
+      errors.push(`packageFiles[${index}] is inside ${PACKAGE_TESTS_DIR}/, which holds the package's tests and never ships with it.`);
+      continue;
+    }
     checkPackagePath(packageFile, `packageFiles[${index}]`, packageDir, errors);
   }
 }

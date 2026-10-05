@@ -456,6 +456,38 @@ test('candidate download is revision-bound and verifies the complete digest befo
   assert.equal(candidate.source.revision, revision);
 });
 
+test('candidate download never fetches the package e2e folder', async (t) => {
+  const fixture = tempDir();
+  const manifest = { manifestVersion: 1, category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
+  fs.writeFileSync(path.join(fixture, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
+  const candidateDigest = digestAppPackage(fixture);
+  const stateDir = writeVerifiedCache(tempDir(), {
+    packages: { example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
+    schemaVersion: 1,
+  });
+  const raw = Object.fromEntries(['Dockerfile', 'manifest.json'].map((name) => [name, fs.readFileSync(path.join(fixture, name))]));
+  const requested = [];
+  const service = catalogService({
+    fetchImpl: async (url) => {
+      requested.push(url);
+      if (url.includes('/contents/apps/example?')) {
+        return jsonResponse([
+          ...Object.entries(raw).map(([name, bytes]) => ({ download_url: `https://raw.githubusercontent.com/rpuls/my-own-suite/${revision}/apps/example/${name}`, path: `apps/example/${name}`, size: bytes.length, type: 'file' })),
+          { path: 'apps/example/e2e', type: 'dir' },
+        ]);
+      }
+      return new Response(raw[url.split('/').at(-1)]);
+    },
+    platformVersion: '0.11.0',
+    stateDir,
+  });
+  const candidate = await service.downloadCandidate('example');
+  t.after(() => { candidate.cleanup(); fs.rmSync(fixture, { force: true, recursive: true }); });
+  assert.equal(candidate.packageDigest, candidateDigest);
+  assert.equal(requested.filter((url) => url.includes('/e2e')).length, 0);
+});
+
 // The failure that took a month to name: a release that adds a required catalog
 // field reads the catalog already published on `main` until its own lands there,
 // and `CATALOG_INVALID` described that as a broken catalog the owner should do

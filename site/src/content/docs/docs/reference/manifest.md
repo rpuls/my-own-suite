@@ -182,7 +182,7 @@ What the app needs from the server it is installed on. Suite Manager checks each
 ## Other top-level fields
 
 - `architectures` — `["amd64"]` and/or `["arm64"]`. Omitted means unconstrained; incompatible hosts show Install disabled with the reason and refuse the install before building.
-- `packageFiles` — every extra file the package ships beyond the fixed root set (`manifest.json`, `Dockerfile*`, `README.md`, `entrypoint.sh`, `icon.*`, `privacy-review.json`). Undeclared files do not survive packaging.
+- `packageFiles` — every extra file the package ships beyond the fixed root set (`manifest.json`, `Dockerfile*`, `README.md`, `entrypoint.sh`, `icon.*`, `privacy-review.json`). Undeclared files do not survive packaging. A top-level `e2e/` folder holds the package's own end-to-end tests: it never ships, never counts toward the package digest, and nothing inside it may be listed here.
 - `icon` — package-relative icon path, conventionally `icon.png`.
 
 ## The template grammar
@@ -246,7 +246,7 @@ npm run apps:manifest:check                # every apps/<app>/
 npm run apps:manifest:check -- path/to/pkg # specific folder(s)
 ```
 
-Or validate structure alone against `apps/manifest.schema.json` with any JSON Schema validator. Semantic rules the schema cannot express (and the checker enforces): template references resolve against declared fields and namespaces; `routes[].service` and the `health` hostname name declared services; declared package files exist; screenshots are declared in `packageFiles`; secret fields carry no defaults; volume names are unique per package.
+Or validate structure alone against `apps/manifest.schema.json` with any JSON Schema validator. Semantic rules the schema cannot express (and the checker enforces): template references resolve against declared fields and namespaces; `routes[].service` and the `health` hostname name declared services; declared package files exist and none is inside `e2e/`; screenshots are declared in `packageFiles`; secret fields carry no defaults; volume names are unique per package.
 
 ## Amendment policy
 

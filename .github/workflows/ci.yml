@@ -38,8 +38,10 @@ jobs:
       # also what `npm test`, the release gate and the pre-push hook run. Adding
       # a step here instead would make CI diverge from what a push can be tested
       # against, which is the whole thing this file stopped doing.
+      # Every check runs even after one fails, so a pull request still waiting
+      # for its catalog signature reports everything else too.
       - name: Run workspace checks
-        run: npm run check:workspace
+        run: npm run check:workspace -- --keep-going
 
   site:
     name: MOS Site
