@@ -63,16 +63,25 @@ async function waitForSuiteManager() {
   throw new Error(`Suite Manager did not answer at ${HOME_URL} within ${READY_MINUTES} minutes.`);
 }
 
-// A CI runner ships its own Docker and containerd, which conflict with the ones the
-// bootstrap installs from Docker's repository. A machine MOS really installs on has neither.
+// A CI runner ships Docker's own engine, held, and its containerd.io conflicts with the
+// containerd that Ubuntu's docker.io needs. A machine MOS really installs on has none, so
+// on CI it goes, data and all; anywhere else the lab stops rather than wipe someone's Docker.
 function removeForeignEngine() {
   const installed = run('dpkg-query', ['-W', '-f=${db:Status-Abbrev}|${Package}\\n'], { capture: true }).split('\n')
-    .filter((line) => line.startsWith('ii')).map((line) => line.split('|')[1]);
-  if (installed.includes('containerd.io')) return;
-  const engine = installed.filter((name) => /^(?:moby-.+|docker.*|containerd|runc|podman-docker)$/u.test(name));
+    .filter((line) => line[1] === 'i').map((line) => line.split('|')[1]);
+  if (installed.includes('docker.io')) return;
+  const engine = installed.filter((name) => /^(?:moby-.+|docker-.+|containerd.*|runc|podman-docker)$/u.test(name));
   if (!engine.length) return;
-  run('sudo', ['apt-get', 'purge', '--yes', '--quiet', ...engine]);
-  console.log(`[local-lab] removed this machine's own container engine: ${engine.join(', ')}`);
+  if (process.env.CI !== 'true') throw new Error(`This machine already has a container engine (${engine.join(', ')}). MOS installs Ubuntu's docker.io, so remove it first, or run the lab on a throwaway machine.`);
+  run('sudo', ['apt-get', 'purge', '--yes', '--quiet', '--allow-change-held-packages', ...engine]);
+  run('sudo', ['rm', '-rf', '/var/lib/docker', '/var/lib/containerd', '/etc/docker']);
+  console.log(`[local-lab] removed the runner's own container engine: ${engine.join(', ')}`);
+}
+
+// The bootstrap says only that a unit failed; systemd says which and why.
+function reportFailedUnits() {
+  spawnSync('sudo', ['systemctl', '--no-pager', '--failed'], { stdio: 'inherit' });
+  spawnSync('sudo', ['journalctl', '--no-pager', '--lines', '60', '--unit', 'mos-*'], { stdio: 'inherit' });
 }
 
 async function install(base) {
@@ -85,7 +94,12 @@ async function install(base) {
   ], { capture: true });
   const file = path.join(os.tmpdir(), 'mos-local-lab-bootstrap.sh');
   fs.writeFileSync(file, script);
-  run('sudo', ['bash', file]);
+  try {
+    run('sudo', ['bash', file]);
+  } catch (error) {
+    reportFailedUnits();
+    throw error;
+  }
   await waitForSuiteManager();
   console.log(`[local-lab] MOS from ${base} answers at ${HOME_URL}`);
 }
