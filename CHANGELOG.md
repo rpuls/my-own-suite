@@ -26,6 +26,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 - **Actual Budget no longer announces releases you cannot install yet.** Its new package turns off the check that asked GitHub for Actual's latest version, since new versions come through MOS. It now contacts nothing outside your server.
 - **App installs and updates finish even if you close the page.** Suite Manager now runs the whole install or update itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build. An update that took longer than a minute used to be reported as "Unable to update" although it went on to succeed; it now shows each step through to the end.
 
+### Security
+
+- **Immich package 0.8.3 updates Immich to 3.2.4, which closes a code-execution flaw any Immich account could trigger.** A crafted SVG upload could run code inside the Immich server ([GHSA-q89f-h332-8q2h](https://github.com/immich-app/immich/security/advisories/GHSA-q89f-h332-8q2h)), and 3.2.4 is the first release with the fix. The update also fixes sync stalls, a memory leak and people merging, and moves Valkey to 9.1.1 for its own security fixes. **Take a backup first:** Immich migrates its database on the first start, including how people and faces are stored, and cannot go back to 3.1 afterwards. Large libraries take longer to come back.
+
 ## [0.21.0] - 2026-10-02
 
 **Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:

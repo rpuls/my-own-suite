@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "immich",
-  "reviewedAt": "2026-10-05T14:01:23.550Z",
+  "reviewedAt": "2026-10-05T22:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.8.2",
-    "packageDigest": "sha256:86de9b998e05013544e4cd4752f8545f81de922f0804a786e1f7b06209c6bafd",
+    "packageVersion": "0.8.3",
+    "packageDigest": "sha256:eba42e3717229b0cb6595427149ca7cb35cbc090c9dec0394e6e51fda049406b",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,15 +16,15 @@
     "components": [
       {
         "name": "Immich Server",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-server",
-        "digest": "sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa"
+        "digest": "sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13"
       },
       {
         "name": "Immich Machine Learning",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-machine-learning",
-        "digest": "sha256:a25ddad7d6d2ab18a161176731dc171bb7e39c0e9dd3884fb1ec629dab535d05"
+        "digest": "sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20"
       },
       {
         "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
@@ -36,7 +36,7 @@
         "name": "Valkey",
         "version": "9",
         "artifact": "docker.io/valkey/valkey",
-        "digest": "sha256:64f6e8025b9a798061c8c79e73a7a79dbc8cca437e6af682e9f7605ff334615d"
+        "digest": "sha256:c7f03d95d897f97eef7ec2d4a6a1e2c0cbe62a36a56b00f304aa536cbe3ec9c1"
       }
     ],
     "clientsExcluded": [
@@ -55,6 +55,30 @@
     "confidence": "verified"
   },
   "evidence": [
+    {
+      "type": "observed",
+      "claim": "Immich 3.2.4 adds no outside host to what the 3.1.0 capture recorded. Every https:// host embedded in the built web client and server of the pinned 3.2.4 image matches the 3.1.0 image, except two that make no request: the f-droid.org app-store link was removed, and wiki.openstreetmap.org appears only inside the map's WebGL error message. The map style URLs (tiles.immich.cloud) and the version-check endpoints (version.immich.cloud, version.dev.immich.cloud) are unchanged. The server and web source at v3.2.4 add no external URL and no new fetch call site.",
+      "source": "grep of /build/www and /usr/src/app/server/dist in immich-server v3.2.4 (sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13) against v3.1.0 (sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa), and server/src and web/src at v3.1.0 and v3.2.4",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS controls still hold on 3.2.4. A 3.1.0 instance built from this package with a test relay was upgraded in place to the 3.2.4 build. All eight 3.2 migrations ran, and afterwards /api/system-config reported newVersionCheck.enabled=false, the MOS-written SMTP relay, and the same map style URLs. This drill did not capture network traffic. The lab E2E network step for this candidate is the capture.",
+      "source": "Local upgrade drill of apps/immich 0.8.2 (Immich v3.1.0) to the 0.8.3 candidate (Immich v3.2.4), 2026-10-05",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "documented",
+      "claim": "Model downloads are unchanged in 3.2.4: models still come from the immich-app organisation on Hugging Face through huggingface_hub.snapshot_download, and text recognition still uses rapidocr. The 3.2.4 machine-learning image sets HF_HOME=/cache/hf-cache, which sits inside the package's model-cache volume. Insightface is no longer a dependency because its face-alignment code is now ported into Immich, and it contacted no host in this package anyway.",
+      "source": "machine-learning/immich_ml and machine-learning/pyproject.toml at v3.1.0 and v3.2.4, and the image config of immich-machine-learning v3.2.4 (sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20)",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "documented",
+      "claim": "Upstream policy and licence did not change across 3.1.0 to 3.2.4. The Immich privacy policy still reads 'Last updated: April 6, 2026', and the LICENSE file is byte-identical at v3.1.0 and v3.2.4. The 3.2.0 to 3.2.4 release notes announce no telemetry, account or hosted-service change. The new docker compose builder is a page on immich.app, not something the server contacts.",
+      "source": "https://immich.app/privacy-policy/, LICENSE at v3.1.0 and v3.2.4, and the v3.2.0, v3.2.1, v3.2.2 and v3.2.4 release notes",
+      "retrievedAt": "2026-10-05"
+    },
     {
       "type": "observed",
       "claim": "Runtime network capture of this package: a logging DNS resolver was the only upstream resolver for all four containers and every packet crossing the package-network boundary was recorded, across first boot and interactive use (admin creation, 11 asset uploads, and the machine-learning jobs those triggered). The immich-server, immich-postgres and immich-valkey containers made no outbound connection and no external DNS query at any point. Control requests injected from inside the containers appeared in both channels, so the silence is an observation rather than a failed capture.",
@@ -237,14 +261,14 @@
     {
       "kind": "privacy",
       "url": "https://immich.app/privacy-policy/",
-      "retrievedAt": "2026-08-11",
+      "retrievedAt": "2026-10-05",
       "publisher": "Immich project (FUTO)",
       "effectiveDate": "2026-04-06"
     },
     {
       "kind": "license",
-      "url": "https://github.com/immich-app/immich/blob/v3.1.0/LICENSE",
-      "retrievedAt": "2026-08-11",
+      "url": "https://github.com/immich-app/immich/blob/v3.2.4/LICENSE",
+      "retrievedAt": "2026-10-05",
       "publisher": "Immich project"
     }
   ],
@@ -254,12 +278,13 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "skillRevision": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f",
+    "repositoryCommit": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f",
     "humanReviewed": false,
     "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [
+    "The runtime network captures behind this review were taken on Immich 3.1.0. For 3.2.4 the outbound list is carried forward on static evidence (image and source diffs) and a local upgrade drill without a capture. The lab E2E network step for this candidate is the first capture of 3.2.4.",
     "MOS's use of IMMICH_CONFIG_FILE to disable the version check has a wider effect than the privacy control it was chosen for: while that variable is set Immich rejects every system-configuration change, so storage templates, transcoding, machine-learning options, job concurrency, the backup schedule and the map are all frozen for the owner as well. Whether MOS should keep that trade, expose the settings it freezes, or disable the version check by another means is a packaging decision outside the scope of this review.",
     "Requests to the tile service carry a Referer header identifying the origin the Immich web client is served from. The capture was taken over loopback, so only http://127.0.0.1:2283/ was sent; a MOS deployment reached through a public domain would send that domain to Cloudflare alongside the tile coordinates under the browser default referrer policy. This is an inference from the observed header rather than a measured result, and has not been confirmed against a domain-based deployment.",
     "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined.",

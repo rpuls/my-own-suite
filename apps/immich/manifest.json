@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.8.2",
-  "appVersion": "3.1.0",
+  "version": "0.8.3",
+  "appVersion": "3.2.4",
   "minimumMosVersion": "0.20.0",
   "architectures": [
     "amd64"
@@ -268,5 +268,12 @@
         "body": "Download the official Immich mobile app from App Store or Google Play to enable automatic photo backup from your device."
       }
     ]
+  },
+  "update": {
+    "backupRequired": true,
+    "migrations": [
+      "Immich migrates its database the first time 3.2 starts, including restructuring how people and faces are stored, then vacuums the database. Large libraries take longer to come back."
+    ],
+    "rollback": "unsupported"
   }
 }
