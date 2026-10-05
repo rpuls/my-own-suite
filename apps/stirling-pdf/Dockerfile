@@ -1,4 +1,4 @@
-FROM stirlingtools/stirling-pdf@sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42
+FROM stirlingtools/stirling-pdf@sha256:c195925341aa35ee5932d9c225edef48a92e46a1280963180d79619cb5f29e6e
 
 # MOS package wrapper:
 # - Keeps the app self-contained under apps/stirling-pdf.
