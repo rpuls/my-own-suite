@@ -1,30 +1,30 @@
 {
   "schemaVersion": 1,
   "appId": "immich",
-  "reviewedAt": "2026-08-11T00:00:00.000Z",
-  "expiresAt": "2027-02-11T00:00:00.000Z",
+  "reviewedAt": "2026-10-05T00:00:00.000Z",
+  "expiresAt": "2027-04-05T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.8.1",
-    "packageDigest": "sha256:b6ab5b5fbff3959c93ec54a46b4b584c8cc0486e5c62e9242324ba22f48dd490",
+    "packageVersion": "0.9.0",
+    "packageDigest": "sha256:9d98a8920df46ab7a38bdbc3c30c220d2475b768d8b2ee2a5fb3bdf7972bd657",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/immich",
-      "revision": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
+      "revision": "c4045a34dbc6509b385443cc5e26e2d68f427ae3",
       "trust": "mos-reviewed"
     },
     "components": [
       {
         "name": "Immich Server",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-server",
-        "digest": "sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa"
+        "digest": "sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13"
       },
       {
         "name": "Immich Machine Learning",
-        "version": "3.1.0",
+        "version": "3.2.4",
         "artifact": "ghcr.io/immich-app/immich-machine-learning",
-        "digest": "sha256:a25ddad7d6d2ab18a161176731dc171bb7e39c0e9dd3884fb1ec629dab535d05"
+        "digest": "sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20"
       },
       {
         "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
@@ -36,7 +36,7 @@
         "name": "Valkey",
         "version": "9",
         "artifact": "docker.io/valkey/valkey",
-        "digest": "sha256:64f6e8025b9a798061c8c79e73a7a79dbc8cca437e6af682e9f7605ff334615d"
+        "digest": "sha256:c7f03d95d897f97eef7ec2d4a6a1e2c0cbe62a36a56b00f304aa536cbe3ec9c1"
       }
     ],
     "clientsExcluded": [
@@ -177,6 +177,31 @@
       "type": "configured",
       "claim": "MOS wires Immich's notification email to the shared, optional MOS email relay, which the entrypoint writes into Immich's notifications.smtp configuration only when the owner has set a relay under Settings → Email relay; otherwise it is absent and Immich sends no mail. When set, album invitations and notifications go through the owner's own chosen provider; MOS never uses the relay itself, and this path is unrelated to the map-tile dependency described above.",
       "source": "apps/immich/entrypoint.sh and apps/immich/manifest.json"
+    },
+    {
+      "type": "observed",
+      "claim": "Reassessment for v3.2.4 found no new outbound endpoint in the server or the web client. A grep for absolute URLs across /usr/src/app/server/dist and /build/www returned 52 hosts in each image, differing only in link text: an f-droid.org link was removed, and wiki.openstreetmap.org was added inside the map's 'this map requires WebGL' error message, which is shown to the user rather than fetched. The version endpoints are still only version.immich.cloud and version.dev.immich.cloud, and server/helmet.json still limits connect-src to the local server, pay.futo.org, static.immich.cloud and tiles.immich.cloud.",
+      "source": "grep of the pinned immich-server images for v3.1.0 (sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa) and v3.2.4 (sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13)",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "MOS's IMMICH_CONFIG_FILE controls still hold on v3.2.4, both after upgrading a v3.1.0 database and on a fresh install. The server reported newVersionCheck.enabled false and a version check that had never run (checkedAt null). PUT /api/system-config and the /api/admin/config endpoint added in v3.2.0 both refused changes with 'Cannot update configuration while IMMICH_CONFIG_FILE is in use', so the map stays on as shipped, still styled from tiles.immich.cloud. A one-off snapshot of immich-server's established TCP connections showed only the package's own PostgreSQL, Valkey and machine-learning containers. That snapshot is not a network capture.",
+      "source": "Local runtime of the apps/immich Dockerfiles at v3.2.4 with the manifest's environment, observed 2026-10-05",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "observed",
+      "claim": "The machine-learning image still downloads its OCR models from Alibaba Cloud's ModelScope: the rapidocr default_models.yaml bundled in both the v3.1.0 and v3.2.4 images references www.modelscope.cn 252 times. v3.2.4 adds HF_HOME=/cache/hf-cache, which keeps the Hugging Face cache inside the model-cache volume MOS already mounts at /cache. No new model host was found.",
+      "source": "Pinned immich-machine-learning images for v3.1.0 (sha256:a25ddad7d6d2ab18a161176731dc171bb7e39c0e9dd3884fb1ec629dab535d05) and v3.2.4 (sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20)",
+      "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "documented",
+      "claim": "The release notes for v3.2.0, v3.2.1, v3.2.2 and v3.2.4 (upstream withdrew v3.2.3) announce no telemetry, analytics, account requirement or new hosted service. Cluster groups, which are new, share face clustering only between users on the same server.",
+      "source": "Immich GitHub releases v3.2.0 to v3.2.4",
+      "url": "https://github.com/immich-app/immich/releases/tag/v3.2.4",
+      "retrievedAt": "2026-10-05"
     }
   ],
   "telemetryControls": [
@@ -199,27 +224,26 @@
     {
       "kind": "privacy",
       "url": "https://immich.app/privacy-policy/",
-      "retrievedAt": "2026-08-11",
+      "retrievedAt": "2026-10-05",
       "publisher": "Immich project (FUTO)",
       "effectiveDate": "2026-04-06"
     },
     {
       "kind": "license",
-      "url": "https://github.com/immich-app/immich/blob/v3.1.0/LICENSE",
-      "retrievedAt": "2026-08-11",
+      "url": "https://github.com/immich-app/immich/blob/v3.2.4/LICENSE",
+      "retrievedAt": "2026-10-05",
       "publisher": "Immich project"
     }
   ],
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 5",
+    "model": "Claude Opus 5.5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
-    "humanReviewed": true,
-    "humanReviewer": "Rasmus Puls"
+    "skillRevision": "c4045a34dbc6509b385443cc5e26e2d68f427ae3",
+    "repositoryCommit": "c4045a34dbc6509b385443cc5e26e2d68f427ae3",
+    "humanReviewed": false
   },
   "openQuestions": [
     "MOS's use of IMMICH_CONFIG_FILE to disable the version check has a wider effect than the privacy control it was chosen for: while that variable is set Immich rejects every system-configuration change, so storage templates, transcoding, machine-learning options, job concurrency, the backup schedule and the map are all frozen for the owner as well. Whether MOS should keep that trade, expose the settings it freezes, or disable the version check by another means is a packaging decision outside the scope of this review.",
@@ -227,6 +251,7 @@
     "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined.",
     "Machine learning models are downloaded on first use from Hugging Face and from Alibaba Cloud's ModelScope, and the map loads tiles from Immich's Cloudflare-fronted infrastructure. These optional external touchpoints remain unless an operator disables machine learning or the map, and this review deliberately does not disable them.",
     "TLS payloads were not decrypted in either the server-side or client-side capture, so conclusions bound behaviour by destination, method, header content and volume rather than by asserting the contents of encrypted request bodies.",
-    "The Immich mobile applications, and any device or vendor cloud backups configured within them, remain outside the reviewed package boundary. The browser-based web client is now inside the boundary and was captured directly."
+    "The Immich mobile applications, and any device or vendor cloud backups configured within them, remain outside the reviewed package boundary. The browser-based web client is now inside the boundary and was captured directly.",
+    "The v3.2.4 reassessment did not repeat the full DNS and packet capture or the browser HAR recorded for v3.1.0. Its conclusions come from static comparison of the two images, the release notes, and runtime checks of the package's configuration. It is unchanged from the observed v3.1.0 behaviour only to the extent that those methods can show."
   ]
 }

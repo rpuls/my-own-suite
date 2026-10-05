@@ -17,6 +17,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 - **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
 - **An app install finishes even if you close the page.** Suite Manager now runs the whole install itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build.
 
+### Security
+
+- Immich package 0.9.0 updates Immich to 3.2.4. It closes a hole where anyone with an Immich account on your server could run code inside Immich by uploading a crafted SVG ([GHSA-q89f-h332-8q2h](https://github.com/immich-app/immich/security/advisories/GHSA-q89f-h332-8q2h)). It also fixes a server memory leak and sync stalls, and adds a new search screen, a memories page and opt-in shared face recognition between trusted users. **Migrations run on start and are forward-only, so you cannot downgrade after this applies.** The first start can take longer on a large library.
+
 ## [0.21.0] - 2026-10-02
 
 **Moving to a new machine in an emergency is now tested end to end on real hardware.** Before this release we ran the full fire drill:
