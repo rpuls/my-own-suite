@@ -363,4 +363,5 @@ When adding/changing an app service, also update:
 
 - `apps/<app>/README.md` technical specs (env vars, volumes, healthchecks, dependencies).
 - package manifest setup fields, resources, routes, and capabilities when relevant.
-- `.github/dependabot.yml` Docker entries for the affected app root directory.
+
+Do not add app directories to `.github/dependabot.yml`. A Dependabot pull request moves an image pin without the package version, privacy review and catalog that must move with it, so app updates are Norn's.

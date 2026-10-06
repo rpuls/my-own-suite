@@ -148,6 +148,7 @@ node scripts/smoke/local-lab.cjs drill <app> <candidate>    # @update <app> onto
 
 - `install` puts both commits in a local repository (`/srv/mos-lab.git`, fetched from the public repository) and installs MOS from its `lab` branch with the `--disposable-lab` bootstrap, so the lab reset agent is there. The app hosts resolve to the machine's own address through `/etc/hosts`.
 - `drill` runs `@update <app>`, moves `lab` to `<candidate>` when `platform-update` starts, then runs `@app-dr <app>` if the platform update went through. Each run's results land in `test/e2e/results/` as usual, with `drill.json` beside them listing both runs. The tests run on the lab itself, so the network capture reads it with `sudo` directly (`MOS_E2E_LAB_SSH=local`).
+- An app that requires HTTPS goes through the `dns01` step. Set `MOS_E2E_DNS01_BASE_DOMAIN` for `install`, which writes that domain's hosts beside `mos.lab`'s, and add `CLOUDFLARE_API_TOKEN` for `drill`. DNS-01 needs only the TXT record the token writes, so no public record points at the lab.
 - It needs `sudo` without a password, and the lab bucket in `.local-tools/lab-bucket/bucket.env` for `@app-dr`. Never run it on a machine you want to keep: it installs MOS as root and its lab reset agent can wipe that MOS.
 
 ### Marketing screenshot pipeline
