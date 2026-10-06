@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
+const https = require('node:https');
 const path = require('node:path');
 const { packageImageTag } = require('./agent-core.cjs');
 const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
@@ -25,7 +26,17 @@ const DOCKER_BINARY = process.env.MOS_DOCKER_BINARY || '/usr/bin/docker';
 // diagnose a crash loop and small enough that fifty containers cannot fill a
 // modest disk.
 const CONTAINER_LOG_ARGS = ['--log-opt', 'max-size=10m', '--log-opt', 'max-file=3'];
-const HEALTH_TIMEOUT_MS = 90_000;
+// A running app is waited for, because a first start or an update can run every database
+// migration it has (Paperless-ngx needed 99 s on a CI runner); only one that hangs waits it out.
+const HEALTH_TIMEOUT_MS = 15 * 60_000;
+// Docker restarts a crashed container after a delay that doubles from 100 ms, so ten restarts
+// outlast a neighbouring database's first start by far, and a crash loop is told in minutes.
+const CRASH_LOOP_RESTARTS = 10;
+const CRASH_CHECK_INTERVAL_MS = 5_000;
+// Caddy orders a certificate for each app address on a domain once its route appears, which
+// takes seconds to a minute; past this the address is reported late, not the install failed.
+const ADDRESS_TIMEOUT_MS = 5 * 60_000;
+const ADDRESS_RETRY_MS = 2_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 // What a failure report quotes from each container's own log. A crash loop
 // prints its reason in its last few lines; the full log stays in the
@@ -119,6 +130,9 @@ function describeContainerState(state) {
 
 // The health probe's own verdict, in one line.
 function describeProbe(error, healthTarget) {
+  if (error?.message === 'APP_CRASHED') {
+    return `${error.crash}, so MOS stopped waiting for ${healthTarget} after ${describeDuration(error.waitedMs)}; the last probe got: ${error.lastProbe || 'no answer'}.`;
+  }
   if (error?.message !== 'HEALTH_TIMEOUT') return String(error?.message || 'The health check failed.');
   return `No healthy answer from ${healthTarget} in ${describeDuration(error.waitedMs || HEALTH_TIMEOUT_MS)}; the last probe got: ${error.lastProbe || 'no answer'}.`;
 }
@@ -231,11 +245,14 @@ function removeAppRouteBlock(currentRoutes, packageId) {
 }
 
 // Rejects with what the last probe saw on `lastProbe`: a connection refused
-// and an HTTP 503 are different failures with different fixes.
-function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
+// and an HTTP 503 are different failures with different fixes. `crashed` names
+// a crash loop, which no amount of waiting turns into an answer.
+function waitForHttp(url, { crashCheckMs = CRASH_CHECK_INTERVAL_MS, crashed = async () => null, deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
   const started = Date.now();
+  let checkedAt = started;
   let lastProbe = 'no answer';
   return new Promise((resolve, reject) => {
+    const fail = (message, details = {}) => reject(Object.assign(new Error(message), { lastProbe, waitedMs: Date.now() - started, ...details }));
     const attempt = () => {
       const request = http.get(url, { timeout: 3000 }, (response) => {
         response.resume();
@@ -252,18 +269,53 @@ function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
         retry();
       });
     };
-    const retry = () => {
+    const retry = async () => {
       if (Date.now() - started >= deadlineMs) {
-        const failure = new Error('HEALTH_TIMEOUT');
-        failure.lastProbe = lastProbe;
-        failure.waitedMs = Date.now() - started;
-        reject(failure);
+        fail('HEALTH_TIMEOUT');
         return;
+      }
+      if (Date.now() - checkedAt >= crashCheckMs) {
+        checkedAt = Date.now();
+        const crash = await crashed().catch(() => null);
+        if (crash) {
+          fail('APP_CRASHED', { crash });
+          return;
+        }
       }
       setTimeout(attempt, 1500);
     };
     attempt();
   });
+}
+
+// One request through this machine's Caddy, checking the certificate as a browser would.
+function probeAddress(publicUrl) {
+  const url = new URL(publicUrl);
+  const secure = url.protocol === 'https:';
+  return new Promise((resolve) => {
+    const request = (secure ? https : http).request({
+      agent: false,
+      headers: { Host: url.host },
+      host: '127.0.0.1',
+      path: url.pathname,
+      port: secure ? 443 : 80,
+      ...(secure ? { servername: url.hostname } : {}),
+      timeout: 5000,
+    }, (response) => {
+      response.resume();
+      resolve(response.statusCode < 500 ? { ok: true } : { ok: false, probe: `HTTP ${response.statusCode}` });
+    });
+    request.on('timeout', () => request.destroy(new Error('TIMEOUT')));
+    request.on('error', (error) => resolve({ ok: false, probe: describeConnectionError(error) }));
+    request.end();
+  });
+}
+
+// A refused handshake arrives as a bare EPROTO; OpenSSL's reason is inside the message.
+function describeConnectionError(error) {
+  if (error?.message === 'TIMEOUT') return 'no reply within 5s';
+  const tlsReason = /SSL routines:[^:]*:([^:\n]+)/u.exec(String(error?.message))?.[1];
+  return [error?.code, tlsReason].filter(Boolean).join(': ') || 'connection failed';
 }
 
 class SystemAppAdapter {
@@ -281,6 +333,8 @@ class SystemAppAdapter {
     execute = exec,
     executeCapture = undefined,
     now = () => Date.now(),
+    pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+    probeAddress: probe = probeAddress,
     routesPath = APP_ROUTES_PATH,
     waitForReady = waitForHttp,
   } = {}) {
@@ -301,8 +355,36 @@ class SystemAppAdapter {
       if (typeof result?.stdout !== 'string') throw new Error('COMMAND_FAILED');
       return result.stdout;
     });
+    this.pause = pause;
+    this.probeAddress = probe;
     this.routesPath = routesPath;
     this.waitForReady = waitForReady;
+  }
+
+  waitUntilHealthy(runtime) {
+    return this.waitForReady(runtime.healthTarget, { crashed: () => this.crashLoopOf(runtime) });
+  }
+
+  async crashLoopOf({ packageId, services }) {
+    for (const service of services) {
+      const name = this.containerName(packageId, service.id, services.length);
+      const restarts = Number.parseInt(await this.executeCapture(this.dockerBinary, ['inspect', '--format', '{{.RestartCount}}', name], { timeoutMs: 10_000 }).catch(() => ''), 10);
+      if (restarts >= CRASH_LOOP_RESTARTS) return `Container ${name} has crashed and restarted ${restarts} times`;
+    }
+    return null;
+  }
+
+  async waitForAppAddress({ publicUrl }) {
+    const started = this.now();
+    for (;;) {
+      const result = await this.probeAddress(publicUrl);
+      const seconds = Math.round((this.now() - started) / 1000);
+      if (result.ok) return { seconds, status: 'ready' };
+      if (this.now() - started >= ADDRESS_TIMEOUT_MS) {
+        return { awaiting: /ssl|tls|cert|verify/iu.test(result.probe) ? 'certificate' : 'answer', lastProbe: result.probe, seconds, status: 'waiting' };
+      }
+      await this.pause(ADDRESS_RETRY_MS);
+    }
   }
 
   async appVolumeState(name) {
@@ -595,7 +677,7 @@ class SystemAppAdapter {
       stage = 'run';
       await this.startPackageContainers(candidate);
       stage = 'health';
-      await this.waitForReady(candidate.healthTarget);
+      await this.waitUntilHealthy(candidate);
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: candidate.caddyRoutes, packageId: candidate.packageId });
@@ -635,7 +717,7 @@ class SystemAppAdapter {
       try {
         await this.startPackageContainers(installed);
         restoring = 'health';
-        await this.waitForReady(installed.healthTarget);
+        await this.waitUntilHealthy(installed);
       } catch (rollbackError) {
         const failure = new AppApplyError('run', [
           ...explanation,
@@ -762,7 +844,7 @@ class SystemAppAdapter {
       stage = 'run';
       await this.startPackageContainers(installed);
       stage = 'health';
-      await this.waitForReady(installed.healthTarget);
+      await this.waitUntilHealthy(installed);
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: installed.caddyRoutes, packageId: installed.packageId });
       if (currentRoutes !== nextRoutes) {
@@ -888,7 +970,7 @@ class SystemAppAdapter {
 
       stage = 'health';
       activity = STAGE_ACTIVITY.health;
-      await this.waitForReady(healthTarget);
+      await this.waitUntilHealthy({ healthTarget, packageId, services });
       this.recordAppTiming({ buildSeconds, packageDir, packageId, startedAt });
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
@@ -1111,12 +1193,15 @@ module.exports = {
   APP_PACKAGE_ROOT,
   APP_CANDIDATE_ROOT,
   APP_ROUTES_PATH,
+  ADDRESS_TIMEOUT_MS,
   AppApplyError,
+  CRASH_LOOP_RESTARTS,
   DISPLACED_INSTALLED_DIR,
   HEALTH_REFRESH_TIMEOUT_MS,
   HEALTH_TIMEOUT_MS,
   SystemAppAdapter,
   atomicWrite,
+  probeAddress,
   removeAppRouteBlock,
   renderAppRouteBlock,
   upsertAppRouteBlock,

@@ -1919,6 +1919,12 @@
   color: var(--mos-color-text-strong);
 }
 
+.suite-app-step-elapsed {
+  color: var(--mos-color-text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .suite-app-step-dot {
   width: 0.8rem;
   height: 0.8rem;

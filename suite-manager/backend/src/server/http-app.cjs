@@ -559,6 +559,7 @@ function createMOSServer({
     prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
     progressOf: (packageId) => appPackages.installProgressOf(packageId),
     start: (packageId) => appPackages.startPackageRuntime(packageId, { ...publicUrlOf(packageId), publicUrlFor: publicUrls() }),
+    waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: publicUrlOf(packageId).publicUrl }),
   });
   const updateJobs = new AppUpdateJobs({
     logger,

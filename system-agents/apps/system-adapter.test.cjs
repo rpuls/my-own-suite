@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
-const { DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
+const { ADDRESS_TIMEOUT_MS, CRASH_LOOP_RESTARTS, DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, HEALTH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock, waitForHttp } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-app-agent-'));
@@ -1195,6 +1195,79 @@ test('a health failure is explained from the containers themselves, with their l
   assert.match(error.details[1], /FATAL: database "app" does not exist/u);
   assert.match(error.details[1], /password \[redacted\]/u);
   assert.equal(error.details.join('\n').includes('hunter2hunter2'), false);
+});
+
+test('a crash loop ends the health wait at once instead of at its deadline', async () => {
+  const started = Date.now();
+  const error = await waitForHttp('http://127.0.0.1:9/', {
+    crashCheckMs: 0,
+    crashed: async () => 'Container mos-app-example-tool has crashed and restarted 10 times',
+  }).then(() => null, (failure) => failure);
+
+  assert.equal(error.message, 'APP_CRASHED');
+  assert.equal(error.crash, 'Container mos-app-example-tool has crashed and restarted 10 times');
+  assert.equal(error.lastProbe, 'ECONNREFUSED');
+  assert.ok(Date.now() - started < HEALTH_TIMEOUT_MS / 100);
+});
+
+test('a container Docker keeps restarting is a crash loop, one that restarted a few times is still starting', async () => {
+  const restarts = { 'mos-app-example-tool-db': '3', 'mos-app-example-tool-web': '9' };
+  const adapter = new SystemAppAdapter({ async execute(_file, args) { return { stdout: `${restarts[args.at(-1)]}\n` }; } });
+  const runtime = { packageId: 'example-tool', services: [{ id: 'db' }, { id: 'web' }] };
+
+  assert.equal(await adapter.crashLoopOf(runtime), null);
+  restarts['mos-app-example-tool-web'] = String(CRASH_LOOP_RESTARTS);
+  assert.equal(await adapter.crashLoopOf(runtime), `Container mos-app-example-tool-web has crashed and restarted ${CRASH_LOOP_RESTARTS} times`);
+});
+
+test('an install whose app keeps crashing says so, with the containers that show it', async () => {
+  const seen = [];
+  const { adapter, request } = await realRunnerAdapter(await tempDir(), {
+    env: { FAKE_DOCKER_RUN: 'ok' },
+    async waitForReady(url, options) {
+      seen.push(typeof options?.crashed);
+      throw Object.assign(new Error('APP_CRASHED'), { crash: 'Container mos-app-example-tool has crashed and restarted 10 times', lastProbe: 'ECONNREFUSED', waitedMs: 72_000 });
+    },
+  });
+
+  const error = await adapter.applyAppService(request).then(() => null, (failure) => failure);
+
+  assert.deepEqual(seen, ['function']);
+  assert.equal(error.code, 'APP_HEALTH_FAILED');
+  assert.equal(error.details[0], 'Container mos-app-example-tool has crashed and restarted 10 times, so MOS stopped waiting for http://127.0.0.1:18123/health after 1 minute 12 seconds; the last probe got: ECONNREFUSED.');
+  assert.match(error.details[1], /^Container mos-app-example-tool /u);
+});
+
+function addressAdapter(probes) {
+  let clock = 0;
+  const seen = [];
+  const adapter = new SystemAppAdapter({
+    now: () => clock,
+    pause: async (ms) => { clock += ms; },
+    probeAddress: async (publicUrl) => { seen.push(publicUrl); return probes.length > 1 ? probes.shift() : probes[0]; },
+  });
+  return { adapter, seen };
+}
+
+test('an app address is waited for until it opens through Caddy', async () => {
+  const noCertificate = { ok: false, probe: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR' };
+  const { adapter, seen } = addressAdapter([noCertificate, noCertificate, { ok: true }]);
+
+  assert.deepEqual(await adapter.waitForAppAddress({ publicUrl: 'https://paperless.example.org/' }), { seconds: 4, status: 'ready' });
+  assert.deepEqual(seen, Array(3).fill('https://paperless.example.org/'));
+});
+
+test('an address still without a certificate after five minutes is reported waiting, not failed', async () => {
+  const { adapter } = addressAdapter([{ ok: false, probe: 'EPROTO: ssl/tls alert handshake failure' }]);
+  assert.deepEqual(await adapter.waitForAppAddress({ publicUrl: 'https://paperless.example.org/' }), {
+    awaiting: 'certificate',
+    lastProbe: 'EPROTO: ssl/tls alert handshake failure',
+    seconds: ADDRESS_TIMEOUT_MS / 1000,
+    status: 'waiting',
+  });
+
+  const unanswered = addressAdapter([{ ok: false, probe: 'HTTP 502' }]);
+  assert.equal((await unanswered.adapter.waitForAppAddress({ publicUrl: 'https://paperless.example.org/' })).awaiting, 'answer');
 });
 
 test('a stale volume refuses the install under its own code instead of as a start failure', async () => {
