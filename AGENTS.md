@@ -24,6 +24,7 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Do not log micro UI adjustments, cosmetic polish, icon/link/copy tweaks, or minor edits to seeded default content (dashboards, bookmarks, templates), even though they ship with the platform.
    - Do not add changelog entries for documentation-only, public-site-only, landing-page-only, repository-maintenance, or contributor-workflow changes. Those are not updater-facing software behavior.
    - If documentation or public-site copy accompanies a software behavior change, describe the behavior once; do not separately log the documentation or site edit.
+   - Write each entry in the shape described at the top of `CHANGELOG.md`: owners read it on Suite Manager's update screen, which parses it, and `npm run release:check` refuses an `[Unreleased]` entry that screen would show wrongly.
    - Keep entries concise, user-relevant, and release-shaped.
    - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
    - Do not add a new changelog bullet for every follow-up fix, test tweak, or implementation step within the same area of work.

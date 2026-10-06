@@ -2,6 +2,12 @@
 
 Updater-facing software changes only — documentation, site, repository, and cosmetic changes are excluded. Format follows Keep a Changelog; versioning follows Semantic Versioning.
 
+Suite Manager shows these entries on its update screen, and `npm run release:check` holds `[Unreleased]` to the shape that screen reads:
+
+- Group entries under `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed` or `### Security`.
+- An entry is one top-level bullet that opens with a bold lead sentence: `- **What changes for the owner.** Detail.` The lead is the entry's title on the screen, and a server already running an entry with that lead is not shown it again, so every entry needs its own lead, and rewording one makes it new.
+- An entry's sub-bullets and further paragraphs are indented two spaces under it. The screen drops anything else.
+
 ## [Unreleased]
 
 ### Added
@@ -25,6 +31,7 @@ Updater-facing software changes only — documentation, site, repository, and co
   Signed advisories flag the affected versions until you update. **Compatibility:** buying a Stirling PDF licence inside the app no longer works.
 - **Installing or updating an app waits for the app, not a clock.** MOS gave up after 90 seconds, so a slow first start such as Paperless-ngx setting up its database showed as a failed install, and an update whose migration ran longer was rolled back midway. MOS now waits as long as the app keeps running, up to 15 minutes, and stops early only when it keeps crashing; the install shows how long each step has taken.
 - **"Ready" means the app's address opens.** On your own domain each new app gets its own certificate a few seconds after it starts, and opening it straight away showed a browser error until then. An install now waits for the address, and if the certificate is late, says so while the app is already running.
+- **The update screen lists what the update brings.** It read the changelog of the version already installed, so a server tracking a branch was shown changes it already had, and one on a stable release saw nothing for the new release. It now reads the update's own changelog and lists every entry the server does not have yet.
 - **Actual Budget no longer announces releases you cannot install yet.** Its new package turns off the check that asked GitHub for Actual's latest version, since new versions come through MOS. It now contacts nothing outside your server.
 - **App installs and updates finish even if you close the page.** Suite Manager now runs the whole install or update itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build. An update that took longer than a minute used to be reported as "Unable to update" although it went on to succeed; it now shows each step through to the end.
 
