@@ -191,16 +191,17 @@ type ExternalResolveResponse = {
   source: ExternalSourceCoordinates;
 };
 
-type InstallStep = ProgressStep & { id: 'prepare' | 'runtime' | 'homepage' | 'ready' };
+type InstallStep = ProgressStep & { id: 'prepare' | 'runtime' | 'address' | 'homepage' | 'ready' };
 
 type UpdateStep = ProgressStep & { id: 'check' | 'build' | 'switch' | 'finish' };
 
 // An install or update the server runs, read back from the app list.
 type AppJob<Step extends ProgressStep> = {
   error: { code: string; message: string } | null;
+  notice?: { detail: string; message: string } | null;
   startedAt: string;
   status: 'failed' | 'running' | 'succeeded';
-  steps: Array<{ id: Step['id']; status: ProgressStep['status'] }>;
+  steps: Array<{ id: Step['id']; seconds?: number; status: ProgressStep['status'] }>;
 };
 
 const UPDATE_STEPS: UpdateStep[] = [
@@ -211,7 +212,7 @@ const UPDATE_STEPS: UpdateStep[] = [
 ];
 
 function updateJobSteps(job: AppJob<UpdateStep> | null | undefined): UpdateStep[] {
-  return job ? job.steps.map((step) => ({ ...UPDATE_STEPS.find((template) => template.id === step.id)!, status: step.status })) : [];
+  return job ? job.steps.map((step) => ({ ...UPDATE_STEPS.find((template) => template.id === step.id)!, seconds: step.seconds, status: step.status })) : [];
 }
 
 const INSTALL_STEP_MIN_MS = 1000;
@@ -493,7 +494,8 @@ function requirementsFor(app: AppPackageSummary) {
 function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
   return [
     { detail: 'Saving the app choice and generating any safe defaults.', id: 'prepare', label: 'Preparing app', status: 'pending' },
-    { detail: 'Building and starting the app through the MOS runtime agent.', id: 'runtime', label: 'Starting app', status: 'pending' },
+    { detail: 'Building and starting the app. Its first start can take a few minutes.', id: 'runtime', label: 'Starting app', status: 'pending' },
+    { detail: 'Waiting until its web address opens, certificate included.', id: 'address', label: 'Web address', status: 'pending' },
     ...(showOnHomepage ? [{
       detail: showOnHomepage ? 'Adding a clean shortcut to your private Homepage.' : 'Leaving Homepage unchanged for now.',
       id: 'homepage',
@@ -510,7 +512,7 @@ function installJobSteps(app: AppPackageSummary): InstallStep[] {
   const job = app.installJob;
   if (!job || job.status === 'succeeded') return [];
   const templates = defaultInstallSteps(true);
-  return job.steps.map((step) => ({ ...templates.find((template) => template.id === step.id)!, status: step.status }));
+  return job.steps.map((step) => ({ ...templates.find((template) => template.id === step.id)!, seconds: step.seconds, status: step.status }));
 }
 
 function installJobError(app: AppPackageSummary) {
@@ -1002,6 +1004,10 @@ function AppDetail({
         </Notice> : null}
 
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
+        {app.installJob?.status === 'succeeded' && app.installJob.notice ? <Notice title="Its web address is not open yet" variant="warning">
+          <p>{app.installJob.notice.message}</p>
+          <AdvancedPanel facts={[{ label: 'Address check', value: app.installJob.notice.detail }]} reveal="technical-mode" />
+        </Notice> : null}
         {/* An update left running when its dialog closed, or begun before a reload. */}
         {!comparison && updateRunning ? <ProgressSteps error="" errorTitle="" steps={updateJobSteps(app.updateJob)} /> : null}
 

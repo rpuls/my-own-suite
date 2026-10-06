@@ -177,6 +177,15 @@ function assertHealthCheckRequest(input) {
   return input.health;
 }
 
+// Only ever probed through Caddy on this machine, so the URL picks a site, not a destination.
+function assertAddressRequest(input) {
+  if (!exactKeys(input, ['publicUrl'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app address fields are accepted.');
+  }
+  assertString(input.publicUrl, 'publicUrl', /^https?:\/\/[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\/$/u);
+  return input;
+}
+
 // `allowInstance` is what separates an uninstall from a stop: only an uninstall
 // may name the instance whose snapshot and images are to be discarded, so a stop
 // cannot reach either.
@@ -493,6 +502,11 @@ class AppAgentCore {
       packageId: input.packageId,
       status: 'healthy',
     };
+  }
+
+  async waitForAddress(input) {
+    const { publicUrl } = assertAddressRequest(input);
+    return { ...await this.adapter.waitForAppAddress({ publicUrl }), publicUrl };
   }
 
   async remove(input) {

@@ -342,6 +342,23 @@ test('app health check validates loopback health projection only', async () => {
   }), AppRuntimeError);
 });
 
+test('an address check takes only an app address, which it probes through this machine\'s Caddy', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async waitForAppAddress(input) {
+      calls.push(input);
+      return { seconds: 8, status: 'ready' };
+    },
+  });
+
+  assert.deepEqual(await core.waitForAddress({ publicUrl: 'https://paperless.example.org/' }), { publicUrl: 'https://paperless.example.org/', seconds: 8, status: 'ready' });
+  assert.deepEqual(calls, [{ publicUrl: 'https://paperless.example.org/' }]);
+  for (const publicUrl of ['https://paperless.example.org:8443/', 'https://paperless.example.org/admin/', 'file:///etc/passwd', 'https://user@paperless.example.org/']) {
+    await assert.rejects(() => core.waitForAddress({ publicUrl }), AppRuntimeError, publicUrl);
+  }
+  await assert.rejects(() => core.waitForAddress({ host: '10.0.0.1', publicUrl: 'https://paperless.example.org/' }), AppRuntimeError);
+});
+
 test('app remove accepts only documented removal fields and delegates volumes', async () => {
   const calls = [];
   const core = new AppAgentCore({

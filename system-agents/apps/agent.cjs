@@ -28,6 +28,7 @@ function readBody(request) {
 const routes = new Map([
   ['GET /v1/status', () => core.status()],
   ['POST /v1/apps/apply', (body) => core.apply(body)],
+  ['POST /v1/apps/address', (body) => core.waitForAddress(body)],
   ['POST /v1/apps/check-health', (body) => core.checkHealth(body)],
   ['POST /v1/apps/connect-network', (body) => core.connectNetwork(body)],
   ['POST /v1/apps/snapshot', (body) => core.snapshotPackage(body)],

@@ -1013,10 +1013,15 @@ test('Vaultwarden install generates a redacted secret and materializes it only f
 
 test('an install job finishes on the server and its progress reads back from the app list', async () => {
   const calls = [];
+  const addressChecks = [];
   const appAgent = {
     async apply(input) {
       calls.push(input);
       return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+    async waitForAddress(input) {
+      addressChecks.push(input);
+      return { publicUrl: input.publicUrl, seconds: 0, status: 'ready' };
     },
   };
 
@@ -1038,8 +1043,9 @@ test('an install job finishes on the server and its progress reads back from the
       job = listed.json().packages.find((app) => app.id === 'vaultwarden').installJob;
     }
     assert.equal(job.status, 'succeeded');
-    assert.deepEqual(job.steps.map((step) => `${step.id}:${step.status}`), ['prepare:complete', 'runtime:complete', 'ready:complete']);
+    assert.deepEqual(job.steps.map((step) => `${step.id}:${step.status}`), ['prepare:complete', 'runtime:complete', 'address:complete', 'ready:complete']);
     assert.equal(calls.length, 1);
+    assert.deepEqual(addressChecks, [{ publicUrl: calls[0].publicUrl }], 'the address checked is the one the app was started on');
   }, { appAgent, homeHost: 'home.test' });
 });
 
