@@ -78,10 +78,10 @@
       }
     },
     "vaultwarden": {
-      "appVersion": "1.37.0",
+      "appVersion": "1.37.4",
       "minimumMosVersion": "0.21.0",
-      "packageDigest": "sha256:7408f8fcefbc1369a2808f1df6e46ab9ed7a93601500f498c0ce7c78e9beb1e6",
-      "packageVersion": "0.4.1",
+      "packageDigest": "sha256:a8408a18bdbf7d01ce16e725be12bb29338041b8d1056076d68089a63c8b2dc8",
+      "packageVersion": "0.4.2",
       "path": "apps/vaultwarden",
       "privacy": {
         "posture": "owner-disableable",
