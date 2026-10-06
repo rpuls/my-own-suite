@@ -56,8 +56,9 @@ function startServerCapture(shell, dir) {
     return { reason: 'there is no root shell on the lab. Rebuild the Hyper-V lab (npm run smoke:hyperv:reset bakes in a key), or set MOS_E2E_LAB_SSH and MOS_E2E_LAB_SSH_KEY.', status: 'off' };
   }
   const log = fs.createWriteStream(path.join(dir, 'server.log'));
+  // netcap.sh ends with `kill 0`; SSH gives it a group of its own, a local run needs setsid.
   const [program, args] = shell.target === 'local'
-    ? ['sudo', ['-n', 'bash', '-c', script]]
+    ? ['sudo', ['-n', 'setsid', '--wait', 'bash', '-c', script]]
     : ['ssh', [...sshArgs(shell, path.join(dir, 'known_hosts')), `sudo -n bash -c "$(echo ${Buffer.from(script).toString('base64')} | base64 -d)"`]];
   const child = spawn(program, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const capture = { child, clock: null, log, status: 'starting', target: shell.target };
