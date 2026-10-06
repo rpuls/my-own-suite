@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-10-05T14:01:23.550Z",
+  "reviewedAt": "2026-10-06T19:10:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.3",
-    "packageDigest": "sha256:ad4bbf4caaf1d9e2a828cccfa766a5b3adf881a39e8727f3be6bcc4726cdc8b2",
+    "packageVersion": "0.3.4",
+    "packageDigest": "sha256:e9b60aa01b289ca69475cabcd50acfd9842577f8c1a77cc64887798cee146665",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Paperless-ngx",
-        "version": "3.1.3",
+        "version": "3.3.0",
         "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
-        "digest": "sha256:aa810a36942c63d4ee70d00eda7236cd3d6acfb7eb3f7987fb568ed14df8817a"
+        "digest": "sha256:6b94799bc769a063b3340cc5847402e626d4d91d29a295a8e747f8e9bead4207"
       },
       {
         "name": "Valkey",
@@ -95,9 +95,9 @@
     },
     {
       "type": "documented",
-      "claim": "Text recognition and language processing run entirely on the operator's own server from assets baked into the image. The image ships 22 MB of NLTK corpora, stemmers and tokenizers at /usr/share/nltk_data, so the punkt and stopwords archives the source documents are never fetched at runtime, and Tesseract language data is installed at build time. The document classifier that suggests correspondents, types and tags is trained hourly from the operator's own documents by a local scheduled task; no model is downloaded and no inference leaves the container.",
-      "source": "filesystem inspection of the pinned image, src/paperless/settings/__init__.py _get_nltk_language_setting, and documents.tasks.train_classifier",
-      "retrievedAt": "2026-08-11"
+      "claim": "Text recognition and language processing run entirely on the operator's own server from assets baked into the image. Since 3.2.0 the classifier preprocesses text with Tantivy instead of NLTK, and at 3.3.0 the server source no longer references NLTK at all: English stop words are vendored from Snowball in documents/_snowball_stopwords.py, and the image ships no /usr/share/nltk_data, so there is no corpus a runtime download could fetch. Tesseract language data is installed at build time. The document classifier that suggests correspondents, types and tags is trained hourly from the operator's own documents by a local scheduled task; no model is downloaded and no inference leaves the container.",
+      "source": "filesystem inspection of the pinned 3.3.0 image (sha256:6b94799bc769a063b3340cc5847402e626d4d91d29a295a8e747f8e9bead4207), grep of /usr/src/paperless/src for nltk, and documents.tasks.train_classifier",
+      "retrievedAt": "2026-10-06"
     },
     {
       "type": "configured",
@@ -144,6 +144,18 @@
       "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, uploading a document, finding it by its contents, and checking its original and thumbnail), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. Neither container made a lookup or a connection, and the browser made no request outside the suite.",
       "source": "MOS E2E `npm run e2e -- @app-cycle paperless-ngx`, run 20261005-111758-app-cycle-paperless-ngx (network/report.md), on the package version reviewed before this revision",
       "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "documented",
+      "claim": "Paperless-ngx 3.1.3 to 3.3.0 adds no outbound endpoint. Comparing every http(s) host in the server's Python source and in the compiled en-US web client of the two pinned images, the client set is unchanged, and the server gains only snowballstem.org and loses raw.githubusercontent.com and www.nltk.org, all three as comments or licence text rather than fetched URLs. The only hardcoded fetch is still RemoteVersionView's api.github.com release check, and PAPERLESS_ENABLE_UPDATE_CHECK still reaches the client only as update_checking.backend_setting. A search of the server source for sentry, posthog, matomo and google-analytics finds no library, only the English word 'plausible' in a comment. The new /etc/profile.d/contenv.sh only exports the container's own environment into interactive bash shells opened with docker exec, which already see that environment.",
+      "source": "diff of /usr/src/paperless/src and /etc between the pinned 3.1.3 (sha256:aa810a36942c63d4ee70d00eda7236cd3d6acfb7eb3f7987fb568ed14df8817a) and 3.3.0 (sha256:6b94799bc769a063b3340cc5847402e626d4d91d29a295a8e747f8e9bead4207) images",
+      "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture inside the 3.3.0 package container's network namespace, attached under a second after start, covered first boot with migrations and superuser creation, a document upload, OCR, full-text search and the settings, config, tasks and statistics endpoints, and recorded no connection to any public address. The only external conversations were the reviewer's own deliberate calls: a request to /api/remote_version/, which reached GitHub as RemoteVersionView documents, and a control request to example.org that confirmed the capture saw egress. This was a local docker run with the package's environment rather than the MOS runtime projection, and DNS was not recorded because Docker's resolver forwards outside the container; the MOS E2E network step is the authoritative check.",
+      "source": "local tcpdump of the apps/paperless-ngx 0.3.4 Dockerfile build, observed 2026-10-06",
+      "retrievedAt": "2026-10-06"
     }
   ],
   "outbound": [],
