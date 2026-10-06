@@ -12,6 +12,7 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
+const RESULTS = path.join(repoRoot, 'test', 'e2e', 'results');
 const LAB_REPO = '/srv/mos-lab.git';
 const LAB_BRANCH = 'lab';
 const DOMAIN = process.env.MOS_LOCAL_LAB_DOMAIN || 'mos.lab';
@@ -78,13 +79,22 @@ function removeForeignEngine() {
   console.log(`[local-lab] removed the runner's own container engine: ${engine.join(', ')}`);
 }
 
-// The bootstrap says only that a unit failed; systemd says which and why.
-function reportFailedUnits() {
+const epoch = () => Math.floor(Date.now() / 1000);
+
+// The bootstrap and the e2e steps say only that something stopped; systemd says which unit
+// and why. The whole journal since `since` goes with the results, MOS's tail to the log.
+function reportSystemd(since) {
   spawnSync('sudo', ['systemctl', '--no-pager', '--failed'], { stdio: 'inherit' });
+  spawnSync('sudo', ['systemctl', '--no-pager', 'list-jobs'], { stdio: 'inherit' });
   spawnSync('sudo', ['journalctl', '--no-pager', '--lines', '60', '--unit', 'mos-*'], { stdio: 'inherit' });
+  fs.mkdirSync(RESULTS, { recursive: true });
+  const journal = fs.openSync(path.join(RESULTS, 'journal.log'), 'w');
+  spawnSync('sudo', ['journalctl', '--no-pager', '--since', `@${since}`], { stdio: ['ignore', journal, 'inherit'] });
+  fs.closeSync(journal);
 }
 
 async function install(base) {
+  const since = epoch();
   move(base);
   writeHosts();
   removeForeignEngine();
@@ -97,7 +107,7 @@ async function install(base) {
   try {
     run('sudo', ['bash', file]);
   } catch (error) {
-    reportFailedUnits();
+    reportSystemd(since);
     throw error;
   }
   await waitForSuiteManager();
@@ -128,7 +138,7 @@ function e2e(items, onStep = () => {}) {
 }
 
 function outcome(path_, id) {
-  const summaryFile = id && path.join(repoRoot, 'test', 'e2e', 'results', id, 'summary.json');
+  const summaryFile = id && path.join(RESULTS, id, 'summary.json');
   const summary = summaryFile && fs.existsSync(summaryFile) ? JSON.parse(fs.readFileSync(summaryFile, 'utf8')) : { status: 'crashed', steps: [] };
   const failed = summary.steps.find((step) => step.status !== 'passed');
   return { error: failed?.error || summary.error || null, failedStep: failed?.title || null, path: path_, run: id, status: summary.status, steps: summary.steps.map((step) => `${step.status === 'passed' ? '✓' : '✗'} ${step.title}`) };
@@ -136,6 +146,7 @@ function outcome(path_, id) {
 
 // The recovery drill runs only on a lab that took the update, or it would prove the old version.
 async function drill(app, candidate) {
+  const since = epoch();
   let moved = false;
   const update = await e2e(['@update', app], (step) => {
     if (step.startsWith('platform-update') && !moved) {
@@ -146,9 +157,11 @@ async function drill(app, candidate) {
   const updated = update.steps.some((line) => line.startsWith('✓ platform-update'));
   const recovery = updated ? await e2e(['@app-dr', app]) : { path: `@app-dr ${app}`, status: 'not run', steps: [] };
   const runs = [update, recovery];
-  fs.writeFileSync(path.join(repoRoot, 'test', 'e2e', 'results', 'drill.json'), `${JSON.stringify({ app, candidate, runs }, null, 2)}\n`);
+  fs.writeFileSync(path.join(RESULTS, 'drill.json'), `${JSON.stringify({ app, candidate, runs }, null, 2)}\n`);
   for (const run_ of runs) console.log(`[local-lab] ${run_.path}: ${run_.status}${run_.failedStep ? ` at ${run_.failedStep}` : ''}`);
-  return runs.every((run_) => run_.status === 'passed');
+  const passed = runs.every((run_) => run_.status === 'passed');
+  if (!passed) reportSystemd(since);
+  return passed;
 }
 
 async function main([command, ...args]) {
