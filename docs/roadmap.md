@@ -397,6 +397,9 @@ the update or install path requires SSH.
   anything on it. The role is theatre until MOS has a unified sign-in story, and the SSO and LDAP
   forms of that are declined below. Blocked on that question being reopened, not on any work here.
   *(Medium — blocked)*
+- **L11 — Talk to Norn in a comment on its pull requests.** `#319`. An owner's `@norn` comment starts
+  Norn's next run with the comment as its instruction, so a question, a change or a retried drill
+  needs no one at a desk. *(Small)*
 
 ---
 
