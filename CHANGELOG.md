@@ -19,6 +19,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 ### Changed
 
 - **Settings is one grouped page you can search.** Settings are grouped under Your suite, Account & security, Apps, Advanced and Help, with a sidebar that lists every setting, follows where you are, and filters as you type (press `/` to search). Forms such as the suite address, the email relay and the owner password stay closed behind **Edit** or **Change** until you need them, while each card keeps its current status in view.
+- **Paperless-ngx package 0.3.4 updates Paperless-ngx to 3.3.0.** It brings sharper full-text search, OCR text-layer fixes, stricter checks on bulk edits and permissions, and a two-factor prompt on Paperless' `/admin/` page. The first start after the update rebuilds the search index from scratch, so a large archive takes longer to come back. Suggestions for sender, type and tags return after the next hourly training. **Migrations run on start and are forward-only.**
 
 ### Fixed
 
