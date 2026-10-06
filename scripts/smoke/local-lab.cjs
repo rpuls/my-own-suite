@@ -44,13 +44,16 @@ function routeHosts() {
 }
 
 // The machine's own address rather than loopback, so app containers reach each other's
-// public addresses too.
+// public addresses too. The `dns01` step's domain is here as well: DNS-01 proves it
+// through a TXT record alone, so nothing public points it at this machine.
 function writeHosts() {
   const address = run('hostname', ['-I'], { capture: true }).trim().split(/\s+/u)[0];
-  const names = ['home', ...new Set(routeHosts())].map((host) => `${host}.${DOMAIN}`);
+  const hosts = ['home', ...new Set(routeHosts())];
+  const domains = [DOMAIN, process.env.MOS_E2E_DNS01_BASE_DOMAIN?.trim()].filter(Boolean);
+  const lines = domains.map((domain) => `${address} ${hosts.map((host) => `${host}.${domain}`).join(' ')} ${HOSTS_MARK}`);
   const kept = fs.readFileSync('/etc/hosts', 'utf8').split('\n').filter((line) => !line.endsWith(HOSTS_MARK));
   const file = path.join(os.tmpdir(), 'mos-local-lab-hosts');
-  fs.writeFileSync(file, `${[...kept.filter(Boolean), `${address} ${names.join(' ')} ${HOSTS_MARK}`].join('\n')}\n`);
+  fs.writeFileSync(file, `${[...kept.filter(Boolean), ...lines].join('\n')}\n`);
   run('sudo', ['cp', file, '/etc/hosts']);
 }
 
