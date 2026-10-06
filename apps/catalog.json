@@ -12,10 +12,10 @@
       }
     },
     "immich": {
-      "appVersion": "3.1.0",
+      "appVersion": "3.2.4",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:86de9b998e05013544e4cd4752f8545f81de922f0804a786e1f7b06209c6bafd",
-      "packageVersion": "0.8.2",
+      "packageDigest": "sha256:eba42e3717229b0cb6595427149ca7cb35cbc090c9dec0394e6e51fda049406b",
+      "packageVersion": "0.8.3",
       "path": "apps/immich",
       "privacy": {
         "posture": "external-dependency",
