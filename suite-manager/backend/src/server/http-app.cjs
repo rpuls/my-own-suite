@@ -4,11 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const {
-  vaultAsksForPassword,
-  vaultChipNeedsRepair,
-  vaultIsPresent,
-} = require('../../../../shared/vault-contract.cjs');
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { resolveClientAddress } = require('../auth/login-throttle.cjs');
@@ -130,7 +125,7 @@ function createRequestHandler(services) {
   const {
     addressService, alerts, appPackages, appUrls, catalogService, externalSourceService,
     frontendDistDir, handover, homepage, homepageConfig, installJobs, logger, ownerClaimToken, recordSecurityEvent,
-    securityLogger, setup, throttle, updateJobs, vault, vaultAgent,
+    securityLogger, setup, throttle, updateJobs, vault,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -310,75 +305,6 @@ function createRequestHandler(services) {
         jsonResponse(response, 200, result, {
           'Set-Cookie': clearSessionCookie(isHttpsRequest(request)),
         });
-        return;
-      }
-
-      // What this machine's vault is doing, in the predicates the screens need.
-      // An unavailable vault agent answers 200 with `state: 'unknown'` rather
-      // than failing the request, so the encryption panel can say MOS could not
-      // tell instead of rendering nothing — and `unknown` is never "not
-      // encrypted".
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault`) {
-        if (signedOut('Sign in to review this server\'s encryption.')) return;
-        let vault = { state: 'unknown' };
-        try {
-          vault = await vaultAgent.status();
-        } catch (error) {
-          logger.warn('vault-agent-unavailable', { error });
-        }
-        // `encrypted` is the answer, not the state string. A screen that decided
-        // for itself which states count as encrypted would be a fifth copy of
-        // one predicate, and the fifth copy is the one that gets it wrong. The
-        // same goes for the two startup questions, which the encryption
-        // statement, the restart dialog and the handover page all ask and none
-        // of them re-derives.
-        jsonResponse(response, 200, {
-          asksForPassword: vaultAsksForPassword(vault),
-          chipNeedsRepair: vaultChipNeedsRepair(vault),
-          encrypted: vaultIsPresent(vault),
-          vault,
-        });
-        return;
-      }
-
-      // Startup protection: whether this machine's chip requires the owner's
-      // password before it opens the disk. The current password is the
-      // confirmation and the secret in one — it is what gets enrolled — so this
-      // route is the only place MOS sends that password to the vault agent
-      // outside a password change and a sign-in repair.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault/startup-password`) {
-        if (signedOut('Sign in to change how this server starts.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        const result = await vault.setStartupPassword({ password: body.password, wanted: body.enabled === true });
-        if (result.refused === 'INVALID_PASSWORD') {
-          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
-          return;
-        }
-        if (result.refused === 'VAULT_KEY_UNSAVED') {
-          jsonResponse(response, 409, {
-            code: 'VAULT_KEY_UNSAVED',
-            error: 'Save your recovery key first. It is the only way back in if you forget your password.',
-          });
-          return;
-        }
-        if (result.refused === 'VAULT_AGENT_UNAVAILABLE') {
-          jsonResponse(response, 503, {
-            code: 'VAULT_AGENT_UNAVAILABLE',
-            error: 'This server\'s vault agent is not answering, so how it starts was not changed.',
-          });
-          return;
-        }
-        if (result.refused === 'VAULT_TPM_REFUSED') {
-          jsonResponse(response, 409, {
-            code: 'VAULT_TPM_REFUSED',
-            error: result.reason === 'no-tpm'
-              ? 'This machine has no security chip, so it always asks for your recovery key after a restart.'
-              : 'This machine\'s security chip would not take the change, so it now opens nothing on its own and this server asks for your recovery key after a restart. Try again, and use your recovery key if it restarts first.',
-            reason: result.reason,
-          });
-          return;
-        }
-        jsonResponse(response, 200, result);
         return;
       }
 
