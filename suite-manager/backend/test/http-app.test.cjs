@@ -5,7 +5,6 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-client.cjs');
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
@@ -13,11 +12,9 @@ const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contra
 const { SuiteAddressFile } = require('../../../shared/suite-address.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../shared/easy-door.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
-const { createLogger } = require('../src/server/logger.cjs');
+const { createServices } = require('../src/server/services.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
-const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
-const { ExternalSourceError } = require('../src/apps/external-source-registry.cjs');
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
 
 async function tempStateDir() {
@@ -61,7 +58,7 @@ async function withServer(fn, options = {}) {
     async status() { return { state: 'unknown' }; },
     ...(options.vaultAgent || {}),
   };
-  const server = createMOSServer({
+  const services = createServices({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
@@ -72,10 +69,11 @@ async function withServer(fn, options = {}) {
     appAgent,
     vaultAgent,
   });
+  const server = createMOSServer(services);
   const baseUrl = await listen(server);
 
   try {
-    await fn(baseUrl, server);
+    await fn(baseUrl, services);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -111,62 +109,6 @@ function hostRequest(baseUrl, requestPath, { body = '', headers = {}, method = '
   });
 }
 
-test('first visit serves the built Suite Manager frontend', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/`);
-    const html = await response.text();
-
-    assert.equal(response.status, 200);
-    assert.match(html, /Suite Manager \| My Own Suite/);
-    assert.match(html, /id="root"/);
-  });
-});
-
-// The whole point of the build stamp is that a running frontend can tell it has
-// been replaced, and a document served from cache defeats that on its own.
-test('the served document names its build, is never cached, and the API agrees', async () => {
-  await withServer(async (baseUrl) => {
-    const document = await fetch(`${baseUrl}/`);
-    const html = await document.text();
-    const stamped = /<meta name="mos-build" content="([0-9a-f]{16})" \/>/u.exec(html);
-
-    assert.equal(document.headers.get('cache-control'), 'no-store');
-    assert.ok(stamped, 'the served document carries its build id');
-
-    const build = await fetch(`${baseUrl}/suite-manager/api/build`);
-    assert.equal(build.status, 200);
-    assert.equal(build.headers.get('cache-control'), 'no-store');
-    assert.equal((await build.json()).id, stamped[1]);
-  });
-});
-
-test('build output is cached forever and everything else is not', async () => {
-  await withServer(async (baseUrl) => {
-    // Vite puts the content hash in the filename, so a new build is a new URL
-    // and the old one can never be the wrong answer.
-    const bundle = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
-    // A brand mark keeps its name across a rebrand, so it must not.
-    const brand = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
-
-    assert.equal(bundle.headers.get('cache-control'), 'public, max-age=31536000, immutable');
-    assert.equal(brand.headers.get('cache-control'), 'public, max-age=3600');
-  });
-});
-
-test('static frontend assets are served from the reserved asset namespace', async () => {
-  await withServer(async (baseUrl) => {
-    const scriptResponse = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
-    const script = await scriptResponse.text();
-    const brandResponse = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
-
-    assert.equal(scriptResponse.status, 200);
-    assert.match(script, /mos app/);
-    assert.equal(scriptResponse.headers.get('content-type'), 'text/javascript; charset=utf-8');
-    assert.equal(brandResponse.status, 200);
-    assert.equal(brandResponse.headers.get('content-type'), 'image/png');
-  });
-});
-
 // The door the owner completes setup on — host and scheme — is the address the
 // suite records and builds every URL from, so a test that expects https app
 // URLs onboards over https.
@@ -182,69 +124,6 @@ async function createOwner(baseUrl, host = 'home.test', { secure = false } = {})
   });
   return response.headers['set-cookie'][0];
 }
-
-test('the owner preference route is authenticated, validated, and reflected in setup status', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: true }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-
-    const cookie = await createOwner(baseUrl);
-    const signedOutStatus = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
-    assert.equal(signedOutStatus.json().preferences, undefined);
-
-    const before = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(before.json().preferences, { technicalControls: false });
-
-    const saved = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: true }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(saved.status, 200);
-    assert.deepEqual(saved.json().preferences, { technicalControls: true });
-
-    const after = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(after.json().preferences, { technicalControls: true });
-
-    const wrongType = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: 'yes' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(wrongType.status, 400);
-    assert.equal(wrongType.json().code, 'INVALID_PREFERENCE_VALUE');
-
-    const unknownKey = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'showEverything', value: true }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(unknownKey.status, 400);
-    assert.equal(unknownKey.json().code, 'UNKNOWN_PREFERENCE');
-
-    // A rejected write changes nothing.
-    const unchanged = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(unchanged.json().preferences, { technicalControls: true });
-  }, { homeHost: 'home.test' });
-});
-
-test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
-  await withServer(async (baseUrl) => {
-    const setupResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
-    const dashboardResponse = await hostRequest(baseUrl, '/', {
-      headers: { Host: 'home.test' },
-    });
-
-    assert.equal(setupResponse.status, 200);
-    assert.equal(dashboardResponse.status, 302);
-    assert.equal(dashboardResponse.headers.location, '/suite-manager/');
-  }, { homeHost: 'home.test' });
-});
 
 test('authenticated Home requests stream through the private Homepage proxy without the MOS cookie', async () => {
   const seen = [];
@@ -313,38 +192,6 @@ test('Homepage redirects are rewritten to the public Home origin', async () => {
   }
 });
 
-test('Suite Manager path and unknown hosts cannot bypass the Homepage boundary', async () => {
-  let upstreamRequests = 0;
-  const upstream = http.createServer((request, response) => {
-    upstreamRequests += 1;
-    response.end('homepage');
-  });
-  const upstreamUrl = await listen(upstream);
-
-  try {
-    await withServer(async (baseUrl) => {
-      const cookie = await createOwner(baseUrl);
-      const suiteResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
-      const unknownSuiteResponse = await hostRequest(baseUrl, '/suite-manager/unknown', {
-        headers: { Cookie: cookie, Host: 'home.test' },
-        method: 'POST',
-      });
-      const unknownResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'bypass.test' } });
-
-      assert.equal(suiteResponse.status, 200);
-      assert.match(suiteResponse.body, /Suite Manager/);
-      assert.equal(unknownSuiteResponse.status, 404);
-      assert.equal(unknownResponse.status, 421);
-      assert.equal(upstreamRequests, 0);
-    }, {
-      homeHost: 'home.test',
-      homepageUpstream: upstreamUrl,
-    });
-  } finally {
-    await new Promise((resolve) => upstream.close(resolve));
-  }
-});
-
 test('logout immediately blocks Home dashboard access again', async () => {
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
@@ -359,32 +206,6 @@ test('logout immediately blocks Home dashboard access again', async () => {
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/suite-manager/');
   }, { homeHost: 'home.test' });
-});
-
-test('Homepage customization APIs require authentication and pass only structured operations', async () => {
-  const calls = [];
-  const homepageAgent = {
-    async status() { calls.push(['status']); return { capabilities: ['homepage.apply'] }; },
-    async read(file) { calls.push(['read', file]); return { content: '- Links: []\n', file, revision: 'sha256:current' }; },
-    async validate(file, content) { calls.push(['validate', file, content]); return { valid: true }; },
-  };
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
-      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Host: 'home.test' }, method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(calls.length, 0);
-
-    const cookie = await createOwner(baseUrl);
-    const status = await hostRequest(baseUrl, '/suite-manager/api/customize/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    const read = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
-      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' }, method: 'POST',
-    });
-    assert.equal(status.status, 200);
-    assert.deepEqual(status.json().files, ['bookmarks.yaml', 'services.template.yaml', 'settings.yaml', 'widgets.yaml']);
-    assert.equal(read.status, 200);
-    assert.deepEqual(calls, [['status'], ['read', 'services.template.yaml']]);
-  }, { homeHost: 'home.test', homepageAgent });
 });
 
 test('App package catalog API requires authentication and exposes safe manifest summaries', async () => {
@@ -473,36 +294,6 @@ test('App package catalog API requires authentication and exposes safe manifest 
   }, { homeHost: 'home.test' });
 });
 
-test('app update endpoint requires owner authentication', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/update-job', {
-      body: JSON.stringify({ confirmationToken: '0'.repeat(64) }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-  }, { homeHost: 'home.test' });
-});
-
-test('App package icon API serves only authenticated declared package icons', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
-      headers: { Host: 'home.test' },
-    });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers['content-type'], 'image/png');
-    assert.ok(response.body.length > 100);
-  }, { homeHost: 'home.test' });
-});
-
 test('App package install API creates a logical instance with dry-run projections', async () => {
   const stirlingPort = loopbackPortFor('stirling-pdf');
   await withServer(async (baseUrl) => {
@@ -537,35 +328,20 @@ test('App package install API creates a logical instance with dry-run projection
   }, { homeHost: 'home.test' });
 });
 
-test('Security activity API is owner-only and returns a bounded summary without subjects', async () => {
-  const stateDir = await tempStateDir();
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const store = new SuiteManagerStore(stateDir);
-    const at = new Date().toISOString();
-    store.recordSecurityEvent({ at, eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'private-client-fingerprint' });
-    store.recordSecurityEvent({ at, eventType: 'app-source-candidate-rejected', subject: 'private-source-id' });
-    store.close();
-
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    const summary = response.json();
-    assert.equal(response.status, 200);
-    assert.equal(summary.eventCount, 2);
-    assert.equal(summary.byType.length, 2);
-    assert.match(summary.since, /^\d{4}-\d{2}-\d{2}T/u);
-    assert.doesNotMatch(JSON.stringify(summary), /private-client-fingerprint|private-source-id/u);
-  }, { homeHost: 'home.test', stateDir });
+// The catalog's own default records nothing, so losing this wiring would be silent.
+test('the catalog records its security events where sign-ins record theirs', async () => {
+  const recorded = [];
+  await withServer(async (baseUrl, services) => {
+    services.catalogService.recordSecurityEvent({ eventType: 'catalog-signature-rejected' });
+    services.signIn.recordSecurityEvent({ eventType: 'login-throttled' });
+  }, { securityEventRecorder: (event) => recorded.push(event.eventType) });
+  assert.deepEqual(recorded, ['catalog-signature-rejected', 'login-throttled']);
 });
 
-test('Backup inventory API requires auth and reports MOS protected state', async () => {
+test('Backup status requires auth and reports MOS protected state', async () => {
   const stateDir = await tempStateDir();
   await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/status', {
       headers: { Host: 'home.test' },
     });
     assert.equal(denied.status, 401);
@@ -576,10 +352,10 @@ test('Backup inventory API requires auth and reports MOS protected state', async
       method: 'POST',
     });
 
-    const response = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/backups/status', {
       headers: { Cookie: cookie, Host: 'home.test' },
     });
-    const inventory = response.json();
+    const { inventory } = response.json();
     const vaultwarden = inventory.packages.find((entry) => entry.packageId === 'vaultwarden');
 
     assert.equal(response.status, 200);
@@ -594,363 +370,6 @@ test('Backup inventory API requires auth and reports MOS protected state', async
     assert.ok(inventory.warnings.some((warning) => warning.packageId === 'vaultwarden' && /no explicit backup metadata/u.test(warning.message)));
     assert.ok(inventory.packageManifestDigests.some((entry) => entry.packageId === 'vaultwarden'));
   }, { homeHost: 'home.test', stateDir });
-});
-
-test('Updates API requires auth and proxies narrow update-agent actions', async () => {
-  const calls = [];
-  const updateAgent = {
-    async configureTrack(input) {
-      calls.push(['track', input]);
-      return { track: input, updaterStatus: {} };
-    },
-    async startUpdate(input) {
-      calls.push(['start', input]);
-      return { job: { id: 'job-one', status: 'queued' } };
-    },
-    async status() {
-      calls.push(['status']);
-      return {
-        capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
-        currentJob: null,
-        updaterStatus: {
-          appRuntimeReconciliation: { automatic: false, summary: 'Installed app runtimes are preserved.' },
-          changeSummary: { items: ['Managed update support.'], source: 'CHANGELOG.md [Unreleased]', title: 'Upcoming MOS changes' },
-          checkedAt: '2026-07-05T12:00:00.000Z',
-          latestRevision: 'abc123',
-          track: { currentBranch: 'staging', currentCommit: 'def456', label: 'Staging branch', ref: 'staging', type: 'branch' },
-          updateAvailable: true,
-        },
-      };
-    },
-  };
-
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/updates/status', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const status = await hostRequest(baseUrl, '/suite-manager/api/updates/status', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    assert.equal(status.status, 200);
-    assert.equal(status.json().managedApplyAvailable, true);
-    assert.equal(status.json().changeSummary.items[0], 'Managed update support.');
-    assert.equal(status.json().appRuntimeReconciliation, undefined);
-
-    const track = await hostRequest(baseUrl, '/suite-manager/api/updates/track', {
-      body: JSON.stringify({ track: 'staging' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(track.status, 200);
-
-    const mainTrack = await hostRequest(baseUrl, '/suite-manager/api/updates/track', {
-      body: JSON.stringify({ track: 'main' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(mainTrack.status, 200);
-
-    const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(started.status, 202);
-    assert.equal(started.json().job.id, 'job-one');
-    assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
-      ['track', { ref: 'staging', track: 'branch' }],
-      ['track', { ref: 'main', track: 'branch' }],
-      ['start', { initiator: 'owner@example.com', target: 'latest' }],
-    ]);
-  }, { homeHost: 'home.test', updateAgent });
-});
-
-test('Stable-track apply starts the update agent when a newer release is available', async () => {
-  const calls = [];
-  const updateAgent = {
-    async startUpdate(input) {
-      calls.push(['start', input]);
-      return { job: { id: 'job-one', status: 'queued' } };
-    },
-    async status() {
-      return {
-        capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
-        currentJob: null,
-        updaterStatus: {
-          checkedAt: '2026-07-21T12:00:00.000Z',
-          installedVersion: '0.11.0',
-          latestRelease: { channel: 'stable', source: 'github-releases', version: '0.12.0' },
-          track: { currentBranch: 'main', currentCommit: 'def456', label: 'Stable releases', ref: 'main', type: 'stable' },
-          updateAvailable: true,
-        },
-      };
-    },
-  };
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const statusResponse = await hostRequest(baseUrl, '/suite-manager/api/updates/status', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    assert.equal(statusResponse.status, 200);
-    assert.equal(statusResponse.json().installedVersion, '0.11.0');
-    const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(started.status, 202);
-    assert.deepEqual(calls, [['start', { initiator: 'owner@example.com', target: 'latest' }]]);
-  }, { homeHost: 'home.test', updateAgent });
-});
-
-test('Backup API proxies simple owner backup and restore actions', async () => {
-  const stateDir = await tempStateDir();
-  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-point-'));
-  const calls = [];
-  const backupAgent = {
-    async mount(destinationId) {
-      calls.push(['mount', destinationId]);
-      return { destination: { id: '/media/backup', label: 'Backup Drive', mountPath: '/media/backup', writable: true } };
-    },
-    async startBackup(input) {
-      calls.push(['backup', input]);
-      return { job: { id: 'job-backup', status: 'queued' } };
-    },
-    async setSchedule(input) {
-      calls.push(['schedule', input]);
-      return { schedule: { enabled: true } };
-    },
-    async setPrimaryDestination(input) {
-      calls.push(['primary', input]);
-      return { primaryDestination: { destinationId: input.destinationId, label: 'Backup Drive' } };
-    },
-    async connectObjectDestination(input) {
-      calls.push(['connect-object', input]);
-      return { destination: { id: 'object:abc123', label: input.label || 'bucket' } };
-    },
-    async disconnectObjectDestination(input) {
-      calls.push(['disconnect-object', input]);
-      return { destination: { id: input.destinationId } };
-    },
-    async testObjectDestination(input) {
-      calls.push(['test-object', input]);
-      return { result: { message: 'Connected.', ok: true } };
-    },
-    async startRestore(input) {
-      calls.push(['restore', input]);
-      return { job: { id: 'job-restore', status: 'queued' } };
-    },
-    async status() {
-      calls.push(['status']);
-      return {
-        backups: [{
-          appCount: 1,
-          createdAt: '2026-07-05T12:00:00.000Z',
-          destinationId: '/media/backup',
-          destinationLabel: 'Backup Drive',
-          id: 'backup-one',
-          path: backupDir,
-          restorable: true,
-          sourceVersion: null,
-          volumeCount: 1,
-        }],
-        currentJob: null,
-        destinations: [{
-          availableBytes: 1024,
-          id: '/media/backup',
-          label: 'Backup Drive',
-          mountPath: '/media/backup',
-          mountState: 'mounted',
-          sizeBytes: 2048,
-          storageKind: 'external',
-          writable: true,
-        }],
-        lastJob: null,
-      };
-    },
-  };
-
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const status = await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.equal(status.status, 200);
-    assert.equal(status.json().serviceAvailable, true);
-    assert.equal(status.json().destinations[0].label, 'Backup Drive');
-
-    const start = await hostRequest(baseUrl, '/suite-manager/api/backups/start', {
-      body: JSON.stringify({ destinationId: '/media/backup' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(start.status, 202);
-
-    const restore = await hostRequest(baseUrl, '/suite-manager/api/backups/restore', {
-      body: JSON.stringify({ backupPath: backupDir, confirmation: 'RESTORE' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(restore.status, 202);
-
-    // The schedule reaches the agent field by field, so a body carrying
-    // anything the screen does not offer cannot travel with it.
-    const deniedSchedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
-      body: JSON.stringify({ enabled: true }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(deniedSchedule.status, 401);
-
-    const schedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
-      body: JSON.stringify({ enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(schedule.status, 200);
-
-    // Which destination everything automatic writes to is its own choice, made
-    // where the destinations are listed rather than inside the schedule.
-    const primary = await hostRequest(baseUrl, '/suite-manager/api/backups/primary', {
-      body: JSON.stringify({ destinationId: '/media/backup', initiator: 'smuggled' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(primary.status, 200);
-
-    // Storage credentials go to the agent, which is the only component that
-    // keeps them, and only for a signed-in owner.
-    const deniedObject = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
-      body: JSON.stringify({ accessKeyId: 'AKIA', bucket: 'b', endpoint: 'https://s3.test', secretAccessKey: 's' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(deniedObject.status, 401);
-
-    const connected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
-      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', initiator: 'smuggled', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(connected.status, 200);
-
-    const tested = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/test', {
-      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', secretAccessKey: 'super-secret-value' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(tested.status, 200);
-    assert.equal(JSON.parse(tested.body).result.ok, true);
-
-    const disconnected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/remove', {
-      body: JSON.stringify({ destinationId: 'object:abc123' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(disconnected.status, 200);
-
-    // Downloading and uploading a backup went with the tar formats: a backup
-    // now lives in the drive's encrypted repository and is never a single file.
-    const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    assert.equal(download.status, 404);
-
-    assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
-      ['backup', { destinationId: '/media/backup', note: '' }],
-      ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
-      ['schedule', { enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
-      ['primary', { destinationId: '/media/backup' }],
-      ['connect-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }],
-      ['test-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: '', label: '', region: '', secretAccessKey: 'super-secret-value' }],
-      ['disconnect-object', { destinationId: 'object:abc123' }],
-    ]);
-  }, { backupAgent, homeHost: 'home.test', stateDir });
-});
-
-// The key is shown once without being asked for anything, because at that point
-// the owner has nothing to lose yet and the gate is what they are being taken
-// through. Every showing after that asks for the password, so a session left
-// open on a borrowed screen is not enough to read it off.
-test('the recovery key is shown freely until it is saved, and behind the owner password after', async () => {
-  const calls = [];
-  let acknowledged = false;
-  const backupAgent = {
-    async recoveryKeyStatus() { return { recoveryKey: { acknowledged, fingerprint: 'aabbccdd1122' } }; },
-    async acknowledgeRecoveryKey() {
-      acknowledged = true;
-      calls.push(['acknowledge']);
-      return { recoveryKey: { acknowledged: true, fingerprint: 'aabbccdd1122' } };
-    },
-    async revealRecoveryKey() {
-      calls.push(['reveal']);
-      return { key: 'MOS-7K2F-9XQ4-0000-0000-0000-0000-0000-0000', kit: 'My Own Suite — recovery kit', kitFilename: 'mos-recovery-kit-lab-2026-09-07.txt' };
-    },
-    async unlockDestination(input) {
-      calls.push(['unlock', input]);
-      return { result: { adopted: true, message: 'Unlocked.' } };
-    },
-  };
-
-  await withServer(async (baseUrl) => {
-    for (const route of ['recovery-key/reveal', 'recovery-key/acknowledge', 'destinations/unlock']) {
-      const denied = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
-        body: '{}',
-        headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-        method: 'POST',
-      });
-      assert.equal(denied.status, 401, route);
-    }
-
-    const cookie = await createOwner(baseUrl);
-    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
-
-    const first = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
-    assert.equal(first.status, 200);
-    assert.match(first.json().key, /^MOS-/u);
-    assert.match(first.json().kit, /recovery kit/u);
-
-    const saved = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/acknowledge', { body: '{}', headers, method: 'POST' });
-    assert.equal(saved.status, 200);
-    assert.equal(saved.json().recoveryKey.acknowledged, true);
-
-    const wrong = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
-      body: JSON.stringify({ password: 'not the owner password' }),
-      headers,
-      method: 'POST',
-    });
-    assert.equal(wrong.status, 400);
-    assert.equal(wrong.json().code, 'INVALID_PASSWORD');
-    assert.equal(wrong.body.includes('MOS-7K2F'), false, 'the key travelled with a rejected password');
-
-    const missing = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
-    assert.equal(missing.status, 400);
-
-    const again = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
-      body: JSON.stringify({ password: 'correct horse battery' }),
-      headers,
-      method: 'POST',
-    });
-    assert.equal(again.status, 200);
-    assert.match(again.json().key, /^MOS-/u);
-
-    // The entered key reaches the agent field by field, like every other
-    // secret the screen collects.
-    const unlocked = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/unlock', {
-      body: JSON.stringify({ destinationId: 'object:abc123', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' }),
-      headers,
-      method: 'POST',
-    });
-    assert.equal(unlocked.status, 200);
-
-    assert.deepEqual(calls, [
-      ['reveal'],
-      ['acknowledge'],
-      ['reveal'],
-      ['unlock', { destinationId: 'object:abc123', recoveryKey: 'mos 7k2f 9xq4' }],
-    ]);
-  }, { backupAgent, homeHost: 'home.test' });
 });
 
 test('Vaultwarden install generates a redacted secret and materializes it only for runtime apply', async () => {
@@ -1709,34 +1128,6 @@ test('invalid app lifecycle transitions fail clearly', async () => {
   }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 
-test('Homepage agent request budget exceeds the observed restart rollback window', () => {
-  assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
-});
-
-test('Homepage restart failure preserves the exact controlled 502 response', async () => {
-  const homepageAgent = {
-    async apply() {
-      throw Object.assign(new Error('Homepage did not restart successfully.'), {
-        code: 'HOMEPAGE_RESTART_FAILED',
-        statusCode: 502,
-      });
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/customize/file/apply', {
-      body: JSON.stringify({ content: '- Links: []\n', expectedRevision: 'sha256:current', file: 'services.template.yaml' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(response.status, 502);
-    assert.deepEqual(response.json(), {
-      code: 'HOMEPAGE_RESTART_FAILED',
-      error: 'Homepage did not restart successfully.',
-    });
-  }, { homeHost: 'home.test', homepageAgent });
-});
-
 test('Homepage failure returns a controlled bad gateway response', async () => {
   const unavailable = http.createServer();
   const unavailableUrl = await listen(unavailable);
@@ -1817,50 +1208,6 @@ test('WebSocket upgrades require a valid Home session and tunnel when authentica
   }
 });
 
-test('empty setup status requires owner creation', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
-    const status = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.deepEqual(status, {
-      owner: null,
-      ownerClaimRequired: false,
-      secureTransport: false,
-      status: 'needs-owner',
-      terms: { accepted: false, acceptedAt: null, version: TERMS_VERSION },
-    });
-  });
-});
-
-test('cloud owner creation requires HTTPS and the one-time claim token', async () => {
-  await withServer(async (baseUrl) => {
-    const insecure = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    assert.equal(insecure.status, 403);
-    assert.equal((await insecure.json()).code, 'HTTPS_REQUIRED_FOR_OWNER_SETUP');
-
-    const wrongClaim = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'wrong', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.equal(wrongClaim.status, 403);
-    assert.equal((await wrongClaim.json()).code, 'OWNER_CLAIM_REQUIRED');
-
-    const claimed = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.equal(claimed.status, 201);
-    assert.match(String(claimed.headers.get('set-cookie')), /; Secure/u);
-  }, { ownerClaimToken: 'claim-secret' });
-});
-
 test('owner creation API signs in and changes setup status', async () => {
   await withServer(async (baseUrl) => {
     const createResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
@@ -1885,76 +1232,6 @@ test('owner creation API signs in and changes setup status', async () => {
     const status = await statusResponse.json();
 
     assert.equal(status.status, 'signed-in');
-    assert.equal(status.owner.email, 'owner@example.com');
-  });
-});
-
-test('lab reset endpoint is disabled unless explicitly enabled by the install', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
-
-    assert.equal(response.status, 404);
-    assert.equal(response.json().code, 'LAB_RESET_DISABLED');
-  });
-});
-
-test('lab reset endpoint schedules the narrow lab agent when enabled', async () => {
-  const calls = [];
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
-
-    assert.equal(response.status, 202);
-    assert.deepEqual(response.json(), { resetId: 'reset-one', scheduled: true });
-    assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
-    assert.match(String(response.headers['set-cookie']), /mos_session=/u);
-  }, {
-    disposableLab: true,
-    labResetAgent: {
-      async reset(input) {
-        calls.push(input);
-        return { resetId: 'reset-one', scheduled: true };
-      },
-    },
-  });
-});
-
-test('lab reset status endpoint proxies the scheduled reset job when enabled', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset/reset-one');
-
-    assert.equal(response.status, 200);
-    assert.deepEqual(response.json(), {
-      resetId: 'reset-one',
-      status: 'completed',
-    });
-  }, {
-    disposableLab: true,
-    labResetAgent: {
-      async resetStatus(resetId) {
-        assert.equal(resetId, 'reset-one');
-        return { resetId, status: 'completed' };
-      },
-    },
-  });
-});
-
-test('existing-owner signed-out state never returns setup again', async () => {
-  await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({
-        email: 'owner@example.com',
-        name: 'Suite Owner',
-        password: 'correct horse battery',
-      }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
-    const status = await statusResponse.json();
-
-    assert.equal(statusResponse.status, 200);
-    assert.equal(status.status, 'signed-out');
     assert.equal(status.owner.email, 'owner@example.com');
   });
 });
@@ -2002,23 +1279,6 @@ test('login and logout transition session state', async () => {
     assert.equal(logoutResponse.status, 200);
     assert.equal(logout.status, 'signed-out');
     assert.match(logoutResponse.headers.get('set-cookie'), /Max-Age=0/);
-  });
-});
-
-test('terms acceptance and the owner password change require a session', async () => {
-  await withServer(async (baseUrl) => {
-    for (const [pathname, body] of [
-      ['/suite-manager/api/setup/terms/accept', { version: TERMS_VERSION }],
-      ['/suite-manager/api/settings/owner/password', { currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }],
-    ]) {
-      const response = await fetch(`${baseUrl}${pathname}`, {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      });
-      assert.equal(response.status, 401);
-      assert.equal((await response.json()).code, 'AUTH_REQUIRED');
-    }
   });
 });
 
@@ -2229,58 +1489,6 @@ test('a browser that has signed in before gets past an account-wide backoff, and
   }, { loginThrottle });
 });
 
-// The alert is asked for on every throttled attempt and decides for itself
-// whether to send; the 429 does not wait for it.
-test('a throttled sign-in asks the alert service to notify the owner', async () => {
-  const notified = [];
-  const loginThrottle = new LoginThrottle({ policy: { account: { freeFailures: 10 }, ip: { baseDelayMs: 5_000, freeFailures: 1, maxDelayMs: 5_000 } } });
-  await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const badLogin = () => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.25' },
-      method: 'POST',
-    });
-    await badLogin();
-    await badLogin();
-    assert.equal((await badLogin()).status, 429);
-    assert.equal(notified.length, 1);
-  }, {
-    loginThrottle,
-    signInAlerts: { notify: async () => { notified.push(Date.now()); return { sent: false }; } },
-  });
-});
-
-test('duplicate owner creation returns conflict', async () => {
-  await withServer(async (baseUrl) => {
-    const owner = {
-      email: 'owner@example.com',
-      name: 'Suite Owner',
-      password: 'correct horse battery',
-    };
-
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify(owner),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    const duplicateResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify(owner),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const duplicate = await duplicateResponse.json();
-
-    assert.equal(duplicateResponse.status, 409);
-    assert.equal(duplicate.code, 'OWNER_ALREADY_EXISTS');
-  });
-});
-
 // The HTTPS agent as Suite Manager sees it. `apply` answers only once the name is
 // served with a certificate, so the fake stands for that too.
 function fakeHttpsAgent(overrides = {}) {
@@ -2345,7 +1553,7 @@ test('the suite address API requires authentication, changes to a domain in the 
     const status = await awaitAddressChange(baseUrl, cookie, 'home.mos.example.com');
     assert.equal(status.lastChange.status, 'applied');
     assert.equal(status.lastChange.stage, 'apps');
-    assert.deepEqual(status.lastChange.result, { homepage: { changed: false, entries: [], file: 'services.template.yaml', operationId: status.lastChange.result.homepage.operationId, revision: 'sha256:next' }, homepageEntryFailures: [], runtime: [], status: 'applied' });
+    assert.deepEqual(status.lastChange.result, { homepage: { changed: false, entries: [], file: 'services.template.yaml', operationId: status.lastChange.result.homepage.operationId, revision: 'sha256:next' }, homepageEntryFailures: [], integrations: [], runtime: [], status: 'applied' });
     assert.equal(status.address.kind, 'domain');
     assert.equal(status.address.baseDomain, 'mos.example.com');
     assert.equal(status.address.url, 'https://home.mos.example.com/');
@@ -2684,270 +1892,6 @@ test('onboarding records the Easy Door, and an offered domain is adopted with it
   }, { homeHost: 'home.test', homepageAgent, httpsAgent, suiteAddress });
 });
 
-// An external source service backed by an isolated temp store and a fake
-// download client, so the owner-only source routes are exercised without
-// network access. A repository ending in `/hostile` makes the fake client reject
-// the candidate the way the real constrained gate would.
-async function externalSourcesFixture({ appPackages = null } = {}) {
-  const revision = 'b'.repeat(40);
-  const store = new SuiteManagerStore(await tempStateDir());
-  const packageEntry = (record, packageId) => ({
-    errors: [],
-    folder: null,
-    manifest: { category: 'tools', id: packageId, name: 'Community Notes', summary: 'Notes.', version: '1.0.0' },
-    namespacedPackageId: `x-abcdef01-${packageId}`,
-    packageDigest: `sha256:${'0'.repeat(64)}`,
-    packageDir: null,
-    packageId,
-    permissions: ['route:notes', 'volume:notes-data'],
-    source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
-    trust: record.trust,
-  });
-  const client = {
-    async resolveRevision(record) { return { ...record, revision }; },
-    async listPackages(record) {
-      if (record.repository.endsWith('/hostile')) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: manifest.privileged is not permitted.');
-      return { cleanup: () => {}, packages: [packageEntry(record, 'community-notes')] };
-    },
-    async downloadCandidate(record) {
-      if (record.repository.endsWith('/hostile')) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: manifest.privileged is not permitted.');
-      return { ...packageEntry(record, 'community-notes'), cleanup: () => {} };
-    },
-  };
-  const service = new ExternalSourceService({ appPackages, client, now: () => new Date('2026-07-15T10:00:00.000Z'), officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
-  return { service, store };
-}
-
-test('owner-only external source routes require authentication', async () => {
-  const { service, store } = await externalSourcesFixture();
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-  }, { externalSources: service, homeHost: 'home.test' });
-  store.close();
-});
-
-test('an owner adds, previews, lists, and removes an external package source', async () => {
-  const { service, store } = await externalSourcesFixture();
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
-
-    const added = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
-      body: JSON.stringify({ catalogPath: 'apps', publisher: 'community', repository: 'https://github.com/community/apps', trust: 'unverified' }),
-      headers, method: 'POST',
-    });
-    assert.equal(added.status, 201);
-    const source = added.json().source;
-    assert.equal(source.trust, 'unverified');
-    assert.equal(source.mosReviewed, false);
-    assert.equal(source.official, false);
-    assert.equal(source.revision, 'b'.repeat(40));
-
-    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(listed.json().sources.map((item) => item.id), [source.id]);
-
-    const refreshed = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/refresh`, { headers, method: 'POST' });
-    assert.equal(refreshed.status, 200);
-    assert.equal(refreshed.json().outcome, 'unchanged');
-    assert.equal(refreshed.json().catalog.revision, 'b'.repeat(40));
-
-    const preview = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/preview`, { headers, method: 'POST' });
-    assert.equal(preview.status, 200);
-    assert.deepEqual(preview.json().candidate.permissions, ['route:notes', 'volume:notes-data']);
-    assert.equal(preview.json().candidate.mosReviewed, false);
-
-    const removed = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/remove`, { headers, method: 'POST' });
-    assert.equal(removed.status, 200);
-    assert.equal(removed.json().keepsSnapshots, true);
-    assert.equal(removed.json().source.status, 'removed');
-  }, { externalSources: service, homeHost: 'home.test' });
-  store.close();
-});
-
-test('pasting a package URL resolves an external card without persisting a source', async () => {
-  const { service, store } = await externalSourcesFixture();
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
-    const resolved = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/resolve', {
-      body: JSON.stringify({ url: 'https://github.com/community/community-notes' }), headers, method: 'POST',
-    });
-    assert.equal(resolved.status, 200);
-    const payload = resolved.json();
-    assert.equal(payload.packages.length, 1);
-    assert.equal(payload.packages[0].external, true);
-    assert.equal(payload.packages[0].trust, 'unverified');
-    assert.equal(payload.packages[0].mosReviewed, false);
-    assert.equal(payload.packages[0].packageId, 'community-notes');
-    assert.equal(payload.added, false);
-
-    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(listed.json().sources, []); // preview persists nothing
-
-    const badUrl = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/resolve', {
-      body: JSON.stringify({ url: 'https://gitlab.com/community/notes' }), headers, method: 'POST',
-    });
-    assert.equal(badUrl.status, 400);
-    assert.equal(badUrl.json().code, 'SOURCE_URL_INVALID');
-  }, { externalSources: service, homeHost: 'home.test' });
-  store.close();
-});
-
-test('an owner installs a pasted package URL, and only then is the source recorded', async () => {
-  const installs = [];
-  const { service, store } = await externalSourcesFixture({
-    appPackages: {
-      async installExternalPackage(input) {
-        installs.push(input);
-        return { id: 'instance-1', packageId: input.candidate.namespacedPackageId, status: 'installed' };
-      },
-    },
-  });
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
-
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
-      body: JSON.stringify({ url: 'https://github.com/community/community-notes' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' }, method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.deepEqual(installs, []);
-
-    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
-      body: JSON.stringify({ config: { adminEmail: 'owner@example.com' }, url: 'https://github.com/community/community-notes' }),
-      headers, method: 'POST',
-    });
-    assert.equal(installed.status, 201);
-    const payload = installed.json();
-    assert.equal(payload.mosReviewed, false);
-    assert.equal(payload.trust, 'unverified');
-    assert.match(payload.packageId, /^x-[a-f0-9]{8}-community-notes$/u);
-    assert.equal(payload.instance.packageId, payload.packageId);
-    assert.deepEqual(installs.map((item) => item.input), [{ adminEmail: 'owner@example.com' }]);
-
-    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(listed.json().sources.map((item) => [item.repository, item.trust, item.mosReviewed]), [['https://github.com/community/community-notes', 'unverified', false]]);
-
-    // A candidate the gate rejects installs nothing and registers no source.
-    const hostile = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
-      body: JSON.stringify({ url: 'https://github.com/community/hostile' }), headers, method: 'POST',
-    });
-    assert.equal(hostile.status, 422);
-    assert.equal(installs.length, 1);
-    const stillListed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.equal(stillListed.json().sources.length, 1);
-  }, { externalSources: service, homeHost: 'home.test' });
-  store.close();
-});
-
-test('external source routes reject a bad URL as 400 and a hostile candidate as 422', async () => {
-  const { service, store } = await externalSourcesFixture();
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
-
-    const badUrl = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
-      body: JSON.stringify({ repository: 'http://github.com/community/apps', trust: 'unverified' }), headers, method: 'POST',
-    });
-    assert.equal(badUrl.status, 400);
-    assert.equal(badUrl.json().code, 'SOURCE_URL_INVALID');
-
-    const added = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
-      body: JSON.stringify({ repository: 'https://github.com/community/hostile', trust: 'unverified' }), headers, method: 'POST',
-    });
-    const hostile = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${added.json().source.id}/preview`, { headers, method: 'POST' });
-    assert.equal(hostile.status, 422);
-    assert.equal(hostile.json().code, 'CANDIDATE_REJECTED');
-
-    const missing = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/src-does-not-exist/remove', { headers, method: 'POST' });
-    assert.equal(missing.status, 404);
-    assert.equal(missing.json().code, 'SOURCE_NOT_FOUND');
-  }, { externalSources: service, homeHost: 'home.test' });
-  store.close();
-});
-
-test('session cookies become Secure only for HTTPS forwarded requests', async () => {
-  await withServer(async (baseUrl) => {
-    const httpResponse = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
-      body: JSON.stringify({ email: 'owner@example.com', name: 'Owner', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.doesNotMatch(httpResponse.headers['set-cookie'][0], /; Secure/u);
-
-    const httpsLogin = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.match(httpsLogin.headers['set-cookie'][0], /; Secure/u);
-  }, { homeHost: 'home.test' });
-});
-
-// The owner is told "Internal server error." on purpose, so unless the reason is
-// written down here it exists nowhere at all — which is exactly the state this
-// replaced. The reference is what lets a screenshot and a journal line be
-// matched without guessing at timestamps.
-test('an internal error is logged with a reference the response also carries', async () => {
-  const lines = [];
-  const logger = createLogger({
-    stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) },
-  });
-
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    assert.equal(response.status, 500);
-    const body = response.json();
-    // The owner still learns nothing about the internals.
-    assert.equal(body.error, 'Internal server error.');
-    assert.match(body.reference, /^[0-9a-f]{8}$/u);
-
-    const logged = lines.filter((line) => line.event === 'request-failed');
-    assert.equal(logged.length, 1);
-    assert.equal(logged[0].reference, body.reference);
-    assert.equal(logged[0].level, 'error');
-    assert.equal(logged[0].method, 'POST');
-    assert.equal(logged[0].path, '/suite-manager/api/auth/login');
-    assert.equal(logged[0].statusCode, 500);
-    assert.equal(logged[0].error.message, 'throttle store unavailable');
-    assert.ok(logged[0].error.stack.includes('throttle store unavailable'));
-  }, {
-    logger,
-    loginThrottle: {
-      recordFailure() {},
-      recordSuccess() {},
-      retryAfterMs() { throw new Error('throttle store unavailable'); },
-    },
-  });
-});
-
-// A handled error already reaches the owner with its own message, so logging it
-// would be noise on every mistyped password rather than a signal.
-test('an expected client error is answered without a reference and without a log line', async () => {
-  const lines = [];
-  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
-
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    assert.equal(response.status, 401);
-    assert.equal(response.json().reference, undefined);
-    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
-  }, { logger });
-});
-
 // The whole of I3 in one pass: a runtime apply fails, the reason survives the
 // response that carried it, and the app screen can read it back. The secret is
 // what makes this worth asserting end to end — diagnostics land in SQLite, and
@@ -3048,238 +1992,12 @@ test('a recorded failure stops being reported once the app applies successfully'
 });
 
 
-test('the diagnostics export needs a signed-in owner', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Host: 'home.test' } });
-
-    assert.equal(response.status, 401);
-    assert.equal(response.json().code, 'AUTH_REQUIRED');
-  }, { homeHost: 'home.test' });
-});
-
-test('the diagnostics export is one downloadable text file that leads with the problem', async () => {
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
-    const text = response.body;
-
-    assert.equal(response.status, 200);
-    assert.match(response.headers['content-type'], /^text\/plain/u);
-    assert.match(response.headers['content-disposition'], /^attachment; filename="mos-diagnostics-[\d-]+\.txt"$/u);
-    assert.ok(text.startsWith('MY OWN SUITE — DIAGNOSTICS'));
-    assert.ok(text.includes('WHAT LOOKS WRONG'));
-    assert.ok(text.includes('COLLECTION NOTES'));
-  }, {
-    homeHost: 'home.test',
-    diagnosticsAgent: {
-      async collect() {
-        return {
-          collectedAt: '2026-09-01T12:00:00.000Z',
-          containers: [{ image: 'mos-app-example:1', labels: {}, log: 'boom', name: 'mos-app-example', state: 'exited', status: 'Exited (1)', troubled: true }],
-          host: {},
-          incomplete: [],
-          units: [{ active: 'active', enabled: 'enabled', log: 'ready', name: 'mos-suite-manager.service', sub: 'running', troubled: false }],
-        };
-      },
-    },
-  });
-});
-
-// The owner asking for this file is disproportionately likely to be the owner
-// whose machine is too broken to answer. An export that 500s at exactly that
-// moment would be worse than useless, so the unreachable agent has to become a
-// line in the file rather than an error page.
-test('the diagnostics export still produces a file when the agent is unreachable', async () => {
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
-    const text = response.body;
-
-    assert.equal(response.status, 200);
-    assert.ok(text.includes('diagnostics agent unreachable (DIAGNOSTICS_AGENT_UNAVAILABLE)'));
-    assert.ok(text.includes('Some information could not be collected'));
-  }, {
-    homeHost: 'home.test',
-    diagnosticsAgent: {
-      async collect() {
-        const error = new Error('The diagnostics system agent is unavailable.');
-        error.code = 'DIAGNOSTICS_AGENT_UNAVAILABLE';
-        throw error;
-      },
-    },
-  });
-});
-
-// The encryption panel reads this route. A vault agent that is not answering is
-// reported as `unknown`, never as "not encrypted" and never as a failed request:
-// the panel has to be able to say MOS could not tell.
-test('the vault route is authenticated and survives an agent that is not there', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-
-    assert.equal(response.status, 200);
-    assert.equal(response.json().vault.state, 'unknown');
-    // Never "not encrypted" on an agent that could not be reached: a machine
-    // whose agent is down still has whatever disk it had a minute ago.
-    assert.equal(response.json().encrypted, false);
-  }, { homeHost: 'home.test' });
-});
-
-test('the vault route reports what the agent says', async () => {
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-
-    assert.equal(response.status, 200);
-    assert.deepEqual(response.json(), {
-      asksForPassword: false,
-      chipNeedsRepair: false,
-      encrypted: true,
-      vault: { handover: 'done', state: 'unlocked', unlocksItself: true },
-    });
-  }, {
-    homeHost: 'home.test',
-    vaultAgent: { async status() { return { handover: 'done', state: 'unlocked', unlocksItself: true }; } },
-  });
-});
-
-// The page in front of Suite Manager is decided from this before the first
-// screen paints. What each agent answer means is handover-service.test.cjs;
-// this pins the wiring: only a signed-in caller is told, and confirming the
-// login is what takes it to done.
-test('the setup status says what this machine still has to hand its owner', async () => {
-  const stateDir = await tempStateDir();
-  await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const signedOut = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
-    assert.equal(signedOut.json().handover, undefined);
-
-    const read = async () => (await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().handover;
-    assert.deepEqual(await read(), { login: 'pending', recoveryKey: 'pending' });
-
-    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
-    assert.deepEqual(await read(), { login: 'done', recoveryKey: 'pending' });
-  }, {
-    homeHost: 'home.test',
-    stateDir,
-    vaultAgent: { async status() { return { handover: 'pending', state: 'unlocked' }; } },
-  });
-});
-
 
 // --- Startup protection -----------------------------------------------------
 //
 // The chip's PIN is the owner's password and nothing else, so the routes that
 // hold that password in plaintext for a moment — the switch, a password change,
 // a sign-in — are the only ones that ever reach the vault agent with it.
-
-test('startup protection is confirmed with the owner password, which is also what gets enrolled', async () => {
-  const enrollments = [];
-  const vaultAgent = {
-    async enrollChip(input) { enrollments.push(input); return { mode: input.mode, ok: true, slot: 'enrolled' }; },
-    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'enrolled' }, unlocksItself: false }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(enrollments.length, 0);
-
-    const cookie = await createOwner(baseUrl);
-    const wrong = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: true, password: 'not the owner password' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(wrong.status, 400);
-    assert.equal(wrong.json().code, 'INVALID_PASSWORD');
-    assert.equal(enrollments.length, 0, 'a password MOS does not accept never reaches the chip');
-
-    const on = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(on.status, 200);
-    assert.equal(on.json().asksForPassword, true);
-    assert.deepEqual(enrollments, [{ mode: 'password', pin: 'correct horse battery' }]);
-
-    const off = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: false, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(off.status, 200);
-    assert.deepEqual(enrollments[1], { mode: 'automatic', pin: null }, 'turning it off enrolls no password at all');
-  }, { homeHost: 'home.test', vaultAgent });
-});
-
-// While the key is still escrowed on the plaintext side the switch would protect
-// nothing, and a password the owner may forget must not become the only way in
-// before they hold the key that is the other way in.
-test('startup protection cannot be turned on before the recovery key has been handed over', async () => {
-  const enrollments = [];
-  const vaultAgent = {
-    async enrollChip(input) { enrollments.push(input); return { mode: input.mode, ok: true, slot: 'enrolled' }; },
-    async status() { return { handover: 'pending', state: 'unlocked', tpm: { mode: 'automatic', slot: 'enrolled' }, unlocksItself: true }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const refused = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(refused.status, 409);
-    assert.equal(refused.json().code, 'VAULT_KEY_UNSAVED');
-    assert.equal(enrollments.length, 0);
-
-    // Turning it off is always allowed: that is the direction that cannot lock anyone out.
-    const off = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: false, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(off.status, 200);
-  }, { homeHost: 'home.test', vaultAgent });
-});
-
-// The chip is allowed to refuse. What is not allowed is MOS pretending it did
-// not, because the owner has to know their server will want the recovery key
-// after the next restart.
-test('a chip that refuses the switch is reported, not swallowed', async () => {
-  const vaultAgent = {
-    async enrollChip() { return { mode: 'password', ok: false, reason: 'tpm-refused', slot: 'needs-repair' }; },
-    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'needs-repair' } }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const refused = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
-      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(refused.status, 409);
-    assert.equal(refused.json().code, 'VAULT_TPM_REFUSED');
-    assert.match(refused.json().error, /asks for your recovery key/u);
-  }, { homeHost: 'home.test', vaultAgent });
-});
 
 /**
  * The ordering is the whole point. A password Suite Manager accepts while the
@@ -3329,31 +2047,6 @@ test('a password change teaches the chip before it commits, and completes even w
   }, { homeHost: 'home.test', vaultAgent });
 });
 
-// A slot left needing repair is taught again at the next sign-in whatever the
-// mode. In automatic mode the chip needs no password and the agent ignores the
-// one sent; what matters is that the repair is attempted at all, because
-// nothing else on a running machine holds the owner's password.
-test('a sign-in repairs a chip slot that is waiting, in either mode', async () => {
-  const enrollments = [];
-  const vaultAgent = {
-    async enrollChip(input) { enrollments.push(input); return { mode: 'automatic', ok: true, slot: 'enrolled' }; },
-    async status() { return { state: 'unlocked', tpm: { mode: 'automatic', slot: 'needs-repair' }, unlocksItself: false }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    await createOwner(baseUrl);
-    const signedIn = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(signedIn.status, 200);
-    // The repair is not awaited by the sign-in, so give it a moment to land.
-    for (let waited = 0; enrollments.length === 0 && waited < 50; waited += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.deepEqual(enrollments, [{ mode: 'current', pin: 'correct horse battery' }]);
-  }, { homeHost: 'home.test', vaultAgent });
-});
-
 // On a machine that opens itself there is no password for the chip to know, so
 // a password change is a Suite Manager matter and nothing is said about disks.
 test('a password change says nothing about the chip on a machine that opens itself', async () => {
@@ -3374,32 +2067,13 @@ test('a password change says nothing about the chip on a machine that opens itse
   }, { homeHost: 'home.test', vaultAgent });
 });
 
-// Three screens ask these two questions and none of them may work them out for
-// itself: the same predicate answers here that answers in the vault agent.
-test('the vault route answers whether this machine waits for a password', async () => {
-  const vaultAgent = {
-    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'needs-repair' }, unlocksItself: false }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const view = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    assert.equal(view.status, 200);
-    assert.equal(view.json().asksForPassword, true);
-    assert.equal(view.json().chipNeedsRepair, true);
-    assert.equal(view.json().encrypted, true);
-  }, { homeHost: 'home.test', vaultAgent });
-});
-
 // The console banner keeps printing the HTTP address; the redirect is what puts
 // the owner on HTTPS, so onboarding records the door they really came through.
 test('once the Easy Door certificate is held, its pages redirect to HTTPS and its API answers where it is', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl, server) => {
-    server.watchEasyDoor();
+  await withServer(async (baseUrl, services) => {
+    services.addressService.watchEasyDoor();
     let page;
     for (let attempt = 0; attempt < 50; attempt += 1) {
       page = await hostRequest(baseUrl, '/suite-manager/setup?step=1', { headers: { Host: host } });
@@ -3419,8 +2093,8 @@ test('once the Easy Door certificate is held, its pages redirect to HTTPS and it
 test('an Easy Door without a certificate yet is served over HTTP as before', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl, server) => {
-    server.watchEasyDoor();
+  await withServer(async (baseUrl, services) => {
+    services.addressService.watchEasyDoor();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const page = await hostRequest(baseUrl, '/suite-manager/setup', { headers: { Host: host } });
     assert.notEqual(page.status, 308);

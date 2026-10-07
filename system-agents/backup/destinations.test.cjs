@@ -177,13 +177,14 @@ test('a note is stored apart from the manifest, and only the newest one counts',
   assert.equal(noteSnapshots.length, 1, 'the replaced note snapshot was left behind');
 
   fs.rmSync(world.destination.indexPath(), { force: true });
-  assert.equal(await reopen(world).points.readNote('point-1'), 'Second note');
+  assert.equal((await reopen(world).points.summaries())[0].note, 'Second note');
   // Clearing a note leaves the restore point itself untouched.
   await world.destination.points.writeNote('point-1', '');
   fs.rmSync(world.destination.indexPath(), { force: true });
   const cleared = reopen(world);
-  assert.equal(await cleared.points.readNote('point-1'), null);
-  assert.equal((await cleared.points.summaries()).length, 1);
+  const [point, ...others] = await cleared.points.summaries();
+  assert.equal(point.note, null);
+  assert.equal(others.length, 0);
 });
 
 test('removing a restore point takes its manifest and its note out of the bucket', async () => {

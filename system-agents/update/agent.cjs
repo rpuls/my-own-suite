@@ -6,6 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
+const { readBody, respond, serveOnSocket } = require('../lib/agent-server.cjs');
 const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, resolveTrack, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
 const { BackupAgentClient } = require('../../suite-manager/backend/src/backups/backup-agent-client.cjs');
 const { readSigningPublicKey, verifyCatalogSignature } = require('../../suite-manager/backend/src/apps/catalog-signature.cjs');
@@ -18,26 +19,6 @@ const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const socketPath = process.env.MOS_UPDATE_AGENT_SOCKET || '/run/mos-update-agent/agent.sock';
 const backupSocketPath = process.env.MOS_BACKUP_AGENT_SOCKET || '/run/mos-backup-agent/agent.sock';
 const paths = buildPaths(repoRoot, stateRoot);
-
-function respond(response, statusCode, payload) {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  response.end(`${JSON.stringify(payload)}\n`);
-}
-
-function readBody(request, maxBytes = 32 * 1024) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    request.setEncoding('utf8');
-    request.on('data', (chunk) => {
-      raw += chunk;
-      if (raw.length > maxBytes) reject(new Error('BODY_TOO_LARGE'));
-    });
-    request.on('end', () => {
-      try { resolve(raw.trim() ? JSON.parse(raw) : {}); } catch { reject(new Error('INVALID_JSON')); }
-    });
-    request.on('error', reject);
-  });
-}
 
 function listJobFiles() {
   fs.mkdirSync(paths.jobsDir, { recursive: true });
@@ -218,17 +199,11 @@ function verifiedHeldPackages(body) {
   return hostHeldPackages(index);
 }
 
-fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.mkdirSync(paths.jobsDir, { recursive: true });
-fs.rmSync(socketPath, { force: true });
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
   try {
-    if (request.method === 'GET' && url.pathname === '/healthz') {
-      respond(response, 200, { ok: true, service: 'mos-update-agent' });
-      return;
-    }
     if (request.method === 'GET' && url.pathname === '/v1/status') {
       const currentJob = readCurrentJob();
       respond(response, 200, {
@@ -262,7 +237,7 @@ const server = http.createServer(async (request, response) => {
         respond(response, 409, { code: 'BACKUP_RUNNING', error: backupBusyMessage(backupJob) });
         return;
       }
-      const job = createJob(await readBody(request));
+      const job = createJob(await readBody(request, 32 * 1024));
       startWorker(job);
       respond(response, 202, { job: summarizeJob(job) });
       return;
@@ -363,18 +338,8 @@ const server = http.createServer(async (request, response) => {
         respond(response, 409, { currentJob: summarizeJob(existing), error: 'Wait for the current update job to finish before switching tracks.' });
         return;
       }
-      const track = writeUpdateTrack(paths, await readBody(request));
+      const track = writeUpdateTrack(paths, await readBody(request, 32 * 1024));
       respond(response, 200, { track, updaterStatus: await collectStatus(paths) });
-      return;
-    }
-    if (request.method === 'GET' && url.pathname.startsWith('/v1/jobs/')) {
-      const id = path.basename(url.pathname);
-      const jobPath = path.join(paths.jobsDir, `${id}.json`);
-      if (!fs.existsSync(jobPath)) {
-        respond(response, 404, { code: 'NOT_FOUND', error: 'Job was not found.' });
-        return;
-      }
-      respond(response, 200, readJson(jobPath));
       return;
     }
     respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
@@ -383,17 +348,4 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(socketPath, () => {
-  fs.chmodSync(socketPath, 0o660);
-  process.stdout.write('[mos-update-agent] ready\n');
-});
-
-function shutdown() {
-  server.close(() => {
-    fs.rmSync(socketPath, { force: true });
-    process.exit(0);
-  });
-}
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+serveOnSocket(server, { name: 'mos-update-agent', socketPath });

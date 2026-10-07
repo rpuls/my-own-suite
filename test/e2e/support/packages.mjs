@@ -59,7 +59,7 @@ export async function waitForRunning(page, id, { minutes = 12, version = null } 
   while (Date.now() < deadline) {
     last = await packageById(page, id);
     if (appRunning(last) && (!version || last.instance?.packageVersion === version)) return last;
-    if (last.instance && last.instance.status !== 'uninstalled') await refreshRuntimeStatus(page, id);
+    if (last.instance) await refreshRuntimeStatus(page, id);
     await page.waitForTimeout(5000);
   }
   throw new Error(`${id} did not reach Running state${version ? ` on ${version}` : ''}. Last status: ${JSON.stringify(last?.instance?.projections || [])}`);

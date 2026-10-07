@@ -352,4 +352,4 @@ class SuiteAddressService {
   }
 }
 
-module.exports = { CHANGE_STAGES, SuiteAddressService, privateHttpsAvailable, resolvesHere };
+module.exports = { SuiteAddressService, privateHttpsAvailable, resolvesHere };

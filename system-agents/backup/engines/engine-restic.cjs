@@ -310,7 +310,6 @@ class ResticEngine {
 
   // Verification has to read the repository, not a local copy of what the
   // repository said last time, so integrity checks run --no-cache throughout.
-  dropCache() { fs.rmSync(this.cacheDir(), { force: true, recursive: true }); }
 
   // Failures carry the engine's own last output on the error rather than in
   // the message: the message is what an owner reads, the output is what a
@@ -754,16 +753,10 @@ class ResticEngine {
 }
 
 module.exports = {
-  DATA_TIMEOUT_MS,
-  ENGINE_BINARY_DIR,
   ENGINE_MISSING_MESSAGE,
-  LEGACY_KEY_SUFFIX,
-  lockedRepositoryMessage,
   maskSecrets,
-  PROBE_TIMEOUT_MS,
   repositoryProbeCause,
   repositoryProbeVerdict,
   ResticEngine,
-  significantLine,
   treeBytes,
 };

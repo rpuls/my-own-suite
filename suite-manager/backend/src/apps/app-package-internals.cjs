@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { appAgentContractFailure } = require('../../../../shared/app-agent-contract.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   SUPPORTED_ARCHITECTURES,
   effectiveRouteHost,
@@ -35,11 +36,9 @@ function ownerEnvSecretKey(service, name) {
   return `env.${service}.${name}`;
 }
 
-class AppPackageServiceError extends Error {
+class AppPackageServiceError extends CodedError {
   constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
+    super(code, message, { statusCode });
   }
 }
 
@@ -85,6 +84,16 @@ function serviceForHealth(manifest) {
 function healthTargetFor(manifest, port) {
   const parsed = new URL(manifest.health.url);
   return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
+}
+
+// The probe travels to the loopback port but asks for the app by the name the
+// manifest gives it: an app that checks the Host header allows only that name.
+function healthHostFor(manifest) {
+  return new URL(manifest.health.url).host;
+}
+
+function runtimeHealthFor(manifest, healthProjection) {
+  return { ...healthProjection.content, host: healthHostFor(manifest) };
 }
 
 function isRecord(value) {
@@ -737,11 +746,8 @@ function renderInstanceProjections(manifest, configRows = [], { instanceId, inte
 
 function runtimeConnectionState(app) {
   if (!app.instance) return 'available';
-  if (app.instance.status === 'uninstalled') return 'available';
-  if (app.instance.status === 'disabled' || app.instance.enabled === false) return 'disabled';
-  if (runtimeApplied(app.instance.projections || [])) return 'running';
-  if (app.instance.status === 'installed') return 'installed';
-  return app.instance.status || 'available';
+  if (app.instance.status === 'disabled') return 'disabled';
+  return runtimeApplied(app.instance.projections) ? 'running' : 'installed';
 }
 
 function requestContextForPackage(packageId, requestContext = {}) {
@@ -763,6 +769,7 @@ module.exports = {
   digestFor,
   exportEntries,
   fingerprintFor,
+  healthHostFor,
   healthTargetFor,
   homepageEntryForHomepage,
   homepageProjectionApplied,
@@ -777,7 +784,6 @@ module.exports = {
   networkConnectRequest,
   ownerEnvSecretKey,
   privacyReviewPresentation,
-  publicEnv,
   publicInstance,
   readSecretValue,
   redactionSecretsFor,
@@ -789,6 +795,7 @@ module.exports = {
   resolveTemplatesDeep,
   runtimeApplied,
   runtimeConnectionState,
+  runtimeHealthFor,
   runtimeRouteApplied,
   secretFilePath,
   setupFields,

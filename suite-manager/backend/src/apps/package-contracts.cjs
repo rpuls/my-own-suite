@@ -2,6 +2,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const DEFAULT_PACKAGE_LIMITS = Object.freeze({
   maxFileBytes: 32 * 1024 * 1024,
   maxFiles: 256,
@@ -36,14 +38,6 @@ const CATALOG_REFRESH_POLICY = Object.freeze({
   reuseWindowMs: 30 * 1000, // resolving the branch tip spends one of api.github.com's 60 unauthenticated calls/hour
 });
 
-class AppPackageContractError extends Error {
-  constructor(message, details = []) {
-    super(message);
-    this.code = 'INVALID_APP_PACKAGE_CONTENTS';
-    this.details = details;
-  }
-}
-
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -71,7 +65,7 @@ function canonicalFileBytes(relativePath, bytes) {
   if (!TEXT_FILE.test(relativePath)) return bytes;
   const text = bytes.toString('utf8');
   if (Buffer.from(text, 'utf8').compare(bytes) !== 0) {
-    throw new AppPackageContractError(`Text package file is not valid UTF-8: ${relativePath}.`);
+    throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', `Text package file is not valid UTF-8: ${relativePath}.`);
   }
   if (relativePath === 'privacy-review.json') {
     let review;
@@ -82,7 +76,7 @@ function canonicalFileBytes(relativePath, bytes) {
       // every install/migration/backup path does to a package, so an unfenced
       // parse here turns one malformed review into an unclassified failure of
       // whatever operation touched the package first.
-      throw new AppPackageContractError('Package privacy-review.json is not valid JSON.');
+      throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', 'Package privacy-review.json is not valid JSON.');
     }
     if (review?.scope) review.scope.packageDigest = 'sha256:<package-digest>';
     return Buffer.from(`${JSON.stringify(review, null, 2)}\n`, 'utf8');
@@ -124,7 +118,7 @@ function collectPackageFiles(packageDir, { limits = DEFAULT_PACKAGE_LIMITS, mani
   visit(packageDir);
   if (files.length > limits.maxFiles) errors.push(`Package contains more than ${limits.maxFiles} files.`);
   if (totalBytes > limits.maxPackageBytes) errors.push(`Package exceeds ${limits.maxPackageBytes} bytes.`);
-  if (errors.length) throw new AppPackageContractError(`Invalid app package contents at ${packageDir}.`, errors);
+  if (errors.length) throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', `Invalid app package contents at ${packageDir}.`, { details: errors });
   return files.sort((left, right) => Buffer.from(left.relativePath).compare(Buffer.from(right.relativePath)));
 }
 
@@ -624,11 +618,6 @@ const FORBIDDEN_SERVICE_KEYS = Object.freeze([
   'dns', 'dockerSocket', 'extraHosts', 'groupAdd', 'ipc', 'mounts', 'network', 'networkMode',
   'pid', 'ports', 'privileged', 'securityOpt', 'sysctls', 'userns', 'uts',
 ]);
-const CONSTRAINED_CAPABILITY_PROFILE = Object.freeze({
-  forbiddenManifestKeys: FORBIDDEN_MANIFEST_KEYS,
-  forbiddenServiceKeys: FORBIDDEN_SERVICE_KEYS,
-  volumeNamePattern: VOLUME_NAME_PATTERN.source,
-});
 const RESERVED_ID_PREFIXES = Object.freeze(['mos', 'official', 'suite']);
 
 function isPlainRecord(value) {
@@ -817,12 +806,8 @@ function advisoriesForVersion(index, packageId, packageVersion) {
 }
 
 module.exports = {
-  ADVISORY_SEVERITY_RANK,
-  AppPackageContractError,
   CATALOG_REFRESH_POLICY,
-  CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
-  EXTERNAL_ROUTE_HOST_MAX_LENGTH,
   EXTERNAL_ROUTE_HOST_PREFIX,
   PACKAGE_TESTS_DIR,
   SUPPORTED_ARCHITECTURES,
@@ -837,7 +822,6 @@ module.exports = {
   digestAppPackage,
   effectiveRouteHost,
   hostHeldPackages,
-  isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
   reviewOutbound,

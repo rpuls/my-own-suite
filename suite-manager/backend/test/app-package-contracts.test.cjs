@@ -5,7 +5,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
-  AppPackageContractError,
   CATALOG_REFRESH_POLICY,
   advisoriesForVersion,
   hostHeldPackages,
@@ -126,7 +125,7 @@ test('package validation rejects undeclared files and symlinks', (t) => {
   t.after(() => fs.rmSync(packageDir, { force: true, recursive: true }));
   fs.writeFileSync(path.join(packageDir, 'unexpected.bin'), 'not declared');
   assert.throws(() => digestAppPackage(packageDir), (error) => {
-    assert.ok(error instanceof AppPackageContractError);
+    assert.equal(error.code, 'INVALID_APP_PACKAGE_CONTENTS');
     assert.match(error.details.join('\n'), /not allowed or declared/u);
     return true;
   });

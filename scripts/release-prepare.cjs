@@ -162,12 +162,8 @@ function main() {
   console.log('re-runs this same gate before it publishes anything.');
 }
 
-if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
-    fail(error instanceof Error ? error.message : String(error));
-  }
+try {
+  main();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
-
-module.exports = { rollChangelog };

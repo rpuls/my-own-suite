@@ -7,7 +7,7 @@ export type { RevealedRecoveryKey } from '../lib/recovery-key';
 // The kit is a plain text file on purpose: its whole job is to survive being
 // printed, photographed, or copied onto paper by hand, and a PDF would be a
 // dependency for something an owner needs in the worst week of their year.
-export function downloadKit(revealed: RevealedRecoveryKey) {
+function downloadKit(revealed: RevealedRecoveryKey) {
   const url = URL.createObjectURL(new Blob([revealed.kit], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a');
   link.download = revealed.kitFilename || 'mos-recovery-kit.txt';

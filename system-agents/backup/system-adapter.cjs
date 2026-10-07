@@ -50,14 +50,11 @@ class BackupSystemAdapter {
     this.command('docker', ['volume', 'rm', name], { timeout: 300_000 });
   }
 
-  // Label selection first, name-prefix as a fallback union: containers started
-  // by current MOS always carry `mos.package`, but a container surviving from
-  // an older install may predate its labels and still needs stopping.
+  // Every app container carries `mos.package`, inherited from the image the app agent built.
   async listAppContainers({ runningOnly }) {
     const flags = runningOnly ? [] : ['--all'];
-    const byLabel = this.optionalCommand('docker', ['ps', ...flags, '--filter', 'label=mos.package', '--format', '{{.Names}}']) || '';
-    const byName = this.optionalCommand('docker', ['ps', ...flags, '--filter', 'name=mos-app-', '--format', '{{.Names}}']) || '';
-    return [...new Set([...byLabel.split(/\r?\n/u), ...byName.split(/\r?\n/u)].map((line) => line.trim()).filter(Boolean))].sort();
+    const names = this.optionalCommand('docker', ['ps', ...flags, '--filter', 'label=mos.package', '--format', '{{.Names}}']) || '';
+    return names.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).sort();
   }
 
   async stopContainer(name) { this.optionalCommand('docker', ['stop', name], { timeout: 120_000 }); }

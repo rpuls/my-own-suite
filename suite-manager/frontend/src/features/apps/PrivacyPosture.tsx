@@ -95,7 +95,7 @@ function OutboundChange({ candidate, installed }: { candidate: PrivacyReviewSumm
   </>;
 }
 
-export function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSummary | null | undefined; size: 'dialog' | 'row' | 'tile' }) {
+function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSummary | null | undefined; size: 'dialog' | 'row' | 'tile' }) {
   const posture = postureFor(privacy);
   const text = badgeTextFor(privacy);
   const dash = shieldDashArray(privacy);

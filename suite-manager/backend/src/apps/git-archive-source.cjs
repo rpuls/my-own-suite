@@ -71,10 +71,6 @@ function parseGitPackageUrl(input) {
   return { host: url.hostname, owner, ref, repo, repository: `https://${url.hostname}/${owner}/${repo}` };
 }
 
-function repoCoordinates(repository) {
-  return parseGitPackageUrl(repository);
-}
-
 // What the host actually answered, kept apart from "it failed". An owner whose
 // repository has just gone private and an owner who has spent the hour's
 // unauthenticated quota need opposite advice, and collapsing the two into one
@@ -273,10 +269,8 @@ module.exports = {
   COMMIT_PATTERN,
   DEFAULT_LIMITS,
   HOST_DESCRIPTORS,
-  discoverMosPackages,
   downloadMosPackage,
   extractMosPackage,
   parseGitPackageUrl,
-  repoCoordinates,
   resolveCommit,
 };

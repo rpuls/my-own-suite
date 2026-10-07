@@ -28,15 +28,6 @@ function readArg(name, fallback = '') {
   return fallback;
 }
 
-function requireArg(name, fallback = '') {
-  const value = readArg(name, fallback);
-  if (!value) {
-    console.error(`Missing required --${name} argument.`);
-    process.exit(1);
-  }
-  return value;
-}
-
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || process.cwd(),

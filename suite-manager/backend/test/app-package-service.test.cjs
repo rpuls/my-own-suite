@@ -167,7 +167,6 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(installed.sourceRepository, 'https://github.com/community/notes');
   assert.equal(installed.sourceRevision, 'b'.repeat(40));
   assert.equal(installed.sourceTrust, 'unverified');
-  assert.equal(installed.snapshotState, 'installed');
   // MOS has not reviewed it, and the package cannot talk itself into a review.
   // The row records the state of the review bound to this package; that no MOS
   // review of it is coming at all is derived from the source when it is shown.
@@ -678,7 +677,6 @@ test('an external app whose source is gone or compromised keeps running and refu
   const instance = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
   assert.equal(instance.status, 'installed');
   assert.equal(instance.packageVersion, '1.0.0');
-  assert.equal(instance.snapshotState, 'installed');
   store.close();
 });
 
@@ -946,7 +944,7 @@ test('a second start while the first is still building is refused, not run along
     () => service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
     (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
   );
-  await service.disablePackage('x-abcdef01-community-notes', null);
+  await service.disablePackage('x-abcdef01-community-notes');
 
   releaseBuild();
   await first.catch(() => {});
@@ -984,7 +982,7 @@ test('lifecycle operations are refused while an update transaction holds the app
   for (const blocked of [
     () => service.restartPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
     () => service.enablePackage('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
-    () => service.disablePackage('x-abcdef01-community-notes', null),
+    () => service.disablePackage('x-abcdef01-community-notes'),
     () => service.uninstallPackage('x-abcdef01-community-notes', null),
   ]) {
     await assert.rejects(blocked, (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409);
@@ -1011,7 +1009,7 @@ test('a stopped app refuses updates instead of being started by one', async () =
   await service.installExternalPackage({ candidate: installedPackage });
   registerSource(store);
   const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
-  await service.disablePackage('x-abcdef01-community-notes', null);
+  await service.disablePackage('x-abcdef01-community-notes');
 
   // Activation starts the candidate's containers, so updating a disabled app
   // would end with containers running while the store says disabled.
@@ -1502,7 +1500,6 @@ test('new installs snapshot package contents before persisting configuration and
   assert.equal(installed.sourceRevision, 'ef5027cc1528b516edbd03c6a7e65349adbcc4b4');
   assert.equal(installed.sourceTrust, 'mos-reviewed');
   assert.equal(installed.snapshotPath, path.join(v2AppsDir, 'stirling-pdf'));
-  assert.equal(installed.snapshotState, 'installed');
   assert.equal(installed.privacyStatus, 'reviewed');
   assert.equal(installed.privacyPosture, 'external-dependency');
 
@@ -1999,87 +1996,16 @@ test('startup classifies every interrupted update boundary into an actionable re
   }
 });
 
-test('legacy instances migrate only from an exactly matching validated package', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const matching = readAppPackageManifest(path.join(v2AppsDir, 'stirling-pdf')).manifest;
-  const mismatched = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice')).manifest;
-  const installLegacy = (id, manifest, manifestDigest) => store.installAppInstance({
-    at: '2026-07-14T00:00:00.000Z',
-    config: [],
-    instance: {
-      categorySnapshot: manifest.category,
-      displayNameSnapshot: manifest.name,
-      id,
-      manifestDigest,
-      packageId: manifest.id,
-      packageVersion: manifest.version,
-    },
-    operationId: `${id}-operation`,
-    projections: renderDryRunProjections(manifest, []),
-  });
-  installLegacy('legacy-matching', matching, digestFor(matching));
-  installLegacy('legacy-mismatch', mismatched, 'sha256:not-the-current-manifest');
-  const service = new AppPackageService({
-    agent: {
-      async snapshotPackage(input) {
-        const snapshotPath = path.join(root, 'snapshots', input.instanceId);
-        await fsp.cp(path.join(v2AppsDir, input.packageId), snapshotPath, { recursive: true });
-        return { snapshotPath };
-      },
-      async status() { return agentStatus(); },
-    },
-    appsDir: v2AppsDir,
-    store,
-  });
-
-  const results = await service.migrateLegacyPackages();
-  assert.deepEqual(results.map(({ packageId, status }) => ({ packageId, status })), [
-    { packageId: 'onlyoffice', status: 'needs-package-recovery' },
-    { packageId: 'stirling-pdf', status: 'migrated' },
-  ]);
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'installed');
-  assert.equal(store.getAppInstanceByPackageId('onlyoffice').snapshotState, 'needs-package-recovery');
-
-  store.close();
-});
-
-// Regression: an unguarded privacy-review.json parse in the startup migration
-// aborted migrateLegacyPackages, and start.cjs exits on that â€” one malformed
-// file in one package prevented Suite Manager from booting at all.
-test('a malformed privacy review degrades to recovery at migration and a 409 at install', async (t) => {
+test('a malformed privacy review refuses the install with a 409', async (t) => {
   const root = await tempStateDir();
   const appsDir = path.join(root, 'apps');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), path.join(appsDir, 'stirling-pdf'), { recursive: true });
   await fsp.writeFile(path.join(appsDir, 'stirling-pdf', 'privacy-review.json'), '{ not json');
-  const manifest = readAppPackageManifest(path.join(appsDir, 'stirling-pdf')).manifest;
   const store = new SuiteManagerStore(path.join(root, 'state'));
   t.after(() => store.close());
-  store.installAppInstance({
-    at: '2026-07-14T00:00:00.000Z',
-    config: [],
-    instance: {
-      categorySnapshot: manifest.category,
-      displayNameSnapshot: manifest.name,
-      id: 'legacy-malformed-review',
-      manifestDigest: digestFor(manifest),
-      packageId: manifest.id,
-      packageVersion: manifest.version,
-    },
-    operationId: 'legacy-malformed-review-operation',
-    projections: renderDryRunProjections(manifest, []),
-  });
   const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store });
-
-  const results = await service.migrateLegacyPackages();
-  assert.deepEqual(results, [{ packageId: 'stirling-pdf', status: 'needs-package-recovery' }]);
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'needs-package-recovery');
-
-  const freshStore = new SuiteManagerStore(path.join(root, 'fresh-state'));
-  t.after(() => freshStore.close());
-  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store: freshStore });
   await assert.rejects(
-    () => freshService.installPackage('stirling-pdf'),
+    () => service.installPackage('stirling-pdf'),
     (error) => error.code === 'APP_PACKAGE_INVALID' && error.statusCode === 409,
   );
 });
@@ -2539,4 +2465,57 @@ test('an HTTPS-only app on the Easy Door says its certificate is on its way, and
   assert.match(pending.reason, /on its way/u);
   const [elsewhere] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: false });
   assert.match(elsewhere.reason, /Easy Door or your own domain/u);
+});
+
+// A connection resolves what the consumer imports from its provider into config
+// rows at connect time, so a move has to resolve them again or the consumer keeps
+// the provider's old address (seen on the lab: Seafile loading ONLYOFFICE's editor
+// from the pre-move host after DNS-01, blocked as mixed content).
+test('moving the suite re-resolves what a connected app imports from its provider', async () => {
+  const applies = [];
+  let connects = 0;
+  const agent = {
+    async apply(input) { applies.push(input); return { status: 'applied', steps: [] }; },
+    async connectNetwork() { connects += 1; return { status: 'connected' }; },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async status() { return agentStatus(); },
+  };
+  const homepageService = {
+    async read() { return { content: '[]', revision: 'sha256:current' }; },
+    async reconcileUrls(body) { return { changed: false, entries: body.entries }; },
+  };
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+  await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
+  await service.installPackage('onlyoffice');
+  await service.applyPackageRuntime('seafile', requestContext().publicUrlFor('seafile'));
+  await service.applyPackageRuntime('onlyoffice', requestContext().publicUrlFor('onlyoffice'));
+  await service.connectPackages({
+    consumerPackageId: 'seafile',
+    providerCapabilityId: 'documentEditor',
+    providerPackageId: 'onlyoffice',
+    requestContext: requestContext(),
+    slotId: 'documentEditor',
+  });
+  const editorUrl = (input) => input.compose.services.find((item) => item.id === 'seafile').environment.ONLYOFFICE_APIJS_URL;
+  const seafile = store.getAppInstanceByPackageId('seafile');
+  const jwtRow = () => store.getAppConfig(seafile.id).find((row) => row.key === 'integrationDocumentEditorOnlyofficeJwtSecret');
+  const jwtBefore = jwtRow();
+  assert.equal(editorUrl(applies.at(-1)), 'https://onlyoffice.example.test/web-apps/apps/api/documents/api.js');
+
+  const moved = {
+    publicUrlFor: (packageId) => ({ appHost: `${packageId}.moved.test`, baseHost: 'moved.test', publicUrl: `https://${packageId}.moved.test/`, scheme: 'https' }),
+  };
+  const result = await service.reconcilePublicUrls(homepageService, moved);
+
+  assert.equal(result.status, 'applied');
+  const seafileApply = applies.filter((input) => input.packageId === 'seafile').at(-1);
+  assert.equal(seafileApply.publicUrl, 'https://seafile.moved.test/');
+  assert.equal(editorUrl(seafileApply), 'https://onlyoffice.moved.test/web-apps/apps/api/documents/api.js');
+  assert.equal(jwtRow().secretRef, jwtBefore.secretRef);
+  // Re-applying recreated both apps' containers, so the pair is joined again.
+  assert.equal(connects, 2);
+  assert.deepEqual(result.integrations.map((item) => item.status), ['active']);
+  assert.equal(store.getAppIntegrations()[0].status, 'active');
+  store.close();
 });

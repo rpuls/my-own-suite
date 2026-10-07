@@ -1,16 +1,15 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { HomepageConfigError, publicUrlFor } = require('../../shared/homepage-contract.cjs');
 const {
-  HomepageConfigError,
   addEntry,
   projectServices,
-  publicUrlFor,
   reconcileManagedUrls,
   removeEntryById,
   renderCaddyRoutes,
   revisionFor,
   validateYaml,
-} = require('../../shared/homepage-contract.cjs');
+} = require('./document.cjs');
 const { HomepageAgentCore } = require('./agent-core.cjs');
 
 const seed = `# retained comment

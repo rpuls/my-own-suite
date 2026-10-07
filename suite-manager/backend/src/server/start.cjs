@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const { createMOSServer } = require('./http-app.cjs');
 const { createLogger } = require('./logger.cjs');
+const { createServices } = require('./services.cjs');
 
 const port = Number(process.env.PORT || process.env.MOS_SUITE_MANAGER_PORT || '3100');
 const host = process.env.HOST || process.env.MOS_SUITE_MANAGER_HOST || '127.0.0.1';
@@ -13,17 +14,13 @@ const frontendDistDir = process.env.MOS_FRONTEND_DIST_DIR
   || path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 
 const logger = createLogger();
-const server = createMOSServer({ frontendDistDir, homeHost, logger, stateDir });
+const services = createServices({ frontendDistDir, homeHost, logger, stateDir });
+const server = createMOSServer(services);
 
 async function start() {
-  const migrations = await server.migrateAppPackages();
-  for (const migration of migrations) logger.info('app-package-migrated', { packageId: migration.packageId, status: migration.status });
-  const recoveries = await server.recoverAppPackageUpdates();
+  const { recoveries, sweptCandidates } = await services.start();
   for (const recovery of recoveries) logger.info('app-update-recovered', { instanceId: recovery.instanceId, recoveryState: recovery.recoveryState });
-  const sweptCandidates = server.sweepAppCandidates();
   if (sweptCandidates.length) logger.info('app-candidates-reclaimed', { count: sweptCandidates.length });
-  void server.startCatalogRefresh();
-  server.watchEasyDoor();
   server.listen(port, host, () => {
     logger.info('listening', {
       host,

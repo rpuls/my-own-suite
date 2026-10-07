@@ -1,12 +1,12 @@
-const DOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
+const { CodedError } = require('./coded-error.cjs');
+
+const DOMAIN_PATTERN =/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,4096}$/u;
 
-class HttpsSettingsError extends Error {
+class HttpsSettingsError extends CodedError {
   constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
+    super(code, message, { statusCode });
   }
 }
 

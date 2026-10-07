@@ -234,7 +234,6 @@ function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/s
 }
 
 module.exports = {
-  APP_VOLUME_PREFIX,
   appVolumeLabels,
   appVolumeName,
   BACKUP_BETA_MAX_TOTAL_BYTES,
@@ -243,6 +242,4 @@ module.exports = {
   managedStateTargets,
   OWNERSHIP_LABELS,
   RESTORE_COMPATIBLE_SCHEMA_VERSIONS,
-  SUITE_MANAGER_DATABASE_FILENAME,
-  volumeOwnership,
 };

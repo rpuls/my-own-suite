@@ -6,7 +6,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
-  AppPackageManifestError,
   discoverAppPackages,
   publicPackageSummary,
   readAppPackageManifest,
@@ -723,7 +722,7 @@ test('readAppPackageManifest reports all validation details', async () => {
   assert.throws(
     () => readAppPackageManifest(packageDir),
     (error) => {
-      assert.ok(error instanceof AppPackageManifestError);
+      assert.equal(error.code, 'INVALID_APP_PACKAGE_MANIFEST');
       assert.ok(error.details.some((detail) => detail.startsWith('id ')));
       assert.ok(error.details.includes('routes[0].service must reference a declared service.'));
       return true;

@@ -1,0 +1,32 @@
+const { addressRoutes } = require('./address.cjs');
+const { appRoutes } = require('./apps.cjs');
+const { backupRoutes } = require('./backups.cjs');
+const { customizeRoutes } = require('./customize.cjs');
+const { labRoutes } = require('./lab.cjs');
+const { settingsRoutes } = require('./settings.cjs');
+const { setupRoutes } = require('./setup.cjs');
+const { smtpRoutes } = require('./smtp.cjs');
+const { sourceRoutes } = require('./sources.cjs');
+const { supportRoutes } = require('./support.cjs');
+const { updateRoutes } = require('./updates.cjs');
+const { vaultRoutes } = require('./vault.cjs');
+
+// Every Suite Manager API route, in the order they are matched.
+function routeTable(services) {
+  return [
+    ...setupRoutes(services),
+    ...labRoutes(services),
+    ...settingsRoutes(services),
+    ...vaultRoutes(services),
+    ...addressRoutes(services),
+    ...smtpRoutes(services),
+    ...updateRoutes(services),
+    ...backupRoutes(services),
+    ...supportRoutes(services),
+    ...customizeRoutes(services),
+    ...appRoutes(services),
+    ...sourceRoutes(services),
+  ];
+}
+
+module.exports = { routeTable };

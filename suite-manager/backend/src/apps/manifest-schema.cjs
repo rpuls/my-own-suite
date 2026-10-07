@@ -208,7 +208,5 @@ function validateManifestStructure(manifest) {
 }
 
 module.exports = {
-  MANIFEST_SCHEMA_PATH,
-  loadManifestSchema,
   validateManifestStructure,
 };

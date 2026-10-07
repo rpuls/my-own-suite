@@ -531,7 +531,5 @@ function validateManifestSemantics(manifest, { packageDir = null } = {}) {
 module.exports = {
   APP_ID_PATTERN,
   ENV_KEY_PATTERN,
-  FIELD_ID_PATTERN,
-  TEMPLATE_REFERENCE,
   validateManifestSemantics,
 };

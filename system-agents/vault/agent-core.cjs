@@ -574,16 +574,11 @@ class VaultAgentCore {
 }
 
 module.exports = {
-  DESCRIPTOR_PATH,
-  SYSTEM_SWAPFILE_PATH,
-  MAPPER_NAME,
   MOUNTPOINT,
-  PROTECTED_PATHS,
   SENTENCES,
   STATES,
   TPM_MODES,
   TPM_SLOTS,
   VaultAgentCore,
   VaultError,
-  sentenceFor,
 };

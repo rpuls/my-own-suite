@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, PACKAGE_TESTS_DIR, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
@@ -11,12 +12,7 @@ const { readSigningPublicKey, verifyCatalogSignature } = require('./catalog-sign
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 
-class OfficialCatalogError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
+class OfficialCatalogError extends CodedError {}
 
 function githubRepository(repository) {
   let url;

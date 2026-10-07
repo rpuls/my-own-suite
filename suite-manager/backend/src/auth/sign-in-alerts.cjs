@@ -64,4 +64,4 @@ class SignInAlerts {
   }
 }
 
-module.exports = { DEFAULT_MIN_INTERVAL_MS, SignInAlerts, renderSignInAlert };
+module.exports = { SignInAlerts, renderSignInAlert };

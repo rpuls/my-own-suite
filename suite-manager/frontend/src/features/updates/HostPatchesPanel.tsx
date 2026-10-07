@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { AdvancedPanel, Checkbox, Dialog, Icon, Panel, PanelBand, PanelBody, Row, RowValue, Rows, Spinner } from '../../components/ui';
 
-export type HostHealth = {
+type HostHealth = {
   at: string | null;
   failures: Array<{ active: string; name: string; sub: string }>;
   ok: boolean | null;

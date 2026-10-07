@@ -44,7 +44,7 @@ export type SetupField = { default?: unknown; generated: boolean; id: string; la
 // fingerprint and a label to render, never its value.
 export type InstanceConfigEntry = { fingerprint: string | null; generated: boolean; key: string; redactedLabel: string | null; secret: boolean; source: string; updatedAt: string; value?: unknown };
 
-export type SetupSource = { setup: { fields: SetupField[] } };
+type SetupSource = { setup: { fields: SetupField[] } };
 
 type EditorRow = {
   // Stable across re-renders so a row keeps its input focus while its name is
@@ -98,7 +98,7 @@ const SAVE_STEPS: SaveStep[] = [
 // public contract and deliberately not made for a presentation problem.
 const LABEL_SPLIT = /^(.{4,44}?)(?:\s[-–—]\s|,\s(?=such as\b)|\.\s+)(\S.*)$/su;
 
-export function splitFieldLabel(label: string): { help: string; label: string } {
+function splitFieldLabel(label: string): { help: string; label: string } {
   const trimmed = label.trim();
   const match = LABEL_SPLIT.exec(trimmed);
   return match ? { help: match[2]!.trim(), label: match[1]!.trim() } : { help: '', label: trimmed };
@@ -154,7 +154,7 @@ function fingerprintTail(fingerprint: string | null) {
 // People copy KEY=value blocks out of upstream documentation, so that is the
 // shape this accepts. Blank lines and # comments are ignored; everything after
 // the first = is the value, verbatim, quotes and all.
-export function parsePastedVariables(text: string): { error: string; rows: Array<{ name: string; value: string }> } {
+function parsePastedVariables(text: string): { error: string; rows: Array<{ name: string; value: string }> } {
   const rows: Array<{ name: string; value: string }> = [];
   const lines = text.split(/\r?\n/u);
   for (const [index, line] of lines.entries()) {

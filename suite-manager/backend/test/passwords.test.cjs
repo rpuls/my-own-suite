@@ -5,7 +5,6 @@ const test = require('node:test');
 const {
   CURRENT_PARAMETERS,
   HashGate,
-  PasswordHashingBusyError,
   hashPassword,
   needsRehash,
   verifyPassword,
@@ -95,7 +94,7 @@ test('the gate bounds concurrent hashing and refuses an unbounded backlog', asyn
   const refused = settled.filter((entry) => entry.status === 'rejected');
   assert.equal(refused.length, 2);
   for (const entry of refused) {
-    assert.ok(entry.reason instanceof PasswordHashingBusyError);
+    assert.equal(entry.reason.code, 'PASSWORD_HASHING_BUSY');
     // A refusal MOS chose has to reach the caller as a wait, not as the
     // "Internal server error." the request layer gives an unrecognised throw.
     assert.equal(entry.reason.statusCode, 503);

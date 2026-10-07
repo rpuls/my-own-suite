@@ -3,7 +3,7 @@
 // returns: no fetching, no state, no JSX. The page reads as a list of sections;
 // the sentences those sections show are decided here.
 
-export type BackupDestination = {
+type BackupDestination = {
   accessKeyId?: string;
   availableBytes: number | null;
   bucket?: string;
@@ -53,7 +53,7 @@ export type ObjectDraft = {
 
 export const EMPTY_OBJECT_DRAFT: ObjectDraft = { accessKeyId: '', bucket: '', endpoint: '', folder: '', label: '', region: '', secretAccessKey: '' };
 
-export type BackupValidation = {
+type BackupValidation = {
   apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
   backupPath: string;
   checkedAt: string;
@@ -64,13 +64,13 @@ export type BackupValidation = {
 };
 
 // Which item of how many the current stage is on, named by its app.
-export type JobCount = { current: string | null; done: number; note: string | null; sentence: string; total: number; unit: string };
+type JobCount = { current: string | null; done: number; note: string | null; sentence: string; total: number; unit: string };
 
 // Where a running job is, in the agent's own words. The agent knows its own
 // sequence, so the step count and the plan are facts it reports, not a guess
 // this screen keeps beside it; the busy page Caddy serves reads the same
 // record, so the two never drift.
-export type PlanState = 'done' | 'next' | 'now';
+type PlanState = 'done' | 'next' | 'now';
 
 export type JobProgress = {
   count: JobCount | null;
@@ -90,9 +90,9 @@ export type JobProgress = {
 // How long a check or a restore of one restore point will take on this
 // machine, said before it starts. `basis` is whether that came from this
 // machine's history or is a stated range; the sentence already says which.
-export type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
+type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
 
-export type BackupJob = {
+type BackupJob = {
   // The domain the backup carried and the restore set aside, or null when the
   // backup came from this machine and there was nothing to set aside.
   address?: { domain: string | null } | null;
@@ -115,7 +115,7 @@ export type BackupJob = {
 
 // One line of the activity list. Thinner than a job on purpose: a finished job
 // is a sentence and a time, not a record to re-open.
-export type RecentJob = {
+type RecentJob = {
   destinationId: string | null;
   error: string | null;
   id: string;
@@ -165,7 +165,7 @@ export type BackupEntry = {
 
 // The one destination everything that backs up on its own writes to: the
 // schedule, and the backup taken before a MOS update.
-export type PrimaryDestination = {
+type PrimaryDestination = {
   destinationId: string;
   label: string | null;
   setAt: string | null;
@@ -186,7 +186,7 @@ export type BackupSchedule = {
   weekday: number;
 };
 
-export type InterruptedRestore = {
+type InterruptedRestore = {
   backupPath: string | null;
   jobId: string | null;
   phase: string;
@@ -231,7 +231,7 @@ export type BackupStatus = {
   serviceAvailable: boolean;
 };
 
-export type Tone = 'error' | 'muted' | 'ready' | 'warning';
+type Tone = 'error' | 'muted' | 'ready' | 'warning';
 
 export function formatBytes(value: number | null) {
   if (value === null || !Number.isFinite(value)) return 'Unknown space';
@@ -258,7 +258,7 @@ export function whenWords(value: string | null) {
   return `${parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })}, ${clock}`;
 }
 
-export function daysSince(value: string | null) {
+function daysSince(value: string | null) {
   if (!value) return null;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -281,7 +281,7 @@ export function browserTimeZone() {
 // which is not necessarily this browser's or the server's, so every moment the
 // panel shows is rendered in that same zone. Otherwise "runs at 03:00" and
 // "next run 09:00" appear side by side and both are right.
-export function formatInZone(value: string | null, timeZone: string) {
+function formatInZone(value: string | null, timeZone: string) {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -313,7 +313,7 @@ export function destinationIconName(destination: BackupDestination) {
   return 'hard-drive';
 }
 
-export function destinationKindLabel(destination: BackupDestination) {
+function destinationKindLabel(destination: BackupDestination) {
   if (destination.kind === 'object') return 'Storage you rent online';
   if (destination.storageKind === 'external') return 'A drive you plug in';
   if (destination.storageKind === 'network') return 'A folder on your network';
@@ -322,7 +322,7 @@ export function destinationKindLabel(destination: BackupDestination) {
 
 // Where the backups actually go, in the terms the owner entered them: the
 // bucket and folder, and the host they live on.
-export function destinationAddress(destination: BackupDestination) {
+function destinationAddress(destination: BackupDestination) {
   if (destination.kind !== 'object') return destination.mountPath;
   const host = (destination.endpoint || '').replace(/^https?:\/\//u, '');
   return `${destination.bucket || ''}${destination.folder ? `/${destination.folder}` : ''} · ${host}`;
@@ -369,7 +369,7 @@ export function carriedDomain(backup: BackupEntry, status: BackupStatus | null |
 // the restore points rather than stored on the destination: the store itself
 // says who wrote it, and a bucket that has been unlocked has to keep saying so
 // long after the sentence that announced it has gone.
-export function foreignServer(destination: BackupDestination, status: BackupStatus | null | undefined) {
+function foreignServer(destination: BackupDestination, status: BackupStatus | null | undefined) {
   const points = (status?.backups || []).filter((backup) => backup.destinationId === destination.id);
   const names = points.map((backup) => writtenElsewhere(backup, status)).filter(Boolean) as string[];
   if (!names.length) return null;
@@ -378,7 +378,7 @@ export function foreignServer(destination: BackupDestination, status: BackupStat
   return names[0] || null;
 }
 
-export function bytesLine(destination: BackupDestination) {
+function bytesLine(destination: BackupDestination) {
   const store = destination.repository;
   const points = store?.restorePoints || 0;
   if (!points) return 'Ready · no backups here yet';
@@ -386,7 +386,7 @@ export function bytesLine(destination: BackupDestination) {
   return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }
 
-export type DestinationAction = '' | 'mount' | 'retest' | 'unlock';
+type DestinationAction = '' | 'mount' | 'retest' | 'unlock';
 
 export type DestinationView = {
   action: DestinationAction;
@@ -417,7 +417,7 @@ export type DestinationView = {
 // states the condition once, a detail line under it, and at most one button.
 // Everything that used to be split over a pill, a helper and a footer is folded
 // into `status` and `detail` here.
-export function destinationView(destination: BackupDestination, status: BackupStatus | null | undefined, selectedId: string): DestinationView {
+function destinationView(destination: BackupDestination, status: BackupStatus | null | undefined, selectedId: string): DestinationView {
   const selected = destination.id === selectedId;
   const ready = destination.ready === true;
   const bucket = destination.kind === 'object';
@@ -721,7 +721,7 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
 // pointing at the machine they came from, and a screen that answers "done" to
 // that is the failure this reports around: the phone apps keep saying error
 // while the browser says everything is fine.
-export type RestoreAftermath = {
+type RestoreAftermath = {
   // The name the backup carried, set aside and offered back under Settings.
   domain: string | null;
   routesDetail: string | null;

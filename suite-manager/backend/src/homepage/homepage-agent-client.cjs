@@ -1,4 +1,4 @@
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 const HOMEPAGE_AGENT_TIMEOUT_MS = 75_000;
 
 class HomepageAgentClient {
@@ -7,40 +7,18 @@ class HomepageAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, body) {
-    return new Promise((resolve, reject) => {
-      const payload = body ? JSON.stringify(body) : '';
-      const request = http.request({
-        headers: payload ? { 'Content-Length': Buffer.byteLength(payload), 'Content-Type': 'application/json' } : {},
-        method,
-        path: requestPath,
-        socketPath: this.socketPath,
-        timeout: this.timeoutMs,
-      }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) { resolve(parsed); return; }
-          const error = new Error(parsed.error || 'Homepage agent rejected the operation.');
-          error.code = parsed.code || 'HOMEPAGE_AGENT_REJECTED';
-          error.details = parsed.details || [];
-          error.statusCode = response.statusCode;
-          reject(error);
-        });
+  async request(method, requestPath, body) {
+    const answer = await requestAgent({ body, method, path: requestPath, socketPath: this.socketPath, timeoutMs: this.timeoutMs }).catch(({ timedOut }) => {
+      throw Object.assign(new Error(timedOut ? 'Homepage apply timed out. The previous dashboard remains active.' : 'Homepage system agent is unavailable.'), {
+        code: timedOut ? 'HOMEPAGE_AGENT_TIMEOUT' : 'HOMEPAGE_AGENT_UNAVAILABLE',
+        statusCode: 503,
       });
-      request.on('error', (cause) => {
-        const timedOut = cause?.message === 'HOMEPAGE_AGENT_TIMEOUT';
-        const error = new Error(timedOut ? 'Homepage apply timed out. The previous dashboard remains active.' : 'Homepage system agent is unavailable.');
-        error.code = timedOut ? 'HOMEPAGE_AGENT_TIMEOUT' : 'HOMEPAGE_AGENT_UNAVAILABLE';
-        error.statusCode = 503;
-        reject(error);
-      });
-      request.on('timeout', () => request.destroy(new Error('HOMEPAGE_AGENT_TIMEOUT')));
-      if (payload) request.write(payload);
-      request.end();
+    });
+    if (answer.ok) return answer.body;
+    throw Object.assign(new Error(answer.body.error || 'Homepage agent rejected the operation.'), {
+      code: answer.body.code || 'HOMEPAGE_AGENT_REJECTED',
+      details: answer.body.details || [],
+      statusCode: answer.statusCode,
     });
   }
 

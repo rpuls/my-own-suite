@@ -573,8 +573,6 @@ module.exports = {
   renderCaddyfile,
   renderUnavailablePage,
   renderUnavailablePageScript,
-  statusRoutes,
-  unlockRoute,
   renderJournaldConfig,
   renderMachineCaddyfile,
   renderHomepageSystemdUnit,

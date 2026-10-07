@@ -18,7 +18,7 @@ const request = {
     }],
     volumes: ['configs'],
   },
-  health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
+  health: { host: 'web:3000', target: 'http://127.0.0.1:18123/health', type: 'http' },
   instanceId: '12345678-1234-4123-8123-123456789abc',
   packageDigest: `sha256:${'a'.repeat(64)}`,
   packageId: 'example-tool',
@@ -310,6 +310,10 @@ test('app apply rejects arbitrary packages, paths, routes, and commands', async 
   }), AppRuntimeError);
   await assert.rejects(() => core.apply({
     ...request,
+    health: { host: 'web:3000/evil', target: 'http://127.0.0.1:18123/health', type: 'http' },
+  }), AppRuntimeError);
+  await assert.rejects(() => core.apply({
+    ...request,
     compose: { ...request.compose, services: [{ ...request.compose.services[0], environment: { 'bad-key': 'value' } }] },
   }), AppRuntimeError);
 });
@@ -324,13 +328,13 @@ test('app health check validates loopback health projection only', async () => {
   });
 
   const result = await core.checkHealth({
-    health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
+    health: { host: 'web:3000', target: 'http://127.0.0.1:18123/health', type: 'http' },
     packageId: 'example-tool',
   });
 
   assert.equal(result.status, 'healthy');
   assert.equal(result.packageId, 'example-tool');
-  assert.deepEqual(calls, [{ healthTarget: 'http://127.0.0.1:18123/health', packageId: 'example-tool' }]);
+  assert.deepEqual(calls, [{ healthHost: 'web:3000', healthTarget: 'http://127.0.0.1:18123/health', packageId: 'example-tool' }]);
   await assert.rejects(() => core.checkHealth({
     command: 'docker ps',
     health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
@@ -338,6 +342,10 @@ test('app health check validates loopback health projection only', async () => {
   }), AppRuntimeError);
   await assert.rejects(() => core.checkHealth({
     health: { target: 'http://example-tool:3000/health', type: 'http' },
+    packageId: 'example-tool',
+  }), AppRuntimeError);
+  await assert.rejects(() => core.checkHealth({
+    health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
     packageId: 'example-tool',
   }), AppRuntimeError);
 });

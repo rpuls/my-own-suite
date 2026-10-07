@@ -113,4 +113,4 @@ function main(args = process.argv.slice(2)) {
 
 if (require.main === module) main();
 
-module.exports = { generateCatalog, main, serializeCatalog };
+module.exports = { main, serializeCatalog };
