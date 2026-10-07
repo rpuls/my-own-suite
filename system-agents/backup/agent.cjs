@@ -633,7 +633,6 @@ function packageBackupInventory() {
   const store = new SuiteManagerStore(stateDir);
   try {
     return store.getAppInstances().map((instance) => {
-      if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) throw new Error(`Installed package snapshot is unavailable for ${instance.packageId}.`);
       readAppPackageManifest(instance.snapshotPath);
       const manifest = verifySnapshotIdentity(instance.snapshotPath, { errorMessage: `Installed package snapshot is invalid for ${instance.packageId}.`, expectedDigest: instance.packageDigest, packageId: instance.packageId });
       const expected = path.join(stateRoot, 'app-packages', instance.id, 'installed');

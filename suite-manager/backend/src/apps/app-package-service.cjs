@@ -150,9 +150,6 @@ class AppPackageService {
   }
 
   installedPackageFor(instance) {
-    if (!instance || instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_UNAVAILABLE', 'This app does not have a verified installed package snapshot.', 409);
-    }
     const appPackage = readAppPackageManifest(instance.snapshotPath);
     // An instance is managed under its installed id, which is the manifest id
     // for official packages and `x-<namespace>-<manifest id>` for external ones.
@@ -163,92 +160,6 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot no longer matches its recorded identity.', 409);
     }
     return appPackage;
-  }
-
-  async migrateLegacyPackages() {
-    const results = [];
-    for (const instance of this.store.getAppInstances().filter((item) => item.snapshotState === 'legacy-unmigrated')) {
-      const packageDir = path.join(this.appsDir, instance.packageId);
-      let appPackage;
-      try {
-        appPackage = readAppPackageManifest(packageDir);
-      } catch {
-        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
-        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
-        continue;
-      }
-      const { manifest } = appPackage;
-      if (manifest.version !== instance.packageVersion || digestFor(manifest) !== instance.manifestDigest) {
-        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
-        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
-        continue;
-      }
-
-      // Digesting parses privacy-review.json, so invalid package contents must
-      // degrade this one instance to recovery rather than abort the whole
-      // migration — migrateLegacyPackages runs at startup, and an unfenced
-      // throw here prevents Suite Manager from booting.
-      let packageDigest;
-      try {
-        packageDigest = digestAppPackage(packageDir);
-      } catch {
-        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
-        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
-        continue;
-      }
-      const source = {
-        kind: 'official-git',
-        path: `apps/${manifest.id}`,
-        repository: this.officialRepository,
-        revision: packageDigest,
-        trust: 'mos-reviewed',
-      };
-      let privacy = { posture: null, reviewedAt: null, status: 'review-required' };
-      const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
-      if (fs.existsSync(privacyReviewPath)) {
-        // A malformed review must degrade the one instance to recovery, exactly
-        // like a malformed manifest above — an unguarded parse here aborts the
-        // migration and prevents Suite Manager from booting at all.
-        let review;
-        try {
-          review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
-        } catch {
-          this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
-          results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
-          continue;
-        }
-        // Same revision rule as installPackage: the legacy migration path has
-        // no resolved git revision, so adopt the review's declared revision.
-        if (typeof review?.scope?.source?.revision === 'string' && review.scope.source.revision.trim()) {
-          source.revision = review.scope.source.revision;
-        }
-        const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
-        if (errors.length) {
-          this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
-          results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
-          continue;
-        }
-        privacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
-      }
-      try {
-        const snapshot = await this.agent?.snapshotPackage({ instanceId: instance.id, packageDigest, packageId: manifest.id });
-        if (!snapshot?.snapshotPath) throw new Error('snapshot unavailable');
-        const installed = readAppPackageManifest(snapshot.snapshotPath);
-        if (installed.manifest.id !== manifest.id || digestAppPackage(snapshot.snapshotPath) !== packageDigest) throw new Error('snapshot mismatch');
-        this.store.migrateAppPackageIdentity({
-          at: this.now().toISOString(),
-          instanceId: instance.id,
-          packageDigest,
-          privacy,
-          snapshotPath: snapshot.snapshotPath,
-          source,
-        });
-        results.push({ packageId: instance.packageId, status: 'migrated' });
-      } catch (error) {
-        results.push({ errorCode: error.code || 'APP_PACKAGE_MIGRATION_RETRY_REQUIRED', packageId: instance.packageId, status: 'retry-required' });
-      }
-    }
-    return results;
   }
 
   // The host label an installed app answers on, for callers that hold only a
@@ -989,7 +900,6 @@ class AppPackageService {
       reviewedAt: instance.privacyReviewedAt || null,
       status: instance.privacyStatus || 'review-required',
     };
-    if (instance.snapshotState !== 'installed' || !instance.snapshotPath) return stored;
     return privacyReviewPresentation(instance.snapshotPath, { id: instance.packageId, version: instance.packageVersion }) || stored;
   }
 
@@ -1158,7 +1068,7 @@ class AppPackageService {
       // and screenshot URLs are built from the id it is given: addressed by the
       // manifest id they resolve to no installed app and 404.
       let installedSummary = null;
-      if (instance?.snapshotState === 'installed') {
+      if (instance) {
         try { installedSummary = publicPackageSummary({ ...this.installedPackageFor(instance).manifest, id: packageId }); } catch {}
       }
       const summary = installedSummary
@@ -1273,7 +1183,7 @@ class AppPackageService {
     const providersByType = new Map();
     const instances = this.store.getAppInstances();
     for (const instance of instances) {
-      if (instance.packageId === packageId || instance.snapshotState !== 'installed') continue;
+      if (instance.packageId === packageId) continue;
       let manifest;
       try { ({ manifest } = this.installedPackageFor(instance)); } catch { continue; }
       for (const exported of Object.values(manifest.exports || {})) {
@@ -1304,9 +1214,6 @@ class AppPackageService {
 
   iconPath(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (instance && instance.snapshotState !== 'installed') {
-      throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'This app icon is unavailable until its installed package is recovered.', 404);
-    }
     const packageDir = instance ? this.installedPackageFor(instance).packageDir : path.join(this.appsDir, packageId);
     if (!fs.existsSync(path.join(packageDir, 'manifest.json'))) {
       throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
@@ -1334,9 +1241,6 @@ class AppPackageService {
   // always land on the file the manifest declared at that position.
   screenshotPath(packageId, index) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (instance && instance.snapshotState !== 'installed') {
-      throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'This app screenshot is unavailable until its installed package is recovered.', 404);
-    }
     const packageDir = instance ? this.installedPackageFor(instance).packageDir : path.join(this.appsDir, packageId);
     if (!fs.existsSync(path.join(packageDir, 'manifest.json'))) {
       throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
@@ -1439,7 +1343,6 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The app package snapshot agent did not return an installed snapshot path.', 502);
     }
     instance.snapshotPath = snapshot.snapshotPath;
-    instance.snapshotState = 'installed';
     return this.completeInstall({
       at,
       // No instance row references this successfully created snapshot yet, so
@@ -1586,7 +1489,6 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The app package snapshot agent did not return an installed snapshot path.', 502);
     }
     instance.snapshotPath = snapshot.snapshotPath;
-    instance.snapshotState = 'installed';
     return this.completeInstall({
       at,
       input,

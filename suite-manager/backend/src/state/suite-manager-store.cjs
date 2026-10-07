@@ -962,7 +962,6 @@ class SuiteManagerStore {
         privacy_reviewed_at AS privacyReviewedAt,
         privacy_status AS privacyStatus,
         snapshot_path AS snapshotPath,
-        snapshot_state AS snapshotState,
         source_kind AS sourceKind,
         source_path AS sourcePath,
         source_repository AS sourceRepository,
@@ -994,7 +993,6 @@ class SuiteManagerStore {
         privacy_reviewed_at AS privacyReviewedAt,
         privacy_status AS privacyStatus,
         snapshot_path AS snapshotPath,
-        snapshot_state AS snapshotState,
         source_kind AS sourceKind,
         source_path AS sourcePath,
         source_repository AS sourceRepository,
@@ -1502,7 +1500,7 @@ class SuiteManagerStore {
         UPDATE app_instances SET
           package_version = ?, manifest_digest = ?, display_name_snapshot = ?, category_snapshot = ?,
           package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?, source_revision = ?, source_trust = ?,
-          snapshot_path = ?, snapshot_state = 'installed', privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?,
+          snapshot_path = ?, privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?,
           update_recovery_state = 'none', update_recovery_error = NULL, updated_at = ?
         WHERE id = ?
       `).run(
@@ -1716,37 +1714,6 @@ class SuiteManagerStore {
     });
   }
 
-  markAppPackageRecoveryRequired({ at, instanceId }) {
-    this.database.prepare(`
-      UPDATE app_instances
-      SET snapshot_state = 'needs-package-recovery', updated_at = ?
-      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
-    `).run(at, instanceId);
-  }
-
-  migrateAppPackageIdentity({ at, instanceId, packageDigest, privacy, snapshotPath, source }) {
-    this.database.prepare(`
-      UPDATE app_instances
-      SET package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?,
-          source_revision = ?, source_trust = ?, snapshot_path = ?, snapshot_state = 'installed',
-          privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?, updated_at = ?
-      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
-    `).run(
-      packageDigest,
-      source.kind,
-      source.repository,
-      source.path,
-      source.revision,
-      source.trust,
-      snapshotPath,
-      privacy.status,
-      privacy.posture,
-      privacy.reviewedAt,
-      at,
-      instanceId,
-    );
-  }
-
   deleteAppInstance({ instanceId }) {
     this.transaction(() => {
       this.database.prepare('DELETE FROM app_instances WHERE id = ?').run(instanceId);
@@ -1762,7 +1729,7 @@ class SuiteManagerStore {
           package_digest, source_kind, source_repository, source_path, source_revision, source_trust,
           snapshot_path, snapshot_state, privacy_status, privacy_posture, privacy_reviewed_at
         )
-        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installed', ?, ?, ?)
       `).run(
         instance.id,
         instance.packageId,
@@ -1780,7 +1747,6 @@ class SuiteManagerStore {
         instance.source?.revision ?? null,
         instance.source?.trust ?? null,
         instance.snapshotPath ?? null,
-        instance.snapshotState ?? 'legacy-unmigrated',
         instance.privacy?.status ?? null,
         instance.privacy?.posture ?? null,
         instance.privacy?.reviewedAt ?? null,

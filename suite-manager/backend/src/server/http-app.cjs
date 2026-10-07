@@ -1871,7 +1871,6 @@ function createMOSServer({
   });
 
   server.on('close', () => { catalogService.stop(); addressService.stopWatchingEasyDoor(); setup.close(); });
-  server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
     publicUrlFor: publicUrls(),
   });

@@ -16,8 +16,6 @@ const logger = createLogger();
 const server = createMOSServer({ frontendDistDir, homeHost, logger, stateDir });
 
 async function start() {
-  const migrations = await server.migrateAppPackages();
-  for (const migration of migrations) logger.info('app-package-migrated', { packageId: migration.packageId, status: migration.status });
   const recoveries = await server.recoverAppPackageUpdates();
   for (const recovery of recoveries) logger.info('app-update-recovered', { instanceId: recovery.instanceId, recoveryState: recovery.recoveryState });
   const sweptCandidates = server.sweepAppCandidates();
