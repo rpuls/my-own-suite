@@ -7,7 +7,6 @@ const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contrac
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { resolveClientAddress } = require('../auth/login-throttle.cjs');
-const { SetupError } = require('../setup/setup-service.cjs');
 const {
   KNOWN_BROWSER_COOKIE,
   SESSION_COOKIE,
@@ -123,9 +122,8 @@ function serveFrontend(response, frontendDistDir) {
 
 function createRequestHandler(services) {
   const {
-    addressService, alerts, appPackages, appUrls, catalogService, externalSourceService,
-    frontendDistDir, handover, homepage, homepageConfig, installJobs, logger, ownerClaimToken, recordSecurityEvent,
-    securityLogger, setup, throttle, updateJobs, vault,
+    addressService, appPackages, appUrls, catalogService, externalSourceService, frontendDistDir, handover,
+    homepage, homepageConfig, installJobs, logger, ownerClaimToken, setup, signIn, updateJobs, vault,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -223,56 +221,10 @@ function createRequestHandler(services) {
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
-        const knownBrowser = setup.isKnownBrowser(cookies[KNOWN_BROWSER_COOKIE] || '');
-        const attempt = { email: body.email, ip: resolveClientAddress(request), knownBrowser };
-        const retryAfterMs = throttle.retryAfterMs(attempt);
-        if (retryAfterMs > 0) {
-          const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
-          const securityEvent = {
-            clientFingerprint: throttle.fingerprint(attempt.ip),
-            event: 'login-throttled',
-            retryAfterSeconds,
-          };
-          try {
-            recordSecurityEvent({
-              at: new Date().toISOString(),
-              eventType: securityEvent.event,
-              retryAfterSeconds,
-              subject: securityEvent.clientFingerprint,
-            });
-          } catch {
-            securityLogger({ event: 'security-event-persistence-failed' });
-          }
-          securityLogger(securityEvent);
-          // Not awaited: the 429 must not wait on a relay, and a relay that
-          // fails is logged rather than allowed to change the answer.
-          alerts.notify().catch((error) => securityLogger({ error: error.message, event: 'sign-in-alert-failed' }));
-          jsonResponse(response, 429, {
-            code: 'LOGIN_THROTTLED',
-            error: 'Too many sign-in attempts. Wait a moment and try again.',
-          }, {
-            'Retry-After': String(retryAfterSeconds),
-          });
-          return;
-        }
-
-        let result;
-        try {
-          result = await setup.login(body);
-        } catch (error) {
-          if (error instanceof SetupError && (error.code === 'INVALID_LOGIN' || error.code === 'OWNER_NOT_CREATED')) {
-            throttle.recordFailure(attempt);
-          }
-          throw error;
-        }
-        throttle.recordSuccess(attempt);
-        // The one moment MOS holds this password without being asked to change
-        // it, and therefore the only chance to finish a chip enrollment that
-        // failed earlier. Nothing about the sign-in depends on it.
-        void vault.repairOnSignIn(body.password);
+        const result = await signIn.signIn({ credentials: body, ip: resolveClientAddress(request), knownBrowserToken: cookies[KNOWN_BROWSER_COOKIE] });
         const secure = isHttpsRequest(request);
         const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
-        if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
+        if (result.knownBrowserToken) cookiesToSet.push(knownBrowserCookie(result.knownBrowserToken, secure));
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, { 'Set-Cookie': cookiesToSet });
         return;
       }

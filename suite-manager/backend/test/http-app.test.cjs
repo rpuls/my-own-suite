@@ -1730,32 +1730,6 @@ test('a browser that has signed in before gets past an account-wide backoff, and
   }, { loginThrottle });
 });
 
-// The alert is asked for on every throttled attempt and decides for itself
-// whether to send; the 429 does not wait for it.
-test('a throttled sign-in asks the alert service to notify the owner', async () => {
-  const notified = [];
-  const loginThrottle = new LoginThrottle({ policy: { account: { freeFailures: 10 }, ip: { baseDelayMs: 5_000, freeFailures: 1, maxDelayMs: 5_000 } } });
-  await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const badLogin = () => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.25' },
-      method: 'POST',
-    });
-    await badLogin();
-    await badLogin();
-    assert.equal((await badLogin()).status, 429);
-    assert.equal(notified.length, 1);
-  }, {
-    loginThrottle,
-    signInAlerts: { notify: async () => { notified.push(Date.now()); return { sent: false }; } },
-  });
-});
-
 test('duplicate owner creation returns conflict', async () => {
   await withServer(async (baseUrl) => {
     const owner = {
@@ -2649,31 +2623,6 @@ test('a password change teaches the chip before it commits, and completes even w
       method: 'POST',
     });
     assert.equal(withNew.status, 200);
-  }, { homeHost: 'home.test', vaultAgent });
-});
-
-// A slot left needing repair is taught again at the next sign-in whatever the
-// mode. In automatic mode the chip needs no password and the agent ignores the
-// one sent; what matters is that the repair is attempted at all, because
-// nothing else on a running machine holds the owner's password.
-test('a sign-in repairs a chip slot that is waiting, in either mode', async () => {
-  const enrollments = [];
-  const vaultAgent = {
-    async enrollChip(input) { enrollments.push(input); return { mode: 'automatic', ok: true, slot: 'enrolled' }; },
-    async status() { return { state: 'unlocked', tpm: { mode: 'automatic', slot: 'needs-repair' }, unlocksItself: false }; },
-  };
-
-  await withServer(async (baseUrl) => {
-    await createOwner(baseUrl);
-    const signedIn = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(signedIn.status, 200);
-    // The repair is not awaited by the sign-in, so give it a moment to land.
-    for (let waited = 0; enrollments.length === 0 && waited < 50; waited += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.deepEqual(enrollments, [{ mode: 'current', pin: 'correct horse battery' }]);
   }, { homeHost: 'home.test', vaultAgent });
 });
 

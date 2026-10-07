@@ -17,6 +17,7 @@ const { OfficialCatalogService } = require('../apps/official-catalog-service.cjs
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
 const { LoginThrottle, loadThrottleKey } = require('../auth/login-throttle.cjs');
 const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
+const { SignInService } = require('../auth/sign-in-service.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
@@ -105,7 +106,6 @@ function createServices({
         logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
       }
     },
-    recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     // A branch track reads its own branch's catalog; a release reads `main`.
     resolveCatalogRef: async () => {
@@ -145,6 +145,7 @@ function createServices({
     store: setup.store,
   });
   const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
+  const signIn = new SignInService({ alerts, recordSecurityEvent, securityLogger, setup, throttle, vault });
   const appUrls = createAppPublicUrls({ appPackages, homepageConfig, suiteAddress });
   // Built after the app and Homepage services because moving the address re-bakes both.
   const addressService = new SuiteAddressService({
@@ -198,7 +199,6 @@ function createServices({
 
   return {
     addressService,
-    alerts,
     appAgent,
     appPackages,
     appUrls,
@@ -220,11 +220,10 @@ function createServices({
     logger,
     ownerClaimToken,
     recordSecurityEvent,
-    securityLogger,
     setup,
+    signIn,
     smtpSettings,
     suiteAddress,
-    throttle,
     updateJobs,
     updates,
     vault,
