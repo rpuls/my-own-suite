@@ -1,4 +1,5 @@
 const { addressRoutes } = require('./address.cjs');
+const { appRoutes } = require('./apps.cjs');
 const { backupRoutes } = require('./backups.cjs');
 const { customizeRoutes } = require('./customize.cjs');
 const { labRoutes } = require('./lab.cjs');
@@ -23,6 +24,7 @@ function routeTable(services) {
     ...backupRoutes(services),
     ...supportRoutes(services),
     ...customizeRoutes(services),
+    ...appRoutes(services),
     ...sourceRoutes(services),
   ];
 }

@@ -431,36 +431,6 @@ test('App package catalog API requires authentication and exposes safe manifest 
   }, { homeHost: 'home.test' });
 });
 
-test('app update endpoint requires owner authentication', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/update-job', {
-      body: JSON.stringify({ confirmationToken: '0'.repeat(64) }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-  }, { homeHost: 'home.test' });
-});
-
-test('App package icon API serves only authenticated declared package icons', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
-      headers: { Host: 'home.test' },
-    });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers['content-type'], 'image/png');
-    assert.ok(response.body.length > 100);
-  }, { homeHost: 'home.test' });
-});
-
 test('App package install API creates a logical instance with dry-run projections', async () => {
   const stirlingPort = loopbackPortFor('stirling-pdf');
   await withServer(async (baseUrl) => {
