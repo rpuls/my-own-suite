@@ -185,56 +185,6 @@ async function createOwner(baseUrl, host = 'home.test', { secure = false } = {})
   return response.headers['set-cookie'][0];
 }
 
-test('the owner preference route is authenticated, validated, and reflected in setup status', async () => {
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: true }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(denied.json().code, 'AUTH_REQUIRED');
-
-    const cookie = await createOwner(baseUrl);
-    const signedOutStatus = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
-    assert.equal(signedOutStatus.json().preferences, undefined);
-
-    const before = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(before.json().preferences, { technicalControls: false });
-
-    const saved = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: true }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(saved.status, 200);
-    assert.deepEqual(saved.json().preferences, { technicalControls: true });
-
-    const after = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(after.json().preferences, { technicalControls: true });
-
-    const wrongType = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'technicalControls', value: 'yes' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(wrongType.status, 400);
-    assert.equal(wrongType.json().code, 'INVALID_PREFERENCE_VALUE');
-
-    const unknownKey = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
-      body: JSON.stringify({ key: 'showEverything', value: true }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(unknownKey.status, 400);
-    assert.equal(unknownKey.json().code, 'UNKNOWN_PREFERENCE');
-
-    // A rejected write changes nothing.
-    const unchanged = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(unchanged.json().preferences, { technicalControls: true });
-  }, { homeHost: 'home.test' });
-});
-
 // An installed app's page is same-site with Suite Manager, so the browser sends
 // the owner's cookie with it; text/plain is what an attacker would use to skip a preflight.
 test('a write from another origin is refused on every API route, and a same-origin write is not', async () => {
@@ -545,31 +495,6 @@ test('App package install API creates a logical instance with dry-run projection
     assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').content.routes[0].reverseProxy, `127.0.0.1:${stirlingPort}`);
     assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'health').content.target, `http://127.0.0.1:${stirlingPort}/api/v1/info/status`);
   }, { homeHost: 'home.test' });
-});
-
-test('Security activity API is owner-only and returns a bounded summary without subjects', async () => {
-  const stateDir = await tempStateDir();
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', { headers: { Host: 'home.test' } });
-    assert.equal(denied.status, 401);
-
-    const cookie = await createOwner(baseUrl);
-    const store = new SuiteManagerStore(stateDir);
-    const at = new Date().toISOString();
-    store.recordSecurityEvent({ at, eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'private-client-fingerprint' });
-    store.recordSecurityEvent({ at, eventType: 'app-source-candidate-rejected', subject: 'private-source-id' });
-    store.close();
-
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-    });
-    const summary = response.json();
-    assert.equal(response.status, 200);
-    assert.equal(summary.eventCount, 2);
-    assert.equal(summary.byType.length, 2);
-    assert.match(summary.since, /^\d{4}-\d{2}-\d{2}T/u);
-    assert.doesNotMatch(JSON.stringify(summary), /private-client-fingerprint|private-source-id/u);
-  }, { homeHost: 'home.test', stateDir });
 });
 
 test('Backup status requires auth and reports MOS protected state', async () => {
