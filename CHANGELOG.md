@@ -2,6 +2,12 @@
 
 Updater-facing software changes only — documentation, site, repository, and cosmetic changes are excluded. Format follows Keep a Changelog; versioning follows Semantic Versioning.
 
+Suite Manager shows these entries on its update screen, and `npm run release:check` holds `[Unreleased]` to the shape that screen reads:
+
+- Group entries under `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed` or `### Security`.
+- An entry is one top-level bullet that opens with a bold lead sentence: `- **What changes for the owner.** Detail.` The lead is the entry's title on the screen, and a server already running an entry with that lead is not shown it again, so every entry needs its own lead, and rewording one makes it new.
+- An entry's sub-bullets and further paragraphs are indented two spaces under it. The screen drops anything else.
+
 ## [Unreleased]
 
 ### Added
@@ -15,6 +21,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - **Settings is one grouped page you can search.** Settings are grouped under Your suite, Account & security, Apps, Advanced and Help, with a sidebar that lists every setting, follows where you are, and filters as you type (press `/` to search). Forms such as the suite address, the email relay and the owner password stay closed behind **Edit** or **Change** until you need them, while each card keeps its current status in view.
 - **Paperless-ngx package 0.3.4 updates Paperless-ngx to 3.3.0.** It brings sharper full-text search, OCR text-layer fixes, stricter checks on bulk edits and permissions, and a two-factor prompt on Paperless' `/admin/` page. The first start after the update rebuilds the search index from scratch, so a large archive takes longer to come back. Suggestions for sender, type and tags return after the next hourly training. **Migrations run on start and are forward-only.**
 - **Seafile package 0.3.3 updates Seafile to 13.0.28.** A read-only library API token can no longer move, copy or delete files. Your files, settings, WebDAV and ONLYOFFICE editing carry over unchanged, with no database migration.
+- **Radicale package 0.5.3 updates Radicale to 3.8.1.** Free-busy lookups work again, all-day events and completed tasks show up when a client asks for a date range, contact searches by name or address no longer fail, and large calendars list faster. Calendar sharing, new in 3.8, stays off. **Compatibility:** Radicale 3.8 rejects usernames that start or end with `@`, contain more than one `@`, or contain a `,`. An install with such a username fails to start on 3.8.1, so its update rolls back to 3.7.6 instead of locking you out; the default username, your email address, is unaffected.
 
 ### Fixed
 
@@ -27,6 +34,7 @@ Updater-facing software changes only — documentation, site, repository, and co
   Signed advisories flag the affected versions until you update. **Compatibility:** buying a Stirling PDF licence inside the app no longer works.
 - **Installing or updating an app waits for the app, not a clock.** MOS gave up after 90 seconds, so a slow first start such as Paperless-ngx setting up its database showed as a failed install, and an update whose migration ran longer was rolled back midway. MOS now waits as long as the app keeps running, up to 15 minutes, and stops early only when it keeps crashing; the install shows how long each step has taken.
 - **"Ready" means the app's address opens.** On your own domain each new app gets its own certificate a few seconds after it starts, and opening it straight away showed a browser error until then. An install now waits for the address, and if the certificate is late, says so while the app is already running.
+- **The update screen lists what the update brings.** It read the changelog of the version already installed, so a server tracking a branch was shown changes it already had, and one on a stable release saw nothing for the new release. It now reads the update's own changelog and lists every entry the server does not have yet.
 - **Actual Budget no longer announces releases you cannot install yet.** Its new package turns off the check that asked GitHub for Actual's latest version, since new versions come through MOS. It now contacts nothing outside your server.
 - **App installs and updates finish even if you close the page.** Suite Manager now runs the whole install or update itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build. An update that took longer than a minute used to be reported as "Unable to update" although it went on to succeed; it now shows each step through to the end.
 

@@ -199,7 +199,7 @@ function ChangeList({ items }: { items: string[] }) {
             <strong><Markdown inline>{title}</Markdown></strong>
             <span className="suite-updates-chevron"><Icon name="chevron-right" /></span>
           </button> : <strong className="suite-updates-change-head"><Markdown inline>{title}</Markdown></strong>}
-          {body ? <div className="suite-updates-change-body" onClick={open ? undefined : () => toggle(index)}><Markdown inline>{body}</Markdown></div> : null}
+          {body ? <div className="suite-updates-change-body" onClick={open ? undefined : () => toggle(index)}><Markdown inline={!body.includes('\n')}>{body}</Markdown></div> : null}
         </div>
       </PanelItem>;
     })}

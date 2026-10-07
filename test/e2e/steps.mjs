@@ -30,6 +30,24 @@ export const STEPS = {
 
 const DESTINATIONS = new Set(['local', 'bucket']);
 
+const feeds = (provider, consumer) => (provider.provides || []).some((type) => (consumer.accepts || []).includes(type));
+
+// The app and the catalog apps it works with, read from their manifests so no path names
+// a pair. Providers come first, so a consumer's journey finds them installed and running.
+export function appGroup(app, catalog = []) {
+  const self = catalog.find((item) => item.id === app);
+  if (!self) return [app];
+  const group = [self, ...catalog.filter((item) => item !== self && item.hasModule && (feeds(item, self) || feeds(self, item)))];
+  const feedsGroup = (item) => group.some((other) => other !== item && feeds(item, other));
+  return [...group.filter(feedsGroup), ...group.filter((item) => !feedsGroup(item))].map((item) => item.id);
+}
+
+const each = (step, apps) => apps.map((id) => `${step}:${id}`);
+
+function installTogether(group) {
+  return [...each('install', group), ...(group.length > 1 ? ['connect'] : []), ...each('app', group)];
+}
+
 export const NAMED_PATHS = {
   smoke: {
     describe: 'Reset the lab and create the owner.',
@@ -42,13 +60,19 @@ export const NAMED_PATHS = {
   },
   'app-dr': {
     app: true,
-    describe: "Disaster recovery: the app's data survives a bucket backup, a wiped lab and a restore from the bucket.",
-    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'backup:bucket', 'reset', 'owner', 'restore:bucket', `verify:${app}`, 'routes', 'network', 'cleanup'],
+    describe: "Disaster recovery: the app's data survives a bucket backup, a wiped lab and a restore from the bucket, with the apps it works with installed and connected.",
+    build: (app, catalog) => {
+      const group = appGroup(app, catalog);
+      return ['reset', 'owner', ...installTogether(group), 'backup:bucket', 'reset', 'owner', 'restore:bucket', ...each('verify', group), 'routes', 'network', 'cleanup'];
+    },
   },
   update: {
     app: true,
-    describe: 'Update insurance: the app journey, the platform update, the app update, the app check, and before/after screenshot and network reports.',
-    build: (app) => ['reset', 'owner', `install:${app}`, `app:${app}`, 'platform-update:wait', `update:${app}`, `verify:${app}`, 'routes', 'compare', 'network'],
+    describe: 'Update insurance: the journeys, the platform update, the app update, the checks, and before/after screenshot and network reports, with the apps it works with installed and connected.',
+    build: (app, catalog) => {
+      const group = appGroup(app, catalog);
+      return ['reset', 'owner', ...installTogether(group), 'platform-update:wait', `update:${app}`, ...each('verify', group), 'routes', 'compare', 'network'];
+    },
   },
   full: {
     apps: true,

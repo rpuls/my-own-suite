@@ -37,6 +37,7 @@ cmd /c npm run e2e:full                           # the same as `e2e -- @full`
 ```
 
 - Steps that need HTTPS for an app whose manifest declares `requirements.https` get a `dns01` step in front of them automatically; `--dry-run` shows where.
+- `@update` and `@app-dr` also install the catalog apps the app works with: those that export what its manifest's `integrations` accept, and those that accept what it exports. They are connected, used and checked alongside it, providers first, and only the named app is updated.
 - Each run writes `test/e2e/results/<run>/`: `summary.json` (every step, its duration and any error), `state.json` (what the apps' journeys made), app screenshots under `shots/`, the compare report under `compare/`, the network report under `network/`, Playwright's trace, video and `error-context.md` under `playwright/`, and, when an app step fails, the app's own tabs as text under `failures/` (Playwright's error context shows only the suite's tab). The terminal shows one line per step and, on failure, the paths to all of these.
 - `--continue <run>` carries an earlier run's app data and screenshots into a new run, so `verify:<app>` and `compare` work across runs: install and use an app, change the lab, then check it.
 - `platform-update:wait` waits up to 40 minutes for the lab's update track to offer a new commit. The lab follows the branch it was installed from (`MOS_SMOKE_REPO_REF` at `smoke:hyperv:reset`), so pushing a commit to that branch while the step waits is how an update under test reaches the lab.

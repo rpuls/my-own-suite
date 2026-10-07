@@ -81,6 +81,61 @@ test('a branch head moved only by site, docs and tests is not offered as an upda
   assert.equal((await collectStatus(paths)).updateAvailable, true);
 });
 
+test('a branch update lists the changelog entries it brings, not the ones this machine already runs', async () => {
+  const upstream = makeRepo();
+  const installed = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-installed-'));
+  run(installed, ['clone', '--quiet', '--branch', 'staging', upstream, '.']);
+  const paths = buildPaths(installed, fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-')));
+  write(path.join(upstream, 'CHANGELOG.md'), [
+    '# Changelog', '', '## [Unreleased]', '', '### Added', '',
+    '- Test update summary.',
+    '- **Backups run on a schedule.** Pick when:',
+    '  - daily',
+    '  - weekly',
+    '',
+    '  Retention keeps the last seven.',
+    '',
+  ].join('\n'));
+  write(path.join(upstream, 'suite-manager/backend/src/server/start.cjs'), 'start\n');
+  run(upstream, ['add', '.']);
+  run(upstream, ['commit', '-m', 'schedules']);
+
+  const status = await collectStatus(paths);
+
+  assert.equal(status.updateAvailable, true);
+  assert.deepEqual(status.changeSummary.items, ['**Backups run on a schedule.** Pick when:\n- daily\n- weekly\n\nRetention keeps the last seven.']);
+  assert.equal(status.changeSummary.source, 'CHANGELOG.md [Unreleased]');
+});
+
+test('a stable update lists every release it brings, read from the release tag', async () => {
+  const repo = makeRepo();
+  const paths = buildPaths(repo, fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-')));
+  const changelog = (...sections) => ['# Changelog', '', '## [Unreleased]', '', ...sections.flat(), ''].join('\n');
+  const shipped = ['## [0.1.0] - 2026-09-01', '', '- **Backups exist.** Detail.'];
+  write(path.join(repo, 'VERSION'), '0.1.0\n');
+  write(path.join(repo, 'CHANGELOG.md'), changelog(shipped));
+  run(repo, ['add', '.']);
+  run(repo, ['commit', '-m', 'release 0.1.0']);
+  write(path.join(repo, 'VERSION'), '0.2.0\n');
+  write(path.join(repo, 'CHANGELOG.md'), changelog(['## [0.2.0] - 2026-10-01', '', '- **Backups run on a schedule.** Detail.'], ['## [0.1.1] - 2026-09-15', '', '- **Backups say where they went.** Detail.'], shipped));
+  run(repo, ['add', '.']);
+  run(repo, ['commit', '-m', 'release 0.2.0']);
+  run(repo, ['tag', 'v0.2.0']);
+  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-remote-')), 'origin.git');
+  execFileSync('git', ['clone', '--bare', repo, remote], { encoding: 'utf8' });
+  run(repo, ['remote', 'set-url', 'origin', remote]);
+  run(repo, ['reset', '--hard', 'HEAD~1']);
+  run(repo, ['tag', '-d', 'v0.2.0']);
+  writeUpdateTrack(paths, { track: 'stable' });
+
+  const status = await collectStatus(paths, { releaseLookup: async () => ({ channel: 'stable', version: '0.2.0' }) });
+
+  assert.equal(status.updateAvailable, true);
+  assert.deepEqual(status.changeSummary.items, ['**Backups run on a schedule.** Detail.', '**Backups say where they went.** Detail.']);
+  assert.equal(status.changeSummary.source, 'CHANGELOG.md [0.1.1 – 0.2.0]');
+  assert.equal(status.changeSummary.title, 'Changes in 0.2.0');
+});
+
 test('apply refuses dirty working trees before running host reconciliation', async () => {
   const repo = makeRepo();
   const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));

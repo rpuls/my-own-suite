@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { unreleasedFormatProblems } = require('../shared/changelog.cjs');
 
 const rootDir = process.cwd();
 const versionFilePath = path.join(rootDir, 'VERSION');
@@ -81,6 +82,8 @@ if (errors.length === 0) {
   if (!changelog.includes(`## [${version}]`)) {
     warnings.push(`CHANGELOG.md has no "## [${version}]" section for the current stable version.`);
   }
+  // Owners read these entries on Suite Manager's update screen, which parses them.
+  errors.push(...unreleasedFormatProblems(changelog));
 
   if (releaseMode) {
     const target = normalizeVersion(releaseTarget);

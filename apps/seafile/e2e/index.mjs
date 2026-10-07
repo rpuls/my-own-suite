@@ -222,9 +222,16 @@ export default {
     if (state.document) {
       await step('the document written in the office editor kept its text', async () => {
         expect(await documentText(page, libraryId(page), state.document.name)).toContain(state.document.text);
-        if (connected.includes('documentEditor')) await (await openInEditor(page, state.document.name)).editor.close();
       });
     }
     await shot('library');
+    // After the shot, so the new file is not counted as a changed screen.
+    if (state.document) {
+      await step('the office editor still opens, edits and saves a new document', async () => {
+        expect(connected, 'Seafile should still be connected to the office editor its journey wrote in').toContain('documentEditor');
+        const stamp = Date.now().toString(36);
+        await writeDocument(page, libraryId(page), `mos-e2e-check-${stamp}.docx`, `MOS E2E check ${stamp}`);
+      });
+    }
   },
 };

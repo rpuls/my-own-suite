@@ -18,10 +18,12 @@ export function catalogApps() {
     .map((entry) => {
       const manifest = JSON.parse(fs.readFileSync(path.join(appsDir, entry.name, 'manifest.json'), 'utf8'));
       return {
+        accepts: Object.values(manifest.integrations || {}).flatMap((slot) => (slot.accepts || []).map((item) => item.type)),
         hasModule: fs.existsSync(appModulePath(manifest.id)),
         id: manifest.id,
         name: manifest.name,
         needsHttps: manifest.requirements?.https === true,
+        provides: Object.values(manifest.exports || {}).map((item) => item.type),
         role: manifest.role || 'standalone',
         routeHosts: (manifest.routes || []).map((route) => route.host).filter(Boolean),
       };
