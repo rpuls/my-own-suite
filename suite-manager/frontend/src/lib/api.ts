@@ -17,3 +17,11 @@ export async function jsonResponse<T>(response: Response, fallback: string): Pro
   const reference = typeof body.reference === 'string' ? body.reference : '';
   throw new Error(reference ? `${message} (reference ${reference})` : message);
 }
+
+export async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
+  return jsonResponse<T>(await fetch(url, {
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }), fallback);
+}

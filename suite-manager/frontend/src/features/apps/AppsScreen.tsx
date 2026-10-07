@@ -6,7 +6,7 @@ import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './Priv
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import { isNotAssessed, type PrivacyAdvisory, type PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
-import { jsonResponse } from '../../lib/api';
+import { jsonResponse, postJson } from '../../lib/api';
 import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 
 // What one service needs. The resting pair is always present when the package
@@ -831,12 +831,9 @@ function AppDetail({
     setStartingUpdate(true);
     setApplyError('');
     try {
-      const { updateJob } = await jsonResponse<{ updateJob: AppJob<UpdateStep> }>(
-        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/update-job`, {
-          body: JSON.stringify({ config: updateInput, confirmationToken: comparison.confirmationToken }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-        }),
+      const { updateJob } = await postJson<{ updateJob: AppJob<UpdateStep> }>(
+        `/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/update-job`,
+        { config: updateInput, confirmationToken: comparison.confirmationToken },
         `Unable to update ${app.name}.`,
       );
       setUpdateStartedAt(updateJob.startedAt);
@@ -1604,14 +1601,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     const handle = window.setTimeout(() => {
       void (async () => {
         try {
-          const result = await jsonResponse<ExternalResolveResponse>(
-            await fetch('/suite-manager/api/apps/sources/resolve', {
-              body: JSON.stringify({ url: externalUrl }),
-              headers: { 'Content-Type': 'application/json' },
-              method: 'POST',
-            }),
-            'That URL does not point to a valid MOS app package.',
-          );
+          const result = await postJson<ExternalResolveResponse>('/suite-manager/api/apps/sources/resolve', { url: externalUrl }, 'That URL does not point to a valid MOS app package.');
           if (!cancelled) setExternalResolved(result);
         } catch (caught) {
           if (!cancelled) {
@@ -1636,14 +1626,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     setExternalAdding(true);
     setExternalAddError('');
     try {
-      await jsonResponse<{ source: unknown }>(
-        await fetch('/suite-manager/api/apps/sources', {
-          body: JSON.stringify({ repository }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-        }),
-        'Unable to add that app source.',
-      );
+      await postJson<{ source: unknown }>('/suite-manager/api/apps/sources', { repository }, 'Unable to add that app source.');
       // Clearing the query drops the preview and shows the ordinary catalog, which
       // now includes this source's apps.
       setQuery('');
@@ -1688,14 +1671,11 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     setExternalInstalling(true);
     setExternalInstallError('');
     try {
-      const installed = await jsonResponse<{ packageId: string }>(
-        await fetch('/suite-manager/api/apps/sources/install', {
-          // Naming the package is what makes a repository publishing several of them
-          // installable: the backend refuses to choose on the owner's behalf.
-          body: JSON.stringify({ config, packageId: card.id, url: source.repository }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-        }),
+      // Naming the package is what makes a repository publishing several of them
+      // installable: the backend refuses to choose on the owner's behalf.
+      const installed = await postJson<{ packageId: string }>(
+        '/suite-manager/api/apps/sources/install',
+        { config, packageId: card.id, url: source.repository },
         `Unable to install ${card.name}.`,
       );
       const refreshed = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
@@ -1734,23 +1714,9 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       // is an ordinary instance under its namespaced id and installs like any other.
       const external = app.installStatus !== 'installed' && app.external && app.source ? app.source : null;
       if (external) {
-        await jsonResponse(
-          await fetch('/suite-manager/api/apps/sources/install', {
-            body: JSON.stringify({ config: setupConfig, packageId: app.id, url: external.repository }),
-            headers: { 'Content-Type': 'application/json' },
-            method: 'POST',
-          }),
-          `Unable to prepare ${app.name}.`,
-        );
+        await postJson('/suite-manager/api/apps/sources/install', { config: setupConfig, packageId: app.id, url: external.repository }, `Unable to prepare ${app.name}.`);
       }
-      await jsonResponse(
-        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install-job`, {
-          body: JSON.stringify({ config: setupConfig, showOnHomepage }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-        }),
-        `Unable to install ${app.name}.`,
-      );
+      await postJson(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install-job`, { config: setupConfig, showOnHomepage }, `Unable to install ${app.name}.`);
     } catch (caught) {
       setInstallError(caught instanceof Error ? caught.message : `Unable to install ${app.name}.`);
     } finally {
@@ -1797,19 +1763,12 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     ]);
     try {
       await withMinimumInstallStep(async () =>
-        jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-          await fetch('/suite-manager/api/apps/integrations/connect', {
-            body: JSON.stringify({
-              consumerPackageId: connection.consumerPackageId,
-              providerCapabilityId: connection.capabilityId,
-              providerPackageId: connection.provider.id,
-              slotId: connection.slotId,
-            }),
-            headers: { 'Content-Type': 'application/json' },
-            method: 'POST',
-          }),
-          'Unable to connect these apps.',
-        ),
+        postJson<{ instance: AppPackageSummary['instance'] }>('/suite-manager/api/apps/integrations/connect', {
+          consumerPackageId: connection.consumerPackageId,
+          providerCapabilityId: connection.capabilityId,
+          providerPackageId: connection.provider.id,
+          slotId: connection.slotId,
+        }, 'Unable to connect these apps.'),
       );
       setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
       await load();
@@ -1826,14 +1785,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     if (!app.instance || guideUpdatingId) return;
     setGuideUpdatingId(app.id);
     try {
-      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/guide`, {
-          body: JSON.stringify({ status }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-        }),
-        `Unable to update ${app.name} setup guide.`,
-      );
+      await postJson<{ instance: AppPackageSummary['instance'] }>(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/guide`, { status }, `Unable to update ${app.name} setup guide.`);
       await load();
     } catch (caught) {
       setInstallError(caught instanceof Error ? caught.message : `Unable to update ${app.name} setup guide.`);

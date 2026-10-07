@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 
 import { AdvancedPanel, Checkbox, Dialog, Icon, InputAction, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Switch, TextInput, useTechnicalControls, type IconName } from '../../components/ui';
 import { AppSourcesPanel } from './AppSourcesPanel';
-import { jsonResponse } from '../../lib/api';
+import { jsonResponse, postJson } from '../../lib/api';
 import { readVaultView, type VaultView } from '../../lib/vault';
 
 // The suite's one recorded address: where apps and Homepage are published.
@@ -240,11 +240,7 @@ function SuiteAddressPanel() {
     setFormError('');
     setBusy('change');
     try {
-      const started = await jsonResponse<{ startedAt: string }>(await fetch('/suite-manager/api/settings/address/change', {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'The address could not be changed.');
+      const started = await postJson<{ startedAt: string }>('/suite-manager/api/settings/address/change', body, 'The address could not be changed.');
       setStartedAt(started.startedAt);
       setEditing(false);
       await load();
@@ -493,11 +489,7 @@ function EmailRelayPanel() {
     setTestResult('');
     setSaving(true);
     try {
-      const saved = await jsonResponse<SmtpSaveResult>(await fetch('/suite-manager/api/settings/smtp', {
-        body: JSON.stringify({ allowInvalidCert, fromAddress: fromAddress.trim(), fromName: fromName.trim(), host: host.trim(), password, port: port.trim(), security, username: username.trim() }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'The email relay could not be saved.');
+      const saved = await postJson<SmtpSaveResult>('/suite-manager/api/settings/smtp', { allowInvalidCert, fromAddress: fromAddress.trim(), fromName: fromName.trim(), host: host.trim(), password, port: port.trim(), security, username: username.trim() }, 'The email relay could not be saved.');
       apply(saved.status);
       setPassword('');
       setResult(saved.verify);
@@ -514,11 +506,7 @@ function EmailRelayPanel() {
     setTestResult('');
     setBusy('test');
     try {
-      const sent = await jsonResponse<{ sentTo: string }>(await fetch('/suite-manager/api/settings/smtp/test', {
-        body: JSON.stringify({ to: testTo.trim() }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'The test message could not be sent.');
+      const sent = await postJson<{ sentTo: string }>('/suite-manager/api/settings/smtp/test', { to: testTo.trim() }, 'The test message could not be sent.');
       setTestResult(sent.sentTo);
       await load();
     } catch (caught) {
@@ -640,11 +628,7 @@ function StartupProtectionDialog({ enabling, onClose, onDone }: {
     setSaving(true);
     setError('');
     try {
-      await jsonResponse(await fetch('/suite-manager/api/settings/vault/startup-password', {
-        body: JSON.stringify({ enabled: enabling, password }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'How this server starts could not be changed.');
+      await postJson('/suite-manager/api/settings/vault/startup-password', { enabled: enabling, password }, 'How this server starts could not be changed.');
       setPassword('');
       onDone();
     } catch (caught) {
@@ -805,11 +789,7 @@ function OwnerAccountPanel() {
       // The change always goes through, so the only thing the answer can add is
       // whether the disk followed it. It reports that rather than hiding it: the
       // owner has to know which password their server will want after a restart.
-      const result = await jsonResponse<{ startupProtection?: { ok: boolean; reason?: string | null } | null }>(await fetch('/suite-manager/api/settings/owner/password', {
-        body: JSON.stringify({ currentPassword, newPassword }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Your password could not be changed.');
+      const result = await postJson<{ startupProtection?: { ok: boolean; reason?: string | null } | null }>('/suite-manager/api/settings/owner/password', { currentPassword, newPassword }, 'Your password could not be changed.');
       clearForm();
       const protection = result.startupProtection;
       setChipFailed(!protection || protection.ok ? null : protection.reason === 'vault-agent-unavailable' ? 'unreachable' : 'refused');

@@ -4,7 +4,7 @@ import { Markdown } from '../../components/Markdown';
 import { AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner, Stepper } from '../../components/ui';
 import type { IconName } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
-import { jsonResponse } from '../../lib/api';
+import { jsonResponse, postJson } from '../../lib/api';
 import { readVaultView, startupOf } from '../../lib/vault';
 import { HostPatchesPanel } from './HostPatchesPanel';
 import type { HostPatches } from './HostPatchesPanel';
@@ -311,11 +311,7 @@ export function UpdatesScreen() {
   async function answerWait(answer: 'cancel' | 'skip-backup') {
     const id = job?.id || '';
     await runAction(answer, async () => {
-      await jsonResponse(await fetch(`/suite-manager/api/updates/${answer}`, {
-        body: JSON.stringify({ id }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), answer === 'cancel' ? 'Unable to cancel the update.' : 'Unable to go on without a backup.');
+      await postJson(`/suite-manager/api/updates/${answer}`, { id }, answer === 'cancel' ? 'Unable to cancel the update.' : 'Unable to go on without a backup.');
     });
   }
 
@@ -334,11 +330,7 @@ export function UpdatesScreen() {
 
   async function switchTrack() {
     await runAction('track', async () => {
-      await jsonResponse(await fetch('/suite-manager/api/updates/track', {
-        body: JSON.stringify({ track }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to switch update track.');
+      await postJson('/suite-manager/api/updates/track', { track }, 'Unable to switch update track.');
     });
   }
 
