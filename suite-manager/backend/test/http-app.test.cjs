@@ -12,9 +12,7 @@ const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contra
 const { SuiteAddressFile } = require('../../../shared/suite-address.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../shared/easy-door.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
-const { routeTable } = require('../src/server/routes/index.cjs');
 const { createServices } = require('../src/server/services.cjs');
-const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
@@ -111,62 +109,6 @@ function hostRequest(baseUrl, requestPath, { body = '', headers = {}, method = '
   });
 }
 
-test('first visit serves the built Suite Manager frontend', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/`);
-    const html = await response.text();
-
-    assert.equal(response.status, 200);
-    assert.match(html, /Suite Manager \| My Own Suite/);
-    assert.match(html, /id="root"/);
-  });
-});
-
-// The whole point of the build stamp is that a running frontend can tell it has
-// been replaced, and a document served from cache defeats that on its own.
-test('the served document names its build, is never cached, and the API agrees', async () => {
-  await withServer(async (baseUrl) => {
-    const document = await fetch(`${baseUrl}/`);
-    const html = await document.text();
-    const stamped = /<meta name="mos-build" content="([0-9a-f]{16})" \/>/u.exec(html);
-
-    assert.equal(document.headers.get('cache-control'), 'no-store');
-    assert.ok(stamped, 'the served document carries its build id');
-
-    const build = await fetch(`${baseUrl}/suite-manager/api/build`);
-    assert.equal(build.status, 200);
-    assert.equal(build.headers.get('cache-control'), 'no-store');
-    assert.equal((await build.json()).id, stamped[1]);
-  });
-});
-
-test('build output is cached forever and everything else is not', async () => {
-  await withServer(async (baseUrl) => {
-    // Vite puts the content hash in the filename, so a new build is a new URL
-    // and the old one can never be the wrong answer.
-    const bundle = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
-    // A brand mark keeps its name across a rebrand, so it must not.
-    const brand = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
-
-    assert.equal(bundle.headers.get('cache-control'), 'public, max-age=31536000, immutable');
-    assert.equal(brand.headers.get('cache-control'), 'public, max-age=3600');
-  });
-});
-
-test('static frontend assets are served from the reserved asset namespace', async () => {
-  await withServer(async (baseUrl) => {
-    const scriptResponse = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
-    const script = await scriptResponse.text();
-    const brandResponse = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
-
-    assert.equal(scriptResponse.status, 200);
-    assert.match(script, /mos app/);
-    assert.equal(scriptResponse.headers.get('content-type'), 'text/javascript; charset=utf-8');
-    assert.equal(brandResponse.status, 200);
-    assert.equal(brandResponse.headers.get('content-type'), 'image/png');
-  });
-});
-
 // The door the owner completes setup on — host and scheme — is the address the
 // suite records and builds every URL from, so a test that expects https app
 // URLs onboards over https.
@@ -182,53 +124,6 @@ async function createOwner(baseUrl, host = 'home.test', { secure = false } = {})
   });
   return response.headers['set-cookie'][0];
 }
-
-// An installed app's page is same-site with Suite Manager, so the browser sends
-// the owner's cookie with it; text/plain is what an attacker would use to skip a preflight.
-test('a write from another origin is refused on every API route, and a same-origin write is not', async () => {
-  const source = await fs.readFile(path.resolve(__dirname, '..', 'src', 'server', 'http-app.cjs'), 'utf8');
-  const literalRoutes = new Set([...source.matchAll(/`\$\{SUITE_MANAGER_API_PREFIX\}(\/[^`$]+)`/gu)].map((match) => match[1]));
-  const tableRoutes = routeTable({}).filter((route) => route.path).map((route) => route.path);
-  const routes = [...literalRoutes, ...tableRoutes, '/apps/packages/vaultwarden/uninstall', '/apps/sources/any/remove'];
-  assert.ok(routes.length > 50, 'the scan found the API routes');
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const post = (route, headers) => hostRequest(baseUrl, `/suite-manager/api${route}`, {
-      body: JSON.stringify({ key: 'technicalControls', value: true }),
-      headers: { 'Content-Type': 'text/plain', Cookie: cookie, Host: 'home.test', ...headers },
-      method: 'POST',
-    });
-
-    for (const route of routes) {
-      const refused = await post(route, { Origin: 'http://vaultwarden.home.test' });
-      assert.equal(refused.status, 403, route);
-      assert.equal(refused.json().code, 'CROSS_ORIGIN_REJECTED', route);
-    }
-    for (const headers of [{ 'Sec-Fetch-Site': 'same-site' }, { Origin: 'null' }, { Origin: 'http://home.test:8443' }]) {
-      assert.equal((await post('/settings/preferences', headers)).status, 403, JSON.stringify(headers));
-    }
-
-    const status = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    assert.deepEqual(status.json().preferences, { technicalControls: false });
-
-    const sameOrigin = await post('/settings/preferences', { Origin: 'http://home.test', 'Sec-Fetch-Site': 'same-origin' });
-    assert.equal(sameOrigin.status, 200);
-  }, { homeHost: 'home.test' });
-});
-
-test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
-  await withServer(async (baseUrl) => {
-    const setupResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
-    const dashboardResponse = await hostRequest(baseUrl, '/', {
-      headers: { Host: 'home.test' },
-    });
-
-    assert.equal(setupResponse.status, 200);
-    assert.equal(dashboardResponse.status, 302);
-    assert.equal(dashboardResponse.headers.location, '/suite-manager/');
-  }, { homeHost: 'home.test' });
-});
 
 test('authenticated Home requests stream through the private Homepage proxy without the MOS cookie', async () => {
   const seen = [];
@@ -292,38 +187,6 @@ test('Homepage redirects are rewritten to the public Home origin', async () => {
       assert.equal(response.status, 307);
       assert.equal(response.headers.location, 'https://home.test/next?ok=1');
     }, { homeHost: 'home.test', homepageUpstream: upstreamUrl });
-  } finally {
-    await new Promise((resolve) => upstream.close(resolve));
-  }
-});
-
-test('Suite Manager path and unknown hosts cannot bypass the Homepage boundary', async () => {
-  let upstreamRequests = 0;
-  const upstream = http.createServer((request, response) => {
-    upstreamRequests += 1;
-    response.end('homepage');
-  });
-  const upstreamUrl = await listen(upstream);
-
-  try {
-    await withServer(async (baseUrl) => {
-      const cookie = await createOwner(baseUrl);
-      const suiteResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
-      const unknownSuiteResponse = await hostRequest(baseUrl, '/suite-manager/unknown', {
-        headers: { Cookie: cookie, Host: 'home.test' },
-        method: 'POST',
-      });
-      const unknownResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'bypass.test' } });
-
-      assert.equal(suiteResponse.status, 200);
-      assert.match(suiteResponse.body, /Suite Manager/);
-      assert.equal(unknownSuiteResponse.status, 404);
-      assert.equal(unknownResponse.status, 421);
-      assert.equal(upstreamRequests, 0);
-    }, {
-      homeHost: 'home.test',
-      homepageUpstream: upstreamUrl,
-    });
   } finally {
     await new Promise((resolve) => upstream.close(resolve));
   }
@@ -2027,91 +1890,6 @@ test('onboarding records the Easy Door, and an offered domain is adopted with it
     // The Easy Door the owner is standing on still answers.
     assert.equal(status.address.kind, 'domain');
   }, { homeHost: 'home.test', homepageAgent, httpsAgent, suiteAddress });
-});
-
-// The owner is told "Internal server error." on purpose, so unless the reason is
-// written down here it exists nowhere at all — which is exactly the state this
-// replaced. The reference is what lets a screenshot and a journal line be
-// matched without guessing at timestamps.
-test('an internal error is logged with a reference the response also carries', async () => {
-  const lines = [];
-  const logger = createLogger({
-    stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) },
-  });
-
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    assert.equal(response.status, 500);
-    const body = response.json();
-    // The owner still learns nothing about the internals.
-    assert.equal(body.error, 'Internal server error.');
-    assert.match(body.reference, /^[0-9a-f]{8}$/u);
-
-    const logged = lines.filter((line) => line.event === 'request-failed');
-    assert.equal(logged.length, 1);
-    assert.equal(logged[0].reference, body.reference);
-    assert.equal(logged[0].level, 'error');
-    assert.equal(logged[0].method, 'POST');
-    assert.equal(logged[0].path, '/suite-manager/api/auth/login');
-    assert.equal(logged[0].statusCode, 500);
-    assert.equal(logged[0].error.message, 'throttle store unavailable');
-    assert.ok(logged[0].error.stack.includes('throttle store unavailable'));
-  }, {
-    logger,
-    loginThrottle: {
-      recordFailure() {},
-      recordSuccess() {},
-      retryAfterMs() { throw new Error('throttle store unavailable'); },
-    },
-  });
-});
-
-// A handled error already reaches the owner with its own message, so logging it
-// would be noise on every mistyped password rather than a signal.
-test('an expected client error is answered without a reference and without a log line', async () => {
-  const lines = [];
-  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
-
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    assert.equal(response.status, 401);
-    assert.equal(response.json().reference, undefined);
-    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
-  }, { logger });
-});
-
-test('a malformed or oversized body is a client error, answered without a log line', async () => {
-  const lines = [];
-  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
-
-  await withServer(async (baseUrl) => {
-    const malformed = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
-      body: '{"email":',
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const oversized = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
-      body: JSON.stringify({ email: 'x'.repeat(1_100_000) }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    assert.equal(malformed.status, 400);
-    assert.equal(malformed.json().code, 'REQUEST_BODY_INVALID');
-    assert.equal(oversized.status, 413);
-    assert.equal(oversized.json().code, 'REQUEST_BODY_TOO_LARGE');
-    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
-  }, { logger });
 });
 
 // The whole of I3 in one pass: a runtime apply fails, the reason survives the

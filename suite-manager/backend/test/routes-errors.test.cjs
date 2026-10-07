@@ -6,9 +6,11 @@ const { HomepageConfigError } = require('../../../shared/homepage-contract.cjs')
 const { SuiteAddressError } = require('../../../shared/suite-address.cjs');
 const { ExternalSourceError } = require('../src/apps/external-source-registry.cjs');
 const { OfficialCatalogError } = require('../src/apps/official-catalog-service.cjs');
+const { createLogger } = require('../src/server/logger.cjs');
 const { respondError } = require('../src/server/responses.cjs');
 const { HttpsAgentError } = require('../src/settings/https-agent-client.cjs');
 const { SetupError } = require('../src/setup/setup-service.cjs');
+const { withRoutes } = require('./support/route-harness.cjs');
 
 function answer(error) {
   const logged = [];
@@ -69,3 +71,64 @@ for (const kind of kinds) {
     assert.equal(logged[0].error, kind.error);
   });
 }
+
+function capturedLogger() {
+  const lines = [];
+  return { lines, logger: createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } }) };
+}
+
+// The owner is told "Internal server error." on purpose, so the reason has to be
+// written down here, under a reference a screenshot can be matched with.
+test('an internal error is logged with a reference the response also carries', async () => {
+  const { lines, logger } = capturedLogger();
+  const signIn = { signIn: async () => { throw new Error('throttle store unavailable'); } };
+
+  await withRoutes({ logger, signIn }, async (call) => {
+    const response = await call('POST', '/auth/login?claim=secret', { body: { email: 'owner@example.com', password: 'whatever' }, signedIn: false });
+
+    assert.equal(response.status, 500);
+    const body = response.json();
+    assert.equal(body.error, 'Internal server error.');
+    assert.match(body.reference, /^[0-9a-f]{8}$/u);
+
+    const logged = lines.filter((line) => line.event === 'request-failed');
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0].reference, body.reference);
+    assert.equal(logged[0].level, 'error');
+    assert.equal(logged[0].method, 'POST');
+    assert.equal(logged[0].path, '/suite-manager/api/auth/login');
+    assert.equal(logged[0].statusCode, 500);
+    assert.equal(logged[0].error.message, 'throttle store unavailable');
+    assert.ok(logged[0].error.stack.includes('throttle store unavailable'));
+  });
+});
+
+// A handled error reaches the owner with its own message, so logging it would be
+// noise on every mistyped password.
+test('an expected client error is answered without a reference and without a log line', async () => {
+  const { lines, logger } = capturedLogger();
+  const signIn = { signIn: async () => { throw new SetupError('INVALID_LOGIN', 'Email or password is incorrect.'); } };
+
+  await withRoutes({ logger, signIn }, async (call) => {
+    const response = await call('POST', '/auth/login', { body: { email: 'owner@example.com', password: 'whatever' }, signedIn: false });
+
+    assert.equal(response.status, 401);
+    assert.equal(response.json().reference, undefined);
+    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
+  });
+});
+
+test('a malformed or oversized body is a client error, answered without a log line', async () => {
+  const { lines, logger } = capturedLogger();
+
+  await withRoutes({ logger }, async (call) => {
+    const malformed = await call('POST', '/setup/owner', { body: '{"email":', signedIn: false });
+    const oversized = await call('POST', '/setup/owner', { body: { email: 'x'.repeat(1_100_000) }, signedIn: false });
+
+    assert.equal(malformed.status, 400);
+    assert.equal(malformed.json().code, 'REQUEST_BODY_INVALID');
+    assert.equal(oversized.status, 413);
+    assert.equal(oversized.json().code, 'REQUEST_BODY_TOO_LARGE');
+    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
+  });
+});

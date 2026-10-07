@@ -18,7 +18,7 @@ function fakeServices({ setup = {}, ...services } = {}) {
   };
 }
 
-function send(port, method, routePath, { body, headers = {}, signedIn = true }) {
+function send(port, method, requestPath, { body, headers = {}, signedIn = true }) {
   const payload = body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body);
   return new Promise((resolve, reject) => {
     // A fresh connection each time: a route may answer before it reads the body.
@@ -32,7 +32,7 @@ function send(port, method, routePath, { body, headers = {}, signedIn = true }) 
       },
       host: '127.0.0.1',
       method,
-      path: `/suite-manager/api${routePath}`,
+      path: requestPath,
       port,
     }, (response) => {
       const chunks = [];
@@ -47,15 +47,20 @@ function send(port, method, routePath, { body, headers = {}, signedIn = true }) 
   });
 }
 
-// Calls `fn` with `call(method, routePath, { body, headers, signedIn })`.
-async function withRoutes(services, fn) {
+// Calls `fn` with `request(method, path, { body, headers, signedIn })`.
+async function withHandler(services, fn) {
   const server = http.createServer(createRequestHandler(fakeServices(services)));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
-    await fn((method, routePath, options = {}) => send(server.address().port, method, routePath, options));
+    await fn((method, requestPath, options = {}) => send(server.address().port, method, requestPath, options));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 }
 
-module.exports = { fakeServices, withRoutes };
+// The same, with paths relative to the API prefix, as route tables write them.
+function withRoutes(services, fn) {
+  return withHandler(services, (request) => fn((method, routePath, options) => request(method, `/suite-manager/api${routePath}`, options)));
+}
+
+module.exports = { fakeServices, withHandler, withRoutes };
