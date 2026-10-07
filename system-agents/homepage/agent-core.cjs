@@ -1,6 +1,5 @@
+const { HOMEPAGE_FILES, HomepageConfigError } = require('../../shared/homepage-contract.cjs');
 const {
-  HOMEPAGE_FILES,
-  HomepageConfigError,
   addEntry,
   assertAllowedFile,
   projectServices,
@@ -9,7 +8,7 @@ const {
   renderCaddyRoutes,
   revisionFor,
   validateYaml,
-} = require('../../shared/homepage-contract.cjs');
+} = require('./document.cjs');
 
 function exactKeys(value, expected) {
   const keys = Object.keys(value && typeof value === 'object' && !Array.isArray(value) ? value : {}).sort();

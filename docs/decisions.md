@@ -1117,7 +1117,7 @@ Consequences:
 
 ## 2026-08-16: A Managed Dashboard Tile Links Through Suite Manager, Which Resolves The App's Own Address
 
-Decision: an installed app's dashboard tile links to `/suite-manager/open/<instanceId>`, and Suite Manager answers that with a 302 to the app's address derived from the request's own `Host` plus the instance's projected route host. The path is derived from the entry id inside `shared/homepage-contract.cjs` and never from anything a caller supplies; `reconcileManagedUrls` accepts no href at all. Owner-entered link tiles are unchanged and still require an absolute `http`/`https` URL. Widget endpoints stay absolute.
+Decision: an installed app's dashboard tile links to `/suite-manager/open/<instanceId>`, and Suite Manager answers that with a 302 to the app's address derived from the request's own `Host` plus the instance's projected route host. The path is derived from the entry id inside the Homepage agent's `system-agents/homepage/document.cjs` and never from anything a caller supplies; `reconcileManagedUrls` accepts no href at all. Owner-entered link tiles are unchanged and still require an absolute `http`/`https` URL. Widget endpoints stay absolute.
 
 Reason: a tile's href used to be a snapshot of the `Host` header from the single request that installed the app. Homepage is a separate container serving one rendered file to every visitor, so it cannot vary a link per request — install apps across two doors and the dashboard points at two domains, and arriving through the door that did not install them gives a page of dead tiles. Relative hrefs are the only mechanism that fixes this, because resolution then happens in the visitor's browser against the origin it already reached.
 
