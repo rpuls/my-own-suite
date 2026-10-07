@@ -954,22 +954,10 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/verify`) {
-        if (signedOut('Sign in to manage the email relay.')) return;
-        jsonResponse(response, 200, { status: smtpSettings.status(), verify: await smtpSettings.verify() });
-        return;
-      }
-
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/test`) {
         if (signedOut('Sign in to manage the email relay.')) return;
         const body = await readJsonBody(request, 4 * 1024);
         jsonResponse(response, 200, await smtpSettings.sendTest({ to: body?.to }));
-        return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/inventory`) {
-        if (signedOut('Sign in to review backup readiness.')) return;
-        jsonResponse(response, 200, backupInventory.inventory());
         return;
       }
 
@@ -1491,19 +1479,11 @@ function createMOSServer({
         return;
       }
 
-      const appDisableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/disable$/u);
-      if (request.method === 'POST' && appDisableMatch) {
-        if (signedOut('Sign in to disable app packages.')) return;
-        const packageId = decodeURIComponent(appDisableMatch[1]);
-        jsonResponse(response, 200, await appPackages.disablePackage(packageId, homepageConfig));
-        return;
-      }
-
       const appStopMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stop$/u);
       if (request.method === 'POST' && appStopMatch) {
         if (signedOut('Sign in to stop app packages.')) return;
         const packageId = decodeURIComponent(appStopMatch[1]);
-        jsonResponse(response, 200, await appPackages.stopPackageRuntime(packageId));
+        jsonResponse(response, 200, await appPackages.disablePackage(packageId));
         return;
       }
 

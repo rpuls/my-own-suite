@@ -944,7 +944,7 @@ test('a second start while the first is still building is refused, not run along
     () => service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
     (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
   );
-  await service.disablePackage('x-abcdef01-community-notes', null);
+  await service.disablePackage('x-abcdef01-community-notes');
 
   releaseBuild();
   await first.catch(() => {});
@@ -982,7 +982,7 @@ test('lifecycle operations are refused while an update transaction holds the app
   for (const blocked of [
     () => service.restartPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
     () => service.enablePackage('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
-    () => service.disablePackage('x-abcdef01-community-notes', null),
+    () => service.disablePackage('x-abcdef01-community-notes'),
     () => service.uninstallPackage('x-abcdef01-community-notes', null),
   ]) {
     await assert.rejects(blocked, (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409);
@@ -1009,7 +1009,7 @@ test('a stopped app refuses updates instead of being started by one', async () =
   await service.installExternalPackage({ candidate: installedPackage });
   registerSource(store);
   const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
-  await service.disablePackage('x-abcdef01-community-notes', null);
+  await service.disablePackage('x-abcdef01-community-notes');
 
   // Activation starts the candidate's containers, so updating a disabled app
   // would end with containers running while the store says disabled.

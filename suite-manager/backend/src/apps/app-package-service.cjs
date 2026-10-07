@@ -1619,13 +1619,12 @@ class AppPackageService {
   }
 
   // Serialized against updates under the same per-app key (see
-  // restartPackageRuntime). stopPackageRuntime delegates here, so it must not
-  // take the key itself.
-  async disablePackage(packageId, homepageService) {
-    return this.limiter.runExclusive(packageId, () => this.performDisablePackage(packageId, homepageService));
+  // restartPackageRuntime).
+  async disablePackage(packageId) {
+    return this.limiter.runExclusive(packageId, () => this.performDisablePackage(packageId));
   }
 
-  async performDisablePackage(packageId, _homepageService) {
+  async performDisablePackage(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before disabling it.', 409);
@@ -1659,10 +1658,6 @@ class AppPackageService {
       homepage: { skipped: true },
       instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
-  }
-
-  async stopPackageRuntime(packageId) {
-    return this.disablePackage(packageId, null);
   }
 
   // Serialized against updates under the same per-app key (see

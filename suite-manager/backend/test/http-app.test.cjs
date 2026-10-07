@@ -595,10 +595,10 @@ test('Security activity API is owner-only and returns a bounded summary without 
   }, { homeHost: 'home.test', stateDir });
 });
 
-test('Backup inventory API requires auth and reports MOS protected state', async () => {
+test('Backup status requires auth and reports MOS protected state', async () => {
   const stateDir = await tempStateDir();
   await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/status', {
       headers: { Host: 'home.test' },
     });
     assert.equal(denied.status, 401);
@@ -609,10 +609,10 @@ test('Backup inventory API requires auth and reports MOS protected state', async
       method: 'POST',
     });
 
-    const response = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/backups/status', {
       headers: { Cookie: cookie, Host: 'home.test' },
     });
-    const inventory = response.json();
+    const { inventory } = response.json();
     const vaultwarden = inventory.packages.find((entry) => entry.packageId === 'vaultwarden');
 
     assert.equal(response.status, 200);
