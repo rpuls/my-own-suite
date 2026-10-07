@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "radicale",
-  "reviewedAt": "2026-10-05T14:01:23.550Z",
+  "reviewedAt": "2026-10-06T23:00:00.000Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.5.2",
-    "packageDigest": "sha256:0f476f68e0434850d660573326e44f7eb693c4d53c64ab4254a287a4fb40ffdf",
+    "packageVersion": "0.5.3",
+    "packageDigest": "sha256:77fe03d3ad632f699e401f2f7a9a0befc4919b26ae9777c61ada9472474bdb01",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Radicale",
-        "version": "3.7.6",
+        "version": "3.8.1",
         "artifact": "docker.io/tomsquest/docker-radicale",
-        "digest": "sha256:89fa44d02b134f0ac37cad809883327af8424499d913eec74f95085c458a93b7"
+        "digest": "sha256:e6d8c17bc4d75f3fd40e52b20421ba244c17ca08fb01cd7dc90d5d78ba51b58d"
       }
     ],
     "clientsExcluded": [
@@ -38,7 +38,7 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, and RADICALE_CALENDAR_DISPLAYNAME into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables.",
+      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, RADICALE_CALENDAR_DISPLAYNAME, and the owner's optional MOS_SMTP_* email relay values into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables, and none of the UID, GID, or RADICALE_CONFIG_* variables the image's own entrypoint acts on.",
       "source": "apps/radicale/manifest.json"
     },
     {
@@ -48,24 +48,31 @@
     },
     {
       "type": "documented",
-      "claim": "Radicale 3.7.6 is a self-hosted CalDAV/CardDAV server that serves DAV over its own port and stores collections on the local filesystem; its documentation contains no mention of telemetry, usage analytics, update checks, or phone-home behaviour.",
+      "claim": "Radicale 3.8.1 is a self-hosted CalDAV/CardDAV server that serves DAV over its own port and stores collections on the local filesystem; its documentation and its 3.7.7 to 3.8.1 release notes contain no mention of telemetry, usage analytics, update checks, or phone-home behaviour.",
       "source": "Radicale project documentation (v3)",
       "url": "https://radicale.org/v3.html",
-      "retrievedAt": "2026-07-24"
+      "retrievedAt": "2026-10-06"
     },
     {
       "type": "observed",
-      "claim": "The pinned tomsquest/docker-radicale 3.7.6.0 build installs only radicale, passlib[bcrypt], argon2-cffi, pytz, and ldap3 into a local venv and adds a loopback curl healthcheck; it introduces no outbound analytics, licensing, or update service. Its Dockerfile, entrypoint, and env-config helper are byte-identical to the previously reviewed 3.7.1.0 build apart from the default version string.",
-      "source": "tomsquest/docker-radicale Dockerfile at tag 3.7.6.0",
-      "url": "https://github.com/tomsquest/docker-radicale/blob/3.7.6.0/Dockerfile",
-      "retrievedAt": "2026-07-24"
+      "claim": "The pinned tomsquest/docker-radicale 3.8.1.1 build installs Radicale 3.8.1 with the same dependency set as the reviewed 3.7.6.0 build (passlib, bcrypt, argon2-cffi, pytz, ldap3, vobject, and requests, which only the unused OAuth2 backend imports). Its Dockerfile differs from 3.7.6.0 only in the default version string, and its entrypoint only changes how it detects a read-only container before acting on UID/GID or RADICALE_CONFIG_* variables; it introduces no outbound analytics, licensing, or update service.",
+      "source": "tomsquest/docker-radicale diff 3.7.6.0..3.8.1.1 and pip list in the built package image",
+      "url": "https://github.com/tomsquest/docker-radicale/compare/3.7.6.0...3.8.1.1",
+      "retrievedAt": "2026-10-06"
     },
     {
       "type": "documented",
-      "claim": "Radicale supports optional IMAP, LDAP, OAuth2, and SMTP authentication backends that would contact an external server, and 3.7.6 adds an imap_append_domain option to the IMAP backend. None are reachable in this package: the entrypoint pins auth type to htpasswd against a local file, and no manifest field exposes an alternative authentication backend.",
+      "claim": "Radicale supports optional IMAP, LDAP, OAuth2, and SMTP authentication backends that would contact an external server. None are reachable in this package: the entrypoint pins auth type to htpasswd against a local file, and no manifest field exposes an alternative authentication backend.",
       "source": "Radicale project documentation (v3) and apps/radicale/entrypoint.sh",
       "url": "https://radicale.org/v3.html",
-      "retrievedAt": "2026-07-24"
+      "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "documented",
+      "claim": "Radicale 3.8.0 and 3.8.1 add collection sharing by token or map, sharing by group, a [group] backend, and a /.mobileconfig profile. Sharing and groups default to off ([sharing] type and [group] type are none) and the package entrypoint writes only [auth] and [hook], so no collection is reachable without the owner's password. /.mobileconfig is generated on the server for the signed-in user and contacts nothing.",
+      "source": "Radicale 3.8.1 radicale/config.py, radicale/app/get.py and CHANGELOG.md; apps/radicale/entrypoint.sh",
+      "url": "https://github.com/Kozea/Radicale/blob/v3.8.1/CHANGELOG.md",
+      "retrievedAt": "2026-10-06"
     },
     {
       "type": "configured",
@@ -92,6 +99,12 @@
     },
     {
       "type": "observed",
+      "claim": "A packet capture on an isolated Docker bridge of the built 3.8.1.1 package container recorded no packets to any address other than the test client across first boot with user and calendar provisioning, authenticated and rejected requests, an event write, a calendar export, the web UI, /.mobileconfig, a restart, and a minute idle; only link-local ARP and IPv6 multicast housekeeping appeared. A control connection from the same image to a public address did appear in a capture on the same kind of bridge. DNS goes through Docker's embedded resolver and is not visible on the bridge, so this capture does not cover lookups.",
+      "source": "tcpdump capture of the locally built package image, 2026-10-06",
+      "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "observed",
       "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, creating a calendar and an address book in the web UI, and putting an event over CalDAV and a contact over CardDAV), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The container made no lookup and no connection, and the browser made no request outside the suite.",
       "source": "MOS E2E `npm run e2e -- @app-cycle radicale`, run 20261005-112126-app-cycle-radicale (network/report.md), on the package version reviewed before this revision",
       "retrievedAt": "2026-10-05"
@@ -104,20 +117,20 @@
       "claim": "Radicale ships no telemetry, analytics, or update-check behaviour, so no telemetry-disabling configuration is required or applied by the package.",
       "source": "Radicale project documentation (v3)",
       "url": "https://radicale.org/v3.html",
-      "retrievedAt": "2026-07-24"
+      "retrievedAt": "2026-10-06"
     }
   ],
   "policies": [
     {
       "kind": "license",
-      "url": "https://github.com/Kozea/Radicale/blob/v3.7.6/COPYING.md",
-      "retrievedAt": "2026-07-24",
+      "url": "https://github.com/Kozea/Radicale/blob/v3.8.1/COPYING.md",
+      "retrievedAt": "2026-10-06",
       "publisher": "Radicale project (Kozea)"
     },
     {
       "kind": "license",
       "url": "https://github.com/tomsquest/docker-radicale/blob/master/LICENSE",
-      "retrievedAt": "2026-07-24",
+      "retrievedAt": "2026-10-06",
       "publisher": "Thomas Queste (tomsquest)"
     }
   ],
@@ -127,13 +140,13 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "skillRevision": "b8adb5fb9b664220dc1e0189ca270032d6440ad3",
+    "repositoryCommit": "b8adb5fb9b664220dc1e0189ca270032d6440ad3",
     "humanReviewed": false,
     "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [
-    "The 2026-07-31 packet capture covered minutes of provisioning, active use, crash recovery, and restarts; outbound behaviour on longer timers than that window is excluded by the code and build-definition review rather than by observation.",
+    "The 2026-07-31 and 2026-10-06 packet captures covered minutes of provisioning, active use, and restarts; outbound behaviour on longer timers than that window is excluded by the code and build-definition review rather than by observation. The lab E2E network step, which reads DNS inside the container, has not yet run against 3.8.1.",
     "CalDAV/CardDAV client apps may copy synced calendar and contact data into device or vendor cloud backups depending on each client's settings, which is outside the server package's control.",
     "The package provisions a single bootstrap Radicale user; multi-user authentication, password rotation, and DAV auto-discovery are future package work not covered by this review."
   ]
