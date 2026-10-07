@@ -1736,10 +1736,6 @@ class AppPackageService {
       instance: null,
     };
   }
-
-  packageSummaryFor(manifest, validationErrors = []) {
-    return publicPackageSummary(manifest, validationErrors);
-  }
 }
 
 module.exports = {

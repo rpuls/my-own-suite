@@ -310,7 +310,6 @@ class ResticEngine {
 
   // Verification has to read the repository, not a local copy of what the
   // repository said last time, so integrity checks run --no-cache throughout.
-  dropCache() { fs.rmSync(this.cacheDir(), { force: true, recursive: true }); }
 
   // Failures carry the engine's own last output on the error rather than in
   // the message: the message is what an owner reads, the output is what a

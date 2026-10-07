@@ -622,10 +622,6 @@ class SuiteManagerStore {
     return true;
   }
 
-  countKnownBrowsers() {
-    return Number(this.database.prepare('SELECT COUNT(*) AS count FROM known_browsers').get().count);
-  }
-
   getSignInAlertSentAt() {
     return this.database.prepare('SELECT last_sent_at AS lastSentAt FROM sign_in_alert_state WHERE id = 1').get()?.lastSentAt || null;
   }
