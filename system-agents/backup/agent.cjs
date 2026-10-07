@@ -15,6 +15,7 @@ const { execFile, execFileSync, spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
 const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../shared/suite-address.cjs');
+const { bodyReader, respond, serveOnSocket } = require('../lib/agent-server.cjs');
 const { BUILD_TIMINGS_FILENAME, expectedBuildSeconds, readBuildTimings } = require('../lib/app-build-timings.cjs');
 const { checkExpectation, restoreExpectation, runningExpectation } = require('./expectations.cjs');
 const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSentence } = require('./progress.cjs');
@@ -66,16 +67,7 @@ const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', '
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 function writeJson(file, value) { ensureDir(path.dirname(file)); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
-function respond(response, status, payload) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(`${JSON.stringify(payload)}\n`); }
-function readBody(request) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    request.setEncoding('utf8');
-    request.on('data', (chunk) => { raw += chunk; if (raw.length > 128 * 1024) reject(new Error('BODY_TOO_LARGE')); });
-    request.on('end', () => { try { resolve(raw.trim() ? JSON.parse(raw) : {}); } catch { reject(new Error('INVALID_JSON')); } });
-    request.on('error', reject);
-  });
-}
+const readBody = bodyReader(128 * 1024);
 
 function command(file, args, options = {}) {
   return execFileSync(file, args, { cwd: options.cwd || repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: options.timeout || 120_000 }).trim();
@@ -1070,7 +1062,6 @@ if (require.main === module && process.argv[2] === '--worker') {
     process.exit(0);
   })();
 } else if (require.main === module) {
-  ensureDir(path.dirname(socketPath));
   ensureDir(agentStateDir);
   ensureDir(jobsDir);
   // Before anything can ask for it: the screen has to be able to show an owner
@@ -1082,7 +1073,6 @@ if (require.main === module && process.argv[2] === '--worker') {
   // A worker that died with the machine never cleared the file the busy page
   // reads; the next agent start is the first moment anything can.
   if (!isActive(reconcileCurrentJob())) progressPublisher.clear();
-  fs.rmSync(socketPath, { force: true });
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -1312,17 +1302,17 @@ if (require.main === module && process.argv[2] === '--worker') {
   });
   // Before the socket opens, so nothing can mount over a leftover first.
   logReclaimed(reclaimUnmountedDestinations());
-  server.listen(socketPath, () => {
-    fs.chmodSync(socketPath, 0o660);
-    process.stdout.write('[mos-backup-agent] ready\n');
+  serveOnSocket(server, {
+    name: 'mos-backup-agent',
     // A machine that was off through its backup window owes a run; the early
     // tick is what makes it happen shortly after boot rather than a day later.
-    setTimeout(() => { void scheduler.tick().catch(() => {}); }, 10_000).unref();
-    scheduler.start();
+    onReady() {
+      setTimeout(() => { void scheduler.tick().catch(() => {}); }, 10_000).unref();
+      scheduler.start();
+    },
+    onShutdown: () => scheduler.stop(),
+    socketPath,
   });
-  function shutdown() { scheduler.stop(); server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
 }
 
 module.exports = { driveCandidates, isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };

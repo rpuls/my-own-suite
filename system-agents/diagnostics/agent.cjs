@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 
-const fs = require('node:fs');
 const http = require('node:http');
-const path = require('node:path');
 
+const { respond, serveOnSocket } = require('../lib/agent-server.cjs');
 const { DiagnosticsAgentCore } = require('./agent-core.cjs');
 const { SystemDiagnosticsAdapter } = require('./system-adapter.cjs');
 
 const socketPath = process.env.MOS_DIAGNOSTICS_AGENT_SOCKET || '/run/mos-diagnostics-agent/agent.sock';
 const core = new DiagnosticsAgentCore(new SystemDiagnosticsAdapter());
-
-function respond(response, statusCode, payload) {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  response.end(`${JSON.stringify(payload)}\n`);
-}
 
 // A collection is expensive and an owner can click twice. One in flight at a
 // time, with the second caller joining the first rather than starting a
@@ -48,19 +42,4 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-fs.mkdirSync(path.dirname(socketPath), { recursive: true });
-fs.rmSync(socketPath, { force: true });
-server.listen(socketPath, () => {
-  fs.chmodSync(socketPath, 0o660);
-  process.stdout.write('[mos-diagnostics-agent] ready\n');
-});
-
-function shutdown() {
-  server.close(() => {
-    fs.rmSync(socketPath, { force: true });
-    process.exit(0);
-  });
-}
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+serveOnSocket(server, { name: 'mos-diagnostics-agent', socketPath });
