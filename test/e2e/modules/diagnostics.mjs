@@ -34,7 +34,7 @@ async function exportDiagnosticsBundle(page, entryUrl) {
   return bundle;
 }
 
-async function verifyDiagnosticsBundle(bundle) {
+async function verifyDiagnosticsBundle(bundle, { holdsSecrets }) {
   expect(bundle.startsWith('MY OWN SUITE — DIAGNOSTICS')).toBeTruthy();
   for (const heading of ['WHAT LOOKS WRONG', 'PLATFORM', 'HOST', 'APPS', 'SERVICES', 'CONTAINERS', 'COLLECTION NOTES']) {
     expect(bundle, `the bundle is missing its ${heading} section`).toContain(heading);
@@ -57,12 +57,15 @@ async function verifyDiagnosticsBundle(bundle) {
   expect(bundle, 'no MOS app container was collected').toMatch(/mos-app-[a-z0-9-]+ {2}· {2}/u);
 
   // Redaction is by exact value, so a walk that found no secrets masks nothing and looks normal.
+  // Only an app holding a secret gives the walk something to find; some apps hold none.
   const checked = /Known secrets checked for {3}(\d+)/u.exec(bundle);
   expect(checked, 'the bundle did not report how many secrets it checked for').not.toBeNull();
-  expect(
-    Number.parseInt(checked[1], 10),
-    'the secret walk found nothing on a machine with apps installed, so redaction masked nothing',
-  ).toBeGreaterThan(0);
+  if (holdsSecrets) {
+    expect(
+      Number.parseInt(checked[1], 10),
+      'the secret walk found nothing although an installed app holds a secret, so redaction masked nothing',
+    ).toBeGreaterThan(0);
+  }
 
   // A healthy twenty-app server measures about 110 KB; this only trips if the budget stopped applying.
   expect(bundle.length, `the bundle grew to ${Math.round(bundle.length / 1024)} KB`).toBeLessThan(400_000);
@@ -86,9 +89,11 @@ async function runSecrets(ctx, installedIds) {
 export async function diagnostics(ctx) {
   const { page } = ctx;
   await page.goto(ctx.url('/suite-manager/'), { waitUntil: 'domcontentloaded' });
-  const installedIds = (await installedPackages(page)).map((item) => item.id);
+  const installed = await installedPackages(page);
+  const installedIds = installed.map((item) => item.id);
+  const holdsSecrets = installed.some(({ instance }) => [...(instance?.config || []), ...(instance?.env || [])].some((row) => row.secret));
   const bundle = await exportDiagnosticsBundle(page, ctx.url('/'));
-  await verifyDiagnosticsBundle(bundle);
+  await verifyDiagnosticsBundle(bundle, { holdsSecrets });
 
   const { failures, inventory } = inspectLogSurface(bundle, { secrets: await runSecrets(ctx, installedIds) });
   // Attached whatever the outcome: without the bundle, a failure here throws away
