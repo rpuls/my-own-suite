@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   VAULT_TPM_MODES,
   vaultAsksForPassword,
@@ -14,37 +13,25 @@ const {
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { resolveClientAddress } = require('../auth/login-throttle.cjs');
-const { restoreGuaranteeFor } = require('../backups/restore-guarantee.cjs');
 const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
-const { KNOWN_BROWSER_MAX_AGE_MS, SetupError } = require('../setup/setup-service.cjs');
+const { SetupError } = require('../setup/setup-service.cjs');
+const {
+  KNOWN_BROWSER_COOKIE,
+  SESSION_COOKIE,
+  clearSessionCookie,
+  knownBrowserCookie,
+  parseCookies,
+  sessionCookie,
+} = require('./cookies.cjs');
+const { isCrossOriginWrite, isHttpsRequest, normalizedHost, readJsonBody } = require('./request.cjs');
 const { fileResponse, htmlResponse, jsonResponse, respondError, textResponse } = require('./responses.cjs');
+const { createRouter } = require('./router.cjs');
+const { routeTable } = require('./routes/index.cjs');
 
-const SESSION_COOKIE = 'mos_session';
-const KNOWN_BROWSER_COOKIE = 'mos_known_browser';
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
-
-function parseCookies(header = '') {
-  return Object.fromEntries(
-    header
-      .split(';')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const separator = part.indexOf('=');
-        if (separator === -1) {
-          return [part, ''];
-        }
-        return [part.slice(0, separator), decodeURIComponent(part.slice(separator + 1))];
-      }),
-  );
-}
-
-function isHttpsRequest(request) {
-  return String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase() === 'https';
-}
 
 function secureTokenEqual(actual, expected) {
   const actualBuffer = Buffer.from(String(actual || ''));
@@ -52,69 +39,6 @@ function secureTokenEqual(actual, expected) {
   return actualBuffer.length > 0
     && actualBuffer.length === expectedBuffer.length
     && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function sessionCookie(token, secure = false) {
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
-}
-
-function knownBrowserCookie(token, secure = false) {
-  return `${KNOWN_BROWSER_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(KNOWN_BROWSER_MAX_AGE_MS / 1_000)}${secure ? '; Secure' : ''}`;
-}
-
-function clearSessionCookie(secure = false) {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`;
-}
-
-// Installed apps are served on sibling subdomains, which browsers count as the
-// same site, so a SameSite=Lax session alone would let an app's page act as the owner.
-function isCrossOriginWrite(request) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return false;
-  const fetchSite = request.headers['sec-fetch-site'];
-  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') return true;
-  const { origin } = request.headers;
-  return Boolean(origin) && !isOriginOfHost(origin, request.headers.host);
-}
-
-function isOriginOfHost(origin, hostHeader) {
-  try {
-    const { host, protocol } = new URL(origin);
-    return host === new URL(`${protocol}//${hostHeader}`).host;
-  } catch {
-    return false;
-  }
-}
-
-function readJsonBody(request, maxBytes = 1_000_000) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    let tooLarge = false;
-    request.setEncoding('utf8');
-    // The rest of an oversized body is read and dropped rather than the socket
-    // cut, so the caller receives the 413 instead of a connection reset.
-    request.on('data', (chunk) => {
-      if (tooLarge) return;
-      raw += chunk;
-      if (raw.length > maxBytes) {
-        tooLarge = true;
-        raw = '';
-        reject(new CodedError('REQUEST_BODY_TOO_LARGE', 'Request body is too large.', { statusCode: 413 }));
-      }
-    });
-    request.on('end', () => {
-      if (tooLarge) return;
-      if (!raw.trim()) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(raw));
-      } catch {
-        reject(new CodedError('REQUEST_BODY_INVALID', 'Request body must be valid JSON.', { statusCode: 400 }));
-      }
-    });
-    request.on('error', reject);
-  });
 }
 
 function resolveStaticPath(rootDir, requestPath) {
@@ -159,10 +83,6 @@ function frontendBuildId(frontendDistDir) {
   const id = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);
   frontendBuildCache = { id, stamp };
   return id;
-}
-
-function normalizedHost(request) {
-  return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
 
 function isSignedIn(setup, sessionToken) {
@@ -210,7 +130,7 @@ function serveFrontend(response, frontendDistDir) {
 
 function createRequestHandler(services) {
   const {
-    addressService, alerts, appAgent, appPackages, appUrls, backupAgent, backupInventory, catalogService, consoleLogin,
+    addressService, alerts, appAgent, appPackages, appUrls, catalogService, consoleLogin,
     diagnosticsAgent, disposableLab, externalSourceService, frontDoor, frontendDistDir, handover, homeHost, homepage,
     homepageConfig, installJobs, labResetAgent, logger, ownerClaimToken, recordSecurityEvent, repairChipOnSignIn,
     securityLogger, setup, smtpSettings, suiteAddress, teachChipOwnerPassword, throttle, updateJobs, updates, vaultAgent,
@@ -219,6 +139,7 @@ function createRequestHandler(services) {
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
   const withPublicUrl = (app) => ({ ...app, publicUrl: appHostFor(app.id) ? publicUrlOf(app.id).publicUrl : '' });
+  const dispatch = createRouter(routeTable(services), { isSignedIn: (sessionToken) => isSignedIn(setup, sessionToken) });
 
   return async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -247,6 +168,11 @@ function createRequestHandler(services) {
         response.writeHead(308, { 'Cache-Control': 'no-store', Location: `${httpsOrigin}${request.url || '/'}` });
         response.end();
         return;
+      }
+
+      if (url.pathname.startsWith(SUITE_MANAGER_API_PREFIX)) {
+        const context = { cookies, request, requestHost, response, secure: isHttpsRequest(request), sessionToken, url };
+        if (await dispatch(url.pathname.slice(SUITE_MANAGER_API_PREFIX.length), context)) return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
@@ -616,247 +542,6 @@ function createRequestHandler(services) {
           return;
         }
         jsonResponse(response, 200, await updates.configureTrack(body));
-        return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/status`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        try {
-          const agentStatus = await backupAgent.status();
-          jsonResponse(response, 200, {
-            ...agentStatus,
-            inventory: backupInventory.inventory(),
-            ...restoreGuaranteeFor(agentStatus),
-            serviceAvailable: true,
-          });
-        } catch (error) {
-          // Answered 200 with serviceAvailable:false, which is right for the
-          // screen and means a genuine fault here looks identical to an agent
-          // that is simply not running.
-          logger.warn('backup-agent-unavailable', { error });
-          jsonResponse(response, 200, {
-            backups: [],
-            currentJob: null,
-            destinations: [],
-            error: error.message || 'Backup agent is unavailable.',
-            interruptedRestore: null,
-            inventory: backupInventory.inventory(),
-            lastJob: null,
-            recoveryKey: null,
-            ...restoreGuaranteeFor(null),
-            serviceAvailable: false,
-          });
-        }
-        return;
-      }
-
-      // Saving the key is what the first-backup gate is waiting for, so it is a
-      // route of its own rather than a side effect of the reveal: an owner who
-      // downloads the kit and closes the dialog without confirming is still
-      // asked again.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/acknowledge`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        jsonResponse(response, 200, await backupAgent.acknowledgeRecoveryKey());
-        return;
-      }
-
-      // "Shown once" is the default experience, not a security boundary: a
-      // signed-in owner already has root-equivalent power over this machine, so
-      // hiding the key from them protects nothing. The password is asked for
-      // every showing after the first, which is what a session left open on a
-      // borrowed screen cannot supply. The answer is never cached anywhere.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/reveal`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        const known = await backupAgent.recoveryKeyStatus();
-        if (known.recoveryKey?.acknowledged && !await setup.verifyOwnerPassword(body.password)) {
-          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
-          return;
-        }
-        jsonResponse(response, 200, await backupAgent.revealRecoveryKey());
-        return;
-      }
-
-      // Replacing the key. The password is always asked for, unlike the reveal,
-      // because this one changes what opens the disk and the archives rather
-      // than showing what already does — and because the answer carries the new
-      // key, so it is the same "still the owner at this keyboard" question.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/rotate`) {
-        if (signedOut('Sign in to change your recovery key.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        if (!await setup.verifyOwnerPassword(body.password)) {
-          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
-          return;
-        }
-        jsonResponse(response, 200, await backupAgent.rotateRecoveryKey(), { 'Cache-Control': 'no-store' });
-        return;
-      }
-
-      // Handing a replacement machine the key to backups another server wrote.
-      // The key goes straight through to the agent, which is the only component
-      // that holds one, and is never logged or kept here.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/unlock`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.unlockDestination({
-          destinationId: String(body.destinationId || ''),
-          recoveryKey: String(body.recoveryKey || ''),
-        }));
-        return;
-      }
-
-      // Who can read an archive, and taking one of them back out. Both need the
-      // key of the server that owns it, which goes straight through to the agent.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.archiveKeys({
-          destinationId: String(body.destinationId || ''),
-          recoveryKey: String(body.recoveryKey || ''),
-        }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys/remove`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.removeArchiveKey({
-          destinationId: String(body.destinationId || ''),
-          keyId: String(body.keyId || ''),
-          recoveryKey: String(body.recoveryKey || ''),
-        }));
-        return;
-      }
-      // Giving the key back: MOS stops holding another server's key, and that
-      // archive is again something this machine cannot open.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-key`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(body.destinationId || '')));
-        return;
-      }
-
-      // Forgetting a drive MOS is not holding. It only removes the entry that
-      // says a copy of the owner's data is out there on that drive, which is a
-      // thing to stop claiming once it is no longer true.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-drive`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.forgetDrive(String(body.fsUuid || '')));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/mount`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.mount(String(body.destinationId || '')));
-        return;
-      }
-
-      // Storage credentials pass straight through to the agent, which is the
-      // only component that stores them, and are never held or logged here.
-      // Like the schedule route this forwards by field rather than the body, so
-      // the agent is never handed something the screen did not ask for.
-      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/test`)) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        const input = {
-          accessKeyId: String(body.accessKeyId || ''),
-          bucket: String(body.bucket || ''),
-          endpoint: String(body.endpoint || ''),
-          folder: String(body.folder || ''),
-          label: String(body.label || ''),
-          region: String(body.region || ''),
-          secretAccessKey: String(body.secretAccessKey || ''),
-          ...(body.id ? { id: String(body.id) } : {}),
-        };
-        const testing = url.pathname.endsWith('/test');
-        jsonResponse(response, 200, testing ? await backupAgent.testObjectDestination(input) : await backupAgent.connectObjectDestination(input));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/remove`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(body.destinationId || '') }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
-        return;
-      }
-
-      // Which destination MOS writes to when it backs up on its own — the
-      // schedule, and the checkpoint before a MOS update. One choice, made
-      // where the destinations are listed, rather than one per trigger.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/primary`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 4 * 1024);
-        jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
-          destinationId: body.destinationId === null ? null : String(body.destinationId || ''),
-        }));
-        return;
-      }
-
-      // The schedule's rules live in the backup agent, which is the component
-      // that has to honour them; this passes the owner's choice through by
-      // field rather than forwarding the body, so the agent is never handed
-      // something the screen did not ask for.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/schedule`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.setSchedule({
-          enabled: body.enabled === true,
-          frequency: String(body.frequency || ''),
-          hour: Number(body.hour),
-          keepLast: Number(body.keepLast),
-          minute: Number(body.minute),
-          timeZone: String(body.timeZone || ''),
-          weekday: Number(body.weekday),
-        }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/validate`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 202, await backupAgent.validateBackup({ backupPath: String(body.backupPath || '') }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore`) {
-        if (signedOut('Sign in to restore backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 202, await backupAgent.startRestore({
-          backupPath: String(body.backupPath || ''),
-          confirmation: String(body.confirmation || ''),
-        }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore/acknowledge`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.acknowledgeInterruptedRestore({
-          confirmation: String(body.confirmation || ''),
-        }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/note`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.setBackupNote({ backupPath: String(body.backupPath || ''), note: String(body.note || '') }));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/delete`) {
-        if (signedOut('Sign in to manage backups.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 200, await backupAgent.deleteBackup({ backupPath: String(body.backupPath || '') }));
         return;
       }
 
