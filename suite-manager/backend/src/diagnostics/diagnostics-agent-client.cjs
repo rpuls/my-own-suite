@@ -1,6 +1,6 @@
 'use strict';
 
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 
 // A collection sweeps every MOS unit and container. Generous, because the
 // machine it runs on is by definition not well.
@@ -15,31 +15,15 @@ class DiagnosticsAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, timeoutMs = this.timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const request = http.request({ method, path: requestPath, socketPath: this.socketPath, timeout: timeoutMs }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) {
-            resolve(parsed);
-            return;
-          }
-          const error = new Error(parsed.error || 'The diagnostics agent rejected the request.');
-          error.code = parsed.code || 'DIAGNOSTICS_AGENT_REJECTED';
-          reject(error);
-        });
+  async request(method, requestPath, timeoutMs = this.timeoutMs) {
+    const answer = await requestAgent({ method, path: requestPath, socketPath: this.socketPath, timeoutMs }).catch(() => {
+      throw Object.assign(new Error('The diagnostics system agent is unavailable.'), {
+        code: 'DIAGNOSTICS_AGENT_UNAVAILABLE',
       });
-      request.on('error', () => {
-        const error = new Error('The diagnostics system agent is unavailable.');
-        error.code = 'DIAGNOSTICS_AGENT_UNAVAILABLE';
-        reject(error);
-      });
-      request.on('timeout', () => request.destroy(new Error('DIAGNOSTICS_AGENT_TIMEOUT')));
-      request.end();
+    });
+    if (answer.ok) return answer.body;
+    throw Object.assign(new Error(answer.body.error || 'The diagnostics agent rejected the request.'), {
+      code: answer.body.code || 'DIAGNOSTICS_AGENT_REJECTED',
     });
   }
 

@@ -1,4 +1,4 @@
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 
 const BACKUP_AGENT_TIMEOUT_MS = 180_000;
 
@@ -8,43 +8,17 @@ class BackupAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  settleResponse(response, resolve, reject) {
-    let raw = '';
-    response.setEncoding('utf8');
-    response.on('data', (chunk) => { raw += chunk; });
-    response.on('end', () => {
-      let parsed = {};
-      try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        resolve(parsed);
-        return;
-      }
-      const error = new Error(parsed.error || 'Backup agent rejected the operation.');
-      error.code = parsed.code || 'BACKUP_AGENT_REJECTED';
-      error.statusCode = response.statusCode;
-      reject(error);
-    });
-  }
-
-  request(method, requestPath, body) {
-    return new Promise((resolve, reject) => {
-      const payload = body ? JSON.stringify(body) : '';
-      const request = http.request({
-        headers: payload ? { 'Content-Length': Buffer.byteLength(payload), 'Content-Type': 'application/json' } : {},
-        method,
-        path: requestPath,
-        socketPath: this.socketPath,
-        timeout: this.timeoutMs,
-      }, (response) => this.settleResponse(response, resolve, reject));
-      request.on('error', () => {
-        const error = new Error('Backup system agent is unavailable.');
-        error.code = 'BACKUP_AGENT_UNAVAILABLE';
-        error.statusCode = 503;
-        reject(error);
+  async request(method, requestPath, body) {
+    const answer = await requestAgent({ body, method, path: requestPath, socketPath: this.socketPath, timeoutMs: this.timeoutMs }).catch(() => {
+      throw Object.assign(new Error('Backup system agent is unavailable.'), {
+        code: 'BACKUP_AGENT_UNAVAILABLE',
+        statusCode: 503,
       });
-      request.on('timeout', () => request.destroy(new Error('BACKUP_AGENT_TIMEOUT')));
-      if (payload) request.write(payload);
-      request.end();
+    });
+    if (answer.ok) return answer.body;
+    throw Object.assign(new Error(answer.body.error || 'Backup agent rejected the operation.'), {
+      code: answer.body.code || 'BACKUP_AGENT_REJECTED',
+      statusCode: answer.statusCode,
     });
   }
 

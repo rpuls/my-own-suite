@@ -1,4 +1,4 @@
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 
 // What the HTTPS agent answered, or why it could not be asked. `details` is
 // the agent's own explanation of a failure — the failing command's last output,
@@ -22,38 +22,18 @@ class HttpsAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, body) {
-    return new Promise((resolve, reject) => {
-      const payload = body ? JSON.stringify(body) : '';
-      const request = http.request({
-        headers: payload ? { 'Content-Length': Buffer.byteLength(payload), 'Content-Type': 'application/json' } : {},
-        method,
-        path: requestPath,
-        socketPath: this.socketPath,
-        timeout: this.timeoutMs,
-      }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) {
-            resolve(parsed);
-            return;
-          }
-          reject(new HttpsAgentError(
-            typeof parsed.code === 'string' ? parsed.code : 'HTTPS_AGENT_REJECTED',
-            typeof parsed.error === 'string' ? parsed.error : 'The HTTPS system agent rejected the request.',
-            { details: Array.isArray(parsed.details) ? parsed.details.filter((detail) => typeof detail === 'string') : [], statusCode: response.statusCode },
-          ));
-        });
-      });
-      request.on('error', (cause) => reject(cause instanceof HttpsAgentError ? cause : new HttpsAgentError('HTTPS_AGENT_UNAVAILABLE', 'The HTTPS system agent did not answer.', { statusCode: 503 })));
-      request.on('timeout', () => request.destroy(new HttpsAgentError('HTTPS_AGENT_TIMEOUT', 'The HTTPS system agent did not finish in time.', { statusCode: 504 })));
-      if (payload) request.write(payload);
-      request.end();
+  async request(method, requestPath, body) {
+    const answer = await requestAgent({ body, method, path: requestPath, socketPath: this.socketPath, timeoutMs: this.timeoutMs }).catch(({ timedOut }) => {
+      throw timedOut
+        ? new HttpsAgentError('HTTPS_AGENT_TIMEOUT', 'The HTTPS system agent did not finish in time.', { statusCode: 504 })
+        : new HttpsAgentError('HTTPS_AGENT_UNAVAILABLE', 'The HTTPS system agent did not answer.', { statusCode: 503 });
     });
+    if (answer.ok) return answer.body;
+    throw new HttpsAgentError(
+      typeof answer.body.code === 'string' ? answer.body.code : 'HTTPS_AGENT_REJECTED',
+      typeof answer.body.error === 'string' ? answer.body.error : 'The HTTPS system agent rejected the request.',
+      { details: Array.isArray(answer.body.details) ? answer.body.details.filter((detail) => typeof detail === 'string') : [], statusCode: answer.statusCode },
+    );
   }
 
   status() { return this.request('GET', '/v1/status'); }

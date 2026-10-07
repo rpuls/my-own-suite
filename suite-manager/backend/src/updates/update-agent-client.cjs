@@ -1,4 +1,4 @@
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 
 const UPDATE_AGENT_TIMEOUT_MS = 30_000;
 
@@ -8,41 +8,17 @@ class UpdateAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, body) {
-    return new Promise((resolve, reject) => {
-      const payload = body ? JSON.stringify(body) : '';
-      const request = http.request({
-        headers: payload ? { 'Content-Length': Buffer.byteLength(payload), 'Content-Type': 'application/json' } : {},
-        method,
-        path: requestPath,
-        socketPath: this.socketPath,
-        timeout: this.timeoutMs,
-      }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) {
-            resolve(parsed);
-            return;
-          }
-          const error = new Error(parsed.error || 'Update agent rejected the operation.');
-          error.code = parsed.code || 'UPDATE_AGENT_REJECTED';
-          error.statusCode = response.statusCode;
-          reject(error);
-        });
+  async request(method, requestPath, body) {
+    const answer = await requestAgent({ body, method, path: requestPath, socketPath: this.socketPath, timeoutMs: this.timeoutMs }).catch(() => {
+      throw Object.assign(new Error('Update system agent is unavailable.'), {
+        code: 'UPDATE_AGENT_UNAVAILABLE',
+        statusCode: 503,
       });
-      request.on('error', () => {
-        const error = new Error('Update system agent is unavailable.');
-        error.code = 'UPDATE_AGENT_UNAVAILABLE';
-        error.statusCode = 503;
-        reject(error);
-      });
-      request.on('timeout', () => request.destroy(new Error('UPDATE_AGENT_TIMEOUT')));
-      if (payload) request.write(payload);
-      request.end();
+    });
+    if (answer.ok) return answer.body;
+    throw Object.assign(new Error(answer.body.error || 'Update agent rejected the operation.'), {
+      code: answer.body.code || 'UPDATE_AGENT_REJECTED',
+      statusCode: answer.statusCode,
     });
   }
 

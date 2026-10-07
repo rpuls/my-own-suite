@@ -1,6 +1,6 @@
 'use strict';
 
-const http = require('node:http');
+const { requestAgent } = require('../agent-request.cjs');
 
 // Status, and the one operation that changes what opens the disk. Unlocking is
 // deliberately absent: the page Caddy serves on a locked machine is the only
@@ -20,39 +20,15 @@ class VaultAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, { body = null, timeoutMs = this.timeoutMs } = {}) {
-    return new Promise((resolve, reject) => {
-      const payload = body === null ? null : JSON.stringify(body);
-      const request = http.request({
-        headers: payload === null ? {} : { 'Content-Length': Buffer.byteLength(payload), 'Content-Type': 'application/json' },
-        method,
-        path: requestPath,
-        socketPath: this.socketPath,
-        timeout: timeoutMs,
-      }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) {
-            resolve(parsed);
-            return;
-          }
-          const error = new Error(parsed.message || 'The vault agent rejected the request.');
-          error.code = parsed.code || 'VAULT_AGENT_REJECTED';
-          reject(error);
-        });
+  async request(method, requestPath, { body = null, timeoutMs = this.timeoutMs } = {}) {
+    const answer = await requestAgent({ body, method, path: requestPath, socketPath: this.socketPath, timeoutMs }).catch(() => {
+      throw Object.assign(new Error('The vault system agent is unavailable.'), {
+        code: 'VAULT_AGENT_UNAVAILABLE',
       });
-      request.on('error', () => {
-        const error = new Error('The vault system agent is unavailable.');
-        error.code = 'VAULT_AGENT_UNAVAILABLE';
-        reject(error);
-      });
-      request.on('timeout', () => request.destroy(new Error('VAULT_AGENT_TIMEOUT')));
-      if (payload !== null) request.write(payload);
-      request.end();
+    });
+    if (answer.ok) return answer.body;
+    throw Object.assign(new Error(answer.body.message || 'The vault agent rejected the request.'), {
+      code: answer.body.code || 'VAULT_AGENT_REJECTED',
     });
   }
 
