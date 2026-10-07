@@ -607,6 +607,11 @@ function createMOSServer({
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
+    const signedOut = (message) => {
+      if (isSignedIn(setup, sessionToken)) return false;
+      jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: message });
+      return true;
+    };
 
     try {
       if (!addressService.allowedHosts().has(requestHost)) {
@@ -762,10 +767,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/terms/accept`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to accept the MOS terms.' });
-          return;
-        }
+        if (signedOut('Sign in to accept the MOS terms.')) return;
         jsonResponse(response, 200, setup.acceptTerms(await readJsonBody(request, 4 * 1024)));
         return;
       }
@@ -774,10 +776,7 @@ function createMOSServer({
       // response that ends every other session, so the browser that made the
       // change is the only one still signed in when this returns.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/owner/password`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
-          return;
-        }
+        if (signedOut('Sign in to change the owner password.')) return;
         const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024), {
           beforeCommit: teachChipOwnerPassword,
         });
@@ -803,19 +802,13 @@ function createMOSServer({
       // The service owns the closed set of keys and their types; an unknown key
       // or a value of the wrong type is a 400, never a stored row.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/preferences`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your Suite Manager preferences.' });
-          return;
-        }
+        if (signedOut('Sign in to change your Suite Manager preferences.')) return;
         jsonResponse(response, 200, { preferences: setup.setPreference(await readJsonBody(request, 4 * 1024)) });
         return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/security-events`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review security activity.' });
-          return;
-        }
+        if (signedOut('Sign in to review security activity.')) return;
         const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1_000).toISOString();
         jsonResponse(response, 200, { since, ...setup.store.getSecurityEventSummary({ since }) });
         return;
@@ -826,10 +819,7 @@ function createMOSServer({
       // show it once and delete it, the whole lifecycle of a credential MOS
       // holds but does not own.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/console-login/reveal`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to see the server login.' });
-          return;
-        }
+        if (signedOut('Sign in to see the server login.')) return;
         try {
           // No-store because this is the one response in the API that carries a
           // plaintext credential the owner is expected to copy elsewhere.
@@ -845,10 +835,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/console-login/acknowledge`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to confirm you saved the server login.' });
-          return;
-        }
+        if (signedOut('Sign in to confirm you saved the server login.')) return;
         jsonResponse(response, 200, consoleLogin.acknowledge());
         return;
       }
@@ -859,10 +846,7 @@ function createMOSServer({
       // tell instead of rendering nothing — and `unknown` is never "not
       // encrypted".
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review this server\'s encryption.' });
-          return;
-        }
+        if (signedOut('Sign in to review this server\'s encryption.')) return;
         let vault = { state: 'unknown' };
         try {
           vault = await vaultAgent.status();
@@ -890,10 +874,7 @@ function createMOSServer({
       // route is the only place MOS sends that password to the vault agent
       // outside a password change and a sign-in repair.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault/startup-password`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change how this server starts.' });
-          return;
-        }
+        if (signedOut('Sign in to change how this server starts.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         const wanted = body.enabled === true;
         if (!await setup.verifyOwnerPassword(body.password)) {
@@ -945,10 +926,7 @@ function createMOSServer({
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the suite address.')) return;
         jsonResponse(response, 200, await addressService.status());
         return;
       }
@@ -957,29 +935,20 @@ function createMOSServer({
       // under this very connection, so the screen polls the status above rather
       // than waiting for a reply that cannot arrive.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/change`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the suite address.')) return;
         const body = await readJsonBody(request, 16 * 1024);
         jsonResponse(response, 202, await addressService.change(body));
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/offer/dismiss`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the suite address.')) return;
         jsonResponse(response, 200, await addressService.dismissOffer());
         return;
       }
 
       if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp` && ['DELETE', 'GET', 'POST'].includes(request.method)) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the email relay.')) return;
         if (request.method === 'GET') {
           jsonResponse(response, 200, smtpSettings.status());
           return;
@@ -994,57 +963,39 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/verify`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the email relay.')) return;
         jsonResponse(response, 200, { status: smtpSettings.status(), verify: await smtpSettings.verify() });
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/test`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
-          return;
-        }
+        if (signedOut('Sign in to manage the email relay.')) return;
         const body = await readJsonBody(request, 4 * 1024);
         jsonResponse(response, 200, await smtpSettings.sendTest({ to: body?.to }));
         return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/inventory`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review backup readiness.' });
-          return;
-        }
+        if (signedOut('Sign in to review backup readiness.')) return;
         jsonResponse(response, 200, backupInventory.inventory());
         return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/status`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review updates.' });
-          return;
-        }
+        if (signedOut('Sign in to review updates.')) return;
         jsonResponse(response, 200, await updates.status());
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/start`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update My Own Suite.' });
-          return;
-        }
+        if (signedOut('Sign in to update My Own Suite.')) return;
         jsonResponse(response, 202, await updates.start({ initiator: setup.status(sessionToken).owner?.email || 'owner' }));
         return;
       }
 
       // The two answers an owner can give while an update waits for its backup.
       if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/cancel` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/skip-backup`)) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage updates.' });
-          return;
-        }
+        if (signedOut('Sign in to manage updates.')) return;
         const body = await readJsonBody(request, 4 * 1024);
         const answer = url.pathname.endsWith('/cancel') ? updates.cancel({ id: body?.id }) : updates.skipBackup({ id: body?.id });
         jsonResponse(response, 200, await answer);
@@ -1054,19 +1005,13 @@ function createMOSServer({
       // MOS said a restart was needed, so MOS performs it. The browser confirmed
       // it; the agent refuses it under a running update or backup.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/host/restart`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restart this server.' });
-          return;
-        }
+        if (signedOut('Sign in to restart this server.')) return;
         jsonResponse(response, 202, await updates.restartHost());
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/track`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to switch update tracks.' });
-          return;
-        }
+        if (signedOut('Sign in to switch update tracks.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         if (body.track !== 'stable' && body.track !== 'main' && body.track !== 'staging') {
           jsonResponse(response, 400, { code: 'INVALID_UPDATE_TRACK', error: 'Update track must be stable, main, or staging.' });
@@ -1077,10 +1022,7 @@ function createMOSServer({
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/status`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         try {
           const agentStatus = await backupAgent.status();
           jsonResponse(response, 200, {
@@ -1115,10 +1057,7 @@ function createMOSServer({
       // downloads the kit and closes the dialog without confirming is still
       // asked again.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/acknowledge`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         jsonResponse(response, 200, await backupAgent.acknowledgeRecoveryKey());
         return;
       }
@@ -1129,10 +1068,7 @@ function createMOSServer({
       // every showing after the first, which is what a session left open on a
       // borrowed screen cannot supply. The answer is never cached anywhere.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/reveal`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         const known = await backupAgent.recoveryKeyStatus();
         if (known.recoveryKey?.acknowledged && !await setup.verifyOwnerPassword(body.password)) {
@@ -1148,10 +1084,7 @@ function createMOSServer({
       // than showing what already does — and because the answer carries the new
       // key, so it is the same "still the owner at this keyboard" question.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/rotate`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your recovery key.' });
-          return;
-        }
+        if (signedOut('Sign in to change your recovery key.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         if (!await setup.verifyOwnerPassword(body.password)) {
           jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
@@ -1165,10 +1098,7 @@ function createMOSServer({
       // The key goes straight through to the agent, which is the only component
       // that holds one, and is never logged or kept here.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/unlock`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.unlockDestination({
           destinationId: String(body.destinationId || ''),
@@ -1180,10 +1110,7 @@ function createMOSServer({
       // Who can read an archive, and taking one of them back out. Both need the
       // key of the server that owns it, which goes straight through to the agent.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.archiveKeys({
           destinationId: String(body.destinationId || ''),
@@ -1193,10 +1120,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys/remove`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.removeArchiveKey({
           destinationId: String(body.destinationId || ''),
@@ -1208,10 +1132,7 @@ function createMOSServer({
       // Giving the key back: MOS stops holding another server's key, and that
       // archive is again something this machine cannot open.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-key`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(body.destinationId || '')));
         return;
@@ -1221,20 +1142,14 @@ function createMOSServer({
       // says a copy of the owner's data is out there on that drive, which is a
       // thing to stop claiming once it is no longer true.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-drive`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.forgetDrive(String(body.fsUuid || '')));
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/mount`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.mount(String(body.destinationId || '')));
         return;
@@ -1245,10 +1160,7 @@ function createMOSServer({
       // Like the schedule route this forwards by field rather than the body, so
       // the agent is never handed something the screen did not ask for.
       if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/test`)) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         const input = {
           accessKeyId: String(body.accessKeyId || ''),
@@ -1266,20 +1178,14 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/remove`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(body.destinationId || '') }));
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
         return;
@@ -1289,10 +1195,7 @@ function createMOSServer({
       // schedule, and the checkpoint before a MOS update. One choice, made
       // where the destinations are listed, rather than one per trigger.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/primary`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 4 * 1024);
         jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
           destinationId: body.destinationId === null ? null : String(body.destinationId || ''),
@@ -1305,10 +1208,7 @@ function createMOSServer({
       // field rather than forwarding the body, so the agent is never handed
       // something the screen did not ask for.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/schedule`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.setSchedule({
           enabled: body.enabled === true,
@@ -1323,20 +1223,14 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/validate`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.validateBackup({ backupPath: String(body.backupPath || '') }));
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
-          return;
-        }
+        if (signedOut('Sign in to restore backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
           backupPath: String(body.backupPath || ''),
@@ -1346,10 +1240,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore/acknowledge`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.acknowledgeInterruptedRestore({
           confirmation: String(body.confirmation || ''),
@@ -1358,20 +1249,14 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/note`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.setBackupNote({ backupPath: String(body.backupPath || ''), note: String(body.note || '') }));
         return;
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/delete`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
+        if (signedOut('Sign in to manage backups.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.deleteBackup({ backupPath: String(body.backupPath || '') }));
         return;
@@ -1381,10 +1266,7 @@ function createMOSServer({
       // it reports the shape of the machine, and an export anyone could fetch
       // would be a reconnaissance endpoint on an unauthenticated port.
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/support/bundle`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to create a diagnostics file.' });
-          return;
-        }
+        if (signedOut('Sign in to create a diagnostics file.')) return;
         const bundle = await assembleSupportBundle({
           agent: diagnosticsAgent,
           appAgent,
@@ -1406,10 +1288,7 @@ function createMOSServer({
       }
 
       if (url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/customize/`)) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to customize Homepage.' });
-          return;
-        }
+        if (signedOut('Sign in to customize Homepage.')) return;
         if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/customize/status`) {
           jsonResponse(response, 200, await homepageConfig.status());
           return;
@@ -1433,10 +1312,7 @@ function createMOSServer({
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/packages`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to review app packages.')) return;
         // Answer from what is already on disk, then let any sources that are due a
         // check catch up behind the response. Deliberately not awaited: the Apps
         // page must never wait on a git host, and a source found to have moved
@@ -1450,10 +1326,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/catalog/refresh`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to refresh the app catalog.' });
-          return;
-        }
+        if (signedOut('Sign in to refresh the app catalog.')) return;
         try {
           const result = await catalogService.refresh();
           jsonResponse(response, 200, result);
@@ -1469,10 +1342,7 @@ function createMOSServer({
       }
 
       if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources` || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/apps/sources/`)) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage app package sources.' });
-          return;
-        }
+        if (signedOut('Sign in to manage app package sources.')) return;
         if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources`) {
           jsonResponse(response, 200, { sources: externalSourceService.listSources() });
           return;
@@ -1541,20 +1411,14 @@ function createMOSServer({
 
       const appIconMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/icon$/u);
       if (request.method === 'GET' && appIconMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to review app packages.')) return;
         fileResponse(response, appPackages.iconPath(decodeURIComponent(appIconMatch[1])));
         return;
       }
 
       const appScreenshotMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/screenshots\/(\d{1,3})$/u);
       if (request.method === 'GET' && appScreenshotMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to review app packages.')) return;
         fileResponse(response, appPackages.screenshotPath(decodeURIComponent(appScreenshotMatch[1]), Number(appScreenshotMatch[2])));
         return;
       }
@@ -1563,19 +1427,13 @@ function createMOSServer({
       const appPrepareUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/prepare-update$/u);
       const appUpdateJobMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/update-job$/u);
       if (request.method === 'POST' && appPrepareUpdateMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app updates.' });
-          return;
-        }
+        if (signedOut('Sign in to review app updates.')) return;
         jsonResponse(response, 200, { comparison: await appPackages.preparePackageUpdate(decodeURIComponent(appPrepareUpdateMatch[1])) });
         return;
       }
 
       if (request.method === 'POST' && appUpdateJobMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to update app packages.')) return;
         const body = await readJsonBody(request, 4 * 1024);
         jsonResponse(response, 202, { updateJob: updateJobs.begin(decodeURIComponent(appUpdateJobMatch[1]), body) });
         return;
@@ -1583,10 +1441,7 @@ function createMOSServer({
 
       const appRecoverUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/recover-update$/u);
       if (request.method === 'POST' && appRecoverUpdateMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to recover app updates.' });
-          return;
-        }
+        if (signedOut('Sign in to recover app updates.')) return;
         const packageId = decodeURIComponent(appRecoverUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
           ...publicUrlOf(packageId),
@@ -1597,10 +1452,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && appInstallMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to install app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to install app packages.')) return;
         const body = await readJsonBody(request, 64 * 1024);
         jsonResponse(response, 200, { instance: await appPackages.installPackage(decodeURIComponent(appInstallMatch[1]), body) });
         return;
@@ -1608,10 +1460,7 @@ function createMOSServer({
 
       const appInstallJobMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install-job$/u);
       if (request.method === 'POST' && appInstallJobMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to install app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to install app packages.')) return;
         const body = await readJsonBody(request, 64 * 1024);
         const packageId = decodeURIComponent(appInstallJobMatch[1]);
         jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: body.config || {}, showOnHomepage: body.showOnHomepage === true }) });
@@ -1620,10 +1469,7 @@ function createMOSServer({
 
       const appHomepageMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/add-to-homepage$/u);
       if (request.method === 'POST' && appHomepageMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to add app packages to Homepage.' });
-          return;
-        }
+        if (signedOut('Sign in to add app packages to Homepage.')) return;
         const packageId = decodeURIComponent(appHomepageMatch[1]);
         jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, publicUrlOf(packageId)));
         return;
@@ -1631,10 +1477,7 @@ function createMOSServer({
 
       const appRuntimeMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/apply-runtime$/u);
       if (request.method === 'POST' && appRuntimeMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to apply app runtimes.' });
-          return;
-        }
+        if (signedOut('Sign in to apply app runtimes.')) return;
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.startPackageRuntime(packageId, {
           ...publicUrlOf(packageId),
@@ -1644,10 +1487,7 @@ function createMOSServer({
       }
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/integrations/connect`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to connect app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to connect app packages.')) return;
         const body = await readJsonBody(request, 16 * 1024);
         jsonResponse(response, 200, await appPackages.connectPackages({
           consumerPackageId: String(body.consumerPackageId || ''),
@@ -1661,10 +1501,7 @@ function createMOSServer({
 
       const appDisableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/disable$/u);
       if (request.method === 'POST' && appDisableMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to disable app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to disable app packages.')) return;
         const packageId = decodeURIComponent(appDisableMatch[1]);
         jsonResponse(response, 200, await appPackages.disablePackage(packageId, homepageConfig));
         return;
@@ -1672,10 +1509,7 @@ function createMOSServer({
 
       const appStopMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stop$/u);
       if (request.method === 'POST' && appStopMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to stop app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to stop app packages.')) return;
         const packageId = decodeURIComponent(appStopMatch[1]);
         jsonResponse(response, 200, await appPackages.stopPackageRuntime(packageId));
         return;
@@ -1683,10 +1517,7 @@ function createMOSServer({
 
       const appEnableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/enable$/u);
       if (request.method === 'POST' && appEnableMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to enable app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to enable app packages.')) return;
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
           ...publicUrlOf(packageId),
@@ -1697,10 +1528,7 @@ function createMOSServer({
 
       const appRestartMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/restart$/u);
       if (request.method === 'POST' && appRestartMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restart app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to restart app packages.')) return;
         const packageId = decodeURIComponent(appRestartMatch[1]);
         jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
           ...publicUrlOf(packageId),
@@ -1711,10 +1539,7 @@ function createMOSServer({
 
       const appEnvMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/env$/u);
       if (request.method === 'POST' && appEnvMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change app environment variables.' });
-          return;
-        }
+        if (signedOut('Sign in to change app environment variables.')) return;
         const packageId = decodeURIComponent(appEnvMatch[1]);
         const body = await readJsonBody(request, 64 * 1024);
         jsonResponse(response, 200, await appPackages.savePackageEnvironment(packageId, body, {
@@ -1726,10 +1551,7 @@ function createMOSServer({
 
       const appUninstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/uninstall$/u);
       if (request.method === 'POST' && appUninstallMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to uninstall app packages.' });
-          return;
-        }
+        if (signedOut('Sign in to uninstall app packages.')) return;
         const packageId = decodeURIComponent(appUninstallMatch[1]);
         jsonResponse(response, 200, await appPackages.uninstallPackage(packageId, homepageConfig));
         return;
@@ -1737,10 +1559,7 @@ function createMOSServer({
 
       const appRefreshMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/refresh-runtime-status$/u);
       if (request.method === 'POST' && appRefreshMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to refresh app runtime status.' });
-          return;
-        }
+        if (signedOut('Sign in to refresh app runtime status.')) return;
         const packageId = decodeURIComponent(appRefreshMatch[1]);
         jsonResponse(response, 200, await appPackages.refreshPackageRuntimeStatus(packageId));
         return;
@@ -1748,10 +1567,7 @@ function createMOSServer({
 
       const appGuideMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/guide$/u);
       if (request.method === 'POST' && appGuideMatch) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update app setup guides.' });
-          return;
-        }
+        if (signedOut('Sign in to update app setup guides.')) return;
         const body = await readJsonBody(request, 8 * 1024);
         const status = String(body.status || '');
         if (!['viewed', 'completed', 'skipped'].includes(status)) {
