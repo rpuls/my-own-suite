@@ -13,7 +13,6 @@ const {
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { resolveClientAddress } = require('../auth/login-throttle.cjs');
-const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
 const { SetupError } = require('../setup/setup-service.cjs');
 const {
   KNOWN_BROWSER_COOKIE,
@@ -130,10 +129,10 @@ function serveFrontend(response, frontendDistDir) {
 
 function createRequestHandler(services) {
   const {
-    addressService, alerts, appAgent, appPackages, appUrls, catalogService, consoleLogin,
-    diagnosticsAgent, disposableLab, externalSourceService, frontDoor, frontendDistDir, handover, homeHost, homepage,
-    homepageConfig, installJobs, labResetAgent, logger, ownerClaimToken, recordSecurityEvent, repairChipOnSignIn,
-    securityLogger, setup, suiteAddress, teachChipOwnerPassword, throttle, updateJobs, updates, vaultAgent,
+    addressService, alerts, appPackages, appUrls, catalogService, consoleLogin, disposableLab,
+    externalSourceService, frontendDistDir, handover, homepage, homepageConfig, installJobs, labResetAgent, logger,
+    ownerClaimToken, recordSecurityEvent, repairChipOnSignIn, securityLogger, setup, teachChipOwnerPassword, throttle,
+    updateJobs, vaultAgent,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -458,53 +457,6 @@ function createRequestHandler(services) {
           asksForPassword: enrolled.mode === VAULT_TPM_MODES.PASSWORD,
           vault: await vaultAgent.status().catch(() => ({ state: 'unknown' })),
         });
-        return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address`) {
-        if (signedOut('Sign in to manage the suite address.')) return;
-        jsonResponse(response, 200, await addressService.status());
-        return;
-      }
-
-      // Answers 202 before the change runs: for a domain the web server restarts
-      // under this very connection, so the screen polls the status above rather
-      // than waiting for a reply that cannot arrive.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/change`) {
-        if (signedOut('Sign in to manage the suite address.')) return;
-        const body = await readJsonBody(request, 16 * 1024);
-        jsonResponse(response, 202, await addressService.change(body));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/offer/dismiss`) {
-        if (signedOut('Sign in to manage the suite address.')) return;
-        jsonResponse(response, 200, await addressService.dismissOffer());
-        return;
-      }
-
-      // One file an owner can hand to whoever is helping them. Signed in only:
-      // it reports the shape of the machine, and an export anyone could fetch
-      // would be a reconnaissance endpoint on an unauthenticated port.
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/support/bundle`) {
-        if (signedOut('Sign in to create a diagnostics file.')) return;
-        const bundle = await assembleSupportBundle({
-          agent: diagnosticsAgent,
-          appAgent,
-          catalogStatus: catalogService.status(),
-          frontDoor,
-          homeHost: suiteAddress.readOrNull()?.host || homeHost,
-          platformVersion: catalogService.platformVersion,
-          secretDir: appPackages.secretDir,
-          store: setup.store,
-          suiteAddress: suiteAddress.readOrNull(),
-          updateStatus: await updates.status().catch(() => null),
-        });
-        response.writeHead(200, {
-          'Content-Disposition': `attachment; filename="${bundle.filename}"`,
-          'Content-Type': 'text/plain; charset=utf-8',
-        });
-        response.end(bundle.text);
         return;
       }
 
