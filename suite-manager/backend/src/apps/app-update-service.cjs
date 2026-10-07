@@ -321,9 +321,6 @@ class AppUpdateService {
     if (!Array.isArray(recovery?.candidateProjections) || !recovery.candidateProjections.length) {
       throw new AppPackageServiceError('APP_UPDATE_RECOVERY_UNAVAILABLE', 'The interrupted app update did not record what a runtime restore needs.', 409);
     }
-    if (!this.agent?.rollbackPackageUpdate) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const installedPackage = this.apps.installedPackageFor(instance);
     const configRows = this.apps.configWithSecrets(instance.id);
     const heldKeys = new Set(configRows.map((row) => row.key));
@@ -447,9 +444,6 @@ class AppUpdateService {
     }
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
       throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
-    }
-    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate || !this.agent?.activatePackageUpdate || !this.agent?.rollbackPackageUpdate || !this.agent?.promotePackageUpdate) {
-      throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
     }
     const installedPackage = this.apps.installedPackageFor(instance);
     let candidate;

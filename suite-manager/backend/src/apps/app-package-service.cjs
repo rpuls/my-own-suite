@@ -234,9 +234,6 @@ class AppPackageService {
   }
 
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
-    if (!this.agent) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || (instance.status === 'disabled' && !options.allowDisabled)) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before applying its runtime.', 409);
@@ -535,9 +532,6 @@ class AppPackageService {
   }
 
   async refreshPackageRuntimeStatus(packageId) {
-    if (!this.agent) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status !== 'installed') {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before checking its runtime.', 409);
@@ -698,12 +692,6 @@ class AppPackageService {
   }
 
   async performSavePackageEnvironment(packageId, input = {}, requestContext = {}) {
-    // Checked before anything is written: without an agent the apply cannot run,
-    // and neither can the rollback that would put things back — which would turn
-    // an unavailable agent into "MOS could not restore your app".
-    if (!this.agent) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status !== 'installed') {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Start this app before changing its environment variables.', 409);
@@ -1255,9 +1243,6 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
     }
     const { manifest } = readAppPackageManifest(packageDir);
-    if (!this.agent?.snapshotPackage) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
-    }
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
     await this.assertHostRequirementsMet(manifest, agentStatus);
@@ -1430,9 +1415,6 @@ class AppPackageService {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
       return this.publicView(this.withGuideState(current));
-    }
-    if (!this.agent?.snapshotExternalPackage) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
     const agentStatus = await this.agent.status().catch(() => null);
     assertAppAgentContract(agentStatus);
@@ -1644,9 +1626,6 @@ class AppPackageService {
   }
 
   async performDisablePackage(packageId, _homepageService) {
-    if (!this.agent) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before disabling it.', 409);
@@ -1725,9 +1704,6 @@ class AppPackageService {
   }
 
   async performUninstallPackage(packageId, homepageService) {
-    if (!this.agent) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before uninstalling it.', 409);
