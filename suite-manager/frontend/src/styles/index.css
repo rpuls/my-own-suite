@@ -521,13 +521,6 @@
   padding: var(--mos-space-5) clamp(1rem, 3vw, 2rem);
 }
 
-.suite-shell-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mos-space-2);
-}
-
 .suite-icon-button {
   display: inline-grid;
   place-items: center;
@@ -2674,12 +2667,6 @@ button.suite-updates-change-head {
   white-space: normal;
 }
 
-.suite-field {
-  display: grid;
-  gap: var(--mos-space-2);
-}
-
-.suite-field > span,
 .suite-advanced dt {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
@@ -2687,31 +2674,6 @@ button.suite-updates-change-head {
   letter-spacing: var(--mos-letter-spacing-label);
   text-transform: uppercase;
 }
-
-.suite-field input,
-.suite-field select,
-.suite-field textarea {
-  width: 100%;
-  min-height: 3rem;
-  padding: 0.8rem 0.95rem;
-  border: var(--mos-border-strong);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface);
-  color: var(--mos-color-text);
-}
-
-.suite-field input:focus,
-.suite-field select:focus,
-.suite-field textarea:focus {
-  border-color: var(--mos-color-accent-border);
-  outline: var(--mos-focus-ring);
-}
-
-.suite-field small {
-  color: var(--mos-color-text-muted);
-}
-
-.suite-field textarea { resize: vertical; }
 
 .suite-customize {
   display: grid;
@@ -2747,8 +2709,7 @@ button.suite-updates-change-head {
 .suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
 .suite-form-wide { grid-column: 1 / -1; }
-.suite-route-preview { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); padding: var(--mos-space-4); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); }
-.suite-route-preview code, .suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+.suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
 
 .suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); }
@@ -2914,7 +2875,7 @@ button.suite-updates-change-head {
   .suite-customize-header { align-items: stretch; flex-direction: column; }
   .suite-customize-layout { grid-template-columns: 1fr; }
   .suite-file-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .suite-form-grid, .suite-route-preview, .suite-choice-grid { grid-template-columns: 1fr; }
+  .suite-form-grid, .suite-choice-grid { grid-template-columns: 1fr; }
 }
 
 /* Backup & Restore Drive List */
