@@ -3,6 +3,7 @@ const http = require('node:http');
 const { createRequestHandler } = require('../../src/server/http-app.cjs');
 
 const HOST = 'home.test';
+const OWNER = { email: 'owner@example.com', name: 'Suite Owner' };
 const OWNER_SESSION = 'owner-session';
 
 // The least of the services graph the request handler needs around a route:
@@ -13,7 +14,7 @@ function fakeServices({ setup = {}, ...services } = {}) {
     appUrls: { hostFor: () => null, publicUrlOf: () => ({}), publicUrls: () => () => ({}) },
     logger: { error() {}, info() {}, warn() {} },
     ...services,
-    setup: { status: (token) => ({ status: token === OWNER_SESSION ? 'signed-in' : 'needs-login' }), ...setup },
+    setup: { status: (token) => (token === OWNER_SESSION ? { owner: OWNER, status: 'signed-in' } : { owner: null, status: 'needs-login' }), ...setup },
   };
 }
 

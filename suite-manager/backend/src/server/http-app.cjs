@@ -133,7 +133,7 @@ function createRequestHandler(services) {
     addressService, alerts, appAgent, appPackages, appUrls, catalogService, consoleLogin,
     diagnosticsAgent, disposableLab, externalSourceService, frontDoor, frontendDistDir, handover, homeHost, homepage,
     homepageConfig, installJobs, labResetAgent, logger, ownerClaimToken, recordSecurityEvent, repairChipOnSignIn,
-    securityLogger, setup, smtpSettings, suiteAddress, teachChipOwnerPassword, throttle, updateJobs, updates, vaultAgent,
+    securityLogger, setup, suiteAddress, teachChipOwnerPassword, throttle, updateJobs, updates, vaultAgent,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -480,68 +480,6 @@ function createRequestHandler(services) {
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/offer/dismiss`) {
         if (signedOut('Sign in to manage the suite address.')) return;
         jsonResponse(response, 200, await addressService.dismissOffer());
-        return;
-      }
-
-      if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp` && ['DELETE', 'GET', 'POST'].includes(request.method)) {
-        if (signedOut('Sign in to manage the email relay.')) return;
-        if (request.method === 'GET') {
-          jsonResponse(response, 200, smtpSettings.status());
-          return;
-        }
-        if (request.method === 'DELETE') {
-          jsonResponse(response, 200, smtpSettings.remove());
-          return;
-        }
-        const body = await readJsonBody(request, 16 * 1024);
-        jsonResponse(response, 200, await smtpSettings.save(body));
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/test`) {
-        if (signedOut('Sign in to manage the email relay.')) return;
-        const body = await readJsonBody(request, 4 * 1024);
-        jsonResponse(response, 200, await smtpSettings.sendTest({ to: body?.to }));
-        return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/status`) {
-        if (signedOut('Sign in to review updates.')) return;
-        jsonResponse(response, 200, await updates.status());
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/start`) {
-        if (signedOut('Sign in to update My Own Suite.')) return;
-        jsonResponse(response, 202, await updates.start({ initiator: setup.status(sessionToken).owner?.email || 'owner' }));
-        return;
-      }
-
-      // The two answers an owner can give while an update waits for its backup.
-      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/cancel` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/skip-backup`)) {
-        if (signedOut('Sign in to manage updates.')) return;
-        const body = await readJsonBody(request, 4 * 1024);
-        const answer = url.pathname.endsWith('/cancel') ? updates.cancel({ id: body?.id }) : updates.skipBackup({ id: body?.id });
-        jsonResponse(response, 200, await answer);
-        return;
-      }
-
-      // MOS said a restart was needed, so MOS performs it. The browser confirmed
-      // it; the agent refuses it under a running update or backup.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/host/restart`) {
-        if (signedOut('Sign in to restart this server.')) return;
-        jsonResponse(response, 202, await updates.restartHost());
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/track`) {
-        if (signedOut('Sign in to switch update tracks.')) return;
-        const body = await readJsonBody(request, 8 * 1024);
-        if (body.track !== 'stable' && body.track !== 'main' && body.track !== 'staging') {
-          jsonResponse(response, 400, { code: 'INVALID_UPDATE_TRACK', error: 'Update track must be stable, main, or staging.' });
-          return;
-        }
-        jsonResponse(response, 200, await updates.configureTrack(body));
         return;
       }
 
