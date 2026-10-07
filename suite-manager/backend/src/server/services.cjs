@@ -45,6 +45,62 @@ function stateRootOf(stateDir) {
   return path.dirname(path.resolve(stateDir));
 }
 
+function createOfficialCatalog({ limiter, logger, recordSecurityEvent, stateDir, updateAgent }) {
+  // Per process, so a fresh start pushes the host holds once even when the feed has not moved.
+  let pushedAdvisoryRevision = null;
+  const catalogService = new OfficialCatalogService({
+    limiter,
+    logger,
+    // Suite Manager only carries the signed advisories; the update agent verifies them before it writes.
+    onRefreshed: async ({ advisoriesRevision }) => {
+      if (advisoriesRevision === pushedAdvisoryRevision) return;
+      const signed = catalogService.signedAdvisories();
+      if (!signed) return;
+      try {
+        await updateAgent.applyHostHolds({ advisoriesSignature: signed.signature, advisoriesText: signed.text });
+        pushedAdvisoryRevision = advisoriesRevision;
+      } catch (error) {
+        logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
+      }
+    },
+    recordSecurityEvent,
+    repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    // A branch track reads its own branch's catalog; a release reads `main`.
+    resolveCatalogRef: async () => {
+      if (process.env.MOS_APP_CATALOG_BRANCH) return process.env.MOS_APP_CATALOG_BRANCH;
+      const { track } = await updateAgent.summary();
+      if (track?.type === 'branch') return track.ref || null;
+      return track?.type === 'stable' ? 'main' : null;
+    },
+    // From the installed release, never from whoever served the catalog.
+    signingPublicKey: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'trust', 'official-catalog.pub'), 'utf8'),
+    stateDir,
+    platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
+  });
+  return catalogService;
+}
+
+// Installs and updates that build for minutes run as jobs the page reads back.
+function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger }) {
+  const installJobs = new AppInstallJobs({
+    addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, appUrls.publicUrlOf(packageId)),
+    logger,
+    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
+    progressOf: (packageId) => appPackages.installProgressOf(packageId),
+    start: (packageId) => appPackages.startPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
+    waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: appUrls.publicUrlOf(packageId).publicUrl }),
+  });
+  const updateJobs = new AppUpdateJobs({
+    logger,
+    stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
+      ...appUrls.publicUrlOf(packageId),
+      homepageService: homepageConfig,
+      publicUrlFor: appUrls.publicUrls(),
+    }, onStage),
+  });
+  return { installJobs, updateJobs };
+}
+
 function createServices({
   appAgent = new AppAgentClient(),
   backupAgent = new BackupAgentClient(),
@@ -89,37 +145,7 @@ function createServices({
   });
   // One limiter for the host: the bounds only mean something when shared.
   const appOperationLimiter = new AppOperationLimiter();
-  // Per process, so a fresh start pushes the host holds once even when the feed has not moved.
-  let pushedAdvisoryRevision = null;
-  const catalogService = officialCatalog || new OfficialCatalogService({
-    limiter: appOperationLimiter,
-    logger,
-    // Suite Manager only carries the signed advisories; the update agent verifies them before it writes.
-    onRefreshed: async ({ advisoriesRevision }) => {
-      if (advisoriesRevision === pushedAdvisoryRevision) return;
-      const signed = catalogService.signedAdvisories();
-      if (!signed) return;
-      try {
-        await updateAgent.applyHostHolds({ advisoriesSignature: signed.signature, advisoriesText: signed.text });
-        pushedAdvisoryRevision = advisoriesRevision;
-      } catch (error) {
-        logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
-      }
-    },
-    recordSecurityEvent,
-    repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
-    // A branch track reads its own branch's catalog; a release reads `main`.
-    resolveCatalogRef: async () => {
-      if (process.env.MOS_APP_CATALOG_BRANCH) return process.env.MOS_APP_CATALOG_BRANCH;
-      const { track } = await updateAgent.summary();
-      if (track?.type === 'branch') return track.ref || null;
-      return track?.type === 'stable' ? 'main' : null;
-    },
-    // From the installed release, never from whoever served the catalog.
-    signingPublicKey: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'trust', 'official-catalog.pub'), 'utf8'),
-    stateDir,
-    platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
-  });
+  const catalogService = officialCatalog || createOfficialCatalog({ limiter: appOperationLimiter, logger, recordSecurityEvent, stateDir, updateAgent });
   const officialPackageIds = inspectAppPackages(appsDir).map((pkg) => pkg.id);
   const externalSourceClient = new ExternalSourceClient({
     limiter: appOperationLimiter,
@@ -162,22 +188,7 @@ function createServices({
     suiteAddress,
   });
   addressService.start();
-  const installJobs = new AppInstallJobs({
-    addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, appUrls.publicUrlOf(packageId)),
-    logger,
-    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
-    progressOf: (packageId) => appPackages.installProgressOf(packageId),
-    start: (packageId) => appPackages.startPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
-    waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: appUrls.publicUrlOf(packageId).publicUrl }),
-  });
-  const updateJobs = new AppUpdateJobs({
-    logger,
-    stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
-      ...appUrls.publicUrlOf(packageId),
-      homepageService: homepageConfig,
-      publicUrlFor: appUrls.publicUrls(),
-    }, onStage),
-  });
+  const { installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -193,12 +204,7 @@ function createServices({
   });
   const updates = new UpdateService({ agent: updateAgent, backupAgent, diagnosticsAgent });
 
-  async function startCatalogRefresh() {
-    try { await catalogService.refresh(); } catch {}
-    catalogService.schedule();
-  }
-
-  return {
+  const services = {
     addressService,
     appAgent,
     appPackages,
@@ -228,20 +234,28 @@ function createServices({
     updates,
     vault,
     vaultAgent,
-    // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
-    async start() {
-      const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
-      const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
-      void startCatalogRefresh();
-      addressService.watchEasyDoor();
-      return { recoveries, sweptCandidates };
-    },
-    stop() {
-      catalogService.stop();
-      addressService.stopWatchingEasyDoor();
-      setup.close();
-    },
   };
+  return { ...services, start: () => startServices(services), stop: () => stopServices(services) };
+}
+
+async function startCatalogRefresh(catalogService) {
+  try { await catalogService.refresh(); } catch {}
+  catalogService.schedule();
+}
+
+// Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
+async function startServices({ addressService, appPackages, appUrls, catalogService, setup }) {
+  const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
+  const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
+  void startCatalogRefresh(catalogService);
+  addressService.watchEasyDoor();
+  return { recoveries, sweptCandidates };
+}
+
+function stopServices({ addressService, catalogService, setup }) {
+  catalogService.stop();
+  addressService.stopWatchingEasyDoor();
+  setup.close();
 }
 
 module.exports = { createServices };

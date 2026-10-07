@@ -9,8 +9,7 @@ function packageRoute(action) {
   return new RegExp(`^/apps/packages/([^/]+)/${action}$`, 'u');
 }
 
-function appRoutes({ appPackages, appUrls, catalogService, externalSourceService, homepageConfig, installJobs, updateJobs }) {
-  const runtimeUrls = (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() });
+function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceService, installJobs, updateJobs }) {
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
   const withPublicUrl = (app) => ({ ...app, publicUrl: appUrls.hostFor(app.id) ? appUrls.publicUrlOf(app.id).publicUrl : '' });
@@ -64,6 +63,11 @@ function appRoutes({ appPackages, appUrls, catalogService, externalSourceService
         fileResponse(response, appPackages.screenshotPath(packageId, Number(index)));
       },
     },
+  ];
+}
+
+function appUpdateRoutes({ appPackages, appUrls, homepageConfig, updateJobs }) {
+  return [
     {
       method: 'POST',
       pattern: packageRoute('prepare-update'),
@@ -94,6 +98,13 @@ function appRoutes({ appPackages, appUrls, catalogService, externalSourceService
         }));
       },
     },
+  ];
+}
+
+function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
+  const runtimeUrls = (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() });
+
+  return [
     {
       method: 'POST',
       pattern: packageRoute('install'),
@@ -212,6 +223,10 @@ function appRoutes({ appPackages, appUrls, catalogService, externalSourceService
       },
     },
   ];
+}
+
+function appRoutes(services) {
+  return [...catalogRoutes(services), ...appUpdateRoutes(services), ...packageRoutes(services)];
 }
 
 module.exports = { appRoutes };

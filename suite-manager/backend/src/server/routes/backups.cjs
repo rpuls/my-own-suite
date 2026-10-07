@@ -19,39 +19,8 @@ function objectDestination(input) {
   };
 }
 
-function backupRoutes({ backupAgent, backupInventory, logger, setup }) {
+function recoveryKeyRoutes({ backupAgent, setup }) {
   return [
-    {
-      method: 'GET',
-      path: '/backups/status',
-      signIn: MANAGE,
-      handler: async ({ response }) => {
-        try {
-          const agentStatus = await backupAgent.status();
-          jsonResponse(response, 200, {
-            ...agentStatus,
-            inventory: backupInventory.inventory(),
-            ...restoreGuaranteeFor(agentStatus),
-            serviceAvailable: true,
-          });
-        } catch (error) {
-          // Answered 200 so the screen can say so; a genuine fault looks the same as a stopped agent.
-          logger.warn('backup-agent-unavailable', { error });
-          jsonResponse(response, 200, {
-            backups: [],
-            currentJob: null,
-            destinations: [],
-            error: error.message || 'Backup agent is unavailable.',
-            interruptedRestore: null,
-            inventory: backupInventory.inventory(),
-            lastJob: null,
-            recoveryKey: null,
-            ...restoreGuaranteeFor(null),
-            serviceAvailable: false,
-          });
-        }
-      },
-    },
     // Its own route because saving the key is what the first-backup gate waits for.
     {
       method: 'POST',
@@ -93,6 +62,11 @@ function backupRoutes({ backupAgent, backupInventory, logger, setup }) {
         jsonResponse(response, 200, await backupAgent.rotateRecoveryKey(), { 'Cache-Control': 'no-store' });
       },
     },
+  ];
+}
+
+function destinationRoutes({ backupAgent }) {
+  return [
     // Another server's key goes straight through to the agent and is never kept here.
     {
       method: 'POST',
@@ -192,16 +166,6 @@ function backupRoutes({ backupAgent, backupInventory, logger, setup }) {
         jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(input.destinationId || '') }));
       },
     },
-    {
-      method: 'POST',
-      path: '/backups/start',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), note: String(input.note || '') }));
-      },
-    },
     // Where everything automatic writes: the schedule and the checkpoint before an update.
     {
       method: 'POST',
@@ -213,6 +177,55 @@ function backupRoutes({ backupAgent, backupInventory, logger, setup }) {
         jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
           destinationId: input.destinationId === null ? null : String(input.destinationId || ''),
         }));
+      },
+    },
+  ];
+}
+
+function backupRoutes(services) {
+  const { backupAgent, backupInventory, logger } = services;
+  return [
+    {
+      method: 'GET',
+      path: '/backups/status',
+      signIn: MANAGE,
+      handler: async ({ response }) => {
+        try {
+          const agentStatus = await backupAgent.status();
+          jsonResponse(response, 200, {
+            ...agentStatus,
+            inventory: backupInventory.inventory(),
+            ...restoreGuaranteeFor(agentStatus),
+            serviceAvailable: true,
+          });
+        } catch (error) {
+          // Answered 200 so the screen can say so; a genuine fault looks the same as a stopped agent.
+          logger.warn('backup-agent-unavailable', { error });
+          jsonResponse(response, 200, {
+            backups: [],
+            currentJob: null,
+            destinations: [],
+            error: error.message || 'Backup agent is unavailable.',
+            interruptedRestore: null,
+            inventory: backupInventory.inventory(),
+            lastJob: null,
+            recoveryKey: null,
+            ...restoreGuaranteeFor(null),
+            serviceAvailable: false,
+          });
+        }
+      },
+    },
+    ...recoveryKeyRoutes(services),
+    ...destinationRoutes(services),
+    {
+      method: 'POST',
+      path: '/backups/start',
+      signIn: MANAGE,
+      bodyLimit: 8 * 1024,
+      handler: async ({ body, response }) => {
+        const input = await body();
+        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), note: String(input.note || '') }));
       },
     },
     {
