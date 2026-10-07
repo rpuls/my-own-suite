@@ -13,7 +13,6 @@ const {
   isRecord,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
-  publicInstance,
   readSecretValue,
   redactionSecretsFor,
   renderInstanceProjections,
@@ -308,12 +307,7 @@ class AppUpdateService {
       try { integrations = await this.apps.reconcilePackageIntegrations(packageId, requestContext); } catch {}
       return {
         action: 'committed',
-        instance: publicInstance(
-          this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-          this.store.getAppProjections(instance.id),
-          this.store.getAppConfig(instance.id),
-          this.store.getAppEnv(instance.id),
-        ),
+        instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
         integrations,
         operation: committed,
       };
@@ -331,9 +325,7 @@ class AppUpdateService {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
     const installedPackage = this.apps.installedPackageFor(instance);
-    const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-    ));
+    const configRows = this.apps.configWithSecrets(instance.id);
     const heldKeys = new Set(configRows.map((row) => row.key));
     // A missing collected secret is tolerated: the rollback only needs the
     // candidate's service identities to tear it down, never its secret values.
@@ -397,12 +389,7 @@ class AppUpdateService {
     return {
       action: 'rolled-back',
       homepage,
-      instance: publicInstance(
-        this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
       integrations,
     };
   }
@@ -523,9 +510,7 @@ class AppUpdateService {
       // same way its install was, so an update cannot take over a web address
       // another app already answers on.
       if (candidate.source?.trust !== 'mos-reviewed') this.apps.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
-      const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
-        row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-      ));
+      const installedConfigRows = this.apps.configWithSecrets(instance.id);
       const envRows = this.apps.ownerEnvWithSecrets(instance.id);
       // Setup values the candidate newly requires are collected in the update
       // dialog and become config rows here. Only fields the instance does not

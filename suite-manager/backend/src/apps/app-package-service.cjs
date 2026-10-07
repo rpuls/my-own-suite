@@ -182,11 +182,14 @@ class AppPackageService {
     return instance && instance.status === 'installed' ? instance.packageId : null;
   }
 
-  // Owner env rows with their secret values read from disk, in the shape
-  // materializeRuntimeCompose expects. Every path that turns stored projections
-  // into a runtime needs the same read, so it lives here rather than inline in
-  // three of them.
-  //
+  // Config and owner env rows with their secret values read from disk, in the
+  // shape materializeRuntimeCompose expects.
+  configWithSecrets(instanceId) {
+    return this.store.getAppConfig(instanceId).map((row) => (
+      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
+    ));
+  }
+
   // `tolerateMissing` is for the update rollback, which needs the candidate's
   // service identities to tear it down and not its values; everywhere else a
   // secret that cannot be read is a hard failure, exactly as it is for config.
@@ -235,15 +238,12 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    const allowedStatuses = options.allowDisabled ? ['installed', 'disabled'] : ['installed'];
-    if (!instance || !allowedStatuses.includes(instance.status)) {
+    if (!instance || (instance.status === 'disabled' && !options.allowDisabled)) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before applying its runtime.', 409);
     }
 
     const projections = this.store.getAppProjections(instance.id);
-    const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-    ));
+    const configRows = this.configWithSecrets(instance.id);
     const envRows = this.ownerEnvWithSecrets(instance.id);
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const caddyProjection = projections.find((projection) => projection.kind === 'caddy');
@@ -316,12 +316,7 @@ class AppPackageService {
 
     return {
       agent: result,
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
   }
 
@@ -576,12 +571,7 @@ class AppPackageService {
       });
       return {
         agent: result,
-        instance: publicInstance(
-          this.store.getAppInstanceByPackageId(packageId),
-          this.store.getAppProjections(instance.id),
-          this.store.getAppConfig(instance.id),
-          this.store.getAppEnv(instance.id),
-        ),
+        instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
       };
     } catch (error) {
       this.store.recordAppHealthCheck({
@@ -801,12 +791,7 @@ class AppPackageService {
       }
       return {
         errorCode: error.code || 'APP_ENV_APPLY_FAILED',
-        instance: publicInstance(
-          this.store.getAppInstanceByPackageId(packageId),
-          this.store.getAppProjections(instance.id),
-          this.store.getAppConfig(instance.id),
-          this.store.getAppEnv(instance.id),
-        ),
+        instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
         reason: `Your changes stopped ${manifest.name} from starting, so MOS put the previous settings back.`,
         status: 'rolled-back',
       };
@@ -820,12 +805,7 @@ class AppPackageService {
     }
 
     return {
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
       // Integrations are reconciled for the same reason a restart reconciles
       // them: applying recreates this app's containers, so a connected peer's
       // network attachment has to be re-made. It reports per relationship and
@@ -1267,7 +1247,7 @@ class AppPackageService {
   async installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
-      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
+      return this.publicView(this.withGuideState(current));
     }
 
     const packageDir = path.join(this.appsDir, packageId);
@@ -1401,12 +1381,7 @@ class AppPackageService {
       await discardSnapshot?.().catch(() => {});
       throw error;
     }
-    return publicInstance(
-      this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-      this.store.getAppProjections(instance.id),
-      this.store.getAppConfig(instance.id),
-      this.store.getAppEnv(instance.id),
-    );
+    return this.publicView(this.withGuideState(this.store.getAppInstanceByPackageId(packageId)));
   }
 
   // Secret files for values an update collected are written before the update can
@@ -1454,7 +1429,7 @@ class AppPackageService {
     }
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
-      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
+      return this.publicView(this.withGuideState(current));
     }
     if (!this.agent?.snapshotExternalPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
@@ -1504,9 +1479,13 @@ class AppPackageService {
     return { ...instance, guideState: this.store.getAppGuideState(instance.id) };
   }
 
+  publicView(instance) {
+    return publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id));
+  }
+
   setPackageGuideStatus(packageId, status) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || !['installed', 'disabled'].includes(instance.status)) {
+    if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before updating its setup guide.', 409);
     }
     const guideState = this.store.setAppGuideStatus({
@@ -1516,12 +1495,7 @@ class AppPackageService {
     });
     return {
       guideState,
-      instance: publicInstance(
-        { ...this.store.getAppInstanceByPackageId(packageId), guideState },
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView({ ...this.store.getAppInstanceByPackageId(packageId), guideState }),
     };
   }
 
@@ -1541,9 +1515,7 @@ class AppPackageService {
     }
 
     const current = await homepageService.read({ file: 'services.template.yaml' });
-    const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-    ));
+    const configRows = this.configWithSecrets(instance.id);
     const result = await homepageService.addManagedApp({
       entry: homepageEntryForHomepage(instance, projections, configRows, requestContext),
       expectedRevision: current.revision,
@@ -1565,12 +1537,7 @@ class AppPackageService {
 
     return {
       homepage: result,
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
   }
 
@@ -1625,9 +1592,7 @@ class AppPackageService {
       const projections = this.store.getAppProjections(instance.id);
       if (homepageProjectionApplied(projections)) {
         try {
-          const configRows = this.store.getAppConfig(instance.id).map((row) => (
-            row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-          ));
+          const configRows = this.configWithSecrets(instance.id);
           // The tile's own href is derived from its id and needs nothing from
           // here. This still resolves the entry because a widget's endpoints are
           // absolute and have to be re-derived against the new address.
@@ -1690,11 +1655,8 @@ class AppPackageService {
       return {
         agent: { status: 'skipped', steps: [] },
         homepage: { skipped: true },
-        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id)),
+        instance: this.publicView(instance),
       };
-    }
-    if (instance.status !== 'installed') {
-      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be stopped from its current state.', 409);
     }
 
     const projections = this.store.getAppProjections(instance.id);
@@ -1716,12 +1678,7 @@ class AppPackageService {
     return {
       agent,
       homepage: { skipped: true },
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
   }
 
@@ -1747,9 +1704,6 @@ class AppPackageService {
         integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
       };
     }
-    if (instance.status !== 'disabled') {
-      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be enabled from its current state.', 409);
-    }
     const applied = await this.applyPackageRuntime(packageId, requestContext, { allowDisabled: true });
     this.store.markAppEnabled({
       at: this.now().toISOString(),
@@ -1760,12 +1714,7 @@ class AppPackageService {
     return {
       ...applied,
       integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
   }
 
@@ -1782,9 +1731,6 @@ class AppPackageService {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before uninstalling it.', 409);
-    }
-    if (!['installed', 'disabled'].includes(instance.status)) {
-      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
     }
     // Deliberately not gated on the app agent's contract version, unlike
     // installing or updating. Removing a broken app is how an owner recovers,
