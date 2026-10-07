@@ -5,7 +5,6 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-client.cjs');
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
@@ -396,32 +395,6 @@ test('logout immediately blocks Home dashboard access again', async () => {
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/suite-manager/');
   }, { homeHost: 'home.test' });
-});
-
-test('Homepage customization APIs require authentication and pass only structured operations', async () => {
-  const calls = [];
-  const homepageAgent = {
-    async status() { calls.push(['status']); return { capabilities: ['homepage.apply'] }; },
-    async read(file) { calls.push(['read', file]); return { content: '- Links: []\n', file, revision: 'sha256:current' }; },
-    async validate(file, content) { calls.push(['validate', file, content]); return { valid: true }; },
-  };
-  await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
-      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Host: 'home.test' }, method: 'POST',
-    });
-    assert.equal(denied.status, 401);
-    assert.equal(calls.length, 0);
-
-    const cookie = await createOwner(baseUrl);
-    const status = await hostRequest(baseUrl, '/suite-manager/api/customize/status', { headers: { Cookie: cookie, Host: 'home.test' } });
-    const read = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
-      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' }, method: 'POST',
-    });
-    assert.equal(status.status, 200);
-    assert.deepEqual(status.json().files, ['bookmarks.yaml', 'services.template.yaml', 'settings.yaml', 'widgets.yaml']);
-    assert.equal(read.status, 200);
-    assert.deepEqual(calls, [['status'], ['read', 'services.template.yaml']]);
-  }, { homeHost: 'home.test', homepageAgent });
 });
 
 test('App package catalog API requires authentication and exposes safe manifest summaries', async () => {
@@ -1389,34 +1362,6 @@ test('invalid app lifecycle transitions fail clearly', async () => {
   }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 
-test('Homepage agent request budget exceeds the observed restart rollback window', () => {
-  assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
-});
-
-test('Homepage restart failure preserves the exact controlled 502 response', async () => {
-  const homepageAgent = {
-    async apply() {
-      throw Object.assign(new Error('Homepage did not restart successfully.'), {
-        code: 'HOMEPAGE_RESTART_FAILED',
-        statusCode: 502,
-      });
-    },
-  };
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/customize/file/apply', {
-      body: JSON.stringify({ content: '- Links: []\n', expectedRevision: 'sha256:current', file: 'services.template.yaml' }),
-      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.equal(response.status, 502);
-    assert.deepEqual(response.json(), {
-      code: 'HOMEPAGE_RESTART_FAILED',
-      error: 'Homepage did not restart successfully.',
-    });
-  }, { homeHost: 'home.test', homepageAgent });
-});
-
 test('Homepage failure returns a controlled bad gateway response', async () => {
   const unavailable = http.createServer();
   const unavailableUrl = await listen(unavailable);
@@ -1566,55 +1511,6 @@ test('owner creation API signs in and changes setup status', async () => {
 
     assert.equal(status.status, 'signed-in');
     assert.equal(status.owner.email, 'owner@example.com');
-  });
-});
-
-test('lab reset endpoint is disabled unless explicitly enabled by the install', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
-
-    assert.equal(response.status, 404);
-    assert.equal(response.json().code, 'LAB_RESET_DISABLED');
-  });
-});
-
-test('lab reset endpoint schedules the narrow lab agent when enabled', async () => {
-  const calls = [];
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
-
-    assert.equal(response.status, 202);
-    assert.deepEqual(response.json(), { resetId: 'reset-one', scheduled: true });
-    assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
-    assert.match(String(response.headers['set-cookie']), /mos_session=/u);
-  }, {
-    disposableLab: true,
-    labResetAgent: {
-      async reset(input) {
-        calls.push(input);
-        return { resetId: 'reset-one', scheduled: true };
-      },
-    },
-  });
-});
-
-test('lab reset status endpoint proxies the scheduled reset job when enabled', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset/reset-one');
-
-    assert.equal(response.status, 200);
-    assert.deepEqual(response.json(), {
-      resetId: 'reset-one',
-      status: 'completed',
-    });
-  }, {
-    disposableLab: true,
-    labResetAgent: {
-      async resetStatus(resetId) {
-        assert.equal(resetId, 'reset-one');
-        return { resetId, status: 'completed' };
-      },
-    },
   });
 });
 

@@ -129,10 +129,9 @@ function serveFrontend(response, frontendDistDir) {
 
 function createRequestHandler(services) {
   const {
-    addressService, alerts, appPackages, appUrls, catalogService, consoleLogin, disposableLab,
-    externalSourceService, frontendDistDir, handover, homepage, homepageConfig, installJobs, labResetAgent, logger,
-    ownerClaimToken, recordSecurityEvent, repairChipOnSignIn, securityLogger, setup, teachChipOwnerPassword, throttle,
-    updateJobs, vaultAgent,
+    addressService, alerts, appPackages, appUrls, catalogService, consoleLogin, externalSourceService,
+    frontendDistDir, handover, homepage, homepageConfig, installJobs, logger, ownerClaimToken, recordSecurityEvent,
+    repairChipOnSignIn, securityLogger, setup, teachChipOwnerPassword, throttle, updateJobs, vaultAgent,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -194,31 +193,6 @@ function createRequestHandler(services) {
       // same as any other screen, and needs the same way to notice.
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/build`) {
         jsonResponse(response, 200, { id: frontendBuildId(frontendDistDir) }, { 'Cache-Control': 'no-store' });
-        return;
-      }
-
-      // Unauthenticated on purpose and not fixable by adding a sign-in check: the
-      // e2e suite calls this to get back to first-run, when no owner account
-      // exists to authenticate as. Its only containment is disposableLab.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/lab/reset`) {
-        if (!disposableLab) {
-          jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
-          return;
-        }
-        const result = await labResetAgent.reset({ reason: 'hyperv-e2e' });
-        jsonResponse(response, 202, result, {
-          'Set-Cookie': clearSessionCookie(isHttpsRequest(request)),
-        });
-        return;
-      }
-
-      const labResetStatusMatch = url.pathname.match(/^\/suite-manager\/api\/lab\/reset\/([^/]+)$/u);
-      if (request.method === 'GET' && labResetStatusMatch) {
-        if (!disposableLab) {
-          jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
-          return;
-        }
-        jsonResponse(response, 200, await labResetAgent.resetStatus(decodeURIComponent(labResetStatusMatch[1])));
         return;
       }
 
@@ -458,30 +432,6 @@ function createRequestHandler(services) {
           vault: await vaultAgent.status().catch(() => ({ state: 'unknown' })),
         });
         return;
-      }
-
-      if (url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/customize/`)) {
-        if (signedOut('Sign in to customize Homepage.')) return;
-        if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/customize/status`) {
-          jsonResponse(response, 200, await homepageConfig.status());
-          return;
-        }
-        if (request.method === 'POST') {
-          const body = await readJsonBody(request, 600 * 1024);
-          const handlers = new Map([
-            [`${SUITE_MANAGER_API_PREFIX}/customize/file/read`, () => homepageConfig.read(body)],
-            [`${SUITE_MANAGER_API_PREFIX}/customize/file/validate`, () => homepageConfig.validate(body)],
-            [`${SUITE_MANAGER_API_PREFIX}/customize/file/apply`, () => homepageConfig.apply(body)],
-            [`${SUITE_MANAGER_API_PREFIX}/customize/add-link`, () => homepageConfig.add(body, false)],
-            [`${SUITE_MANAGER_API_PREFIX}/customize/add-home-service`, () => homepageConfig.add(body, true)],
-            [`${SUITE_MANAGER_API_PREFIX}/customize/home-service-preview`, () => homepageConfig.previewHomeService(body)],
-          ]);
-          const handler = handlers.get(url.pathname);
-          if (handler) {
-            jsonResponse(response, 200, await handler());
-            return;
-          }
-        }
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/packages`) {
