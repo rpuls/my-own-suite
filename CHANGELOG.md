@@ -35,6 +35,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **The update screen lists what the update brings.** It read the changelog of the version already installed, so a server tracking a branch was shown changes it already had, and one on a stable release saw nothing for the new release. It now reads the update's own changelog and lists every entry the server does not have yet.
 - **Actual Budget no longer announces releases you cannot install yet.** Its new package turns off the check that asked GitHub for Actual's latest version, since new versions come through MOS. It now contacts nothing outside your server.
 - **App installs and updates finish even if you close the page.** Suite Manager now runs the whole install or update itself and the page only shows its progress, so a closed tab or a sleeping phone no longer leaves an app running but missing from Homepage, and a second click can no longer start a duplicate build. An update that took longer than a minute used to be reported as "Unable to update" although it went on to succeed; it now shows each step through to the end.
+- **App health checks now reach apps that check which name they were asked for.** The check arrived under the server's loopback address, which Paperless-ngx refused with an error in its log on every check while still counting as healthy.
 
 ### Security
 

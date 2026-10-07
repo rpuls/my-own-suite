@@ -41,6 +41,7 @@ const {
   resolveTemplatesDeep,
   runtimeApplied,
   runtimeConnectionState,
+  runtimeHealthFor,
   runtimeRouteApplied,
   secretFilePath,
   writeSecretFile,
@@ -262,7 +263,7 @@ class AppPackageService {
         appHost,
         caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
         compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows, { smtp: this.smtpRuntimeValues() }),
-        health: healthProjection.content,
+        health: runtimeHealthFor(manifest, healthProjection),
         instanceId: instance.id,
         packageDigest: instance.packageDigest,
         packageId: instance.packageId,
@@ -543,6 +544,7 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'This app is missing runtime projections.', 409);
     }
 
+    const { manifest } = this.installedPackageFor(instance);
     const at = this.now().toISOString();
     const operationId = crypto.randomUUID();
     const request = {
@@ -553,7 +555,7 @@ class AppPackageService {
 
     try {
       const result = await this.agent.checkHealth({
-        health: healthProjection.content,
+        health: runtimeHealthFor(manifest, healthProjection),
         packageId: instance.packageId,
       });
       this.store.recordAppHealthCheck({

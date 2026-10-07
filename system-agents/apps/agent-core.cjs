@@ -55,6 +55,7 @@ const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_-]{8,220}$/u;
 const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]{1,220}$/u;
 const PACKAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const SOURCE_REVISION_PATTERN = /^(?:sha256:[a-f0-9]{64}|[a-f0-9]{40,64})$/u;
+const HEALTH_HOST_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?::\d{1,5})?$/u;
 
 function dockerIdentityFragment(value) {
   return String(value).replace(/^sha256:/u, '').slice(0, 12);
@@ -153,6 +154,7 @@ function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = 
   if (healthUrl.protocol !== 'http:' || healthUrl.hostname !== '127.0.0.1' || !healthService) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The health check must target the assigned loopback port.');
   }
+  assertString(input.health.host, 'health.host', HEALTH_HOST_PATTERN);
 
   return { routes: normalizedRoutes, services };
 }
@@ -174,6 +176,7 @@ function assertHealthCheckRequest(input) {
   if (healthUrl.protocol !== 'http:' || healthUrl.hostname !== '127.0.0.1' || !healthUrl.port) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The health check must target a loopback app port.');
   }
+  assertString(input.health.host, 'health.host', HEALTH_HOST_PATTERN);
   return input.health;
 }
 
@@ -315,6 +318,7 @@ function runtimeAdapterInput(input, routes, easyDoorBase = null) {
   const publicUrl = new URL(input.publicUrl);
   return {
     caddyRoutes: renderAppRoutes({ appHost: input.appHost, easyDoorBase, routes, scheme: publicUrl.protocol.replace(/:$/u, '') }),
+    healthHost: input.health.host,
     healthTarget: input.health.target,
     instanceId: input.instanceId,
     packageDigest: input.packageDigest,
@@ -474,6 +478,7 @@ class AppAgentCore {
     const scheme = publicUrl.protocol.replace(/:$/u, '');
     const result = await this.adapter.applyAppServices({
       caddyRoutes: renderAppRoutes({ appHost: input.appHost, easyDoorBase: this.easyDoorBase(), routes, scheme }),
+      healthHost: input.health.host,
       healthTarget: input.health.target,
       instanceId: input.instanceId,
       packageDigest: input.packageDigest,
@@ -494,6 +499,7 @@ class AppAgentCore {
   async checkHealth(input) {
     const health = assertHealthCheckRequest(input);
     const result = await this.adapter.checkAppHealth({
+      healthHost: health.host,
       healthTarget: health.target,
       packageId: input.packageId,
     });

@@ -87,6 +87,16 @@ function healthTargetFor(manifest, port) {
   return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
 }
 
+// The probe travels to the loopback port but asks for the app by the name the
+// manifest gives it: an app that checks the Host header allows only that name.
+function healthHostFor(manifest) {
+  return new URL(manifest.health.url).host;
+}
+
+function runtimeHealthFor(manifest, healthProjection) {
+  return { ...healthProjection.content, host: healthHostFor(manifest) };
+}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -760,6 +770,7 @@ module.exports = {
   digestFor,
   exportEntries,
   fingerprintFor,
+  healthHostFor,
   healthTargetFor,
   homepageEntryForHomepage,
   homepageProjectionApplied,
@@ -785,6 +796,7 @@ module.exports = {
   resolveTemplatesDeep,
   runtimeApplied,
   runtimeConnectionState,
+  runtimeHealthFor,
   runtimeRouteApplied,
   secretFilePath,
   setupFields,

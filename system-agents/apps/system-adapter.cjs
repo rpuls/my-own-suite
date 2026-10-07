@@ -247,14 +247,14 @@ function removeAppRouteBlock(currentRoutes, packageId) {
 // Rejects with what the last probe saw on `lastProbe`: a connection refused
 // and an HTTP 503 are different failures with different fixes. `crashed` names
 // a crash loop, which no amount of waiting turns into an answer.
-function waitForHttp(url, { crashCheckMs = CRASH_CHECK_INTERVAL_MS, crashed = async () => null, deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
+function waitForHttp(url, { crashCheckMs = CRASH_CHECK_INTERVAL_MS, crashed = async () => null, deadlineMs = HEALTH_TIMEOUT_MS, host } = {}) {
   const started = Date.now();
   let checkedAt = started;
   let lastProbe = 'no answer';
   return new Promise((resolve, reject) => {
     const fail = (message, details = {}) => reject(Object.assign(new Error(message), { lastProbe, waitedMs: Date.now() - started, ...details }));
     const attempt = () => {
-      const request = http.get(url, { timeout: 3000 }, (response) => {
+      const request = http.get(url, { headers: { Host: host }, timeout: 3000 }, (response) => {
         response.resume();
         if (response.statusCode >= 200 && response.statusCode < 500) {
           resolve();
@@ -362,7 +362,7 @@ class SystemAppAdapter {
   }
 
   waitUntilHealthy(runtime) {
-    return this.waitForReady(runtime.healthTarget, { crashed: () => this.crashLoopOf(runtime) });
+    return this.waitForReady(runtime.healthTarget, { crashed: () => this.crashLoopOf(runtime), host: runtime.healthHost });
   }
 
   async crashLoopOf({ packageId, services }) {
@@ -870,9 +870,10 @@ class SystemAppAdapter {
     }
   }
 
-  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
+  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthHost, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,
+      healthHost,
       healthTarget,
       instanceId,
       packageDigest,
@@ -905,7 +906,7 @@ class SystemAppAdapter {
     recordBuildTiming(this.buildTimingsPath, { buildSeconds, displayName, packageId, seconds: (this.now() - startedAt) / 1000 });
   }
 
-  async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
+  async applyAppServices({ caddyRoutes, healthHost, healthTarget, instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const packageDir = path.join(this.appPackageRoot, instanceId, 'installed');
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
@@ -970,7 +971,7 @@ class SystemAppAdapter {
 
       stage = 'health';
       activity = STAGE_ACTIVITY.health;
-      await this.waitUntilHealthy({ healthTarget, packageId, services });
+      await this.waitUntilHealthy({ healthHost, healthTarget, packageId, services });
       this.recordAppTiming({ buildSeconds, packageDir, packageId, startedAt });
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
@@ -1003,7 +1004,7 @@ class SystemAppAdapter {
     } catch (error) {
       const failure = error instanceof AppApplyError
         ? error
-        : new AppApplyError(stage, await this.explainFailure(error, { activity, runtime: { healthTarget, packageId, services }, stage }));
+        : new AppApplyError(stage, await this.explainFailure(error, { activity, runtime: { healthHost, healthTarget, packageId, services }, stage }));
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
@@ -1012,9 +1013,9 @@ class SystemAppAdapter {
     }
   }
 
-  async checkAppHealth({ healthTarget }) {
+  async checkAppHealth({ healthHost, healthTarget }) {
     try {
-      await this.waitForReady(healthTarget, { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS });
+      await this.waitForReady(healthTarget, { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS, host: healthHost });
       return { status: 'healthy' };
     } catch (error) {
       throw new AppApplyError('health', [describeProbe(error, healthTarget)]);

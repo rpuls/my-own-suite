@@ -18,6 +18,7 @@ const test = require('node:test');
 const {
   appPublicIdentity,
   renderDryRunProjections,
+  runtimeHealthFor,
 } = require('../../suite-manager/backend/src/apps/app-package-internals.cjs');
 const { AppAgentCore } = require('../../system-agents/apps/agent-core.cjs');
 
@@ -55,7 +56,7 @@ function runtimeRequest(packageId, projections, appHost, publicUrl) {
     appHost,
     caddy: content('caddy'),
     compose: content('compose'),
-    health: content('health'),
+    health: runtimeHealthFor(manifest, projections.find((projection) => projection.kind === 'health')),
     instanceId: '0d027943-c5c6-4d1c-aef7-c15fcf8c200c',
     packageDigest: `sha256:${'a'.repeat(64)}`,
     packageId,

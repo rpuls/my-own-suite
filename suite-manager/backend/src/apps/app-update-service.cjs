@@ -8,6 +8,7 @@ const {
   assertAppAgentContract,
   createConfigRows,
   digestFor,
+  healthHostFor,
   homepageEntryForHomepage,
   homepageProjectionApplied,
   isRecord,
@@ -16,6 +17,7 @@ const {
   readSecretValue,
   redactionSecretsFor,
   renderInstanceProjections,
+  runtimeHealthFor,
   setupFields,
 } = require('./app-package-internals.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
@@ -40,7 +42,7 @@ function updateRecoveryStateForStage(stage) {
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
+function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, healthHost, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -50,7 +52,7 @@ function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, insta
     caddy: materializeRuntimeCaddy(caddy.content, config),
     compose: materializeRuntimeCompose(compose.content, config, env, { smtp }),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
-    health: health.content,
+    health: { ...health.content, host: healthHost },
     instanceId: instance.id,
     packageDigest,
     packageId: instance.packageId,
@@ -344,6 +346,7 @@ class AppUpdateService {
     const installedRuntime = updateRuntimeRequest({
       config: configRows,
       env: recoveryEnvRows,
+      healthHost: healthHostFor(installedPackage.manifest),
       instance,
       manifest: installedPackage.manifest,
       packageDigest: instance.packageDigest,
@@ -356,6 +359,7 @@ class AppUpdateService {
       config: [...configRows, ...addedConfig],
       env: recoveryEnvRows,
       expectedInstalledDigest: instance.packageDigest,
+      healthHost: recovery.candidateHealthHost,
       instance,
       manifest: { version: operation.request.packageVersion },
       packageDigest: operation.candidateDigest,
@@ -585,6 +589,7 @@ class AppUpdateService {
                 source: row.source,
                 valueJson: row.valueJson ?? null,
               })),
+              candidateHealthHost: healthHostFor(candidate.manifest),
               candidateProjections: candidateProjections.map((projection) => ({
                 contentJson: projection.contentJson,
                 digest: projection.digest,
@@ -618,7 +623,7 @@ class AppUpdateService {
         caddy: materializeRuntimeCaddy(caddyProjection.content, candidateConfig),
         compose: materializeRuntimeCompose(composeProjection.content, candidateConfig),
         expectedInstalledDigest: instance.packageDigest,
-        health: healthProjection.content,
+        health: runtimeHealthFor(candidate.manifest, healthProjection),
         instanceId: instance.id,
         packageDigest: candidate.packageDigest,
         packageId,
@@ -641,6 +646,7 @@ class AppUpdateService {
         // version, so both sides of the activate carry the same set and a
         // rollback restores the runtime the owner was actually running.
         env: envRows,
+        healthHost: healthHostFor(installedPackage.manifest),
         instance,
         manifest: installedPackage.manifest,
         packageDigest: instance.packageDigest,
@@ -653,6 +659,7 @@ class AppUpdateService {
         config: candidateConfig,
         env: envRows,
         expectedInstalledDigest: instance.packageDigest,
+        healthHost: healthHostFor(candidate.manifest),
         instance,
         manifest: candidate.manifest,
         packageDigest: candidate.packageDigest,

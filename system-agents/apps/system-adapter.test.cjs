@@ -258,14 +258,15 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
     async execute(file, args, options = {}) {
       commands.push({ args, cwd: options.cwd, file });
     },
-    async waitForReady(url) {
-      commands.push({ args: [url], file: 'health' });
+    async waitForReady(url, options) {
+      commands.push({ args: [url, options.host], file: 'health' });
     },
   });
 
   const result = await adapter.applyAppService({
     caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
     dockerfile: 'Dockerfile',
+    healthHost: 'example-tool:3000',
     healthTarget: 'http://127.0.0.1:18123/health',
     imageTag: 'mos-app-example-tool:0.1.0',
     instanceId,
@@ -280,6 +281,7 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   });
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
+  assert.deepEqual(commands.find((command) => command.file === 'health').args, ['http://127.0.0.1:18123/health', 'example-tool:3000']);
   // build, container rm, package network create, volume inspect, labeled volume create, run.
   assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
@@ -519,6 +521,7 @@ test('system adapter runs multi-service packages on a private package network', 
 
   await adapter.applyAppServices({
     caddyRoutes: 'http://seafile.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthHost: 'seafile',
     healthTarget: 'http://127.0.0.1:18123/api2/ping/',
     instanceId,
     packageDigest,
@@ -938,11 +941,11 @@ test('system adapter checks app health with a short refresh budget', async () =>
     },
   });
 
-  const result = await adapter.checkAppHealth({ healthTarget: 'http://127.0.0.1:18123/health' });
+  const result = await adapter.checkAppHealth({ healthHost: 'example-tool:3000', healthTarget: 'http://127.0.0.1:18123/health' });
 
   assert.equal(result.status, 'healthy');
   assert.deepEqual(calls, [{
-    options: { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS },
+    options: { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS, host: 'example-tool:3000' },
     url: 'http://127.0.0.1:18123/health',
   }]);
 });
@@ -1147,6 +1150,7 @@ async function realRunnerAdapter(root, { env = {}, waitForReady } = {}) {
     caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
     dockerfile: 'Dockerfile',
     environment: { API_TOKEN: 'tok-0123456789abcdef', DB_PASSWORD: 'hunter2hunter2', SERVER_HOST: 'http://example-tool.mos.home/' },
+    healthHost: 'example-tool:3000',
     healthTarget: 'http://127.0.0.1:18123/health',
     imageTag: 'mos-app-example-tool:0.1.0',
     instanceId,
@@ -1201,6 +1205,7 @@ test('a crash loop ends the health wait at once instead of at its deadline', asy
   const started = Date.now();
   const error = await waitForHttp('http://127.0.0.1:9/', {
     crashCheckMs: 0,
+    host: 'example-tool:3000',
     crashed: async () => 'Container mos-app-example-tool has crashed and restarted 10 times',
   }).then(() => null, (failure) => failure);
 
@@ -1289,7 +1294,7 @@ test('a stale volume refuses the install under its own code instead of as a star
   await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
 
   await assert.rejects(
-    () => adapter.applyAppService({ caddyRoutes: '', dockerfile: 'Dockerfile', environment: {}, healthTarget: 'http://127.0.0.1:1/', imageTag: 't', instanceId, internalPort: 1, loopbackPort: 1, packageDigest: digestAppPackage(packageDir), packageId: 'example-tool', packageVersion: '0.1.0', sourceRevision: 'a'.repeat(40), volumes: ['data:/data'] }),
+    () => adapter.applyAppService({ caddyRoutes: '', dockerfile: 'Dockerfile', environment: {}, healthHost: 'example-tool:1', healthTarget: 'http://127.0.0.1:1/', imageTag: 't', instanceId, internalPort: 1, loopbackPort: 1, packageDigest: digestAppPackage(packageDir), packageId: 'example-tool', packageVersion: '0.1.0', sourceRevision: 'a'.repeat(40), volumes: ['data:/data'] }),
     (error) => error.code === 'APP_VOLUME_STALE',
   );
   assert.equal(commands.some((command) => command.args[0] === 'run'), false);
@@ -1351,4 +1356,17 @@ test('system adapter records how long each app took to build and come up, and no
   assert.equal(timings['example-tool'].samples[0].seconds, 230);
   assert.equal(timings['example-tool'].samples[0].buildSeconds, 200);
   assert.ok(timings['example-tool'].samples[0].cpus >= 1);
+});
+
+test('the health probe asks for the app by the name its manifest gives it, not by the loopback address', async () => {
+  const http = require('node:http');
+  const hosts = [];
+  const server = http.createServer((request, response) => { hosts.push(request.headers.host); response.writeHead(200); response.end(); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await waitForHttp(`http://127.0.0.1:${server.address().port}/accounts/login/`, { host: 'paperless:8000' });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  assert.deepEqual(hosts, ['paperless:8000']);
 });
