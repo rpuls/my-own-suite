@@ -29,13 +29,19 @@ export default class PathReporter {
 
   onStepBegin(test, result, step) {
     if (step.category !== 'test.step' || step.parent) return;
+    this.checks = [];
     console.log(`  → ${step.title}`);
   }
 
+  // A path step's own named steps, such as an app module's, say what the step did.
   onStepEnd(test, result, step) {
-    if (step.category !== 'test.step' || step.parent) return;
+    if (step.category !== 'test.step') return;
+    if (step.parent) {
+      if (step.parent.category === 'test.step' && !step.parent.parent) this.checks.push(`${step.error ? '✗' : '✓'} ${step.title}`);
+      return;
+    }
     const failed = Boolean(step.error);
-    this.steps.push({ durationMs: step.duration, error: failed ? firstLines(step.error.message, 12).join('\n') : null, status: failed ? 'failed' : 'passed', title: step.title });
+    this.steps.push({ checks: this.checks, durationMs: step.duration, error: failed ? firstLines(step.error.message, 12).join('\n') : null, status: failed ? 'failed' : 'passed', title: step.title });
     console.log(`  ${failed ? '✗' : '✓'} ${step.title.padEnd(28)} ${duration(step.duration)}`);
   }
 

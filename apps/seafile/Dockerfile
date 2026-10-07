@@ -1,4 +1,4 @@
-FROM seafileltd/seafile-mc@sha256:1e335e704bb0159bd13f443c9c5ac20e72dd2bb47da3a8ab48be977cf30fc7bd
+FROM seafileltd/seafile-mc@sha256:b0c90832126bf432db908449f1bb450211e6bbf75a2193bab3399e2a9636eccf
 
 # MOS wrapper: keep Seafile core behind the generated app route and patch
 # proxy-facing Seahub settings plus declared document-editor integration config.

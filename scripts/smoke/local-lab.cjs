@@ -144,7 +144,15 @@ function outcome(path_, id) {
   const summaryFile = id && path.join(RESULTS, id, 'summary.json');
   const summary = summaryFile && fs.existsSync(summaryFile) ? JSON.parse(fs.readFileSync(summaryFile, 'utf8')) : { status: 'crashed', steps: [] };
   const failed = summary.steps.find((step) => step.status !== 'passed');
-  return { error: failed?.error || summary.error || null, failedStep: failed?.title || null, path: path_, run: id, status: summary.status, steps: summary.steps.map((step) => `${step.status === 'passed' ? '✓' : '✗'} ${step.title}`) };
+  return {
+    checks: Object.fromEntries(summary.steps.filter((step) => step.checks?.length).map((step) => [step.title, step.checks])),
+    error: failed?.error || summary.error || null,
+    failedStep: failed?.title || null,
+    path: path_,
+    run: id,
+    status: summary.status,
+    steps: summary.steps.map((step) => `${step.status === 'passed' ? '✓' : '✗'} ${step.title}`),
+  };
 }
 
 // The recovery drill runs only on a lab that took the update, or it would prove the old version.

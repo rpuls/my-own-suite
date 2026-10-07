@@ -1,6 +1,7 @@
 // ONLYOFFICE's own end-to-end journey for the MOS E2E suite (test/e2e). Not
 // package content: a package's e2e/ folder never ships and never changes its digest.
-// Editing happens inside the apps it is connected to, so their journeys exercise it.
+// Editing happens inside the apps it is connected to, so their journeys exercise it and
+// screenshot the editor; its own page is only a welcome screen, not worth comparing.
 import { expect } from '@playwright/test';
 
 // The welcome page is served before the document service behind it has started.
@@ -18,13 +19,11 @@ export default {
     await expect(page.locator('body')).toContainText(/ONLYOFFICE/iu, { timeout: 120000 });
   },
 
-  async journey({ page, shot, url }) {
+  async journey({ page, url }) {
     await documentServerAnswers(page, url);
-    await shot('welcome');
   },
 
-  async verify({ page, shot, url }) {
+  async verify({ page, url }) {
     await documentServerAnswers(page, url);
-    await shot('welcome');
   },
 };

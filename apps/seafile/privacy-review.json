@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "seafile",
-  "reviewedAt": "2026-10-05T14:01:23.550Z",
+  "reviewedAt": "2026-10-06T23:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.2",
-    "packageDigest": "sha256:9def3fd401ae5f29e00cbfa96cda5b85dcaf30c57c0d360712efcfdae3ae35a6",
+    "packageVersion": "0.3.3",
+    "packageDigest": "sha256:5901a2e5e41b9994693a46a4c6315eaa0e1978abc74aeb47e8ad747b706c8c4b",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Seafile Community Edition (server core + Seahub)",
-        "version": "13.0.21",
+        "version": "13.0.28",
         "artifact": "docker.io/seafileltd/seafile-mc",
-        "digest": "sha256:1e335e704bb0159bd13f443c9c5ac20e72dd2bb47da3a8ab48be977cf30fc7bd"
+        "digest": "sha256:b0c90832126bf432db908449f1bb450211e6bbf75a2193bab3399e2a9636eccf"
       },
       {
         "name": "MySQL (Seafile metadata database)",
@@ -66,10 +66,10 @@
     },
     {
       "type": "documented",
-      "claim": "The pinned image resolves to Seafile Community Edition 13.0.21 (docker.io/seafileltd/seafile-mc, tag 13.0.21). The server core is licensed AGPLv3 and the Seahub web UI Apache-2.0; running Community Edition requires no upstream Seafile account or license key.",
-      "source": "Docker Hub seafileltd/seafile-mc tags and the haiwen/seafile-server license file",
-      "url": "https://github.com/haiwen/seafile-server/blob/master/LICENSE.txt",
-      "retrievedAt": "2026-07-23"
+      "claim": "The pinned image resolves to Seafile Community Edition 13.0.28 (docker.io/seafileltd/seafile-mc, tag 13.0.28 and 13.0-latest on 2026-10-06; the image reports SEAFILE_VERSION=13.0.28 and /api2/server-info/ returns version 13.0.28). The server core is licensed AGPLv3 and the Seahub web UI Apache-2.0; running Community Edition requires no upstream Seafile account or license key.",
+      "source": "Docker Hub seafileltd/seafile-mc tags, the haiwen/seafile-server and haiwen/seahub license files at v13.0.28-server",
+      "url": "https://github.com/haiwen/seafile-server/blob/v13.0.28-server/LICENSE.txt",
+      "retrievedAt": "2026-10-06"
     },
     {
       "type": "documented",
@@ -94,8 +94,15 @@
     },
     {
       "type": "observed",
+      "claim": "Comparing the 13.0.21 and 13.0.28 images: outside Seahub only the image's start script and log-rotation configuration changed, and the SQL schema, upgrade scripts, nginx configuration and Seahub ONLYOFFICE module are byte-identical. Seahub's settings drop the unused tldraw whiteboard, and no telemetry, analytics or update-check setting was added. The set of http(s) hosts named in Seahub's Python, templates and web bundles lost tldraw, Google and media-embed references and gained only chevrotain.io and langium.org, the project sites of bundled parser libraries; whether a browser ever requests them is left to the lab's network capture.",
+      "source": "docker.io/seafileltd/seafile-mc@sha256:1e335e70… and @sha256:b0c90832…, and git diff haiwen/seahub v13.0.21-server..v13.0.28-server",
+      "url": "https://github.com/haiwen/seahub/compare/v13.0.21-server...v13.0.28-server",
+      "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "observed",
       "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in, creating a library and a file, uploading, downloading and sharing a file publicly), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. No container made a lookup or a connection, and the browser made no request outside the suite.",
-      "source": "MOS E2E `npm run e2e -- @app-cycle seafile`, run 20261005-112356-app-cycle-seafile (network/report.md), on the package version reviewed before this revision",
+      "source": "MOS E2E `npm run e2e -- @app-cycle seafile`, run 20261005-112356-app-cycle-seafile (network/report.md), on package 0.3.2 (Seafile 13.0.21), before this revision",
       "retrievedAt": "2026-10-05"
     }
   ],
@@ -113,13 +120,13 @@
     {
       "kind": "license",
       "url": "https://github.com/haiwen/seafile-server/blob/master/LICENSE.txt",
-      "retrievedAt": "2026-07-23",
+      "retrievedAt": "2026-10-06",
       "publisher": "Seafile Ltd. (Haiwen)"
     },
     {
       "kind": "license",
       "url": "https://github.com/haiwen/seahub/blob/master/LICENSE.txt",
-      "retrievedAt": "2026-07-23",
+      "retrievedAt": "2026-10-06",
       "publisher": "Seafile Ltd. (Haiwen)"
     }
   ],
@@ -129,14 +136,14 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
+    "skillRevision": "81dccf6bf0c6849b4a9c070f535b0c6c3d6c75b0",
+    "repositoryCommit": "81dccf6bf0c6849b4a9c070f535b0c6c3d6c75b0",
     "humanReviewed": false
   },
   "openQuestions": [
     "Seafile's optional integrations - SMTP, ONLYOFFICE/Collabora, S3/object storage, LDAP, external SSO, and Google Maps - are inactive in the packaged default but become external data dependencies with their own terms if an operator later enables them.",
     "The excluded proprietary desktop and mobile clients contact Seafile-operated servers for update checks and are governed by Seafile's client terms; only the self-hosted server package is assessed here.",
-    "The pinned image is Seafile CE 13.0.21, a few patch releases behind the newest 13.0.x line (13.0.25 as of 2026-07-13); a future package update should re-pin and re-verify this assessment.",
-    "The 2026-10-05 capture ran without ONLYOFFICE connected, so Seafile's traffic while documents are edited in a connected editor was not part of it."
+    "The 2026-10-05 capture ran without ONLYOFFICE connected, so Seafile's traffic while documents are edited in a connected editor was not part of it.",
+    "The 2026-10-05 network capture ran on Seafile 13.0.21; this 13.0.28 package is re-assessed from image and source comparison until the lab's network step runs against it."
   ]
 }
