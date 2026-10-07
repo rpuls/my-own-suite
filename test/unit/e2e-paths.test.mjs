@@ -65,6 +65,30 @@ test('--each-app fills the app of a one-app path', () => {
   assert.ok(tokens(resolvePath(['@app-dr'], catalog, { eachApp: 'plain-b' })).includes('verify:plain-b'));
 });
 
+test('the drill paths bring the apps an app works with, providers first, and update only that app', () => {
+  const paired = [
+    ...catalog,
+    { accepts: ['document-editor'], hasModule: true, id: 'files', needsHttps: false, provides: ['document-platform'] },
+    { accepts: [], hasModule: true, id: 'office', needsHttps: false, provides: ['document-editor'] },
+  ];
+  const together = ['install:office', 'install:files', 'connect', 'app:office', 'app:files'];
+  for (const app of ['files', 'office']) {
+    const update = tokens(resolvePath(['@update', app], paired));
+    assert.deepEqual(update.slice(2, 7), together, `@update ${app}`);
+    assert.deepEqual(update.filter((token) => token.startsWith('update:')), [`update:${app}`]);
+    assert.deepEqual(update.filter((token) => token.startsWith('verify:')), ['verify:office', 'verify:files']);
+    const recovery = tokens(resolvePath(['@app-dr', app], paired));
+    assert.deepEqual(recovery.slice(2, 7), together, `@app-dr ${app}`);
+    assert.deepEqual(recovery.slice(recovery.indexOf('restore:bucket') + 1, -3), ['verify:office', 'verify:files']);
+  }
+});
+
+test('an app that works with no other app is drilled alone', () => {
+  assert.deepEqual(tokens(resolvePath(['@update', 'plain-a'], catalog)),
+    ['reset', 'owner', 'install:plain-a', 'app:plain-a', 'platform-update:wait', 'update:plain-a', 'verify:plain-a', 'routes', 'compare', 'network']);
+  assert.ok(!tokens(resolvePath(['@app-dr', 'plain-a'], catalog)).includes('connect'));
+});
+
 test('mistakes are reported, not run', () => {
   assert.match(resolvePath(['nonsense'], catalog).errors[0], /Unknown step "nonsense"/u);
   assert.match(resolvePath(['install'], catalog).errors[0], /needs an app/u);
