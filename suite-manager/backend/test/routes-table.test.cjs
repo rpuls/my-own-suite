@@ -13,6 +13,7 @@ function samplePath(route) {
     .replace(/\$$/u, '')
     .replaceAll('([^/]+)', 'sample')
     .replaceAll('(\\d{1,3})', '1')
+    .replaceAll('(?:\\/|$)', '/')
     .replaceAll('\\/', '/');
   assert.match(sample, route.pattern, `no sample path for ${route.pattern}`);
   return sample;

@@ -5,6 +5,7 @@ const { labRoutes } = require('./lab.cjs');
 const { settingsRoutes } = require('./settings.cjs');
 const { setupRoutes } = require('./setup.cjs');
 const { smtpRoutes } = require('./smtp.cjs');
+const { sourceRoutes } = require('./sources.cjs');
 const { supportRoutes } = require('./support.cjs');
 const { updateRoutes } = require('./updates.cjs');
 const { vaultRoutes } = require('./vault.cjs');
@@ -22,6 +23,7 @@ function routeTable(services) {
     ...backupRoutes(services),
     ...supportRoutes(services),
     ...customizeRoutes(services),
+    ...sourceRoutes(services),
   ];
 }
 

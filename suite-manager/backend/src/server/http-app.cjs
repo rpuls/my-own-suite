@@ -2,7 +2,6 @@ const http = require('node:http');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
-const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { SESSION_COOKIE, parseCookies } = require('./cookies.cjs');
 const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost, readJsonBody } = require('./request.cjs');
@@ -90,74 +89,6 @@ function createRequestHandler(services) {
           });
         }
         return;
-      }
-
-      if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources` || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/apps/sources/`)) {
-        if (signedOut('Sign in to manage app package sources.')) return;
-        if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources`) {
-          jsonResponse(response, 200, { sources: externalSourceService.listSources() });
-          return;
-        }
-        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources`) {
-          const body = await readJsonBody(request, 8 * 1024);
-          jsonResponse(response, 201, {
-            source: await externalSourceService.addSource({
-              catalogPath: body.catalogPath,
-              kind: body.kind,
-              publisher: body.publisher,
-              repository: body.repository,
-              signature: body.signature,
-              trust: body.trust,
-            }, { ref: typeof body.ref === 'string' && body.ref ? body.ref : 'main' }),
-          });
-          return;
-        }
-        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/resolve`) {
-          const body = await readJsonBody(request, 4 * 1024);
-          const resolved = await externalSourceService.resolveUrl(String(body.url || ''));
-          jsonResponse(response, 200, { ...resolved, packages: withUnmetRequirements(resolved.packages, await appPackages.hostFacts()) });
-          return;
-        }
-        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/install`) {
-          const body = await readJsonBody(request, 16 * 1024);
-          jsonResponse(response, 201, await externalSourceService.installUrl(String(body.url || ''), {
-            config: body.config,
-            packageId: typeof body.packageId === 'string' && body.packageId ? body.packageId : null,
-          }));
-          return;
-        }
-        const sourceStatusMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/status$/u);
-        const sourcePreviewMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/preview$/u);
-        const sourceRefreshMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/refresh$/u);
-        const sourceRemoveMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/remove$/u);
-        // The owner asking directly, which is the one check that ignores both the
-        // interval and the failure back-off — the warning on a failing source is
-        // what prompts the click, so making the click wait would strand them.
-        if (request.method === 'POST' && sourceRefreshMatch) {
-          const id = decodeURIComponent(sourceRefreshMatch[1]);
-          jsonResponse(response, 200, await externalSourceService.refreshSource(id, { force: true }));
-          return;
-        }
-        if (request.method === 'POST' && sourceStatusMatch) {
-          const body = await readJsonBody(request, 4 * 1024);
-          jsonResponse(response, 200, {
-            source: externalSourceService.setSourceStatus(decodeURIComponent(sourceStatusMatch[1]), String(body.status || ''), typeof body.reason === 'string' ? body.reason : null),
-          });
-          return;
-        }
-        if (request.method === 'POST' && sourcePreviewMatch) {
-          const body = await readJsonBody(request, 4 * 1024).catch(() => ({}));
-          jsonResponse(response, 200, {
-            candidate: await externalSourceService.previewCandidate(decodeURIComponent(sourcePreviewMatch[1]), {
-              packageId: typeof body?.packageId === 'string' && body.packageId ? body.packageId : null,
-            }),
-          });
-          return;
-        }
-        if (request.method === 'POST' && sourceRemoveMatch) {
-          jsonResponse(response, 200, await externalSourceService.removeSource(decodeURIComponent(sourceRemoveMatch[1])));
-          return;
-        }
       }
 
       const appIconMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/icon$/u);
