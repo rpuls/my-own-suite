@@ -465,6 +465,16 @@ test('App package install API creates a logical instance with dry-run projection
   }, { homeHost: 'home.test' });
 });
 
+// The catalog's own default records nothing, so losing this wiring would be silent.
+test('the catalog records its security events where sign-ins record theirs', async () => {
+  const recorded = [];
+  await withServer(async (baseUrl, services) => {
+    services.catalogService.recordSecurityEvent({ eventType: 'catalog-signature-rejected' });
+    services.signIn.recordSecurityEvent({ eventType: 'login-throttled' });
+  }, { securityEventRecorder: (event) => recorded.push(event.eventType) });
+  assert.deepEqual(recorded, ['catalog-signature-rejected', 'login-throttled']);
+});
+
 test('Backup status requires auth and reports MOS protected state', async () => {
   const stateDir = await tempStateDir();
   await withServer(async (baseUrl) => {

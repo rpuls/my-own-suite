@@ -106,6 +106,7 @@ function createServices({
         logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
       }
     },
+    recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     // A branch track reads its own branch's catalog; a release reads `main`.
     resolveCatalogRef: async () => {
@@ -219,7 +220,6 @@ function createServices({
     labResetAgent,
     logger,
     ownerClaimToken,
-    recordSecurityEvent,
     setup,
     signIn,
     smtpSettings,
