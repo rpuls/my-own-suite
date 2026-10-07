@@ -3,66 +3,28 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { KNOWN_BROWSER_MAX_AGE_MS, SetupError, SetupService } = require('../setup/setup-service.cjs');
-const { HandoverService } = require('../setup/handover-service.cjs');
-const { LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../auth/login-throttle.cjs');
-const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
-const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
-const { HomepageService } = require('../homepage/homepage-service.cjs');
-const { ConsoleLoginService } = require('../settings/console-login-service.cjs');
-const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
-const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { SuiteAddressService } = require('../address/suite-address-service.cjs');
-const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
-const { SuiteAddressFile, baseHostOf, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
-const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
-const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
-const { createHomepageProxy } = require('./homepage-proxy.cjs');
-const { createLogger } = require('./logger.cjs');
-const { fileResponse, htmlResponse, jsonResponse, respondError, textResponse } = require('./responses.cjs');
-const { AppPackageService } = require('../apps/app-package-service.cjs');
-const { AppAgentClient } = require('../apps/app-agent-client.cjs');
-const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
-const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
-const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
-const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   VAULT_TPM_MODES,
   vaultAsksForPassword,
   vaultChipNeedsRepair,
   vaultIsPresent,
 } = require('../../../../shared/vault-contract.cjs');
-const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
-const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
-const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
-const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
-const { sweepCandidateRoot } = require('../apps/candidate-storage.cjs');
-const { ExternalSourceService } = require('../apps/external-source-service.cjs');
-const { inspectAppPackages } = require('../apps/package-manifest.cjs');
+const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
-const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
-const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
+const { resolveClientAddress } = require('../auth/login-throttle.cjs');
 const { restoreGuaranteeFor } = require('../backups/restore-guarantee.cjs');
-const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
-const { UpdateService } = require('../updates/update-service.cjs');
+const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
+const { KNOWN_BROWSER_MAX_AGE_MS, SetupError } = require('../setup/setup-service.cjs');
+const { fileResponse, htmlResponse, jsonResponse, respondError, textResponse } = require('./responses.cjs');
 
 const SESSION_COOKIE = 'mos_session';
 const KNOWN_BROWSER_COOKIE = 'mos_known_browser';
-const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
-const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps');
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
-
-// The directory the machine-local state lives under. Suite Manager's own state
-// is one directory inside it, so the root is that directory's parent unless the
-// environment names it outright.
-function stateRootOf(stateDir) {
-  if (process.env.MOS_STATE_ROOT) return process.env.MOS_STATE_ROOT;
-  return path.dirname(path.resolve(stateDir));
-}
 
 function parseCookies(header = '') {
   return Object.fromEntries(
@@ -203,38 +165,6 @@ function normalizedHost(request) {
   return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
 
-// An app's public host is the address it serves, which is its projected route
-// host — never its package id. `hostFor` resolves that from installed state;
-// when it cannot (the package is not installed, so nothing answers on any
-// address yet), the id stands in only to keep a well-formed URL for callers
-// that merely echo it. Runtime application never relies on this: applyPackageRuntime
-// derives appHost from the projection itself, so a stand-in can never reach the
-// app agent or a Caddy site.
-function appHostLabelFor(packageId, hostFor) {
-  const host = typeof hostFor === 'function' ? hostFor(packageId) : null;
-  return typeof host === 'string' && host ? host : packageId;
-}
-
-// An app's public URL is built from the suite's one recorded address and nothing
-// else — not the request's Host, not a settings row — so a request through any
-// door, a reconcile at boot and a restore with no browser in hand all name the
-// same place.
-function appPublicUrlFor(address, packageId, hostFor = null) {
-  const baseHost = baseHostOf(address);
-  const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
-  const scheme = address.scheme === 'https' ? 'https' : 'http';
-  return {
-    appHost,
-    baseHost,
-    publicUrl: `${scheme}://${appHost}/`,
-    scheme,
-  };
-}
-
-function appPublicUrlResolver(address, hostFor = null) {
-  return (packageId) => appPublicUrlFor(address, packageId, hostFor);
-}
-
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
@@ -278,233 +208,19 @@ function serveFrontend(response, frontendDistDir) {
   textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm run build:client.');
 }
 
-function createMOSServer({
-  appAgent = new AppAgentClient(),
-  backupAgent = new BackupAgentClient(),
-  diagnosticsAgent = new DiagnosticsAgentClient(),
-  appsDir = DEFAULT_APPS_DIR,
-  homepageAgent = new HomepageAgentClient(),
-  httpsAgent = new HttpsAgentClient(),
-  labResetAgent = new LabResetAgentClient(),
-  updateAgent = new UpdateAgentClient(),
-  vaultAgent = new VaultAgentClient(),
-  frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
-  frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
-  homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
-  homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
-  disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
-  loginThrottle = null,
-  signInAlerts = null,
-  logger = createLogger(),
-  securityLogger = (event) => logger.warn('security-event', event),
-  securityEventRecorder = null,
-  ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
-  stateDir = path.join(process.cwd(), '.state'),
-  suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRootOf(stateDir)) }),
-  detectAddress = undefined,
-  probeEasyDoorCertificate = undefined,
-  officialCatalog = null,
-  externalSources = null,
-} = {}) {
-  const setup = new SetupService({ stateDir });
-  // Built here rather than as a parameter default because the backoff is now
-  // durable: it needs the store, which does not exist until setup does.
-  const throttle = loginThrottle || new LoginThrottle({ key: loadThrottleKey(stateDir), store: setup.store });
-  // Defined before the services that report into it: a throttled sign-in, a
-  // source serving a package the gate refused, and a catalog that cannot refresh
-  // are all counted in the same durable place.
-  const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
-  const consoleLogin = new ConsoleLoginService({ stateDir });
-  // The whole of Suite Manager waits on the handover, so no route gates itself.
-  const handover = new HandoverService({ consoleLogin, logger, vaultAgent });
-  /**
-   * The chip's side of the owner password, in the two places MOS holds that
-   * password in plaintext for a moment: a password change and a sign-in.
-   *
-   * Nothing here can refuse either of them. On a machine in the default mode it
-   * does nothing at all, because the chip has no password to be taught. On a
-   * machine that asks for one it re-enrolls, and a chip that would not take it
-   * ends up holding nothing rather than holding the password the owner has just
-   * replaced — which costs one recovery-key entry after the next restart and is
-   * reported in those words.
-   */
-  async function teachChipOwnerPassword(password) {
-    try {
-      const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
-      // Nothing to report when there was nothing to do — a machine with no
-      // vault, no chip, or one that opens itself. The screen says something
-      // about the disk only when the disk had something to say.
-      if (enrolled.ok) return enrolled.unchanged || enrolled.vault === false ? null : { mode: enrolled.mode, ok: true };
-      return { mode: enrolled.mode || null, ok: false, reason: enrolled.reason || 'tpm-refused' };
-    } catch (error) {
-      logger.warn('vault-chip-enroll-failed', { error });
-      return { mode: null, ok: false, reason: 'vault-agent-unavailable' };
-    }
-  }
-
-  // A sign-in is the only moment MOS holds the password of an account it did not
-  // just create, which makes it the only chance to finish a chip enrollment that
-  // did not. Whatever the mode: an automatic-mode slot needs no password to be
-  // repaired and the agent ignores the one sent. Not awaited: the owner is
-  // waiting on a session, and the next sign-in tries again if this one does not
-  // land.
-  function repairChipOnSignIn(password) {
-    void (async () => {
-      try {
-        const vault = await vaultAgent.status();
-        if (!vaultChipNeedsRepair(vault)) return;
-        const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
-        logger.info('vault-chip-repair', { ok: Boolean(enrolled.ok), reason: enrolled.reason || null });
-      } catch (error) {
-        logger.warn('vault-chip-repair-failed', { error });
-      }
-    })();
-  }
-
-  const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
-  const homepageConfig = new HomepageService({
-    agent: homepageAgent,
-    store: setup.store,
-    suiteAddress,
-  });
-  // One limiter for every app package operation on this host. The bounds are only
-  // meaningful shared: two services each allowing their own three concurrent
-  // downloads allow six, which is what the cap exists to prevent.
-  const appOperationLimiter = new AppOperationLimiter();
-  // The advisory revision this process has already handed to the update agent.
-  // Per-process rather than persisted, so a Suite Manager that has just started
-  // pushes once even when the feed has not moved — which is how a fresh install
-  // gets its hold file at all.
-  let pushedAdvisoryRevision = null;
-  const catalogService = officialCatalog || new OfficialCatalogService({
-    limiter: appOperationLimiter,
-    logger,
-    // Ubuntu packages the project has had to stop installing, from the same
-    // signed feed the app advisories come from. Suite Manager is a courier: the
-    // update agent re-verifies the signature before it writes anything, because
-    // a privileged write whose contents an unprivileged web app could name would
-    // be a way to stop a server taking security patches at all.
-    onRefreshed: async ({ advisoriesRevision }) => {
-      if (advisoriesRevision === pushedAdvisoryRevision) return;
-      const signed = catalogService.signedAdvisories();
-      if (!signed) return;
-      try {
-        await updateAgent.applyHostHolds({ advisoriesSignature: signed.signature, advisoriesText: signed.text });
-        pushedAdvisoryRevision = advisoriesRevision;
-      } catch (error) {
-        logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
-      }
-    },
-    recordSecurityEvent,
-    repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
-    // A branch track reads its own branch's catalog, so the packages a box is
-    // offered are the ones published on the line of development it follows; a
-    // release tag reads `main`, which is what publishes an app update between
-    // platform releases. `/v1/summary` is the update agent's cheap read and
-    // reaches nothing off this machine.
-    resolveCatalogRef: async () => {
-      if (process.env.MOS_APP_CATALOG_BRANCH) return process.env.MOS_APP_CATALOG_BRANCH;
-      const { track } = await updateAgent.summary();
-      if (track?.type === 'branch') return track.ref || null;
-      return track?.type === 'stable' ? 'main' : null;
-    },
-    // Read from the installed release, never from the network the catalog comes
-    // over: a key fetched from whoever served the catalog would only prove they
-    // are consistent with themselves.
-    signingPublicKey: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'trust', 'official-catalog.pub'), 'utf8'),
-    stateDir,
-    platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
-  });
-  const officialPackageIds = inspectAppPackages(appsDir).map((pkg) => pkg.id);
-  // One client serves both directions of the external flow: the source service
-  // resolves and previews a pasted repository through it, and the package service
-  // re-downloads an installed external app's own source through it when the owner
-  // checks that app for an update. Both go through the same constrained gate.
-  const externalSourceClient = new ExternalSourceClient({
-    limiter: appOperationLimiter,
-    officialPackageIds,
-    platformVersion: catalogService.platformVersion,
-    recordSecurityEvent,
-    stateDir: setup.store.stateDir,
-  });
-  // Declared before the package service so it can read the owner's added sources,
-  // and assigned after so the source service can install through the package
-  // service. The two genuinely need each other: a source installs packages, and the
-  // Apps list has to show what a source publishes before anything is installed.
-  let externalSourceService = null;
-  const appPackages = new AppPackageService({
-    agent: appAgent,
-    appsDir,
-    catalogService,
-    externalCatalog: () => externalSourceService?.catalogPackages() || [],
-    externalClient: externalSourceClient,
-    limiter: appOperationLimiter,
-    store: setup.store,
-    suiteAddress,
-  });
-  // The owner's shared outbound email relay. Reads and writes the same secret
-  // directory the app runtimes read ${smtp.*} from, so a relay saved here is the
-  // relay apps send through.
-  const smtpSettings = new SmtpSettingsService({
-    secretDir: appPackages.secretDir,
-    store: setup.store,
-  });
-  const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
-  // Resolves an installed app's real host label, so every public URL this layer
-  // builds names the address the app actually serves rather than its package id.
-  const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
-  // Where the suite is published, and the one transaction that moves it. Built
-  // after the app and Homepage services because a move re-bakes both.
-  const addressService = new SuiteAddressService({
-    agent: httpsAgent,
-    bootstrapHost: homeHost,
-    bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
-    detectAddress,
-    frontDoor,
-    probeCertificate: probeEasyDoorCertificate,
-    logger,
-    rebake: (address) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, appHostFor) }),
-    store: setup.store,
-    suiteAddress,
-  });
-  addressService.start();
-  const publicUrls =() => appPublicUrlResolver(suiteAddress.read(), appHostFor);
-  const publicUrlOf = (packageId) => publicUrls()(packageId);
+function createRequestHandler(services) {
+  const {
+    addressService, alerts, appAgent, appPackages, appUrls, backupAgent, backupInventory, catalogService, consoleLogin,
+    diagnosticsAgent, disposableLab, externalSourceService, frontDoor, frontendDistDir, handover, homeHost, homepage,
+    homepageConfig, installJobs, labResetAgent, logger, ownerClaimToken, recordSecurityEvent, repairChipOnSignIn,
+    securityLogger, setup, smtpSettings, suiteAddress, teachChipOwnerPassword, throttle, updateJobs, updates, vaultAgent,
+  } = services;
+  const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
   const withPublicUrl = (app) => ({ ...app, publicUrl: appHostFor(app.id) ? publicUrlOf(app.id).publicUrl : '' });
-  const installJobs = new AppInstallJobs({
-    addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, publicUrlOf(packageId)),
-    logger,
-    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
-    progressOf: (packageId) => appPackages.installProgressOf(packageId),
-    start: (packageId) => appPackages.startPackageRuntime(packageId, { ...publicUrlOf(packageId), publicUrlFor: publicUrls() }),
-    waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: publicUrlOf(packageId).publicUrl }),
-  });
-  const updateJobs = new AppUpdateJobs({
-    logger,
-    stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
-      ...publicUrlOf(packageId),
-      homepageService: homepageConfig,
-      publicUrlFor: publicUrls(),
-    }, onStage),
-  });
-  externalSourceService = externalSources || new ExternalSourceService({
-    allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
-    appPackages,
-    client: externalSourceClient,
-    officialPackageIds,
-    platformVersion: catalogService.platformVersion,
-    store: setup.store,
-  });
-  const backupInventory = new BackupInventoryService({
-    appsDir,
-    stateDir,
-    store: setup.store,
-  });
-  const updates = new UpdateService({ agent: updateAgent, backupAgent, diagnosticsAgent });
 
-  const server = http.createServer(async (request, response) => {
+  return async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
@@ -1513,9 +1229,11 @@ function createMOSServer({
     } catch (error) {
       respondError(response, error, { logger, method: request.method, requestPath: url.pathname });
     }
-  });
+  };
+}
 
-  server.on('upgrade', (request, socket, head) => {
+function createUpgradeHandler({ addressService, homepage, setup }) {
+  return (request, socket, head) => {
     const url = new URL(request.url || '/', 'http://localhost');
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
@@ -1532,29 +1250,17 @@ function createMOSServer({
     }
 
     homepage.proxyUpgrade(request, socket, head);
-  });
-
-  server.on('close', () => { catalogService.stop(); addressService.stopWatchingEasyDoor(); setup.close(); });
-  server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
-    publicUrlFor: publicUrls(),
-  });
-  // Candidate downloads from a Suite Manager that was killed mid-operation are
-  // owned by nobody once it restarts. Downloads sweep before they run, so this is
-  // about reclaiming the disk now rather than at whatever point someone next
-  // checks an app for an update.
-  server.sweepAppCandidates = () => sweepCandidateRoot(setup.store.stateDir);
-  server.startCatalogRefresh = async () => {
-    let result;
-    try { result = await catalogService.refresh(); }
-    catch { result = { status: catalogService.status() }; }
-    catalogService.schedule();
-    return result;
   };
-  server.watchEasyDoor = () => addressService.watchEasyDoor();
+}
 
+function createMOSServer(services) {
+  const server = http.createServer(createRequestHandler(services));
+  server.on('upgrade', createUpgradeHandler(services));
+  server.on('close', () => services.stop());
   return server;
 }
 
 module.exports = {
   createMOSServer,
+  createRequestHandler,
 };

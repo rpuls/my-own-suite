@@ -13,6 +13,7 @@ const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contra
 const { SuiteAddressFile } = require('../../../shared/suite-address.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../shared/easy-door.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
+const { createServices } = require('../src/server/services.cjs');
 const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
@@ -61,7 +62,7 @@ async function withServer(fn, options = {}) {
     async status() { return { state: 'unknown' }; },
     ...(options.vaultAgent || {}),
   };
-  const server = createMOSServer({
+  const services = createServices({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
@@ -72,10 +73,11 @@ async function withServer(fn, options = {}) {
     appAgent,
     vaultAgent,
   });
+  const server = createMOSServer(services);
   const baseUrl = await listen(server);
 
   try {
-    await fn(baseUrl, server);
+    await fn(baseUrl, services);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -3455,8 +3457,8 @@ test('the vault route answers whether this machine waits for a password', async 
 test('once the Easy Door certificate is held, its pages redirect to HTTPS and its API answers where it is', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl, server) => {
-    server.watchEasyDoor();
+  await withServer(async (baseUrl, services) => {
+    services.addressService.watchEasyDoor();
     let page;
     for (let attempt = 0; attempt < 50; attempt += 1) {
       page = await hostRequest(baseUrl, '/suite-manager/setup?step=1', { headers: { Host: host } });
@@ -3476,8 +3478,8 @@ test('once the Easy Door certificate is held, its pages redirect to HTTPS and it
 test('an Easy Door without a certificate yet is served over HTTP as before', async () => {
   const host = 'home.192-168-30-104.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
-  await withServer(async (baseUrl, server) => {
-    server.watchEasyDoor();
+  await withServer(async (baseUrl, services) => {
+    services.addressService.watchEasyDoor();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const page = await hostRequest(baseUrl, '/suite-manager/setup', { headers: { Host: host } });
     assert.notEqual(page.status, 308);
