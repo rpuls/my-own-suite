@@ -328,60 +328,8 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_INTEGRATION_RUNTIME_NOT_READY', 'Both app runtimes must be running before this integration can be applied.', 409);
     }
 
-    const consumerPackage = this.installedPackageFor(consumer);
-    const providerPackage = this.installedPackageFor(provider);
-    const [, slot] = integrationSlots(consumerPackage.manifest).find(([id]) => id === slotId) || [];
-    const [capabilityId, providerCapability] = exportEntries(providerPackage.manifest).find(([id]) => id === providerCapabilityId) || [];
-    if (!slot || !providerCapability || !slot.accepts.some((matcher) => capabilityMatches(providerCapability, matcher))) {
-      throw new AppPackageServiceError('APP_INTEGRATION_NOT_COMPATIBLE', 'These app packages do not declare a compatible integration.', 409);
-    }
-    if (slot.apply?.kind !== 'service-env') {
-      throw new AppPackageServiceError('APP_INTEGRATION_APPLY_UNSUPPORTED', 'This integration apply type is not supported yet.', 409);
-    }
-    const target = consumerPackage.manifest.configTargets?.[slot.apply.target];
-    if (!target || target.kind !== 'service-env') {
-      throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'This integration target is not declared by the app package.', 409);
-    }
-
-    const publicUrlFor = typeof requestContext.publicUrlFor === 'function'
-      ? requestContext.publicUrlFor
-      : () => requestContext;
-    const providerConfig = this.store.getAppConfig(provider.id);
-    const consumerExportEntry = exportEntries(consumerPackage.manifest)[0];
-    const consumerExport = consumerExportEntry ? { id: consumerExportEntry[0], capability: consumerExportEntry[1] } : null;
-    const providerPublicUrl = publicUrlFor(providerPackageId);
-    const rows = [];
-    for (const [envKey, template] of Object.entries(slot.apply.values || {})) {
-      if (!target.allowedKeys.includes(envKey)) {
-        throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'The app package did not allow this integration setting.', 409);
-      }
-      const resolved = resolveCapabilityValue(template, {
-        consumerExport,
-        providerCapability,
-        providerConfig,
-        providerPublicUrl,
-      });
-      const configKey = integrationConfigKey(slotId, envKey);
-      if (typeof resolved === 'string' && resolved.startsWith('__secret_ref__:')) {
-        const secretRef = resolved.slice('__secret_ref__:'.length);
-        rows.push({
-          fingerprint: fingerprintFor(secretRef),
-          instanceId: consumer.id,
-          key: configKey,
-          redactedLabel: `${providerPackage.manifest.name} integration secret`,
-          secretRef,
-          source: 'system',
-        });
-      } else {
-        rows.push({
-          instanceId: consumer.id,
-          key: configKey,
-          source: 'system',
-          value: resolved,
-          valueJson: stableJson(resolved),
-        });
-      }
-    }
+    const providerPublicUrl = requestContextForPackage(providerPackageId, requestContext);
+    const { capabilityId, consumerPackage, providerCapability, providerPackage, rows } = this.resolveIntegration({ consumer, provider, providerCapabilityId, providerPublicUrl, slotId });
 
     // Rendered fresh rather than patched over whatever is stored: the stored
     // projections stay a pure function of manifest + config + relationships,
@@ -418,7 +366,7 @@ class AppPackageService {
     });
 
     try {
-      const applied = await this.applyPackageRuntime(consumerPackageId, publicUrlFor(consumerPackageId));
+      const applied = await this.applyPackageRuntime(consumerPackageId, requestContextForPackage(consumerPackageId, requestContext));
       const network = await this.agent.connectNetwork(networkConnectRequest(
         { manifest: consumerPackage.manifest, packageId: consumerPackageId },
         { manifest: providerPackage.manifest, packageId: providerPackageId },
@@ -451,6 +399,82 @@ class AppPackageService {
         providerInstanceId: provider.id,
       });
       throw error;
+    }
+  }
+
+  // What a connection takes from the provider for the consumer's service-env
+  // target, resolved against the provider's address as it is right now.
+  resolveIntegration({ consumer, provider, providerCapabilityId, providerPublicUrl, slotId }) {
+    const consumerPackage = this.installedPackageFor(consumer);
+    const providerPackage = this.installedPackageFor(provider);
+    const [, slot] = integrationSlots(consumerPackage.manifest).find(([id]) => id === slotId) || [];
+    const [capabilityId, providerCapability] = exportEntries(providerPackage.manifest).find(([id]) => id === providerCapabilityId) || [];
+    if (!slot || !providerCapability || !slot.accepts.some((matcher) => capabilityMatches(providerCapability, matcher))) {
+      throw new AppPackageServiceError('APP_INTEGRATION_NOT_COMPATIBLE', 'These app packages do not declare a compatible integration.', 409);
+    }
+    if (slot.apply?.kind !== 'service-env') {
+      throw new AppPackageServiceError('APP_INTEGRATION_APPLY_UNSUPPORTED', 'This integration apply type is not supported yet.', 409);
+    }
+    const target = consumerPackage.manifest.configTargets?.[slot.apply.target];
+    if (!target || target.kind !== 'service-env') {
+      throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'This integration target is not declared by the app package.', 409);
+    }
+
+    const providerConfig = this.store.getAppConfig(provider.id);
+    const consumerExportEntry = exportEntries(consumerPackage.manifest)[0];
+    const consumerExport = consumerExportEntry ? { id: consumerExportEntry[0], capability: consumerExportEntry[1] } : null;
+    const rows = [];
+    for (const [envKey, template] of Object.entries(slot.apply.values || {})) {
+      if (!target.allowedKeys.includes(envKey)) {
+        throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'The app package did not allow this integration setting.', 409);
+      }
+      const resolved = resolveCapabilityValue(template, {
+        consumerExport,
+        providerCapability,
+        providerConfig,
+        providerPublicUrl,
+      });
+      const configKey = integrationConfigKey(slotId, envKey);
+      if (typeof resolved === 'string' && resolved.startsWith('__secret_ref__:')) {
+        const secretRef = resolved.slice('__secret_ref__:'.length);
+        rows.push({
+          fingerprint: fingerprintFor(secretRef),
+          instanceId: consumer.id,
+          key: configKey,
+          redactedLabel: `${providerPackage.manifest.name} integration secret`,
+          secretRef,
+          source: 'system',
+        });
+      } else {
+        rows.push({
+          instanceId: consumer.id,
+          key: configKey,
+          source: 'system',
+          value: resolved,
+          valueJson: stableJson(resolved),
+        });
+      }
+    }
+    return { capabilityId, consumerPackage, providerCapability, providerPackage, rows };
+  }
+
+  // A connection stores the provider's address in the consumer's config rows,
+  // so a suite that moves resolves them again before the consumer's runtime is
+  // re-applied; the projections only reference the rows.
+  refreshImportedConfig(consumer, requestContext) {
+    const instances = this.store.getAppInstances();
+    for (const relationship of this.store.getAppIntegrations()) {
+      if (relationship.consumerInstanceId !== consumer.id || relationship.status === 'removed') continue;
+      const provider = instances.find((item) => item.id === relationship.providerInstanceId);
+      if (!provider) continue;
+      const { rows } = this.resolveIntegration({
+        consumer,
+        provider,
+        providerCapabilityId: relationship.providerCapabilityId,
+        providerPublicUrl: requestContextForPackage(provider.packageId, requestContext),
+        slotId: relationship.consumerIntegrationSlot,
+      });
+      this.store.upsertAppConfigRows({ at: this.now().toISOString(), rows });
     }
   }
 
@@ -1537,6 +1561,7 @@ class AppPackageService {
       if (instance.status !== 'installed') continue;
       const packageContext = requestContextForPackage(instance.packageId, requestContext);
       try {
+        this.refreshImportedConfig(instance, requestContext);
         const result = await this.applyPackageRuntime(instance.packageId, packageContext);
         runtime.push({
           appHost: result.appHost || packageContext.appHost,

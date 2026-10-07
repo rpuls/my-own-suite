@@ -2466,3 +2466,51 @@ test('an HTTPS-only app on the Easy Door says its certificate is on its way, and
   const [elsewhere] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: false });
   assert.match(elsewhere.reason, /Easy Door or your own domain/u);
 });
+
+// A connection resolves what the consumer imports from its provider into config
+// rows at connect time, so a move has to resolve them again or the consumer keeps
+// the provider's old address (seen on the lab: Seafile loading ONLYOFFICE's editor
+// from the pre-move host after DNS-01, blocked as mixed content).
+test('moving the suite re-resolves what a connected app imports from its provider', async () => {
+  const applies = [];
+  const agent = {
+    async apply(input) { applies.push(input); return { status: 'applied', steps: [] }; },
+    async connectNetwork() { return { status: 'connected' }; },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async status() { return agentStatus(); },
+  };
+  const homepageService = {
+    async read() { return { content: '[]', revision: 'sha256:current' }; },
+    async reconcileUrls(body) { return { changed: false, entries: body.entries }; },
+  };
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+  await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
+  await service.installPackage('onlyoffice');
+  await service.applyPackageRuntime('seafile', requestContext().publicUrlFor('seafile'));
+  await service.applyPackageRuntime('onlyoffice', requestContext().publicUrlFor('onlyoffice'));
+  await service.connectPackages({
+    consumerPackageId: 'seafile',
+    providerCapabilityId: 'documentEditor',
+    providerPackageId: 'onlyoffice',
+    requestContext: requestContext(),
+    slotId: 'documentEditor',
+  });
+  const editorUrl = (input) => input.compose.services.find((item) => item.id === 'seafile').environment.ONLYOFFICE_APIJS_URL;
+  const seafile = store.getAppInstanceByPackageId('seafile');
+  const jwtRow = () => store.getAppConfig(seafile.id).find((row) => row.key === 'integrationDocumentEditorOnlyofficeJwtSecret');
+  const jwtBefore = jwtRow();
+  assert.equal(editorUrl(applies.at(-1)), 'https://onlyoffice.example.test/web-apps/apps/api/documents/api.js');
+
+  const moved = {
+    publicUrlFor: (packageId) => ({ appHost: `${packageId}.moved.test`, baseHost: 'moved.test', publicUrl: `https://${packageId}.moved.test/`, scheme: 'https' }),
+  };
+  const result = await service.reconcilePublicUrls(homepageService, moved);
+
+  assert.equal(result.status, 'applied');
+  const seafileApply = applies.filter((input) => input.packageId === 'seafile').at(-1);
+  assert.equal(seafileApply.publicUrl, 'https://seafile.moved.test/');
+  assert.equal(editorUrl(seafileApply), 'https://onlyoffice.moved.test/web-apps/apps/api/documents/api.js');
+  assert.equal(jwtRow().secretRef, jwtBefore.secretRef);
+  store.close();
+});
