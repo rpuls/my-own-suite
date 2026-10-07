@@ -3,7 +3,6 @@ const path = require('node:path');
 
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
-const { vaultChipNeedsRepair } = require('../../../../shared/vault-contract.cjs');
 const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
@@ -28,6 +27,7 @@ const { ConsoleLoginService } = require('../settings/console-login-service.cjs')
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
+const { VaultService } = require('../settings/vault-service.cjs');
 const { HandoverService } = require('../setup/handover-service.cjs');
 const { SetupService } = require('../setup/setup-service.cjs');
 const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
@@ -78,34 +78,7 @@ function createServices({
   const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
   const consoleLogin = new ConsoleLoginService({ stateDir });
   const handover = new HandoverService({ consoleLogin, logger, vaultAgent });
-
-  // Teaches the chip a changed owner password. Never refuses the change: a chip
-  // that will not take it ends up holding nothing, and the result says so.
-  async function teachChipOwnerPassword(password) {
-    try {
-      const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
-      if (enrolled.ok) return enrolled.unchanged || enrolled.vault === false ? null : { mode: enrolled.mode, ok: true };
-      return { mode: enrolled.mode || null, ok: false, reason: enrolled.reason || 'tpm-refused' };
-    } catch (error) {
-      logger.warn('vault-chip-enroll-failed', { error });
-      return { mode: null, ok: false, reason: 'vault-agent-unavailable' };
-    }
-  }
-
-  // A sign-in is the only other moment MOS holds the password, so it finishes a
-  // chip enrollment that failed earlier. Not awaited; the next sign-in retries.
-  function repairChipOnSignIn(password) {
-    void (async () => {
-      try {
-        const vault = await vaultAgent.status();
-        if (!vaultChipNeedsRepair(vault)) return;
-        const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
-        logger.info('vault-chip-repair', { ok: Boolean(enrolled.ok), reason: enrolled.reason || null });
-      } catch (error) {
-        logger.warn('vault-chip-repair-failed', { error });
-      }
-    })();
-  }
+  const vault = new VaultService({ agent: vaultAgent, logger, verifyOwnerPassword: (password) => setup.verifyOwnerPassword(password) });
 
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
@@ -247,15 +220,14 @@ function createServices({
     logger,
     ownerClaimToken,
     recordSecurityEvent,
-    repairChipOnSignIn,
     securityLogger,
     setup,
     smtpSettings,
     suiteAddress,
-    teachChipOwnerPassword,
     throttle,
     updateJobs,
     updates,
+    vault,
     vaultAgent,
     // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
     async start() {

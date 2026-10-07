@@ -5,7 +5,6 @@ const path = require('node:path');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const {
-  VAULT_TPM_MODES,
   vaultAsksForPassword,
   vaultChipNeedsRepair,
   vaultIsPresent,
@@ -131,7 +130,7 @@ function createRequestHandler(services) {
   const {
     addressService, alerts, appPackages, appUrls, catalogService, externalSourceService,
     frontendDistDir, handover, homepage, homepageConfig, installJobs, logger, ownerClaimToken, recordSecurityEvent,
-    repairChipOnSignIn, securityLogger, setup, teachChipOwnerPassword, throttle, updateJobs, vaultAgent,
+    securityLogger, setup, throttle, updateJobs, vault, vaultAgent,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -275,7 +274,7 @@ function createRequestHandler(services) {
         // The one moment MOS holds this password without being asked to change
         // it, and therefore the only chance to finish a chip enrollment that
         // failed earlier. Nothing about the sign-in depends on it.
-        repairChipOnSignIn(body.password);
+        void vault.repairOnSignIn(body.password);
         const secure = isHttpsRequest(request);
         const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
         if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
@@ -295,7 +294,7 @@ function createRequestHandler(services) {
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/owner/password`) {
         if (signedOut('Sign in to change the owner password.')) return;
         const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024), {
-          beforeCommit: teachChipOwnerPassword,
+          beforeCommit: (password) => vault.teachOwnerPassword(password),
         });
         // Every known browser was forgotten with the old password; the one that
         // proved it is remembered again, like the session it keeps.
@@ -350,52 +349,36 @@ function createRequestHandler(services) {
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault/startup-password`) {
         if (signedOut('Sign in to change how this server starts.')) return;
         const body = await readJsonBody(request, 8 * 1024);
-        const wanted = body.enabled === true;
-        if (!await setup.verifyOwnerPassword(body.password)) {
+        const result = await vault.setStartupPassword({ password: body.password, wanted: body.enabled === true });
+        if (result.refused === 'INVALID_PASSWORD') {
           jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
           return;
         }
-        let enrolled;
-        try {
-          // A password the owner may forget must not become the only way in
-          // before they hold the key that is the other way in — and while the
-          // key is still escrowed on the plaintext side, the switch would
-          // protect nothing anyway.
-          if (wanted && (await vaultAgent.status()).handover === 'pending') {
-            jsonResponse(response, 409, {
-              code: 'VAULT_KEY_UNSAVED',
-              error: 'Save your recovery key first. It is the only way back in if you forget your password.',
-            });
-            return;
-          }
-          enrolled = await vaultAgent.enrollChip({
-            mode: wanted ? VAULT_TPM_MODES.PASSWORD : VAULT_TPM_MODES.AUTOMATIC,
-            pin: wanted ? String(body.password) : null,
+        if (result.refused === 'VAULT_KEY_UNSAVED') {
+          jsonResponse(response, 409, {
+            code: 'VAULT_KEY_UNSAVED',
+            error: 'Save your recovery key first. It is the only way back in if you forget your password.',
           });
-        } catch (error) {
-          logger.warn('vault-agent-unavailable', { error });
+          return;
+        }
+        if (result.refused === 'VAULT_AGENT_UNAVAILABLE') {
           jsonResponse(response, 503, {
             code: 'VAULT_AGENT_UNAVAILABLE',
             error: 'This server\'s vault agent is not answering, so how it starts was not changed.',
           });
           return;
         }
-        if (!enrolled.ok) {
-          // Reported rather than hidden, and the state it left behind is named:
-          // the recovery key opens this machine whatever the chip is doing.
+        if (result.refused === 'VAULT_TPM_REFUSED') {
           jsonResponse(response, 409, {
             code: 'VAULT_TPM_REFUSED',
-            error: enrolled.reason === 'no-tpm'
+            error: result.reason === 'no-tpm'
               ? 'This machine has no security chip, so it always asks for your recovery key after a restart.'
               : 'This machine\'s security chip would not take the change, so it now opens nothing on its own and this server asks for your recovery key after a restart. Try again, and use your recovery key if it restarts first.',
-            reason: enrolled.reason || null,
+            reason: result.reason,
           });
           return;
         }
-        jsonResponse(response, 200, {
-          asksForPassword: enrolled.mode === VAULT_TPM_MODES.PASSWORD,
-          vault: await vaultAgent.status().catch(() => ({ state: 'unknown' })),
-        });
+        jsonResponse(response, 200, result);
         return;
       }
 
