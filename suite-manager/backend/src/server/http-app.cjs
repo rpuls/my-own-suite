@@ -157,18 +157,47 @@ function clearSessionCookie(secure = false) {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`;
 }
 
+// Installed apps are served on sibling subdomains, which browsers count as the
+// same site, so a SameSite=Lax session alone would let an app's page act as the owner.
+function isCrossOriginWrite(request) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return false;
+  const fetchSite = request.headers['sec-fetch-site'];
+  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') return true;
+  const { origin } = request.headers;
+  return Boolean(origin) && !isOriginOfHost(origin, request.headers.host);
+}
+
+function isOriginOfHost(origin, hostHeader) {
+  try {
+    const { host, protocol } = new URL(origin);
+    return host === new URL(`${protocol}//${hostHeader}`).host;
+  } catch {
+    return false;
+  }
+}
+
+function requestBodyError(code, message, statusCode) {
+  return Object.assign(new Error(message), { code, statusCode });
+}
+
 function readJsonBody(request, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
     let raw = '';
+    let tooLarge = false;
     request.setEncoding('utf8');
+    // The rest of an oversized body is read and dropped rather than the socket
+    // cut, so the caller receives the 413 instead of a connection reset.
     request.on('data', (chunk) => {
+      if (tooLarge) return;
       raw += chunk;
       if (raw.length > maxBytes) {
-        reject(new Error('Request body is too large.'));
-        request.destroy();
+        tooLarge = true;
+        raw = '';
+        reject(requestBodyError('REQUEST_BODY_TOO_LARGE', 'Request body is too large.', 413));
       }
     });
     request.on('end', () => {
+      if (tooLarge) return;
       if (!raw.trim()) {
         resolve({});
         return;
@@ -176,7 +205,7 @@ function readJsonBody(request, maxBytes = 1_000_000) {
       try {
         resolve(JSON.parse(raw));
       } catch {
-        reject(new Error('Request body must be valid JSON.'));
+        reject(requestBodyError('REQUEST_BODY_INVALID', 'Request body must be valid JSON.', 400));
       }
     });
     request.on('error', reject);
@@ -593,6 +622,11 @@ function createMOSServer({
     try {
       if (!addressService.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
+        return;
+      }
+
+      if (url.pathname.startsWith(SUITE_MANAGER_API_PREFIX) && isCrossOriginWrite(request)) {
+        jsonResponse(response, 403, { code: 'CROSS_ORIGIN_REJECTED', error: 'Suite Manager only accepts changes made from its own pages.' });
         return;
       }
 

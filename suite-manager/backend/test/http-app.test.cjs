@@ -233,6 +233,39 @@ test('the owner preference route is authenticated, validated, and reflected in s
   }, { homeHost: 'home.test' });
 });
 
+// An installed app's page is same-site with Suite Manager, so the browser sends
+// the owner's cookie with it; text/plain is what an attacker would use to skip a preflight.
+test('a write from another origin is refused on every API route, and a same-origin write is not', async () => {
+  const source = await fs.readFile(path.resolve(__dirname, '..', 'src', 'server', 'http-app.cjs'), 'utf8');
+  const literalRoutes = new Set([...source.matchAll(/`\$\{SUITE_MANAGER_API_PREFIX\}(\/[^`$]+)`/gu)].map((match) => match[1]));
+  assert.ok(literalRoutes.size > 50, 'the scan found the API routes');
+  const routes = [...literalRoutes, '/apps/packages/vaultwarden/uninstall', '/apps/sources/any/remove'];
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const post = (route, headers) => hostRequest(baseUrl, `/suite-manager/api${route}`, {
+      body: JSON.stringify({ key: 'technicalControls', value: true }),
+      headers: { 'Content-Type': 'text/plain', Cookie: cookie, Host: 'home.test', ...headers },
+      method: 'POST',
+    });
+
+    for (const route of routes) {
+      const refused = await post(route, { Origin: 'http://vaultwarden.home.test' });
+      assert.equal(refused.status, 403, route);
+      assert.equal(refused.json().code, 'CROSS_ORIGIN_REJECTED', route);
+    }
+    for (const headers of [{ 'Sec-Fetch-Site': 'same-site' }, { Origin: 'null' }, { Origin: 'http://home.test:8443' }]) {
+      assert.equal((await post('/settings/preferences', headers)).status, 403, JSON.stringify(headers));
+    }
+
+    const status = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(status.json().preferences, { technicalControls: false });
+
+    const sameOrigin = await post('/settings/preferences', { Origin: 'http://home.test', 'Sec-Fetch-Site': 'same-origin' });
+    assert.equal(sameOrigin.status, 200);
+  }, { homeHost: 'home.test' });
+});
+
 test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
   await withServer(async (baseUrl) => {
     const setupResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
@@ -2944,6 +2977,30 @@ test('an expected client error is answered without a reference and without a log
 
     assert.equal(response.status, 401);
     assert.equal(response.json().reference, undefined);
+    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
+  }, { logger });
+});
+
+test('a malformed or oversized body is a client error, answered without a log line', async () => {
+  const lines = [];
+  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
+
+  await withServer(async (baseUrl) => {
+    const malformed = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
+      body: '{"email":',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const oversized = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
+      body: JSON.stringify({ email: 'x'.repeat(1_100_000) }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    assert.equal(malformed.status, 400);
+    assert.equal(malformed.json().code, 'REQUEST_BODY_INVALID');
+    assert.equal(oversized.status, 413);
+    assert.equal(oversized.json().code, 'REQUEST_BODY_TOO_LARGE');
     assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
   }, { logger });
 });
