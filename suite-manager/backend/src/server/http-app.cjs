@@ -107,14 +107,6 @@ function fileResponse(response, filePath, headers = {}) {
   fs.createReadStream(filePath).pipe(response);
 }
 
-function downloadResponse(response, filePath, filename) {
-  response.writeHead(200, {
-    'Content-Disposition': `attachment; filename="${filename.replace(/[^A-Za-z0-9_.-]/g, '_')}"`,
-    'Content-Type': 'application/gzip',
-  });
-  fs.createReadStream(filePath).pipe(response);
-}
-
 function parseCookies(header = '') {
   return Object.fromEntries(
     header

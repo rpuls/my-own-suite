@@ -14,5 +14,3 @@ export const ISSUES_URL = communityLinks.issues;
 // and cannot serve these pages itself, so they are absolute links out.
 export const MOS_SITE_URL = 'https://myownsuite.org';
 export const TERMS_URL = `${MOS_SITE_URL}/docs/terms/`;
-export const PRIVACY_URL = `${MOS_SITE_URL}/docs/privacy/`;
-export const LICENSE_URL = `${MOS_SITE_URL}/docs/license/`;

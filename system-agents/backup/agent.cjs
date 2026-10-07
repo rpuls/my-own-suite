@@ -47,7 +47,6 @@ const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const stateDir = process.env.MOS_STATE_DIR || path.join(stateRoot, 'suite-manager');
 const repoDir = process.env.MOS_REPO_DIR || path.resolve(__dirname, '..', '..');
 const agentStateDir = process.env.MOS_BACKUP_AGENT_STATE_DIR || path.join(stateRoot, 'backup-agent');
-const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const installIdPath = path.join(agentStateDir, 'install-id');
