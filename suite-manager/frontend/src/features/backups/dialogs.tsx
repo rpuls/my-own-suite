@@ -507,7 +507,7 @@ export function DisconnectDialog({ busy, onCancel, onDisconnect, view }: {
 
 const WIZARD_STEPS = ['Kind', 'Details', 'Name'];
 
-export type WizardKind = '' | 'drive' | 'online';
+type WizardKind = '' | 'drive' | 'online';
 
 export type ConnectionTest = { locked?: boolean; message: string; ok: boolean } | null;
 
