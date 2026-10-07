@@ -147,6 +147,11 @@ act on.
   The agent already logs every stage with a timestamp; what is missing is an estimate before the
   owner commits, live stages on the busy page, and a per-phase progress indicator. The measured
   lesson: restore time is dominated by rebuilding app images, not by gigabytes. *(Medium)*
+- **C9 — Say why a pasted package URL could not be fetched.** When the repository behind a
+  pasted source URL answers 404 or cannot be reached, Suite Manager already has the sentence (the
+  HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
+  server error" and a reference they cannot act on. A fetch failure is the owner's to fix and should
+  be answered in its own words; the reference stays for faults that really are MOS's. *(Small)*
 
 ### H. Install media people can just flash
 

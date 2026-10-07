@@ -35,6 +35,11 @@ if [ -n "$MOS_SKIP_CHECKS" ]; then
   exit 0
 fi
 
+# Git hands a hook the repository's location in these variables. Unit tests build
+# throwaway repositories in temp dirs, and from a linked worktree the absolute
+# GIT_DIR made them commit onto the real branch instead (2026-10-07).
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
 # The workspace lane, which is exactly what CI's MOS Workspace job runs —
 # roughly a minute against a four-minute round trip and a lost context switch.
 # The site lane is left to CI because it reinstalls and rebuilds the whole site.
