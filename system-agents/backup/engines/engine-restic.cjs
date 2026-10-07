@@ -754,16 +754,10 @@ class ResticEngine {
 }
 
 module.exports = {
-  DATA_TIMEOUT_MS,
-  ENGINE_BINARY_DIR,
   ENGINE_MISSING_MESSAGE,
-  LEGACY_KEY_SUFFIX,
-  lockedRepositoryMessage,
   maskSecrets,
-  PROBE_TIMEOUT_MS,
   repositoryProbeCause,
   repositoryProbeVerdict,
   ResticEngine,
-  significantLine,
   treeBytes,
 };

@@ -1892,6 +1892,5 @@ function createMOSServer({
 }
 
 module.exports = {
-  SESSION_COOKIE,
   createMOSServer,
 };

@@ -95,10 +95,7 @@ function generateSigningKeyPair() {
 }
 
 module.exports = {
-  CatalogSignatureError,
-  canonicalSignedBytes,
   generateSigningKeyPair,
-  readSigningPrivateKey,
   readSigningPublicKey,
   signCatalogBytes,
   verifyCatalogSignature,

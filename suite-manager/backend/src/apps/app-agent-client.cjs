@@ -76,4 +76,4 @@ class AppAgentClient {
   remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }
 
-module.exports = { APP_AGENT_ACTIVATE_TIMEOUT_MS, APP_AGENT_ADDRESS_TIMEOUT_MS, APP_AGENT_APPLY_TIMEOUT_MS, APP_AGENT_TIMEOUT_MS, APP_AGENT_UPDATE_BUILD_TIMEOUT_MS, AppAgentClient };
+module.exports = { APP_AGENT_ADDRESS_TIMEOUT_MS, APP_AGENT_APPLY_TIMEOUT_MS, APP_AGENT_TIMEOUT_MS, APP_AGENT_UPDATE_BUILD_TIMEOUT_MS, AppAgentClient };

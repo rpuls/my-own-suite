@@ -965,11 +965,8 @@ class BackupAgentCore {
 module.exports = {
   BackupAgentCore,
   carriedAddress,
-  isRestorePointLocator,
   isRestorePointPath,
   readRestorePoint,
-  RESTORE_JOURNAL_FILENAME,
-  RESTORE_PHASES,
   UNREADABLE_LEGACY_BACKUP,
   sha256,
   validatePackagePayloads,

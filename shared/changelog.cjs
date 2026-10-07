@@ -64,4 +64,4 @@ function unreleasedFormatProblems(changelog) {
   return problems;
 }
 
-module.exports = { ENTRY_KINDS, changeLead, changelogSections, unreleasedFormatProblems };
+module.exports = { changeLead, changelogSections, unreleasedFormatProblems };

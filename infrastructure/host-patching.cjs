@@ -267,20 +267,11 @@ if (require.main === module) {
 }
 
 module.exports = {
-  APT_CONF_DIR,
   DISTRO_CONFIG_PATH,
   HOLDS_CONFIG_PATH,
-  MOS_CONFIG_PATHS,
-  PERIODIC_CONFIG_PATH,
-  POST_PATCH_UNIT,
-  POST_PATCH_UNIT_PATH,
   REBOOT_REQUIRED_PATH,
-  SECURITY_CONFIG_PATH,
-  STOCK_CONFIG_PATH,
-  UNATTENDED_BINARY_PATH,
   applyHostPatching,
   renderPostPatchUnit,
-  detectOwnerManagedConfig,
   healthStatePath,
   ownerManagedReason,
   readEnablementState,
@@ -288,5 +279,4 @@ module.exports = {
   renderPeriodicConfig,
   renderPostPatchUnit,
   renderSecurityConfig,
-  stateDirFor,
 };

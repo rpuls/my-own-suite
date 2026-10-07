@@ -49,4 +49,4 @@ class LabResetAgentClient {
   resetStatus(resetId) { return this.request('GET', `/v1/lab/reset/${encodeURIComponent(resetId)}`); }
 }
 
-module.exports = { LAB_RESET_AGENT_TIMEOUT_MS, LabResetAgentClient };
+module.exports = { LabResetAgentClient };

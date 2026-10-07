@@ -204,10 +204,7 @@ class DiagnosticsAgentCore {
 module.exports = {
   DiagnosticsAgentCore,
   LIMITS,
-  MOS_CONTAINER_PREFIX,
   MOS_UNITS,
-  PRIMARY_UNIT,
-  UNREAD_STATE,
   boundText,
   containerLooksTroubled,
   fitLogsToBudget,

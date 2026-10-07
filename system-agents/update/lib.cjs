@@ -481,7 +481,6 @@ module.exports = {
   StepFailure,
   buildPaths,
   collectStatus,
-  currentGitState,
   readJson,
   readLastStatus,
   repoRootFrom,

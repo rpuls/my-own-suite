@@ -25,7 +25,7 @@ function externalLabRouteHosts() {
   return EXTERNAL_LAB_APPS.flatMap((app) => app.routeHosts.map((host) => `${EXTERNAL_ROUTE_HOST_PREFIX}${host}`));
 }
 
-module.exports = { EXTERNAL_LAB_APPS, externalLabRouteHosts };
+module.exports = { externalLabRouteHosts };
 
 // Printed one per line so the PowerShell lab harness can consume them without
 // teaching PowerShell how the `ext-` prefix works.

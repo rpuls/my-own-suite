@@ -168,10 +168,7 @@ function validateSmtpInput(rawInput, { keepExistingPassword = false } = {}) {
 module.exports = {
   DEFAULT_SMTP_PORTS,
   EMAIL_PATTERN,
-  SMTP_SECURITY_MODES,
   SMTP_TEMPLATE_KEYS,
   SmtpSettingsError,
-  inferSecurityFromPort,
-  normalizeSecurity,
   validateSmtpInput,
 };

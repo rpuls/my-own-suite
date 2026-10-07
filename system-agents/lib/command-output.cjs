@@ -200,10 +200,8 @@ function describeFailure(error, what) {
 module.exports = {
   CommandFailure,
   KILL_GRACE_MS,
-  OUTPUT_TAIL_CHARS,
   OUTPUT_TAIL_LINES,
   REDACTION_MARKER,
-  ROLLING_CAPTURE_CHARS,
   describeDuration,
   describeFailure,
   indent,

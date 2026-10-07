@@ -76,4 +76,4 @@ class VaultAgentClient {
   }
 }
 
-module.exports = { ENROLL_TIMEOUT_MS, REKEY_TIMEOUT_MS, VAULT_TIMEOUT_MS, VaultAgentClient };
+module.exports = { REKEY_TIMEOUT_MS, VAULT_TIMEOUT_MS, VaultAgentClient };

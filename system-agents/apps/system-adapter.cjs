@@ -1190,9 +1190,6 @@ class SystemAppAdapter {
 }
 
 module.exports = {
-  APP_PACKAGE_ROOT,
-  APP_CANDIDATE_ROOT,
-  APP_ROUTES_PATH,
   ADDRESS_TIMEOUT_MS,
   AppApplyError,
   CRASH_LOOP_RESTARTS,
@@ -1203,7 +1200,6 @@ module.exports = {
   atomicWrite,
   probeAddress,
   removeAppRouteBlock,
-  renderAppRouteBlock,
   upsertAppRouteBlock,
   waitForHttp,
 };

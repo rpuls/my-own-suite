@@ -269,7 +269,6 @@ module.exports = {
   COMMIT_PATTERN,
   DEFAULT_LIMITS,
   HOST_DESCRIPTORS,
-  discoverMosPackages,
   downloadMosPackage,
   extractMosPackage,
   parseGitPackageUrl,

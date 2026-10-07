@@ -50,4 +50,4 @@ class DiagnosticsAgentClient {
   hostPatches() { return this.request('GET', '/v1/host/patches', HOST_PATCHES_TIMEOUT_MS); }
 }
 
-module.exports = { DIAGNOSTICS_TIMEOUT_MS, DiagnosticsAgentClient, HOST_PATCHES_TIMEOUT_MS };
+module.exports = { DiagnosticsAgentClient, HOST_PATCHES_TIMEOUT_MS };

@@ -775,9 +775,7 @@ class DestinationResolver {
 module.exports = {
   DestinationResolver,
   DiskDestination,
-  DiskRestorePoints,
   MANIFEST_FILENAME,
-  NOTE_FILENAME,
   objectLocator,
   ObjectDestination,
   OBJECT_INDEX_TTL_MS,

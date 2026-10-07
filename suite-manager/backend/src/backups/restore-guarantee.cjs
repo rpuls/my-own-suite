@@ -29,4 +29,4 @@ function restoreGuaranteeFor(agentStatus) {
   };
 }
 
-module.exports = { REPOSITORY_GUARANTEE, restoreGuaranteeFor, UNREADABLE_GUARANTEE };
+module.exports = { restoreGuaranteeFor, UNREADABLE_GUARANTEE };

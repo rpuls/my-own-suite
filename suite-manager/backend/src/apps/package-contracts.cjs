@@ -812,11 +812,9 @@ function advisoriesForVersion(index, packageId, packageVersion) {
 }
 
 module.exports = {
-  ADVISORY_SEVERITY_RANK,
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
   DEFAULT_PACKAGE_LIMITS,
-  EXTERNAL_ROUTE_HOST_MAX_LENGTH,
   EXTERNAL_ROUTE_HOST_PREFIX,
   PACKAGE_TESTS_DIR,
   SUPPORTED_ARCHITECTURES,
@@ -831,7 +829,6 @@ module.exports = {
   digestAppPackage,
   effectiveRouteHost,
   hostHeldPackages,
-  isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
   reviewOutbound,

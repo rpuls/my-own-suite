@@ -86,5 +86,4 @@ class AppOperationLimiter {
 module.exports = {
   AppOperationLimitError,
   AppOperationLimiter,
-  DEFAULT_OPERATION_POLICY,
 };

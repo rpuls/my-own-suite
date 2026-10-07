@@ -309,4 +309,4 @@ class SystemHttpsAdapter {
   }
 }
 
-module.exports = { PARKED_SECRET_ENV_PATH, SystemHttpsAdapter, atomicWrite };
+module.exports = { SystemHttpsAdapter, atomicWrite };

@@ -163,15 +163,10 @@ class SuiteAddressFile {
 }
 
 module.exports = {
-  ADDRESS_FILENAME,
-  ADDRESS_KINDS,
-  OFFER_FILENAME,
-  SUITE_ADDRESS_DIRNAME,
   SuiteAddressError,
   SuiteAddressFile,
   addressForHost,
   baseHostOf,
   domainAddress,
   suiteAddressDir,
-  validateAddress,
 };

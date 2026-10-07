@@ -188,4 +188,4 @@ class SourceCatalogCache {
   }
 }
 
-module.exports = { CACHE_VERSION, DEFAULT_POLICY, SourceCatalogCache };
+module.exports = { DEFAULT_POLICY, SourceCatalogCache };

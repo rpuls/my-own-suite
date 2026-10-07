@@ -94,4 +94,4 @@ class PrimaryDestination {
   }
 }
 
-module.exports = { PRIMARY_FILENAME, PrimaryDestination, resolvePrimary };
+module.exports = { PrimaryDestination, resolvePrimary };

@@ -62,4 +62,4 @@ class UpdateAgentClient {
   applyHostHolds(input) { return this.request('POST', '/v1/host/holds', input); }
 }
 
-module.exports = { UPDATE_AGENT_TIMEOUT_MS, UpdateAgentClient };
+module.exports = { UpdateAgentClient };

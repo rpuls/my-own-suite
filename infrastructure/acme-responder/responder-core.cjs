@@ -142,7 +142,6 @@ function parseZone(text) {
 }
 
 module.exports = {
-  NAMESERVER,
   ResponderError,
   SourceLimiter,
   TOKENS_PER_NAME,

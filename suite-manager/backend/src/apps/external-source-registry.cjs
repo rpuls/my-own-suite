@@ -170,7 +170,6 @@ function validateExternalCandidate({ manifest, officialPackageIds = [], platform
 module.exports = {
   ExternalSourceError,
   INSTALL_BLOCKING_STATUSES,
-  SOURCE_STATUSES,
   buildSourceRecord,
   instanceNamespaceId,
   instanceSourceId,

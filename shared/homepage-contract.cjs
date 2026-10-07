@@ -421,8 +421,6 @@ module.exports = {
   MANAGED_APP_HREF_PREFIX,
   addEntry,
   assertAllowedFile,
-  entriesFromServices,
-  managedAppHref,
   projectServices,
   publicUrlFor,
   reconcileManagedUrls,
@@ -430,7 +428,5 @@ module.exports = {
   renderCaddyRoutes,
   revisionFor,
   validateProxy,
-  validateServices,
-  validateWidget,
   validateYaml,
 };

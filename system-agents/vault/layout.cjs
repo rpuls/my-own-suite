@@ -111,8 +111,6 @@ function planLayout({ diskBytes, lastUsableSector: reportedLastUsable, sectorSiz
 
 module.exports = {
   GIB,
-  SYSTEM_CEILING_BYTES,
-  SYSTEM_FLOOR_BYTES,
   VAULT_FLOOR_BYTES,
   planLayout,
   planSystemCapBytes,

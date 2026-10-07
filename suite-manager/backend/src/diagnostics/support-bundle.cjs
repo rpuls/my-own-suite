@@ -423,6 +423,5 @@ module.exports = {
   buildSupportBundle,
   collectRedactionSecrets,
   fullFilesystems,
-  hostPatchLines,
   summarizeTrouble,
 };

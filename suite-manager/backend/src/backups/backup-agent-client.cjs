@@ -82,4 +82,4 @@ class BackupAgentClient {
   removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
 }
 
-module.exports = { BACKUP_AGENT_TIMEOUT_MS, BackupAgentClient };
+module.exports = { BackupAgentClient };

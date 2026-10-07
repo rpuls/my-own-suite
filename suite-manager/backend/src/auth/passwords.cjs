@@ -158,8 +158,6 @@ function needsRehash(encodedHash) {
 module.exports = {
   CURRENT_PARAMETERS,
   HashGate,
-  MAX_CONCURRENT_HASHES,
-  MAX_QUEUED_HASHES,
   PasswordHashingBusyError,
   hashPassword,
   needsRehash,

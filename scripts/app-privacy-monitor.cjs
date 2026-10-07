@@ -68,6 +68,4 @@ function main() {
   process.stdout.write(`Privacy monitor: ${warnings.length} warning(s), 0 blocking issue(s).\n`);
 }
 
-if (require.main === module) main();
-
-module.exports = { monitorPrivacyReviews };
+main();

@@ -774,7 +774,6 @@ module.exports = {
   networkConnectRequest,
   ownerEnvSecretKey,
   privacyReviewPresentation,
-  publicEnv,
   publicInstance,
   readSecretValue,
   redactionSecretsFor,
