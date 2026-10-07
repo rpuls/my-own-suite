@@ -1,3 +1,5 @@
+const { CodedError } = require('./coded-error.cjs');
+
 const HOMEPAGE_FILES = Object.freeze([
   'bookmarks.yaml',
   'services.template.yaml',
@@ -24,12 +26,9 @@ const SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 // keeps a tile from being aimed anywhere Suite Manager did not resolve itself.
 const MANAGED_APP_HREF_PREFIX = '/suite-manager/open/';
 
-class HomepageConfigError extends Error {
+class HomepageConfigError extends CodedError {
   constructor(code, message, statusCode = 400, details = []) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.statusCode = statusCode;
+    super(code, message, { details, statusCode });
   }
 }
 

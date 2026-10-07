@@ -1,4 +1,4 @@
-const { AppOperationLimitError } = require('./app-operation-limits.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 
 // An app operation that builds for minutes runs here rather than in the request
 // that asked for it. A closed tab, a phone going to sleep, or a proxy ending a silent
@@ -27,7 +27,7 @@ class AppJobs {
 
   begin(packageId, input) {
     if (this.jobs.get(packageId)?.status === 'running') {
-      throw new AppOperationLimitError('APP_OPERATION_IN_PROGRESS', this.busyMessage, 409);
+      throw new CodedError('APP_OPERATION_IN_PROGRESS', this.busyMessage, { statusCode: 409 });
     }
     const job = {
       error: null,

@@ -9,8 +9,9 @@ const { LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../aut
 const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
 const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../homepage/homepage-service.cjs');
-const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
+const { ConsoleLoginService } = require('../settings/console-login-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
@@ -18,7 +19,8 @@ const { SuiteAddressFile, baseHostOf, suiteAddressDir } = require('../../../../s
 const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
-const { createLogger, requestId } = require('./logger.cjs');
+const { createLogger } = require('./logger.cjs');
+const { fileResponse, htmlResponse, jsonResponse, respondError, textResponse } = require('./responses.cjs');
 const { AppPackageService } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
@@ -37,7 +39,6 @@ const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
 const { sweepCandidateRoot } = require('../apps/candidate-storage.cjs');
 const { ExternalSourceService } = require('../apps/external-source-service.cjs');
-const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
@@ -61,50 +62,6 @@ const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f
 function stateRootOf(stateDir) {
   if (process.env.MOS_STATE_ROOT) return process.env.MOS_STATE_ROOT;
   return path.dirname(path.resolve(stateDir));
-}
-
-const MIME_TYPES = new Map([
-  ['.css', 'text/css; charset=utf-8'],
-  ['.html', 'text/html; charset=utf-8'],
-  ['.ico', 'image/x-icon'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
-  ['.png', 'image/png'],
-  ['.svg', 'image/svg+xml'],
-  ['.txt', 'text/plain; charset=utf-8'],
-  ['.webmanifest', 'application/manifest+json; charset=utf-8'],
-]);
-
-function jsonResponse(response, statusCode, payload, headers = {}) {
-  response.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    ...headers,
-  });
-  response.end(`${JSON.stringify(payload)}\n`);
-}
-
-function htmlResponse(response, statusCode, html, headers = {}) {
-  response.writeHead(statusCode, {
-    'Content-Type': 'text/html; charset=utf-8',
-    ...headers,
-  });
-  response.end(html);
-}
-
-function textResponse(response, statusCode, text) {
-  response.writeHead(statusCode, {
-    'Content-Type': 'text/plain; charset=utf-8',
-  });
-  response.end(text);
-}
-
-function fileResponse(response, filePath, headers = {}) {
-  const extension = path.extname(filePath).toLowerCase();
-  response.writeHead(200, {
-    'Content-Type': MIME_TYPES.get(extension) || 'application/octet-stream',
-    ...headers,
-  });
-  fs.createReadStream(filePath).pipe(response);
 }
 
 function parseCookies(header = '') {
@@ -166,10 +123,6 @@ function isOriginOfHost(origin, hostHeader) {
   }
 }
 
-function requestBodyError(code, message, statusCode) {
-  return Object.assign(new Error(message), { code, statusCode });
-}
-
 function readJsonBody(request, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
     let raw = '';
@@ -183,7 +136,7 @@ function readJsonBody(request, maxBytes = 1_000_000) {
       if (raw.length > maxBytes) {
         tooLarge = true;
         raw = '';
-        reject(requestBodyError('REQUEST_BODY_TOO_LARGE', 'Request body is too large.', 413));
+        reject(new CodedError('REQUEST_BODY_TOO_LARGE', 'Request body is too large.', { statusCode: 413 }));
       }
     });
     request.on('end', () => {
@@ -195,54 +148,11 @@ function readJsonBody(request, maxBytes = 1_000_000) {
       try {
         resolve(JSON.parse(raw));
       } catch {
-        reject(requestBodyError('REQUEST_BODY_INVALID', 'Request body must be valid JSON.', 400));
+        reject(new CodedError('REQUEST_BODY_INVALID', 'Request body must be valid JSON.', { statusCode: 400 }));
       }
     });
     request.on('error', reject);
   });
-}
-
-// Non-default HTTP statuses for owner-only external source operations. Anything
-// not listed (validation failures such as a bad URL or trust claim) falls back
-// to 400; rejected/malicious candidates surface as 422 so a hostile package is
-// clearly unprocessable rather than a generic bad request.
-const EXTERNAL_SOURCE_STATUS = Object.freeze({
-  CANDIDATE_CONTENTS_INVALID: 422,
-  CANDIDATE_INVALID: 422,
-  CANDIDATE_PATH_INVALID: 422,
-  CANDIDATE_REJECTED: 422,
-  CANDIDATE_SOURCE_INVALID: 422,
-  CANDIDATE_TOO_LARGE: 422,
-  SOURCE_ALREADY_ADDED: 409,
-  SOURCE_FETCH_FAILED: 502,
-  SOURCE_INSTALL_UNAVAILABLE: 503,
-  SOURCE_NOT_FOUND: 404,
-  SOURCE_NOT_INSTALLABLE: 409,
-  SOURCE_REDIRECT_REJECTED: 502,
-  SOURCE_STATUS_TRANSITION_INVALID: 409,
-  SOURCE_TOO_LARGE: 502,
-});
-
-function errorStatus(error) {
-  if (Number.isInteger(error.statusCode)) {
-    return error.statusCode;
-  }
-  if (error instanceof ExternalSourceError) {
-    return EXTERNAL_SOURCE_STATUS[error.code] || 400;
-  }
-  if (!(error instanceof SetupError)) {
-    return 500;
-  }
-
-  if (error.code === 'OWNER_ALREADY_EXISTS') {
-    return 409;
-  }
-
-  if (error.code === 'INVALID_LOGIN' || error.code === 'OWNER_NOT_CREATED') {
-    return 401;
-  }
-
-  return 400;
 }
 
 function resolveStaticPath(rootDir, requestPath) {
@@ -812,17 +722,9 @@ function createMOSServer({
       // holds but does not own.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/console-login/reveal`) {
         if (signedOut('Sign in to see the server login.')) return;
-        try {
-          // No-store because this is the one response in the API that carries a
-          // plaintext credential the owner is expected to copy elsewhere.
-          jsonResponse(response, 200, consoleLogin.reveal(), { 'Cache-Control': 'no-store' });
-        } catch (error) {
-          if (error instanceof ConsoleLoginError) {
-            jsonResponse(response, 404, { code: error.code, error: error.message });
-            return;
-          }
-          throw error;
-        }
+        // No-store because this is the one response in the API that carries a
+        // plaintext credential the owner is expected to copy elsewhere.
+        jsonResponse(response, 200, consoleLogin.reveal(), { 'Cache-Control': 'no-store' });
         return;
       }
 
@@ -1609,33 +1511,7 @@ function createMOSServer({
 
       homepage.proxyHttp(request, response);
     } catch (error) {
-      const statusCode = errorStatus(error);
-      const internal = statusCode >= 500 && !Number.isInteger(error.statusCode);
-      // An internal error is the one class nobody can reconstruct afterwards:
-      // the owner is told "Internal server error." on purpose, so unless the
-      // reason is written down here it exists nowhere at all. The reference goes
-      // out with the response so the line in the journal and the screenshot in
-      // the bug report can be matched without guessing at timestamps.
-      const reference = internal ? requestId() : null;
-      if (internal) {
-        logger.error('request-failed', {
-          error,
-          method: request.method,
-          // Query strings carry claim tokens and search terms; the path alone
-          // is what identifies the route that broke.
-          path: url.pathname,
-          reference,
-          statusCode,
-        });
-      }
-      jsonResponse(response, statusCode, {
-        code: error.code || 'INTERNAL_ERROR',
-        ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
-        error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
-        ...(reference ? { reference } : {}),
-      }, Number.isInteger(error.retryAfterSeconds)
-        ? { 'Retry-After': String(error.retryAfterSeconds) }
-        : {});
+      respondError(response, error, { logger, method: request.method, requestPath: url.pathname });
     }
   });
 

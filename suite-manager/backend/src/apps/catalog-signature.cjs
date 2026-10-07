@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 // The official catalog and advisory feed are fetched over the network and then
 // decide which packages MOS treats as reviewed and which installed versions have
 // advisories against them. Until now the only thing standing behind that was
@@ -16,13 +18,6 @@ const crypto = require('node:crypto');
 // nothing but the bytes and the key, so a box with no network and no clock can
 // still tell whether its cache was signed.
 const SIGNATURE_BYTES = 64;
-
-class CatalogSignatureError extends Error {
-  constructor(message) {
-    super(message);
-    this.code = 'CATALOG_SIGNATURE_INVALID';
-  }
-}
 
 // Git normalizes text to LF in the repository and checks it out with the
 // platform's line endings (`* text=auto`), so the bytes a signer reads from a
@@ -41,16 +36,16 @@ function readSigningPublicKey(pem) {
   // public one would verify catalogs perfectly and never give a sign that the
   // secret was published. Nothing downstream can notice, so it is caught here.
   if (/PRIVATE KEY/u.test(String(pem))) {
-    throw new CatalogSignatureError('The official catalog signing key file contains a private key; only the public key belongs in a release.');
+    throw new CodedError('CATALOG_SIGNATURE_INVALID', 'The official catalog signing key file contains a private key; only the public key belongs in a release.');
   }
   let key;
   try {
     key = crypto.createPublicKey(String(pem));
   } catch {
-    throw new CatalogSignatureError('Official catalog signing key is not a readable public key.');
+    throw new CodedError('CATALOG_SIGNATURE_INVALID', 'Official catalog signing key is not a readable public key.');
   }
   if (key.asymmetricKeyType !== 'ed25519') {
-    throw new CatalogSignatureError('Official catalog signing key must be an Ed25519 public key.');
+    throw new CodedError('CATALOG_SIGNATURE_INVALID', 'Official catalog signing key must be an Ed25519 public key.');
   }
   return key;
 }
@@ -60,10 +55,10 @@ function readSigningPrivateKey(pem) {
   try {
     key = crypto.createPrivateKey(String(pem));
   } catch {
-    throw new CatalogSignatureError('Official catalog signing key is not a readable private key.');
+    throw new CodedError('CATALOG_SIGNATURE_INVALID', 'Official catalog signing key is not a readable private key.');
   }
   if (key.asymmetricKeyType !== 'ed25519') {
-    throw new CatalogSignatureError('Official catalog signing key must be an Ed25519 private key.');
+    throw new CodedError('CATALOG_SIGNATURE_INVALID', 'Official catalog signing key must be an Ed25519 private key.');
   }
   return key;
 }

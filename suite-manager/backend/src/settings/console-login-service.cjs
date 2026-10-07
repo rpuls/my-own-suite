@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
   CONSOLE_LOGIN_HANDOVER_FILE,
@@ -14,14 +15,6 @@ const {
 // when the owner confirms: the installer's path unit watches for it and clears
 // the console, and its presence tells "already handed over" apart from "this
 // install never had a generated login".
-
-class ConsoleLoginError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-    this.name = 'ConsoleLoginError';
-  }
-}
 
 class ConsoleLoginService {
   constructor({ stateDir }) {
@@ -52,7 +45,7 @@ class ConsoleLoginService {
   reveal() {
     const handover = this.#readHandover();
     if (!handover) {
-      throw new ConsoleLoginError('CONSOLE_LOGIN_NOT_PENDING', 'This install has no server login waiting to be saved.');
+      throw new CodedError('CONSOLE_LOGIN_NOT_PENDING', 'This install has no server login waiting to be saved.', { statusCode: 404 });
     }
     return { password: handover.password, username: handover.username };
   }
@@ -112,4 +105,4 @@ class ConsoleLoginService {
   }
 }
 
-module.exports = { ConsoleLoginError, ConsoleLoginService };
+module.exports = { ConsoleLoginService };

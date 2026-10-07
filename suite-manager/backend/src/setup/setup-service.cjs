@@ -1,3 +1,4 @@
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { hashPassword, needsRehash, verifyPassword } = require('../auth/passwords.cjs');
 const { createSessionToken, hashSessionToken } = require('../auth/sessions.cjs');
 const {
@@ -21,10 +22,15 @@ const OWNER_PREFERENCE_DEFAULTS = Object.freeze({
   technicalControls: false,
 });
 
-class SetupError extends Error {
+const SETUP_ERROR_STATUS = Object.freeze({
+  INVALID_LOGIN: 401,
+  OWNER_ALREADY_EXISTS: 409,
+  OWNER_NOT_CREATED: 401,
+});
+
+class SetupError extends CodedError {
   constructor(code, message) {
-    super(message);
-    this.code = code;
+    super(code, message, { statusCode: SETUP_ERROR_STATUS[code] || 400 });
   }
 }
 

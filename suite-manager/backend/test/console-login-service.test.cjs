@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { ConsoleLoginError, ConsoleLoginService } = require('../src/settings/console-login-service.cjs');
+const { ConsoleLoginService } = require('../src/settings/console-login-service.cjs');
 const {
   CONSOLE_LOGIN_ACKNOWLEDGED_FILE: ACKNOWLEDGED_FILE,
   CONSOLE_LOGIN_HANDOVER_FILE: HANDOVER_FILE,
@@ -22,7 +22,7 @@ function withHandover(stateDir, handover = { password: 'abcde-fghij-klmno', user
 test('an install with no generated console login reports nothing pending', () => {
   const service = new ConsoleLoginService({ stateDir: freshStateDir() });
   assert.deepEqual(service.status(), { pending: false, unreadable: false });
-  assert.throws(() => service.reveal(), (error) => error instanceof ConsoleLoginError && error.code === 'CONSOLE_LOGIN_NOT_PENDING');
+  assert.throws(() => service.reveal(), (error) => error.code === 'CONSOLE_LOGIN_NOT_PENDING' && error.statusCode === 404);
 });
 
 // The fault that produced this test: the installer runs as root and Suite Manager

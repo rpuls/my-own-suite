@@ -1,6 +1,8 @@
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const scrypt = promisify(crypto.scrypt);
 
 const KEY_LENGTH = 64;
@@ -36,18 +38,6 @@ function maxmemFor({ N, p, r }) {
 const MAX_CONCURRENT_HASHES = 2;
 const MAX_QUEUED_HASHES = 8;
 
-class PasswordHashingBusyError extends Error {
-  constructor() {
-    super('The server is busy verifying sign-ins. Try again in a moment.');
-    this.code = 'PASSWORD_HASHING_BUSY';
-    this.name = 'PasswordHashingBusyError';
-    // Carried on the error so the request layer answers with a plain 503 and a
-    // wait, rather than reporting a refusal it chose as an internal fault.
-    this.retryAfterSeconds = 2;
-    this.statusCode = 503;
-  }
-}
-
 class HashGate {
   constructor({ maxConcurrent = MAX_CONCURRENT_HASHES, maxQueued = MAX_QUEUED_HASHES } = {}) {
     this.maxConcurrent = maxConcurrent;
@@ -58,7 +48,7 @@ class HashGate {
 
   run(task) {
     if (this.active >= this.maxConcurrent && this.queue.length >= this.maxQueued) {
-      return Promise.reject(new PasswordHashingBusyError());
+      return Promise.reject(new CodedError('PASSWORD_HASHING_BUSY', 'The server is busy verifying sign-ins. Try again in a moment.', { retryAfterSeconds: 2, statusCode: 503 }));
     }
     if (this.active < this.maxConcurrent) {
       return this.#start(task);
@@ -158,7 +148,6 @@ function needsRehash(encodedHash) {
 module.exports = {
   CURRENT_PARAMETERS,
   HashGate,
-  PasswordHashingBusyError,
   hashPassword,
   needsRehash,
   verifyPassword,

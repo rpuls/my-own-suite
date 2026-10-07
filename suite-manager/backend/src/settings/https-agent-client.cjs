@@ -1,15 +1,13 @@
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { requestAgent } = require('../agent-request.cjs');
 
 // What the HTTPS agent answered, or why it could not be asked. `details` is
 // the agent's own explanation of a failure — the failing command's last output,
 // what Cloudflare replied — already masked of the token before it left root.
-class HttpsAgentError extends Error {
+class HttpsAgentError extends CodedError {
   constructor(code, message, { details = [], statusCode = 502 } = {}) {
-    super(message);
+    super(code, message, { details, statusCode });
     this.name = 'HttpsAgentError';
-    this.code = code;
-    this.details = details;
-    this.statusCode = statusCode;
   }
 }
 

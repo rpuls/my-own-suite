@@ -22,6 +22,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('./coded-error.cjs');
 const { EASY_DOOR_HOME_HOST_REGEXP } = require('./easy-door.cjs');
 
 const SUITE_ADDRESS_DIRNAME = 'suite-address';
@@ -32,12 +33,10 @@ const DEFAULT_STATE_ROOT = '/var/lib/mos';
 const HOST_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/u;
 const EASY_DOOR_HOST = new RegExp(EASY_DOOR_HOME_HOST_REGEXP, 'u');
 
-class SuiteAddressError extends Error {
+class SuiteAddressError extends CodedError {
   constructor(code, message, statusCode = 500) {
-    super(message);
+    super(code, message, { statusCode });
     this.name = 'SuiteAddressError';
-    this.code = code;
-    this.statusCode = statusCode;
   }
 }
 

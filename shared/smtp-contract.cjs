@@ -6,11 +6,11 @@
 // and which `${smtp.*}` keys exist — so the manifest grammar, the runtime
 // projection, and the settings form can never drift apart on the key names.
 
-class SmtpSettingsError extends Error {
+const { CodedError } = require('./coded-error.cjs');
+
+class SmtpSettingsError extends CodedError {
   constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
+    super(code, message, { statusCode });
   }
 }
 

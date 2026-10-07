@@ -1,3 +1,5 @@
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 // Every app package operation that reaches a source or the app agent costs work
 // MOS cannot take back: an outbound archive download, a docker build, a runtime
 // swap. Nothing about being the authenticated owner makes that cheap, and the
@@ -10,14 +12,6 @@
 const DEFAULT_OPERATION_POLICY = Object.freeze({
   download: Object.freeze({ maxConcurrent: 3, maxPerWindow: 12, windowMs: 60 * 1_000 }),
 });
-
-class AppOperationLimitError extends Error {
-  constructor(code, message, statusCode = 429) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
-  }
-}
 
 class AppOperationLimiter {
   constructor({ now = () => Date.now(), policy = {} } = {}) {
@@ -36,7 +30,7 @@ class AppOperationLimiter {
   // twice.
   async runExclusive(key, run) {
     if (this.exclusive.has(key)) {
-      throw new AppOperationLimitError('APP_OPERATION_IN_PROGRESS', 'Another operation for this app is already running. Wait for it to finish before starting a new one.', 409);
+      throw new CodedError('APP_OPERATION_IN_PROGRESS', 'Another operation for this app is already running. Wait for it to finish before starting a new one.', { statusCode: 409 });
     }
     this.exclusive.add(key);
     try {
@@ -58,10 +52,10 @@ class AppOperationLimiter {
     this.#pruneWindows(at);
     const recent = this.recentDownloads.get(key) || [];
     if (recent.length >= maxPerWindow) {
-      throw new AppOperationLimitError('APP_DOWNLOAD_THROTTLED', 'This app package source has been checked too many times in a row. Wait a moment and try again.');
+      throw new CodedError('APP_DOWNLOAD_THROTTLED', 'This app package source has been checked too many times in a row. Wait a moment and try again.', { statusCode: 429 });
     }
     if (this.downloads >= maxConcurrent) {
-      throw new AppOperationLimitError('APP_DOWNLOAD_BUSY', 'MOS is already downloading other app packages. Wait for those to finish and try again.');
+      throw new CodedError('APP_DOWNLOAD_BUSY', 'MOS is already downloading other app packages. Wait for those to finish and try again.', { statusCode: 429 });
     }
     this.recentDownloads.set(key, [...recent, at]);
     this.downloads += 1;
@@ -84,6 +78,5 @@ class AppOperationLimiter {
 }
 
 module.exports = {
-  AppOperationLimitError,
   AppOperationLimiter,
 };

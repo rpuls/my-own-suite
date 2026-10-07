@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { appAgentContractFailure } = require('../../../../shared/app-agent-contract.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   SUPPORTED_ARCHITECTURES,
   effectiveRouteHost,
@@ -35,11 +36,9 @@ function ownerEnvSecretKey(service, name) {
   return `env.${service}.${name}`;
 }
 
-class AppPackageServiceError extends Error {
+class AppPackageServiceError extends CodedError {
   constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
+    super(code, message, { statusCode });
   }
 }
 

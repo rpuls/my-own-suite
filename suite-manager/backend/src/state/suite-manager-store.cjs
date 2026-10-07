@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const DATABASE_FILENAME = 'suite-manager.sqlite';
 
 const MIGRATIONS = [
@@ -458,7 +460,12 @@ const MIGRATIONS = [
   },
 ];
 
-class OwnerAlreadyExistsError extends Error {}
+class OwnerAlreadyExistsError extends CodedError {
+  constructor(cause) {
+    super('OWNER_ALREADY_EXISTS', 'The MOS owner account already exists.', { statusCode: 409 });
+    this.cause = cause;
+  }
+}
 
 class SuiteManagerStore {
   constructor(stateDir) {
@@ -1807,7 +1814,7 @@ class SuiteManagerStore {
       `).run(owner.name, owner.email, owner.passwordHash, owner.createdAt);
     } catch (error) {
       if (error.code?.startsWith('ERR_SQLITE_CONSTRAINT')) {
-        throw new OwnerAlreadyExistsError('The MOS owner account already exists.', { cause: error });
+        throw new OwnerAlreadyExistsError(error);
       }
       throw error;
     }
