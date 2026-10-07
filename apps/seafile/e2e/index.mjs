@@ -139,7 +139,8 @@ async function openInEditor(page, name) {
 
 // Written in the office editor another app provides, saved back into Seafile,
 // and read out of the stored file: the two apps working together end to end.
-async function writeDocument(page, repo, name, text) {
+// The editor draws on a canvas, so its screenshot is the only view of the typed text.
+async function writeDocument({ page, shot }, repo, name, text) {
   await newFile(page, '+ Word', 'New Word File', name);
   const emptySize = await fileSize(page, repo, name);
   const { editor, frame } = await openInEditor(page, name);
@@ -149,6 +150,7 @@ async function writeDocument(page, repo, name, text) {
   await editor.keyboard.type(text);
   await editor.keyboard.press('Control+s');
   await editor.waitForTimeout(5000);
+  await shot('document', { page: editor });
   await editor.close();
   await expect.poll(() => fileSize(page, repo, name), { intervals: [3000], message: 'the saved document should be stored back in Seafile', timeout: 90000 }).toBeGreaterThan(emptySize);
   await expect.poll(() => documentText(page, repo, name), { intervals: [3000], timeout: 60000 }).toContain(text);
@@ -200,7 +202,7 @@ export default {
     state.upload = upload;
     if (connected.includes('documentEditor')) {
       const document = { name: 'mos-e2e-letter.docx', text: `MOS E2E letter ${Date.now().toString(36)}` };
-      await step('write a document in the connected office editor', () => writeDocument(page, libraryId(page), document.name, document.text));
+      await step('create a Word document, write in it in the connected office editor, save it and read it back', () => writeDocument({ page, shot }, libraryId(page), document.name, document.text));
       state.document = document;
     }
     await shot('library');
@@ -220,17 +222,18 @@ export default {
       });
     }
     if (state.document) {
-      await step('the document written in the office editor kept its text', async () => {
+      await step('the document written in the office editor kept its text and still opens in it', async () => {
         expect(await documentText(page, libraryId(page), state.document.name)).toContain(state.document.text);
+        expect(connected, 'Seafile should still be connected to the office editor its journey wrote in').toContain('documentEditor');
+        await (await openInEditor(page, state.document.name)).editor.close();
       });
     }
     await shot('library');
     // After the shot, so the new file is not counted as a changed screen.
     if (state.document) {
-      await step('the office editor still opens, edits and saves a new document', async () => {
-        expect(connected, 'Seafile should still be connected to the office editor its journey wrote in').toContain('documentEditor');
+      await step('create a new Word document, write in it in the office editor, save it and read it back', async () => {
         const stamp = Date.now().toString(36);
-        await writeDocument(page, libraryId(page), `mos-e2e-check-${stamp}.docx`, `MOS E2E check ${stamp}`);
+        await writeDocument({ page, shot }, libraryId(page), `mos-e2e-check-${stamp}.docx`, `MOS E2E check ${stamp}`);
       });
     }
   },
