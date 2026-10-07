@@ -32,6 +32,12 @@ const SITE_PORT = 4321;
 const CHECKS = [
   {
     lane: 'workspace',
+    id: 'no-nul',
+    title: 'Check tracked text files for NUL bytes',
+    command: 'node scripts/no-nul-bytes.cjs',
+  },
+  {
+    lane: 'workspace',
     id: 'unit',
     title: 'Unit tests',
     command: 'npm run test:unit',

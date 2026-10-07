@@ -207,7 +207,7 @@ test('AUTH PLAIN is used when the relay advertises it, and carries the credentia
     await verifyRelay(relay(fake.port));
     const decoded = Buffer.from(fake.state.auth.payload, 'base64').toString('utf8');
     assert.equal(fake.state.auth.mechanism, 'PLAIN');
-    assert.equal(decoded, ' me@example.com pw-secret');
+    assert.equal(decoded, '\u0000me@example.com\u0000pw-secret');
   } finally {
     await fake.close();
   }

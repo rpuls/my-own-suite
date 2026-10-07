@@ -747,11 +747,11 @@ class AppPackageService {
         reject(`${name} names a service this app does not have.`);
         continue;
       }
-      if (seen.has(`${service} ${name}`)) {
+      if (seen.has(`${service}\u0000${name}`)) {
         reject(`${name} is listed more than once.`);
         continue;
       }
-      seen.add(`${service} ${name}`);
+      seen.add(`${service}\u0000${name}`);
       if (!managed.has(service)) managed.set(service, managedEnvNames(manifest, configRows, integrations, instance.id, service));
       if (managed.get(service).has(name)) {
         reject(`${name} is set by MOS and cannot be overridden here.`);
