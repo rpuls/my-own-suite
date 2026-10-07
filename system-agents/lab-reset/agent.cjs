@@ -79,10 +79,6 @@ function scheduleReset(input = {}) {
 const server = http.createServer(async (request, response) => {
   try {
     const key = `${request.method} ${new URL(request.url || '/', 'http://localhost').pathname}`;
-    if (key === 'GET /v1/status') {
-      respond(response, 200, { capabilities: ['lab.reset'], service: 'mos-lab-reset-agent' });
-      return;
-    }
     const jobMatch = key.match(/^GET \/v1\/lab\/reset\/([^/]+)$/u);
     if (jobMatch) {
       respond(response, 200, readJob(decodeURIComponent(jobMatch[1])));

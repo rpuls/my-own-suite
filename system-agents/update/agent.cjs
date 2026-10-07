@@ -204,10 +204,6 @@ fs.mkdirSync(paths.jobsDir, { recursive: true });
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
   try {
-    if (request.method === 'GET' && url.pathname === '/healthz') {
-      respond(response, 200, { ok: true, service: 'mos-update-agent' });
-      return;
-    }
     if (request.method === 'GET' && url.pathname === '/v1/status') {
       const currentJob = readCurrentJob();
       respond(response, 200, {
@@ -344,16 +340,6 @@ const server = http.createServer(async (request, response) => {
       }
       const track = writeUpdateTrack(paths, await readBody(request, 32 * 1024));
       respond(response, 200, { track, updaterStatus: await collectStatus(paths) });
-      return;
-    }
-    if (request.method === 'GET' && url.pathname.startsWith('/v1/jobs/')) {
-      const id = path.basename(url.pathname);
-      const jobPath = path.join(paths.jobsDir, `${id}.json`);
-      if (!fs.existsSync(jobPath)) {
-        respond(response, 404, { code: 'NOT_FOUND', error: 'Job was not found.' });
-        return;
-      }
-      respond(response, 200, readJson(jobPath));
       return;
     }
     respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
