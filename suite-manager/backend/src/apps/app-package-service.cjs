@@ -458,26 +458,6 @@ class AppPackageService {
     return { capabilityId, consumerPackage, providerCapability, providerPackage, rows };
   }
 
-  // A connection stores the provider's address in the consumer's config rows,
-  // so a suite that moves resolves them again before the consumer's runtime is
-  // re-applied; the projections only reference the rows.
-  refreshImportedConfig(consumer, requestContext) {
-    const instances = this.store.getAppInstances();
-    for (const relationship of this.store.getAppIntegrations()) {
-      if (relationship.consumerInstanceId !== consumer.id || relationship.status === 'removed') continue;
-      const provider = instances.find((item) => item.id === relationship.providerInstanceId);
-      if (!provider) continue;
-      const { rows } = this.resolveIntegration({
-        consumer,
-        provider,
-        providerCapabilityId: relationship.providerCapabilityId,
-        providerPublicUrl: requestContextForPackage(provider.packageId, requestContext),
-        slotId: relationship.consumerIntegrationSlot,
-      });
-      this.store.upsertAppConfigRows({ at: this.now().toISOString(), rows });
-    }
-  }
-
   async reapplyIntegrationRelationship(relationship, requestContext = {}) {
     const provider = this.store.getAppInstances().find((item) => item.id === relationship.providerInstanceId);
     const consumer = this.store.getAppInstances().find((item) => item.id === relationship.consumerInstanceId);
@@ -519,6 +499,18 @@ class AppPackageService {
     }
 
     try {
+      // The provider's address is stored in the consumer's config rows when the
+      // connection is made, so it is resolved again here: it may have moved since.
+      this.store.upsertAppConfigRows({
+        at: this.now().toISOString(),
+        rows: this.resolveIntegration({
+          consumer,
+          provider,
+          providerCapabilityId: relationship.providerCapabilityId,
+          providerPublicUrl: requestContextForPackage(provider.packageId, requestContext),
+          slotId: relationship.consumerIntegrationSlot,
+        }).rows,
+      });
       await this.applyPackageRuntime(consumer.packageId, requestContextForPackage(consumer.packageId, requestContext));
       const network = await this.agent.connectNetwork(networkConnectRequest(
         { manifest: this.installedPackageFor(consumer).manifest, packageId: consumer.packageId },
@@ -1561,7 +1553,6 @@ class AppPackageService {
       if (instance.status !== 'installed') continue;
       const packageContext = requestContextForPackage(instance.packageId, requestContext);
       try {
-        this.refreshImportedConfig(instance, requestContext);
         const result = await this.applyPackageRuntime(instance.packageId, packageContext);
         runtime.push({
           appHost: result.appHost || packageContext.appHost,
@@ -1580,13 +1571,23 @@ class AppPackageService {
       }
     }
 
+    // Applying recreated every container, so each connected pair is joined
+    // again, the way a restart joins it, with the consumer's imports re-resolved.
+    const integrations = [];
+    for (const relationship of this.store.getAppIntegrations()) {
+      if (relationship.status === 'removed') continue;
+      integrations.push(await this.reapplyIntegrationRelationship(relationship, requestContext));
+    }
+
     const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
     const runtimeFailed = runtime.some((item) => item.status === 'failed');
+    const integrationFailed = integrations.some((item) => item.status === 'failed');
     return {
       homepage,
       homepageEntryFailures,
+      integrations,
       runtime,
-      status: homepageFailed || runtimeFailed ? 'partial' : 'applied',
+      status: homepageFailed || runtimeFailed || integrationFailed ? 'partial' : 'applied',
     };
   }
 

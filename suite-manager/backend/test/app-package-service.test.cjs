@@ -2473,9 +2473,10 @@ test('an HTTPS-only app on the Easy Door says its certificate is on its way, and
 // from the pre-move host after DNS-01, blocked as mixed content).
 test('moving the suite re-resolves what a connected app imports from its provider', async () => {
   const applies = [];
+  let connects = 0;
   const agent = {
     async apply(input) { applies.push(input); return { status: 'applied', steps: [] }; },
-    async connectNetwork() { return { status: 'connected' }; },
+    async connectNetwork() { connects += 1; return { status: 'connected' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async status() { return agentStatus(); },
   };
@@ -2512,5 +2513,9 @@ test('moving the suite re-resolves what a connected app imports from its provide
   assert.equal(seafileApply.publicUrl, 'https://seafile.moved.test/');
   assert.equal(editorUrl(seafileApply), 'https://onlyoffice.moved.test/web-apps/apps/api/documents/api.js');
   assert.equal(jwtRow().secretRef, jwtBefore.secretRef);
+  // Re-applying recreated both apps' containers, so the pair is joined again.
+  assert.equal(connects, 2);
+  assert.deepEqual(result.integrations.map((item) => item.status), ['active']);
+  assert.equal(store.getAppIntegrations()[0].status, 'active');
   store.close();
 });

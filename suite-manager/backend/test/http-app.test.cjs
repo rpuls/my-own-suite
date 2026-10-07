@@ -2378,7 +2378,7 @@ test('the suite address API requires authentication, changes to a domain in the 
     const status = await awaitAddressChange(baseUrl, cookie, 'home.mos.example.com');
     assert.equal(status.lastChange.status, 'applied');
     assert.equal(status.lastChange.stage, 'apps');
-    assert.deepEqual(status.lastChange.result, { homepage: { changed: false, entries: [], file: 'services.template.yaml', operationId: status.lastChange.result.homepage.operationId, revision: 'sha256:next' }, homepageEntryFailures: [], runtime: [], status: 'applied' });
+    assert.deepEqual(status.lastChange.result, { homepage: { changed: false, entries: [], file: 'services.template.yaml', operationId: status.lastChange.result.homepage.operationId, revision: 'sha256:next' }, homepageEntryFailures: [], integrations: [], runtime: [], status: 'applied' });
     assert.equal(status.address.kind, 'domain');
     assert.equal(status.address.baseDomain, 'mos.example.com');
     assert.equal(status.address.url, 'https://home.mos.example.com/');
