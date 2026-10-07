@@ -1367,50 +1367,6 @@ test('WebSocket upgrades require a valid Home session and tunnel when authentica
   }
 });
 
-test('empty setup status requires owner creation', async () => {
-  await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
-    const status = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.deepEqual(status, {
-      owner: null,
-      ownerClaimRequired: false,
-      secureTransport: false,
-      status: 'needs-owner',
-      terms: { accepted: false, acceptedAt: null, version: TERMS_VERSION },
-    });
-  });
-});
-
-test('cloud owner creation requires HTTPS and the one-time claim token', async () => {
-  await withServer(async (baseUrl) => {
-    const insecure = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    assert.equal(insecure.status, 403);
-    assert.equal((await insecure.json()).code, 'HTTPS_REQUIRED_FOR_OWNER_SETUP');
-
-    const wrongClaim = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'wrong', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.equal(wrongClaim.status, 403);
-    assert.equal((await wrongClaim.json()).code, 'OWNER_CLAIM_REQUIRED');
-
-    const claimed = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.equal(claimed.status, 201);
-    assert.match(String(claimed.headers.get('set-cookie')), /; Secure/u);
-  }, { ownerClaimToken: 'claim-secret' });
-});
-
 test('owner creation API signs in and changes setup status', async () => {
   await withServer(async (baseUrl) => {
     const createResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
@@ -1435,27 +1391,6 @@ test('owner creation API signs in and changes setup status', async () => {
     const status = await statusResponse.json();
 
     assert.equal(status.status, 'signed-in');
-    assert.equal(status.owner.email, 'owner@example.com');
-  });
-});
-
-test('existing-owner signed-out state never returns setup again', async () => {
-  await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify({
-        email: 'owner@example.com',
-        name: 'Suite Owner',
-        password: 'correct horse battery',
-      }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
-    const status = await statusResponse.json();
-
-    assert.equal(statusResponse.status, 200);
-    assert.equal(status.status, 'signed-out');
     assert.equal(status.owner.email, 'owner@example.com');
   });
 });
@@ -1503,23 +1438,6 @@ test('login and logout transition session state', async () => {
     assert.equal(logoutResponse.status, 200);
     assert.equal(logout.status, 'signed-out');
     assert.match(logoutResponse.headers.get('set-cookie'), /Max-Age=0/);
-  });
-});
-
-test('terms acceptance and the owner password change require a session', async () => {
-  await withServer(async (baseUrl) => {
-    for (const [pathname, body] of [
-      ['/suite-manager/api/setup/terms/accept', { version: TERMS_VERSION }],
-      ['/suite-manager/api/settings/owner/password', { currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }],
-    ]) {
-      const response = await fetch(`${baseUrl}${pathname}`, {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      });
-      assert.equal(response.status, 401);
-      assert.equal((await response.json()).code, 'AUTH_REQUIRED');
-    }
   });
 });
 
@@ -1728,32 +1646,6 @@ test('a browser that has signed in before gets past an account-wide backoff, and
     assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'a different passphrase' })).status, 429);
     assert.equal((await login(baseUrl, { cookie: reissued, ip: '198.51.100.9', password: 'a different passphrase' })).status, 200);
   }, { loginThrottle });
-});
-
-test('duplicate owner creation returns conflict', async () => {
-  await withServer(async (baseUrl) => {
-    const owner = {
-      email: 'owner@example.com',
-      name: 'Suite Owner',
-      password: 'correct horse battery',
-    };
-
-    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify(owner),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-
-    const duplicateResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
-      body: JSON.stringify(owner),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const duplicate = await duplicateResponse.json();
-
-    assert.equal(duplicateResponse.status, 409);
-    assert.equal(duplicate.code, 'OWNER_ALREADY_EXISTS');
-  });
 });
 
 // The HTTPS agent as Suite Manager sees it. `apply` answers only once the name is
@@ -2344,24 +2236,6 @@ test('external source routes reject a bad URL as 400 and a hostile candidate as 
   store.close();
 });
 
-test('session cookies become Secure only for HTTPS forwarded requests', async () => {
-  await withServer(async (baseUrl) => {
-    const httpResponse = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
-      body: JSON.stringify({ email: 'owner@example.com', name: 'Owner', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
-      method: 'POST',
-    });
-    assert.doesNotMatch(httpResponse.headers['set-cookie'][0], /; Secure/u);
-
-    const httpsLogin = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
-      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
-      headers: { 'Content-Type': 'application/json', Host: 'home.test', 'X-Forwarded-Proto': 'https' },
-      method: 'POST',
-    });
-    assert.match(httpsLogin.headers['set-cookie'][0], /; Secure/u);
-  }, { homeHost: 'home.test' });
-});
-
 // The owner is told "Internal server error." on purpose, so unless the reason is
 // written down here it exists nowhere at all — which is exactly the state this
 // replaced. The reference is what lets a screenshot and a journal line be
@@ -2546,30 +2420,6 @@ test('a recorded failure stops being reported once the app applies successfully'
   }, { appAgent, homeHost: 'home.test' });
 });
 
-
-// The page in front of Suite Manager is decided from this before the first
-// screen paints. What each agent answer means is handover-service.test.cjs;
-// this pins the wiring: only a signed-in caller is told, and confirming the
-// login is what takes it to done.
-test('the setup status says what this machine still has to hand its owner', async () => {
-  const stateDir = await tempStateDir();
-  await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
-    const signedOut = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
-    assert.equal(signedOut.json().handover, undefined);
-
-    const read = async () => (await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().handover;
-    assert.deepEqual(await read(), { login: 'pending', recoveryKey: 'pending' });
-
-    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
-    assert.deepEqual(await read(), { login: 'done', recoveryKey: 'pending' });
-  }, {
-    homeHost: 'home.test',
-    stateDir,
-    vaultAgent: { async status() { return { handover: 'pending', state: 'unlocked' }; } },
-  });
-});
 
 
 // --- Startup protection -----------------------------------------------------

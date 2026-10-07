@@ -1,129 +1,26 @@
 const http = require('node:http');
-const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { OfficialCatalogError } = require('../apps/official-catalog-service.cjs');
 const { withUnmetRequirements } = require('../apps/host-requirements.cjs');
-const { resolveClientAddress } = require('../auth/login-throttle.cjs');
-const {
-  KNOWN_BROWSER_COOKIE,
-  SESSION_COOKIE,
-  clearSessionCookie,
-  knownBrowserCookie,
-  parseCookies,
-  sessionCookie,
-} = require('./cookies.cjs');
+const { SESSION_COOKIE, parseCookies } = require('./cookies.cjs');
+const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost, readJsonBody } = require('./request.cjs');
-const { fileResponse, htmlResponse, jsonResponse, respondError, textResponse } = require('./responses.cjs');
+const { fileResponse, jsonResponse, respondError } = require('./responses.cjs');
 const { createRouter } = require('./router.cjs');
 const { routeTable } = require('./routes/index.cjs');
 
-const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
-const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
-
-function secureTokenEqual(actual, expected) {
-  const actualBuffer = Buffer.from(String(actual || ''));
-  const expectedBuffer = Buffer.from(String(expected || ''));
-  return actualBuffer.length > 0
-    && actualBuffer.length === expectedBuffer.length
-    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function resolveStaticPath(rootDir, requestPath) {
-  const decodedPath = decodeURIComponent(requestPath);
-  const normalizedPath = path.normalize(decodedPath).replace(/^(\.\.(\/|\\|$))+/, '');
-  const rootPath = path.resolve(rootDir);
-  const filePath = path.resolve(rootDir, normalizedPath.replace(/^[/\\]+/, ''));
-  const relativePath = path.relative(rootPath, filePath);
-
-  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-    return null;
-  }
-
-  return filePath;
-}
-
-function readFrontendHtml(frontendDistDir) {
-  const indexPath = path.join(frontendDistDir, 'index.html');
-  if (!fs.existsSync(indexPath)) {
-    return null;
-  }
-
-  return fs.readFileSync(indexPath, 'utf8');
-}
-
-// Which build of the frontend this server is serving. It is a hash of the built
-// index.html, so it changes exactly when the bundle it points at changes: a
-// restart that shipped no new frontend keeps the same id, and a browser holding
-// an older one knows it is running code this server no longer serves.
-//
-// Cached against the file's mtime and size rather than recomputed, because the
-// running frontend asks for it on a timer.
-let frontendBuildCache = null;
-function frontendBuildId(frontendDistDir) {
-  const indexPath = path.join(frontendDistDir, 'index.html');
-  let stats = null;
-  try { stats = fs.statSync(indexPath); } catch { return ''; }
-  const stamp = `${stats.mtimeMs}:${stats.size}`;
-  if (frontendBuildCache?.stamp === stamp) return frontendBuildCache.id;
-  const html = readFrontendHtml(frontendDistDir);
-  if (html === null) return '';
-  const id = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);
-  frontendBuildCache = { id, stamp };
-  return id;
-}
 
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
 
-// The build output directory holds nothing but bundles whose filename contains
-// their own content hash, so a year is safe and a new build is a new URL.
-// Everything else served from here — the brand marks, the favicons, the fonts —
-// keeps its filename across a rebrand, so it gets an hour instead of forever.
-function assetCacheControl(relativePath) {
-  return relativePath.startsWith('assets/')
-    ? 'public, max-age=31536000, immutable'
-    : 'public, max-age=3600';
-}
-
-function serveFrontendAsset(response, frontendDistDir, pathname) {
-  const relativePath = pathname.slice(FRONTEND_ASSET_PREFIX.length);
-  const staticPath = resolveStaticPath(frontendDistDir, relativePath);
-  if (!staticPath || !fs.existsSync(staticPath) || !fs.statSync(staticPath).isFile()) {
-    return false;
-  }
-
-  fileResponse(response, staticPath, { 'Cache-Control': assetCacheControl(relativePath) });
-  return true;
-}
-
-function serveFrontend(response, frontendDistDir) {
-  const html = readFrontendHtml(frontendDistDir);
-  if (html) {
-    const buildId = frontendBuildId(frontendDistDir);
-    // Never cached, and it is the one response that must not be: the bundles it
-    // names are immutable and permanently cacheable precisely because this
-    // document is the thing that says which ones to load. A stale copy of it
-    // pins a browser to the previous build with no way to find out.
-    htmlResponse(response, 200, buildId
-      ? html.replace('</head>', `  <meta name="mos-build" content="${buildId}" />
-  </head>`)
-      : html, { 'Cache-Control': 'no-store' });
-    return;
-  }
-
-  textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm run build:client.');
-}
-
 function createRequestHandler(services) {
   const {
-    addressService, appPackages, appUrls, catalogService, externalSourceService, frontendDistDir, handover,
-    homepage, homepageConfig, installJobs, logger, ownerClaimToken, setup, signIn, updateJobs, vault,
+    addressService, appPackages, appUrls, catalogService, externalSourceService, frontendDistDir, homepage,
+    homepageConfig, installJobs, logger, setup, updateJobs,
   } = services;
   const { hostFor: appHostFor, publicUrlOf, publicUrls } = appUrls;
   // The UI follows this URL rather than rebuilding it from a manifest host, which
@@ -163,101 +60,6 @@ function createRequestHandler(services) {
       if (url.pathname.startsWith(SUITE_MANAGER_API_PREFIX)) {
         const context = { cookies, request, requestHost, response, secure: isHttpsRequest(request), sessionToken, url };
         if (await dispatch(url.pathname.slice(SUITE_MANAGER_API_PREFIX.length), context)) return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
-        const status = setup.status(sessionToken);
-        jsonResponse(response, 200, {
-          ...status,
-          // Only a signed-in caller is told what the machine still holds for its
-          // owner, and it rides on the bootstrap payload for the same reason the
-          // terms do: the gate has to be up before the first screen paints.
-          ...(status.status === 'signed-in' ? { handover: await handover.state() } : {}),
-          ownerClaimRequired: Boolean(ownerClaimToken),
-          secureTransport: isHttpsRequest(request),
-        });
-        return;
-      }
-
-      // Unauthenticated because the frontend it identifies is served to anyone
-      // who can reach this port, so the hash of it reveals nothing that the
-      // bundle does not. The sign-in screen is left running across an update the
-      // same as any other screen, and needs the same way to notice.
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/build`) {
-        jsonResponse(response, 200, { id: frontendBuildId(frontendDistDir) }, { 'Cache-Control': 'no-store' });
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/owner`) {
-        const body = await readJsonBody(request);
-        if (ownerClaimToken && !isHttpsRequest(request)) {
-          jsonResponse(response, 403, {
-            code: 'HTTPS_REQUIRED_FOR_OWNER_SETUP',
-            error: 'Owner setup is locked until this cloud server is reachable over HTTPS. Check that inbound ports 80 and 443 are allowed by the VPS provider firewall.',
-          });
-          return;
-        }
-        if (ownerClaimToken && !secureTokenEqual(body.claimToken, ownerClaimToken)) {
-          jsonResponse(response, 403, {
-            code: 'OWNER_CLAIM_REQUIRED',
-            error: 'Use the secure one-time owner setup URL printed by the MOS installer.',
-          });
-          return;
-        }
-        const result = await setup.createOwner(body);
-        // The owner finished setup through this door, so this is where the suite
-        // is published from now on. Recorded after the owner exists so a refused
-        // attempt from another door cannot move the address.
-        try {
-          addressService.recordDoor(requestHost, { scheme: isHttpsRequest(request) ? 'https' : 'http' });
-        } catch (error) {
-          logger.error('suite-address-record-failed', { error, host: requestHost });
-        }
-        jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
-        });
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
-        const body = await readJsonBody(request);
-        const result = await signIn.signIn({ credentials: body, ip: resolveClientAddress(request), knownBrowserToken: cookies[KNOWN_BROWSER_COOKIE] });
-        const secure = isHttpsRequest(request);
-        const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
-        if (result.knownBrowserToken) cookiesToSet.push(knownBrowserCookie(result.knownBrowserToken, secure));
-        jsonResponse(response, 200, { owner: result.owner, status: result.status }, { 'Set-Cookie': cookiesToSet });
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/terms/accept`) {
-        if (signedOut('Sign in to accept the MOS terms.')) return;
-        jsonResponse(response, 200, setup.acceptTerms(await readJsonBody(request, 4 * 1024)));
-        return;
-      }
-
-      // Changing the owner password rotates the session cookie in the same
-      // response that ends every other session, so the browser that made the
-      // change is the only one still signed in when this returns.
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/owner/password`) {
-        if (signedOut('Sign in to change the owner password.')) return;
-        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024), {
-          beforeCommit: (password) => vault.teachOwnerPassword(password),
-        });
-        // Every known browser was forgotten with the old password; the one that
-        // proved it is remembered again, like the session it keeps.
-        const secure = isHttpsRequest(request);
-        jsonResponse(response, 200, { owner: result.owner, startupProtection: result.startupProtection, status: result.status }, {
-          'Set-Cookie': [sessionCookie(result.sessionToken, secure), knownBrowserCookie(setup.rememberBrowser(), secure)],
-        });
-        return;
-      }
-
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/logout`) {
-        const result = setup.logout(sessionToken);
-        jsonResponse(response, 200, result, {
-          'Set-Cookie': clearSessionCookie(isHttpsRequest(request)),
-        });
-        return;
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/packages`) {
