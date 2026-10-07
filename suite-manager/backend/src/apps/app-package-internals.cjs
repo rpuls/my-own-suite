@@ -737,11 +737,8 @@ function renderInstanceProjections(manifest, configRows = [], { instanceId, inte
 
 function runtimeConnectionState(app) {
   if (!app.instance) return 'available';
-  if (app.instance.status === 'uninstalled') return 'available';
-  if (app.instance.status === 'disabled' || app.instance.enabled === false) return 'disabled';
-  if (runtimeApplied(app.instance.projections || [])) return 'running';
-  if (app.instance.status === 'installed') return 'installed';
-  return app.instance.status || 'available';
+  if (app.instance.status === 'disabled') return 'disabled';
+  return runtimeApplied(app.instance.projections) ? 'running' : 'installed';
 }
 
 function requestContextForPackage(packageId, requestContext = {}) {

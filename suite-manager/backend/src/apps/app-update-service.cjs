@@ -181,7 +181,6 @@ class AppUpdateService {
     // promote returning and the `snapshot-promoted` write, which the
     // stage-based labeling above can only call rollback-required.
     for (const instance of this.store.getAppInstances()) {
-      if (instance.status === 'uninstalled') continue;
       if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) continue;
       const operation = this.store.latestAppUpdateOperation(instance.id);
       if (!operation || operation.status !== 'failed') continue;
@@ -290,7 +289,7 @@ class AppUpdateService {
 
   async performRecoverPackageUpdate(packageId, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') {
+    if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before recovering it.', 409);
     }
     if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) {
@@ -410,7 +409,7 @@ class AppUpdateService {
 
   async preparePackageUpdate(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
+    if (!instance) throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
     const installedPackage = this.apps.installedPackageFor(instance);
     let candidate;
     try {
@@ -446,7 +445,7 @@ class AppUpdateService {
 
   async performStageUpdate(packageId, input = {}, requestContext = {}, onStage = () => {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
+    if (!instance) throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
     // Activation starts the candidate's containers, so updating a disabled app
     // would end with containers running while the store says disabled.
     if (instance.status !== 'installed') {

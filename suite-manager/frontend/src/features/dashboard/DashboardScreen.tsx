@@ -12,15 +12,14 @@ type DashboardScreenProps = {
 
 // Only the shape the welcome screen needs: whether anything is installed. The
 // Apps screen owns the full package model.
-type InstalledProbe = { instance: { status?: string } | null };
+type InstalledProbe = { instance: object | null };
 
 // Whether this suite has at least one app the owner actually installed.
-// Uninstalled instances are tombstones, not apps, so they do not count.
 async function readInstalledCount(): Promise<number> {
   const response = await fetch('/suite-manager/api/apps/packages');
   if (!response.ok) throw new Error('Unable to read installed apps.');
   const body = await response.json() as { packages?: InstalledProbe[] };
-  return (body.packages || []).filter((item) => item.instance && item.instance.status !== 'uninstalled').length;
+  return (body.packages || []).filter((item) => item.instance).length;
 }
 
 function CommunityCard() {

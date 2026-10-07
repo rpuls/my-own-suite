@@ -368,9 +368,8 @@ function guideStatusLabel(app: AppPackageSummary) {
 
 function statusFor(app: AppPackageSummary) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
-  if (app.instance?.status === 'uninstalled') return { className: 'is-available', label: 'Uninstalled', tone: 'info' };
-  if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Stopped', tone: 'info' };
-  if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
+  if (app.instance?.status === 'disabled') return { className: 'is-progress', label: 'Stopped', tone: 'info' };
+  if (healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (app.installJob?.status === 'running') return { className: 'is-progress', label: 'Installing', tone: 'info' };
   if (app.updateJob?.status === 'running') return { className: 'is-progress', label: 'Updating', tone: 'info' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
@@ -766,8 +765,7 @@ function AppDetail({
   const dialogJob = updateStartedAt && app.updateJob?.startedAt === updateStartedAt ? app.updateJob : null;
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
-  const uninstalled = app.instance?.status === 'uninstalled';
-  const disabled = !uninstalled && (app.instance?.status === 'disabled' || app.instance?.enabled === false);
+  const disabled = app.instance?.status === 'disabled';
   const url = app.publicUrl;
   const screenshots = app.catalog.screenshots;
   const cover = screenshots[0];
@@ -886,7 +884,7 @@ function AppDetail({
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   // Null means no listing at all — removed, paused, never reached — not an unticked clock.
   const sourceReadAt = app.catalogUpdate?.sourceCheckedAt || null;
-  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
+  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled);
   const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
     ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),
@@ -894,11 +892,11 @@ function AppDetail({
     // when the app was created, in plain language. The technical half — MOS's
     // generated values and the environment editor — is behind an AdvancedPanel
     // inside it, which gates itself.
-    ...(app.instance && !uninstalled ? [{ label: 'Settings', onSelect: () => setConfigOpen(true) }] : []),
+    ...(app.instance ? [{ label: 'Settings', onSelect: () => setConfigOpen(true) }] : []),
     ...(canRestartRuntime ? [{ label: 'Restart', onSelect: () => onLifecycle(app, 'restart') }] : []),
     ...(ready ? [{ label: 'Stop (keeps data)', onSelect: () => onLifecycle(app, 'stop') }] : []),
     ...(disabled ? [{ label: 'Start', onSelect: () => onLifecycle(app, 'enable') }] : []),
-    ...(app.instance && !uninstalled ? [{ label: 'Uninstall', onSelect: () => setConfirmUninstall(true) }] : []),
+    ...(app.instance ? [{ label: 'Uninstall', onSelect: () => setConfirmUninstall(true) }] : []),
   ];
 
   return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
@@ -939,7 +937,7 @@ function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading || updateRunning} onClick={() => void prepareUpdate()} type="button">{updateRunning ? 'Updating...' : comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || uninstalled || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating || updateRunning} items={maintenanceActions} /> : null}
@@ -1180,7 +1178,7 @@ function AppDetail({
       entries={ownerEnv}
       fields={app.setup.fields}
       homepageAvailable={homepageAvailable}
-      installed={Boolean(app.instance) && !uninstalled}
+      installed={Boolean(app.instance)}
       installing={installing}
       onClose={() => setConfigOpen(false)}
       onInstall={submitInstall}

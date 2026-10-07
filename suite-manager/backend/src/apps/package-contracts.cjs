@@ -624,11 +624,6 @@ const FORBIDDEN_SERVICE_KEYS = Object.freeze([
   'dns', 'dockerSocket', 'extraHosts', 'groupAdd', 'ipc', 'mounts', 'network', 'networkMode',
   'pid', 'ports', 'privileged', 'securityOpt', 'sysctls', 'userns', 'uts',
 ]);
-const CONSTRAINED_CAPABILITY_PROFILE = Object.freeze({
-  forbiddenManifestKeys: FORBIDDEN_MANIFEST_KEYS,
-  forbiddenServiceKeys: FORBIDDEN_SERVICE_KEYS,
-  volumeNamePattern: VOLUME_NAME_PATTERN.source,
-});
 const RESERVED_ID_PREFIXES = Object.freeze(['mos', 'official', 'suite']);
 
 function isPlainRecord(value) {
@@ -820,7 +815,6 @@ module.exports = {
   ADVISORY_SEVERITY_RANK,
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
-  CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
   EXTERNAL_ROUTE_HOST_MAX_LENGTH,
   EXTERNAL_ROUTE_HOST_PREFIX,

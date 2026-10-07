@@ -632,7 +632,7 @@ function progress(file, count) {
 function packageBackupInventory() {
   const store = new SuiteManagerStore(stateDir);
   try {
-    return store.getAppInstances().filter((instance) => instance.status !== 'uninstalled').map((instance) => {
+    return store.getAppInstances().map((instance) => {
       if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) throw new Error(`Installed package snapshot is unavailable for ${instance.packageId}.`);
       readAppPackageManifest(instance.snapshotPath);
       const manifest = verifySnapshotIdentity(instance.snapshotPath, { errorMessage: `Installed package snapshot is invalid for ${instance.packageId}.`, expectedDigest: instance.packageDigest, packageId: instance.packageId });
@@ -655,7 +655,7 @@ function packageBackupInventory() {
 function installedAppInstances() {
   const store = new SuiteManagerStore(stateDir);
   try {
-    return store.getAppInstances().filter((instance) => instance.status !== 'uninstalled').map((instance) => ({ enabled: instance.enabled === true || instance.enabled === 1, instanceId: instance.id, packageId: instance.packageId }));
+    return store.getAppInstances().map((instance) => ({ enabled: instance.enabled, instanceId: instance.id, packageId: instance.packageId }));
   } finally {
     store.close();
   }

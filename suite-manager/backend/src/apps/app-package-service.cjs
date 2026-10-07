@@ -257,7 +257,7 @@ class AppPackageService {
   // inventing one from the id is what this whole derivation exists to prevent.
   publicRouteHostFor(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') return null;
+    if (!instance) return null;
     return primaryProjectedRoute(this.store.getAppProjections(instance.id))?.host || null;
   }
 
@@ -553,7 +553,7 @@ class AppPackageService {
   async reapplyIntegrationRelationship(relationship, requestContext = {}) {
     const provider = this.store.getAppInstances().find((item) => item.id === relationship.providerInstanceId);
     const consumer = this.store.getAppInstances().find((item) => item.id === relationship.consumerInstanceId);
-    if (!provider || !consumer || provider.status === 'uninstalled' || consumer.status === 'uninstalled') {
+    if (!provider || !consumer) {
       this.store.markAppIntegrationStatus({
         at: this.now().toISOString(),
         errorCode: 'APP_INTEGRATION_APP_UNINSTALLED',
@@ -562,7 +562,7 @@ class AppPackageService {
       });
       return { relationshipId: relationship.id, status: 'removed' };
     }
-    if (provider.status === 'disabled' || provider.enabled === false) {
+    if (provider.status === 'disabled') {
       this.store.markAppIntegrationStatus({
         at: this.now().toISOString(),
         errorCode: 'APP_INTEGRATION_PROVIDER_DISABLED',
@@ -571,7 +571,7 @@ class AppPackageService {
       });
       return { relationshipId: relationship.id, status: 'degraded' };
     }
-    if (consumer.status === 'disabled' || consumer.enabled === false) {
+    if (consumer.status === 'disabled') {
       this.store.markAppIntegrationStatus({
         at: this.now().toISOString(),
         errorCode: 'APP_INTEGRATION_CONSUMER_DISABLED',
@@ -1149,8 +1149,7 @@ class AppPackageService {
     const candidatesByPackage = new Map(inspectAppPackages(this.appsDir).map((summary) => [summary.id, summary]));
     const packageIds = new Set([...candidatesByPackage.keys(), ...instancesByPackage.keys()]);
     const packages = [...packageIds].sort().map((packageId) => {
-      const storedInstance = instancesByPackage.get(packageId);
-      const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+      const instance = instancesByPackage.get(packageId);
       // One instance whose snapshot no longer matches its record (a pending
       // update commit, a corrupted snapshot) must degrade to its own recovery
       // card, never take the whole app list down with it.
@@ -1272,7 +1271,7 @@ class AppPackageService {
   capabilityPeersFor(packageId) {
     const providedTypes = new Set();
     const providersByType = new Map();
-    const instances = this.store.getAppInstances().filter((instance) => instance.status !== 'uninstalled');
+    const instances = this.store.getAppInstances();
     for (const instance of instances) {
       if (instance.packageId === packageId || instance.snapshotState !== 'installed') continue;
       let manifest;
@@ -1304,8 +1303,7 @@ class AppPackageService {
   }
 
   iconPath(packageId) {
-    const storedInstance = this.store.getAppInstanceByPackageId(packageId);
-    const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+    const instance = this.store.getAppInstanceByPackageId(packageId);
     if (instance && instance.snapshotState !== 'installed') {
       throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'This app icon is unavailable until its installed package is recovered.', 404);
     }
@@ -1335,8 +1333,7 @@ class AppPackageService {
   // screenshot list publicCatalog() projects, so the URLs the summary hands out
   // always land on the file the manifest declared at that position.
   screenshotPath(packageId, index) {
-    const storedInstance = this.store.getAppInstanceByPackageId(packageId);
-    const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+    const instance = this.store.getAppInstanceByPackageId(packageId);
     if (instance && instance.snapshotState !== 'installed') {
       throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'This app screenshot is unavailable until its installed package is recovered.', 404);
     }
@@ -1366,12 +1363,7 @@ class AppPackageService {
   async installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
-      if (current.status === 'uninstalled') {
-        fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
-        this.store.deleteAppInstance({ instanceId: current.id });
-      } else {
-        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
-      }
+      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
     }
 
     const packageDir = path.join(this.appsDir, packageId);
@@ -1534,7 +1526,7 @@ class AppPackageService {
     // collide later, in the proxy.
     const requested = new Set((manifest.routes || []).map((route) => effectiveRouteHost(route.host, packageId)));
     for (const other of this.store.getAppInstances()) {
-      if (other.packageId === packageId || other.status === 'uninstalled') continue;
+      if (other.packageId === packageId) continue;
       const caddy = this.store.getAppProjections(other.id).find((projection) => projection.kind === 'caddy')?.content;
       for (const route of Array.isArray(caddy?.routes) ? caddy.routes : []) {
         if (requested.has(route.host)) {
@@ -1559,12 +1551,7 @@ class AppPackageService {
     }
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
-      if (current.status === 'uninstalled') {
-        fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
-        this.store.deleteAppInstance({ instanceId: current.id });
-      } else {
-        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
-      }
+      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
     }
     if (!this.agent?.snapshotExternalPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
@@ -1794,7 +1781,7 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') {
+    if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before disabling it.', 409);
     }
     if (instance.status === 'disabled') {
@@ -1848,7 +1835,7 @@ class AppPackageService {
 
   async performEnablePackage(packageId, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') {
+    if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before enabling it.', 409);
     }
     if (instance.status === 'installed') {

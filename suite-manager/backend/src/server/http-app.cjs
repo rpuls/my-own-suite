@@ -11,8 +11,6 @@ const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs')
 const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
-const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
-const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
@@ -21,7 +19,7 @@ const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs')
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { createLogger, requestId } = require('./logger.cjs');
-const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
+const { AppPackageService } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
 const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
@@ -237,17 +235,8 @@ function errorStatus(error) {
   if (Number.isInteger(error.statusCode)) {
     return error.statusCode;
   }
-  if (error instanceof AppPackageServiceError) {
-    return error.statusCode;
-  }
   if (error instanceof ExternalSourceError) {
     return EXTERNAL_SOURCE_STATUS[error.code] || 400;
-  }
-  if (error instanceof HttpsSettingsError) {
-    return error.statusCode;
-  }
-  if (error instanceof SmtpSettingsError) {
-    return error.statusCode;
   }
   if (!(error instanceof SetupError)) {
     return 500;
