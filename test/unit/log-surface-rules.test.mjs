@@ -31,7 +31,7 @@ function record(level, event, extra = {}) {
   return `2026-09-01T11:00:00+0000 mos-suite-manager[912]: ${JSON.stringify({ ts: '2026-09-01T11:00:00.000Z', level, event, ...extra })}`;
 }
 
-const HEALTHY_UNIT_LOG = [record('info', 'listening', { port: 3100 }), record('info', 'app-package-migrated')].join('\n');
+const HEALTHY_UNIT_LOG = [record('info', 'listening', { port: 3100 }), record('info', 'app-update-recovered', { instanceId: 'instance-one', recoveryState: 'committed' })].join('\n');
 
 function bundle({ containerLog = '[INFO] Rocket has launched from http://0.0.0.0:80', containers, unitLog = HEALTHY_UNIT_LOG } = {}) {
   return buildSupportBundle({
