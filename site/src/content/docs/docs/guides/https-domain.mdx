@@ -18,7 +18,7 @@ The remarkable part: **your suite stays completely private.** Nothing is exposed
 
 ## What you need
 
-- A **self-hosted install** (USB or SSH). Cloud installs handle domains through the hosting provider instead, and this screen says so.
+- A **home server** (installed from the USB stick or over SSH). On a cloud server it is simpler: see [On a cloud server](#on-a-cloud-server).
 - A **domain name** whose DNS is managed by [Cloudflare](https://www.cloudflare.com/) (the free plan is fine). Cloudflare is the first supported provider; others may follow.
 - A **Cloudflare API token** — created in the next step.
 - The ability to add one local DNS rule on your network (same as in the install guide).
@@ -49,3 +49,17 @@ The remarkable part: **your suite stays completely private.** Nothing is exposed
 - **Certificates renew themselves.** Caddy (the built-in web server) owns issuance and renewal; there is nothing to remember.
 - **Why Cloudflare specifically?** The certificate flow needs API access to your DNS. MOS ships a web server custom-built with the Cloudflare DNS integration, version-pinned and verified at install time. Broader provider support is a roadmap item.
 - **Troubleshooting:** give the first certificate a minute or two; if the new address doesn't load, it's almost always the local DNS rule (test with `ping home.<your-base-domain>` — it should answer with your server's LAN IP). Your devices may also cache old DNS for a few minutes.
+
+## On a cloud server
+
+A server at a hosting provider can be reached from the internet, so the certificate authority checks your domain simply by visiting it. You need no Cloudflare account and no token.
+
+<Steps>
+
+1. **Type your domain.** Open **Settings → Suite address**, choose **Use your own domain**, and enter it, e.g. `yourdomain.example`.
+
+2. **Add one DNS record** where your domain's DNS is managed, usually at the company you bought it from. Settings shows it filled in: an **A** record named `*.yourdomain.example` pointing at your server's IP address. It covers your dashboard and every app.
+
+3. **Move your suite.** Click **Move my suite to this domain**. MOS first checks that the record points at your server, and if it does not yet, says so and changes nothing. Then each app gets its own certificate and your apps and Homepage move to `https://<app>.yourdomain.example/`.
+
+</Steps>

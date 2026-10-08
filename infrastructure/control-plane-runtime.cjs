@@ -16,6 +16,13 @@ const HOMEPAGE_PORT = 3200;
 // The installs that front Suite Manager with their own public name and never
 // have an Easy Door.
 const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'digitalocean-smoke', 'public-vps']);
+
+// The two ways a suite is hosted. A public server is reachable from the internet,
+// so a domain proves itself over HTTP like any website's; a home server is not,
+// so its domain proves itself through Cloudflare DNS, and it has the Easy Door.
+function hostingTrack(frontDoor) {
+  return PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'public-server' : 'home-server';
+}
 // Install and every managed update refuse a Caddy binary without both: an owned
 // domain proves itself through Cloudflare, the Easy Door through the ACME responder.
 const CADDY_REQUIRED_MODULES = Object.freeze(['dns.providers.cloudflare', 'dns.providers.acmedns']);
@@ -470,7 +477,8 @@ function renderCaddyfile({
 }`, suiteManagerSite(`https://${homeHost}`, suiteManagerPort));
   }
   const email = domain?.acmeEmail ? `  email ${domain.acmeEmail}\n` : '';
-  const globals = domain ? `{\n${email}  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}\n}\n\n` : '';
+  const dnsChallenge = domain && !publicCloud ? '  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}\n' : '';
+  const globals = email || dnsChallenge ? `{\n${email}${dnsChallenge}}\n\n` : '';
   return `${globals}${sites.join('\n\n')}
 
 import /etc/caddy/mos-homepage-routes.caddy
@@ -494,7 +502,7 @@ function renderMachineCaddyfile({ bootstrapHost, domain, frontDoor, liveAddress,
     bootstrapHost,
     domain: domain === undefined ? recordedDomain : domain,
     easyDoorAddresses: [liveAddress, recordedEasyDoor].filter(Boolean),
-    publicCloud: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor),
+    publicCloud: hostingTrack(frontDoor) === 'public-server',
     suiteManagerPort,
   });
 }
@@ -576,4 +584,5 @@ module.exports = {
   renderJournaldConfig,
   renderMachineCaddyfile,
   renderHomepageSystemdUnit,
+  hostingTrack,
 };

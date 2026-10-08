@@ -170,6 +170,24 @@ test('a restore that fails too keeps the checkpoint and reports both reasons, th
   assert.equal(fake.calls.some(([name]) => name === 'removeCheckpoint'), false);
 });
 
+test('a public server serves a domain from its name alone, with no Cloudflare token or check', async () => {
+  const publicFacts = lanFacts({ bootstrapHost: 'home.203.0.113.5.sslip.io', frontDoor: 'public-vps', liveAddress: '203.0.113.5', recorded: null });
+  const fake = adapter();
+  const result = await new HttpsAgentCore(fake, { facts: publicFacts }).apply({ baseDomain: 'Example.com.' });
+  assert.equal(result.status, 'applied');
+  const candidate = fake.calls.find(([name]) => name === 'installCandidate')[1];
+  assert.equal(candidate.cloudflareApiToken, null);
+  assert.match(candidate.caddyfile, /^https:\/\/home\.example\.com \{/mu);
+  assert.doesNotMatch(candidate.caddyfile, /acme_dns/u);
+  assert.deepEqual(fake.calls.find(([name]) => name === 'awaitCertificate').slice(1), ['home.example.com', null]);
+  assert.equal(fake.calls.some(([name]) => name === 'verifyCloudflareAccess'), false);
+
+  const refused = adapter();
+  await assert.rejects(() => new HttpsAgentCore(refused, { facts: publicFacts }).apply(validInput), (error) => error.code === 'INVALID_REQUEST_SHAPE');
+  await assert.rejects(() => new HttpsAgentCore(refused, { facts: publicFacts }).apply({ baseDomain: 'localhost' }), (error) => error.code === 'INVALID_BASE_DOMAIN');
+  assert.equal(refused.calls.some(([name]) => name === 'createCheckpoint'), false);
+});
+
 test('agent rejects malformed tokens before creating a checkpoint', async () => {
   const fake = adapter();
   await assert.rejects(() => new HttpsAgentCore(fake, { facts: lanFacts() }).apply({ ...validInput, cloudflareApiToken: 'bad token' }));

@@ -219,9 +219,11 @@ test('an offered domain is served with the parked credential and the offer is cl
   assert.equal(status.offered, null);
 
   // Dismissing removes the offer here and the credential at the agent.
+  const discards = () => agent.calls.filter(([name]) => name === 'discardParkedCredential').length;
+  const discardedBefore = discards();
   suiteAddress.writeOffer({ acmeEmail: null, baseDomain: 'other.example.com', from: 'restore' });
   assert.deepEqual(await service.dismissOffer(), { dismissed: true, offer: { baseDomain: 'other.example.com' } });
-  assert.equal(agent.calls.filter(([name]) => name === 'discardParkedCredential').length, 1);
+  assert.equal(discards(), discardedBefore + 1);
   assert.deepEqual(await service.dismissOffer(), { dismissed: false });
   // An offer with no contact needs one from the owner.
   suiteAddress.writeOffer({ acmeEmail: null, baseDomain: 'other.example.com', from: 'restore' });
@@ -263,12 +265,49 @@ test('address drift is reported and following the Easy Door re-bakes without tou
   await assert.rejects(() => lanName.service.change({ kind: 'easy-door' }), (error) => error.code === 'EASY_DOOR_UNAVAILABLE');
 });
 
-test('a domain change is refused on cloud installs and with anything but the three fields', async () => {
-  const cloud = makeService({ address: addressForHost('home.203.0.113.5.sslip.io', { scheme: 'https' }), detectAddress: () => '203.0.113.5', frontDoor: 'cloud-init' });
-  cloud.service.start();
-  await assert.rejects(() => cloud.service.change(domainInput), (error) => error.code === 'PRIVATE_HTTPS_UNAVAILABLE' && error.statusCode === 409);
-  assert.equal((await cloud.service.status()).privateHttpsAvailable, false);
+function publicServer({ records = {}, ...rest } = {}) {
+  const resolveHost = async (host) => {
+    if (host === 'home.203.0.113.5.sslip.io') return ['203.0.113.5'];
+    const answer = records[host] ?? records[`*.${host.split('.').slice(1).join('.')}`];
+    if (answer instanceof Error) throw answer;
+    if (!answer) throw Object.assign(new Error('nx'), { code: 'ENOTFOUND' });
+    return answer;
+  };
+  const made = makeService({ address: addressForHost('home.203.0.113.5.sslip.io', { scheme: 'https' }), bootstrapHost: 'home.203.0.113.5.sslip.io', bootstrapScheme: 'https', detectAddress: () => '10.0.0.5', frontDoor: 'public-vps', resolveHost, ...rest });
+  made.service.start();
+  return made;
+}
 
+test('every public install is on the public-server track and names its public address', async () => {
+  for (const frontDoor of ['cloud-init', 'digitalocean-smoke', 'public-vps']) {
+    const status = await publicServer({ frontDoor }).service.status();
+    assert.equal(status.track, 'public-server');
+    assert.equal(status.serverAddress, '203.0.113.5');
+  }
+  const home = makeService();
+  home.service.start();
+  assert.equal((await home.service.status()).track, 'home-server');
+});
+
+test('a public server moves to a domain from its name alone, once a wildcard points here', async () => {
+  const unpointed = publicServer();
+  await assert.rejects(() => unpointed.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_NOT_POINTED_HERE' && error.statusCode === 409 && error.message.includes('*.example.com → 203.0.113.5'));
+  const homeOnly = publicServer({ records: { 'home.example.com': ['203.0.113.5'] } });
+  await assert.rejects(() => homeOnly.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_NOT_POINTED_HERE');
+  const unanswered = publicServer({ records: { '*.example.com': Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }) } });
+  await assert.rejects(() => unanswered.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_LOOKUP_FAILED');
+  assert.equal([unpointed, homeOnly, unanswered].some(({ agent }) => agent.calls.some(([name]) => name === 'apply')), false);
+
+  const { agent, service } = publicServer({ records: { '*.example.com': ['203.0.113.5'] } });
+  await assert.rejects(() => service.change(domainInput), (error) => error.code === 'INVALID_HTTPS_REQUEST');
+  await service.change({ baseDomain: 'Example.com', kind: 'domain' });
+  const status = await settled(service);
+  assert.equal(status.lastChange.status, 'applied');
+  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { baseDomain: 'example.com' });
+  assert.deepEqual({ host: status.address.host, resolvesHere: status.address.resolvesHere, scheme: status.address.scheme }, { host: 'home.example.com', resolvesHere: true, scheme: 'https' });
+});
+
+test('a home server\'s domain change takes exactly the three fields', async () => {
   const { service } = makeService({ address: addressForHost('home.mos.home') });
   service.start();
   await assert.rejects(() => service.change({ ...domainInput, extra: true }), (error) => error.code === 'INVALID_HTTPS_REQUEST');

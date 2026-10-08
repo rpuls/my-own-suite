@@ -66,7 +66,7 @@ function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceSer
   ];
 }
 
-function appUpdateRoutes({ appPackages, appUrls, homepageConfig, updateJobs }) {
+function appUpdateRoutes({ appPackages, appUrls, updateJobs }) {
   return [
     {
       method: 'POST',
@@ -93,7 +93,6 @@ function appUpdateRoutes({ appPackages, appUrls, homepageConfig, updateJobs }) {
       handler: async ({ params: [packageId], response }) => {
         jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
           ...appUrls.publicUrlOf(packageId),
-          homepageService: homepageConfig,
           publicUrlFor: appUrls.publicUrls(),
         }));
       },

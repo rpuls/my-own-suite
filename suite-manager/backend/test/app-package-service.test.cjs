@@ -1302,11 +1302,6 @@ test('a crash between snapshot promotion and the durable commit is committed by 
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() { return agentStatus(); },
   };
-  const entries = [];
-  const homepageService = {
-    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
-    async read() { return { revision: `revision-${entries.length}` }; },
-  };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent,
@@ -1324,7 +1319,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const realComplete = store.completeAppUpdate.bind(store);
   store.completeAppUpdate = () => { throw new Error('suite manager terminated'); };
   await assert.rejects(
-    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, { ...requestContext().publicUrlFor('stirling-pdf'), homepageService }),
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
     (error) => error.code === 'APP_UPDATE_STAGE_FAILED',
   );
   store.completeAppUpdate = realComplete;
@@ -1332,8 +1327,6 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const wedged = store.getAppInstanceByPackageId('stirling-pdf');
   assert.equal(wedged.updateRecoveryState, 'commit-required');
   assert.equal(wedged.packageVersion, manifest.version);
-  // The promoted candidate keeps its Homepage entry: no rollback re-add ran.
-  assert.equal(entries.length, 1);
   // One wedged app degrades to its own recovery card instead of failing the list.
   const listed = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.equal(listed.instance.updateRecovery.state, 'commit-required');
@@ -1907,18 +1900,13 @@ test('an official candidate that ships a privacy review updates and keeps its re
   store.close();
 });
 
-test('app updates replace an applied Homepage entry and retain its applied projection state', async () => {
+test('an app update completes without Homepage and keeps its tile applied', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({
-    ...manifest,
-    homepage: { ...manifest.homepage, name: 'Updated PDF' },
-    name: 'Updated PDF',
-    version: CANDIDATE_VERSION,
-  }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
@@ -1941,18 +1929,11 @@ test('app updates replace an applied Homepage entry and retain its applied proje
   await service.installPackage('stirling-pdf');
   const installed = store.getAppInstanceByPackageId('stirling-pdf');
   store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
-  const entries = [];
-  const homepageService = {
-    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
-    async read() { return { revision: `revision-${entries.length}` }; },
-  };
   const comparison = await service.preparePackageUpdate('stirling-pdf');
-  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, {
-    ...requestContext().publicUrlFor('stirling-pdf'), homepageService,
-  });
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
 
-  assert.equal(result.homepage.revision, 'revision-1');
-  assert.equal(entries[0].name, 'Updated PDF');
+  assert.equal(result.operation.status, 'succeeded');
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, CANDIDATE_VERSION);
   const homepageProjection = store.getAppProjections(installed.id).find((projection) => projection.kind === 'homepage');
   assert.equal(homepageProjection.status, 'applied');
   assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
@@ -1969,7 +1950,6 @@ test('startup classifies every interrupted update boundary into an actionable re
     // retry-safe was only sometimes true.
     ['candidate-built', 'rollback-required'],
     ['candidate-healthy', 'rollback-required'],
-    ['homepage-reconciled', 'rollback-required'],
     ['snapshot-promoted', 'commit-required'],
   ];
   for (const [stage, expectedState] of cases) {

@@ -1558,7 +1558,7 @@ test('the suite address API requires authentication, changes to a domain in the 
     assert.equal(status.address.baseDomain, 'mos.example.com');
     assert.equal(status.address.url, 'https://home.mos.example.com/');
     assert.equal(status.installContext, 'ssh-bootstrap');
-    assert.equal(status.privateHttpsAvailable, true);
+    assert.equal(status.track, 'home-server');
     assert.ok(Object.hasOwn(status, 'serverAddress'));
     assert.ok(['boolean', 'object'].includes(typeof status.address.resolvesHere));
     assert.doesNotMatch(JSON.stringify(status), new RegExp(token, 'u'));
@@ -1790,7 +1790,7 @@ test('a change the HTTPS agent refuses leaves the recorded address alone and say
   }, { homeHost: 'home.test', httpsAgent });
 });
 
-test('the suite address status marks cloud installs as provider-managed domain guidance', async () => {
+test('a public server is on the public-server track and refuses a Cloudflare domain request', async () => {
   const { agent: httpsAgent } = fakeHttpsAgent({ apply: async () => { throw new Error('must not run'); } });
 
   await withServer(async (baseUrl) => {
@@ -1798,27 +1798,18 @@ test('the suite address status marks cloud installs as provider-managed domain g
     const status = await hostRequest(baseUrl, '/suite-manager/api/settings/address', {
       headers: { Cookie: cookie, Host: 'home.test' },
     });
-
     assert.equal(status.status, 200);
-    assert.equal(status.json().installContext, 'cloud-init');
-    assert.equal(status.json().privateHttpsAvailable, false);
-  }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
-});
+    assert.equal(status.json().installContext, 'public-vps');
+    assert.equal(status.json().track, 'public-server');
 
-test('a domain change is refused for cloud installs', async () => {
-  const { agent: httpsAgent } = fakeHttpsAgent({ apply: async () => { throw new Error('must not run'); } });
-
-  await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
     const response = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
       body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'abcdefghijklmnopqrstuvwxyz', kind: 'domain' }),
       headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
     });
-
-    assert.equal(response.status, 409);
-    assert.equal(response.json().code, 'PRIVATE_HTTPS_UNAVAILABLE');
-  }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
+    assert.equal(response.status, 400);
+    assert.equal(response.json().code, 'INVALID_HTTPS_REQUEST');
+  }, { frontDoor: 'public-vps', homeHost: 'home.test', httpsAgent });
 });
 
 test('address change input is validated before anything runs, without echoing the secret', async () => {

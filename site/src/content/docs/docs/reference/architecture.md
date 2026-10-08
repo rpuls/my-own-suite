@@ -36,7 +36,7 @@ Secrets follow a redaction discipline end to end: generated app secrets live in 
 
 ## Install front doors
 
-Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init`, `public-vps`, or the DigitalOcean validation harness. All five render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then gates context-dependent features: the private-LAN [DNS-01 HTTPS flow](/docs/guides/https-domain/) is offered on self-host front doors and blocked on cloud ones, and the disposable lab-reset agent exists only on USB lab installs.
+Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init`, `public-vps`, or the DigitalOcean validation harness. All five render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then puts the install on one of two hosting tracks (`hostingTrack()` in `infrastructure/control-plane-runtime.cjs`): a home server proves [its own domain](/docs/guides/https-domain/) through Cloudflare DNS-01 and has the Easy Door, while a public server (`cloud-init`, `public-vps`) proves it over HTTP with no token. The disposable lab-reset agent exists only on USB lab installs.
 
 ## Determinism and supply chain
 

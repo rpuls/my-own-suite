@@ -14,12 +14,18 @@ function normalizeBaseDomain(value) {
   return String(value || '').trim().toLowerCase().replace(/\.$/u, '');
 }
 
+// The normalized domain, or null when a certificate could never be issued for it.
+function validBaseDomain(value) {
+  const baseDomain = normalizeBaseDomain(value);
+  return DOMAIN_PATTERN.test(baseDomain) && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost') ? baseDomain : null;
+}
+
 function validateHttpsInput(input) {
-  const baseDomain = normalizeBaseDomain(input?.baseDomain);
+  const baseDomain = validBaseDomain(input?.baseDomain);
   const acmeEmail = String(input?.acmeEmail || '').trim().toLowerCase();
   const cloudflareApiToken = String(input?.cloudflareApiToken || '').trim();
 
-  if (!DOMAIN_PATTERN.test(baseDomain) || baseDomain === 'localhost' || baseDomain.endsWith('.localhost')) {
+  if (!baseDomain) {
     throw new HttpsSettingsError('INVALID_BASE_DOMAIN', 'Enter a valid Cloudflare-managed base domain.');
   }
   if (!EMAIL_PATTERN.test(acmeEmail)) {
@@ -32,4 +38,4 @@ function validateHttpsInput(input) {
   return { acmeEmail, baseDomain, cloudflareApiToken };
 }
 
-module.exports = { HttpsSettingsError, normalizeBaseDomain, validateHttpsInput };
+module.exports = { HttpsSettingsError, normalizeBaseDomain, validBaseDomain, validateHttpsInput };

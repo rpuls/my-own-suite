@@ -94,7 +94,6 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
     logger,
     stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
       ...appUrls.publicUrlOf(packageId),
-      homepageService: homepageConfig,
       publicUrlFor: appUrls.publicUrls(),
     }, onStage),
   });

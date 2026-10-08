@@ -244,9 +244,9 @@ class SystemHttpsAdapter {
     await this.removeCheckpoint(rollbackId);
   }
 
-  async installCandidate({ caddyfile, cloudflareApiToken }) {
+  async installCandidate({ caddyfile, cloudflareApiToken = null }) {
     try {
-      await atomicWrite(this.secretEnvPath, `CLOUDFLARE_API_TOKEN=${cloudflareApiToken}\n`, 0o600);
+      if (cloudflareApiToken) await atomicWrite(this.secretEnvPath, `CLOUDFLARE_API_TOKEN=${cloudflareApiToken}\n`, 0o600);
       await atomicWrite(this.caddyfilePath, caddyfile, 0o644);
     } catch (error) {
       throw new HttpsAgentError('HTTPS_CANDIDATE_INSTALL_FAILED', 'The new Caddy configuration could not be written.', { details: [error.message] });
@@ -256,7 +256,7 @@ class SystemHttpsAdapter {
   validateCandidate(token) {
     return this.run(this.caddyBinary, ['validate', '--config', this.caddyfilePath], {
       code: 'HTTPS_CADDY_VALIDATION_FAILED',
-      env: { ...process.env, CLOUDFLARE_API_TOKEN: token },
+      env: token ? { ...process.env, CLOUDFLARE_API_TOKEN: token } : process.env,
       mask: [token],
       message: 'Caddy rejected the new configuration.',
       what: 'caddy validate for the new configuration',

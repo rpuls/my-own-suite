@@ -111,7 +111,7 @@ test('each package action reaches the package service with the app URLs it needs
   const runtime = { ...URLS, publicUrlFor: resolver };
   assert.deepEqual(calls, [
     ['preparePackageUpdate', 'notes'],
-    ['recoverPackageUpdate', 'notes', { ...URLS, homepageService: homepageConfig, publicUrlFor: resolver }],
+    ['recoverPackageUpdate', 'notes', runtime],
     ['addPackageToHomepage', 'notes', homepageConfig, URLS],
     ['startPackageRuntime', 'notes', runtime],
     ['disablePackage', 'notes'],

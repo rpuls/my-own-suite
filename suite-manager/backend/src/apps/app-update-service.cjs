@@ -9,7 +9,6 @@ const {
   createConfigRows,
   digestFor,
   healthHostFor,
-  homepageEntryForHomepage,
   homepageProjectionApplied,
   isRecord,
   materializeRuntimeCaddy,
@@ -35,7 +34,7 @@ const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnost
 // changes nothing — while calling it retry-safe was a lie half the time. Only
 // `snapshot-promoted` proves the swap finished, and that is a commit, not a
 // rollback.
-const ROLLBACK_REQUIRED_STAGES = Object.freeze(['candidate-built', 'candidate-healthy', 'homepage-reconciled']);
+const ROLLBACK_REQUIRED_STAGES = Object.freeze(['candidate-built', 'candidate-healthy']);
 
 function updateRecoveryStateForStage(stage) {
   if (stage === 'snapshot-promoted') return 'commit-required';
@@ -371,25 +370,11 @@ class AppUpdateService {
     await this.agent.rollbackPackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
     this.apps.discardCollectedSecrets(instance.id, addedConfig);
 
-    let homepage = { skipped: true };
-    if (operation.stage?.startsWith('homepage-reconciled') && homepageProjectionApplied(installedProjections) && requestContext.homepageService) {
-      try {
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        homepage = await requestContext.homepageService.addManagedApp({
-          entry: homepageEntryForHomepage(instance, installedProjections, configRows, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        });
-      } catch (error) {
-        homepage = { errorCode: error.code || 'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED', status: 'failed' };
-      }
-    }
     this.store.clearAppUpdateRecovery({ at: this.now().toISOString(), instanceId: instance.id });
     let integrations = [];
     try { integrations = await this.apps.reconcilePackageIntegrations(packageId, requestContext); } catch {}
     return {
       action: 'rolled-back',
-      homepage,
       instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
       integrations,
     };
@@ -453,7 +438,6 @@ class AppUpdateService {
     let candidate;
     let operationId = null;
     let lastDurableStage = null;
-    let homepageRollback = null;
     let activatedRuntimes = null;
     let snapshotPromoted = false;
     let addedConfig = [];
@@ -675,30 +659,6 @@ class AppUpdateService {
       lastDurableStage = 'candidate-healthy';
       onStage('finish');
 
-      let homepage = { skipped: true };
-      if (homepageWasApplied) {
-        if (!requestContext.homepageService) {
-          throw new AppPackageServiceError('APP_UPDATE_HOMEPAGE_UNAVAILABLE', 'The candidate is healthy, but its existing Homepage entry cannot be reconciled. Recovery is required.', 503);
-        }
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        const candidateInstance = {
-          ...instance,
-          categorySnapshot: candidate.manifest.category,
-          displayNameSnapshot: candidate.manifest.name,
-          packageVersion: candidate.manifest.version,
-        };
-        homepageRollback = {
-          entry: homepageEntryForHomepage(instance, installedProjections, installedConfig, requestContext),
-          homepageService: requestContext.homepageService,
-        };
-        homepage = await requestContext.homepageService.addManagedApp({
-          entry: homepageEntryForHomepage(candidateInstance, candidateProjections, candidateConfig, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        });
-        operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
-        lastDurableStage = 'homepage-reconciled';
-      }
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
       // The revision names the images the outgoing package was built into, which
       // is the only thing standing between an updated app and a copy of every
@@ -732,7 +692,6 @@ class AppUpdateService {
         snapshotPath: promoted.snapshotPath,
         homepageApplied: homepageWasApplied,
       });
-      homepageRollback = null;
       // Reconciled after the commit on purpose: reapplying a consumer re-applies
       // its stored projections, and only after completeAppUpdate do those
       // describe the runtime that is actually serving. Run before the commit,
@@ -746,7 +705,7 @@ class AppUpdateService {
       } catch (reconcileError) {
         integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
       }
-      return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
+      return { activated, built, comparison, integrations, operation, promoted, staged };
     } catch (caught) {
       // A rollback that fails replaces the error but not the reason: the record
       // keeps why the update failed and then why the restore did, in that order.
@@ -763,27 +722,6 @@ class AppUpdateService {
           );
           error.cause = rollbackError;
           error.details = [...failedBecause(caught), 'Restoring the previous version then failed too:', ...failedBecause(rollbackError)];
-        }
-      }
-      // Once the snapshot is promoted the candidate is the installed package;
-      // restoring the pre-update Homepage entry would advertise a runtime that
-      // no longer exists. The pending commit keeps the candidate's entry.
-      if (homepageRollback && !snapshotPromoted) {
-        try {
-          const current = await homepageRollback.homepageService.read({ file: 'services.template.yaml' });
-          await homepageRollback.homepageService.add({
-            entry: homepageRollback.entry,
-            expectedRevision: current.revision,
-            requestId: instance.id,
-          }, false);
-        } catch (rollbackError) {
-          error = new AppPackageServiceError(
-            'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED',
-            'The app update failed and its previous Homepage entry could not be restored. Recovery is required.',
-            502,
-          );
-          error.cause = rollbackError;
-          error.details = [...failedBecause(caught), 'Restoring the previous Homepage entry then failed too:', ...failedBecause(rollbackError)];
         }
       }
       let recoveryState = 'none';
