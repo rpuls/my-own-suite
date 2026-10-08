@@ -56,10 +56,10 @@
       }
     },
     "seafile": {
-      "appVersion": "13.0.21",
+      "appVersion": "13.0.28",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:9def3fd401ae5f29e00cbfa96cda5b85dcaf30c57c0d360712efcfdae3ae35a6",
-      "packageVersion": "0.3.2",
+      "packageDigest": "sha256:5901a2e5e41b9994693a46a4c6315eaa0e1978abc74aeb47e8ad747b706c8c4b",
+      "packageVersion": "0.3.3",
       "path": "apps/seafile",
       "privacy": {
         "posture": "private-by-default",

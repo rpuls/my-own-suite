@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.3.2",
-  "appVersion": "13.0.21",
+  "version": "0.3.3",
+  "appVersion": "13.0.28",
   "minimumMosVersion": "0.20.0",
   "packageFiles": [
     "entrypoint.sh",
