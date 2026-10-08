@@ -7,13 +7,18 @@ This is the part of a product where you're normally asked to accept things. Ther
 
 ## Inside My Own Suite: nothing
 
-There is no My Own Suite account, no sign-up, and no server of ours that your installation reports back to. Your data lives on your own disk, and the platform contains no telemetry, no analytics, and no crash reporting — with no way for us to quietly add any, because the code is open source and every change is public. We don't know that you installed My Own Suite, and we like it that way.
+There is no My Own Suite account, no sign-up, and nothing in your installation that reports back to us. Your data lives on your own disk, and the platform contains no telemetry, no analytics, and no crash reporting — with no way for us to quietly add any, because the code is open source and every change is public. We keep no record that you installed My Own Suite, and we like it that way.
 
 Your suite does reach outward for a few things, and they are all the boring kind:
 
 - **GitHub** — for platform updates, and every few hours to check the signed app catalog and the security-advisory feed. That check is what lets MOS tell you an app has an update, or a published problem, without you going looking.
 - **Container registries** — to download app images when you install or update an app.
+- **Ubuntu** — to install security updates for the operating system underneath, from Ubuntu's own channel.
+- **Let's Encrypt** — a few times a year, for the certificate behind the lock in your suite's address.
+- **Two small services My Own Suite runs**, for a server at home: a nameserver that tells your devices where its generated address points, and a service that holds the short-lived code Let's Encrypt checks before issuing that certificate. Neither keeps a record of who asked. [Why your address has numbers in it](/docs/install/easy-address/) says exactly what each one sees, and how your devices can do without the nameserver.
+- **sslip.io** — on a rented server, the free naming service behind its generated address.
 - **Cloudflare** — only if you set up a real domain with HTTPS, and only to prove the domain is yours.
+- **An email relay or a storage bucket** — only if you connect one, and only the provider you chose.
 
 Those services see the ordinary metadata any download involves: your server's address, and what it asked for. A container registry therefore knows an image was pulled, exactly as it would for anyone using Docker. But nothing about how you *use* your suite — your files, your photos, your passwords, who signs in, what you do all day — ever leaves it.
 
@@ -41,4 +46,4 @@ Two things worth knowing before you do it. Installing builds the package from th
 
 The entire platform is open source in [the repository](https://github.com/rpuls/my-own-suite) — verify any of the above yourself, and if something looks off, open an issue.
 
-*Last updated: July 2026.*
+*Last updated: October 2026.*

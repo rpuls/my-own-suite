@@ -10,10 +10,11 @@ import { OUTBOUND_FROM_LABEL, outboundHostLabel, reviewDateLabel } from '../lib/
 
 interface Props {
   appName: string
+  appVersion: string
   assessment: PrivacyAssessment
 }
 
-const { appName, assessment } = Astro.props
+const { appName, appVersion, assessment } = Astro.props
 
 // Ordered strongest-first: what was watched on the wire outranks what the
 // package is configured to do, which outranks what a publisher documents.
@@ -38,15 +39,15 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
 <div class="privacy-report">
   <p class="privacy-report-intro">
     This is the assessment behind {appName}'s posture grade, exactly as it ships inside the package.
-    It describes package version <strong>{assessment.packageVersion}</strong> and nothing else — install
-    a different version and its own assessment travels with it.
+    It describes {appVersion ? <>{appName}{' '}<strong>{appVersion}</strong> as MOS packages it</> : <>this exact package</>} and
+    nothing else — install a different version and its own assessment travels with it.
     {reviewed && <> Reviewed {reviewed}{expires && <>, due for reassessment by {expires}</>}.</>}
   </p>
 
   <h3 id="privacy-assessment-scope">What was reviewed</h3>
   <ul class="privacy-report-scope">
     <li>
-      <strong>Package</strong> — version {assessment.packageVersion}, content digest
+      <strong>Package</strong> — content digest
       <code>{shortDigest(assessment.packageDigest)}</code>
       {assessment.sourceRevision && <> at commit <code>{String(assessment.sourceRevision).slice(0, 12)}</code></>}
     </li>

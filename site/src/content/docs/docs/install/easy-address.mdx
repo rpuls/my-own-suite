@@ -62,11 +62,11 @@ What is technically visible to whoever runs that nameserver is *which app names 
 
 The second is the certificate. A few times a year your server asks Let's Encrypt for a fresh one. To prove it may have it, your server leaves a short-lived code with a second small service My Own Suite runs, and Let's Encrypt checks that code. That service sees your home's public internet address and the code, keeps neither, and is told nothing else: no email address, no account, nothing about your apps. Let's Encrypt sees your home's public address for the same reason, and publishes every certificate it issues in public logs, so those logs show that *some* server used your private address. Nothing more.
 
-## If you would rather nothing left at all
+## If you would rather your devices asked no one
 
 There is a second way in, and it is the better one if your equipment supports it.
 
-If your router, [Pi-hole](https://pi-hole.net/) or [AdGuard Home](https://adguard.com/en/adguard-home/overview.html) can add a **wildcard DNS record**, point `*.mos.home` at your server's address and use `http://home.mos.home/` instead. Then the naming question is answered inside your house, nothing is asked of anyone, and your suite works with no outside involvement whatsoever — even with the internet unplugged.
+If your router, [Pi-hole](https://pi-hole.net/) or [AdGuard Home](https://adguard.com/en/adguard-home/overview.html) can add a **wildcard DNS record**, point `*.mos.home` at your server's address and use `http://home.mos.home/` instead. Then the naming question is answered inside your house, and your suite works with no outside involvement whatsoever — even with the internet unplugged. Your server still renews the certificate for its generated address in the background, so that door keeps working too.
 
 Both addresses work at the same time. You can start with the generated one and switch later; your server's screen shows both.
 

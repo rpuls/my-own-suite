@@ -29,15 +29,15 @@ The remarkable part: **your suite stays completely private.** Nothing is exposed
 
 1. **Create the API token.** In the Cloudflare dashboard: profile icon → **My Profile → API Tokens → Create Token**, use the **Edit zone DNS** template, and scope it to just your domain's zone. The token needs **Zone: Read** and **DNS: Edit** — nothing more. Copy it; Cloudflare shows it only once.
 
-2. **Apply in Suite Manager.** Go to **Settings**, and under private HTTPS fill in:
+2. **Move your suite in Suite Manager.** Open **Settings → Suite address**, choose **Use your own domain**, and fill in:
 
-   - your **base domain** — e.g. `mos.yourdomain.example` (a subdomain keeps the rest of your domain untouched; your dashboard becomes `home.mos.yourdomain.example`),
-   - a **contact email** for the certificate authority (Let's Encrypt),
+   - the **Base domain** — e.g. `mos.yourdomain.example` (a subdomain keeps the rest of your domain untouched; your dashboard becomes `home.mos.yourdomain.example`),
+   - a **Certificate contact email** for the certificate authority (Let's Encrypt),
    - the **Cloudflare API token**.
 
-   Click **Apply HTTPS settings**. MOS verifies the token, requests the certificate, and reconfigures the web server — with an automatic rollback if anything fails. The token is stored in a root-only file on your server and is never shown again.
+   Click **Move my suite to this domain**. MOS gets the certificate, reconfigures the web server and rebuilds your apps and Homepage on the new address, and reports success only once the domain is served. If a step fails, your suite stays where it was and Settings says why. The token is never shown again.
 
-3. **Add the local DNS rule.** The screen shows your server's IP and the exact rule to add: point `home.<your-base-domain>` (or better, the wildcard `*.<your-base-domain>`) at the server — in your router, AdGuard Home, Pi-hole, or as hosts-file lines on each computer. This is what makes the name resolve *inside* your network while staying invisible outside it.
+3. **Add the local DNS rule.** Until the name points at your server, Settings says so and shows your server's IP and the exact rule to add: point `home.<your-base-domain>` (or better, the wildcard `*.<your-base-domain>`) at the server — in your router, AdGuard Home, Pi-hole, or as hosts-file lines on each computer. This is what makes the name resolve *inside* your network while staying invisible outside it.
 
 4. **Sign in on the new address.** Open `https://home.<your-base-domain>/` — padlock and all — and sign in again (moving to a new address ends the old session; that's expected). Installed apps are re-routed to `https://<app>.<your-base-domain>/` automatically, and their dashboard tiles update themselves.
 
@@ -45,7 +45,7 @@ The remarkable part: **your suite stays completely private.** Nothing is exposed
 
 ## Good to know
 
-- **The old address remains as a recovery door.** If your local DNS rule ever breaks, the original `http://home.mos.home/` address still reaches Suite Manager so you can fix things.
+- **The old addresses remain as recovery doors.** If your local DNS rule ever breaks, the generated address and `http://home.mos.home/` still reach Suite Manager so you can fix things.
 - **Certificates renew themselves.** Caddy (the built-in web server) owns issuance and renewal; there is nothing to remember.
 - **Why Cloudflare specifically?** The certificate flow needs API access to your DNS. MOS ships a web server custom-built with the Cloudflare DNS integration, version-pinned and verified at install time. Broader provider support is a roadmap item.
 - **Troubleshooting:** give the first certificate a minute or two; if the new address doesn't load, it's almost always the local DNS rule (test with `ping home.<your-base-domain>` — it should answer with your server's LAN IP). Your devices may also cache old DNS for a few minutes.
