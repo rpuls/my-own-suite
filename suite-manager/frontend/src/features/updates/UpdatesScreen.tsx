@@ -96,23 +96,11 @@ function jobOutcome(job: UpdateJob) {
   return stageLabel(job.stage) || 'Update activity received.';
 }
 
-// The same panel is a diagnostic on a failed job and ambient detail on one that
-// worked, which is why `reveal` is computed.
-function UpdateJobLog({ job }: { job: UpdateJob }) {
-  const entries = (job.logs || []).slice(-12);
-  const output = job.status === 'failed' && job.output ? job.output : '';
-  if (!entries.length && !output) return null;
-  const steps = entries.map((entry) => `${formatDate(entry.at || null)}  ${entry.message || 'No message'}`).join('\n');
-  return <AdvancedPanel
-    copyText={() => [steps, output].filter(Boolean).join('\n\n')}
-    output={output || undefined}
-    reveal={job.status === 'failed' ? 'on-failure' : 'technical-mode'}
-    summary="Update log"
-  >
-    {entries.length ? <ol className="suite-updates-log">
-      {entries.map((entry, index) => <li key={`${entry.at || 'log'}-${index}`}><span>{formatDate(entry.at || null)}</span><code>{entry.message || 'No message'}</code></li>)}
-    </ol> : null}
-  </AdvancedPanel>;
+function jobLog(job: UpdateJob | null) {
+  if (!job) return '';
+  const steps = (job.logs || []).slice(-12).map((entry) => `[${formatDate(entry.at || null)}] ${entry.message || 'No message'}`).join('\n');
+  const output = job.status === 'failed' ? job.output || '' : '';
+  return [steps, output].filter(Boolean).join('\n\n');
 }
 
 type TrackChoice = 'stable' | 'main' | 'staging';
@@ -339,6 +327,7 @@ export function UpdatesScreen() {
   const pickedTrack = TRACKS.find((candidate) => candidate.id === track);
   const sourceMatch = /^(.*?)\s*(\[[^\]]+\])$/u.exec(status?.changeSummary.source || '');
   const finishedJob = job && !running ? job : null;
+  const log = jobLog(finishedJob);
 
   return <section aria-busy={updating} className="mos-shell mos-page">
     <div className="suite-hero"><h1>Updates</h1></div>
@@ -414,7 +403,6 @@ export function UpdatesScreen() {
             {finishedJob.error ? <p className="suite-error">{finishedJob.error}</p> : null}
             {finishedJob.status === 'failed' && finishedJob.stage === 'taking-checkpoint' ? <p className="suite-meta">Nothing on this machine was changed: the update stops before it fetches or builds anything if it cannot back up first. Fix the problem on the Backups screen and start the update again.</p> : null}
             {checkpointNote(finishedJob) ? <p className="suite-meta">{checkpointNote(finishedJob)}</p> : null}
-            <UpdateJobLog job={finishedJob} />
           </div>
         </PanelBody> : null}
 
@@ -426,15 +414,21 @@ export function UpdatesScreen() {
           : <PanelBody><p className="suite-meta">No changelog summary is available for this target.</p></PanelBody>}
 
         <PanelBody><AdvancedPanel
+          copyText={log || undefined}
           facts={[
             { code: true, label: 'Installed', value: [status.installedVersion, shortCommit(status.track.currentCommit, status.track.type === 'branch' ? 40 : 12)].filter(Boolean).join(' · ') },
             { code: true, label: 'Available', value: status.track.type === 'branch' ? shortCommit(status.latestRevision, 40) : status.latestRelease.version || 'Unknown' },
             { label: 'Updater', value: status.managedApplyAvailable ? 'Ready · host-owned agent' : 'Unavailable' },
             { label: 'Last checked', value: formatDate(status.checkedAt) },
           ]}
-          reveal="technical-mode"
+          reveal={finishedJob?.status === 'failed' ? 'on-failure' : 'technical-mode'}
         >
           <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their package snapshots; app updates are applied separately from the Apps screen and are not backed up first.</p>
+          {log ? <p className="suite-meta">
+            What the last update did on this server, step by step, with the time each step started. Where a step ran a command, the command follows on its own line.
+            {finishedJob?.status === 'failed' ? ' The error the update stopped on is at the bottom.' : ''}
+          </p> : null}
+          {log ? <pre>{log}</pre> : null}
         </AdvancedPanel></PanelBody>
       </Panel>
 

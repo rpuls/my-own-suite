@@ -2641,32 +2641,6 @@ button.suite-updates-change-head {
 .suite-markdown pre code { padding: 0; background: none; }
 .suite-markdown blockquote { padding-left: var(--mos-space-3); border-left: 3px solid var(--mos-color-surface-border); }
 
-.suite-updates-log {
-  display: grid;
-  gap: var(--mos-space-2);
-  padding-left: 0;
-  list-style: none;
-}
-
-.suite-updates-log li {
-  display: grid;
-  gap: var(--mos-space-1);
-  padding: var(--mos-space-2);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-updates-log span {
-  color: var(--mos-color-text-muted);
-  font-size: var(--mos-text-small);
-}
-
-.suite-updates-log code {
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
 .suite-advanced dt {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
@@ -2709,7 +2683,7 @@ button.suite-updates-change-head {
 .suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
 .suite-form-wide { grid-column: 1 / -1; }
-.suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+.suite-advanced pre { padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--mos-text-small); line-height: 1.5; }
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
 
 .suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); }
