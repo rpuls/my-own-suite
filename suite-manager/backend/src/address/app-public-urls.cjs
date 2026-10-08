@@ -33,7 +33,7 @@ function createAppPublicUrls({ appPackages, homepageConfig, suiteAddress }) {
     hostFor,
     publicUrlOf: (packageId) => publicUrls()(packageId),
     publicUrls,
-    rebake: (address) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, hostFor) }),
+    rebake: (address, progress) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, hostFor) }, progress),
   };
 }
 

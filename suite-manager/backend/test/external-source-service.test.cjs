@@ -221,7 +221,7 @@ test('a resolved card inlines the package own icon as a data URL', async () => {
   const repo = 'notes';
   const archive = tarGz(revision, { Dockerfile: Buffer.from('FROM scratch\n'), 'icon.png': iconBytes, 'manifest.json': Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) });
   const fetchImpl = async (url) => {
-    if (url === `https://api.github.com/repos/${owner}/${repo}/commits/main`) return new Response(JSON.stringify({ sha: revision }));
+    if (url === `https://api.github.com/repos/${owner}/${repo}/commits/main`) return new Response(revision);
     if (url === `https://codeload.github.com/${owner}/${repo}/tar.gz/${revision}`) return new Response(archive);
     throw new Error(`unexpected ${url}`);
   };

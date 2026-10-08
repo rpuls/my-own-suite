@@ -56,7 +56,7 @@ function baseManifest(overrides = {}) {
 function serveRepo(manifest) {
   const archive = tarGz({ Dockerfile: 'FROM scratch\n', 'manifest.json': `${JSON.stringify(manifest, null, 2)}\n` });
   return async (url) => {
-    if (url === `https://api.github.com/repos/${owner}/${repo}/commits/main`) return new Response(JSON.stringify({ sha: revision }));
+    if (url === `https://api.github.com/repos/${owner}/${repo}/commits/main`) return new Response(revision);
     if (url === `https://codeload.github.com/${owner}/${repo}/tar.gz/${revision}`) return new Response(archive);
     throw new Error(`unexpected ${url}`);
   };

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { AdvancedPanel, Notice, PanelBand } from '../../../components/ui';
-import type { AddressChange, AddressStatus, AppReconciliationResult, Contact, SuiteAddress } from './model';
+import type { AddressChange, AddressStatus, AppReconciliationResult, Contact, LiveProgress, SuiteAddress, SuiteAddressController } from './model';
 
 const CHANGE_STAGE_SENTENCES: Record<string, string> = {
   apps: 'Rebuilding your apps and Homepage on the new address.',
@@ -9,13 +9,40 @@ const CHANGE_STAGE_SENTENCES: Record<string, string> = {
   recorded: 'Recording the new address.',
 };
 
-// The current address, or the move in progress in its place.
-export function AddressBand({ contact, note, status }: { contact: Contact; note: string; status: AddressStatus }) {
+const listOf = (names: string[]) => new Intl.ListFormat('en', { type: 'conjunction' }).format(names);
+
+function appsSentence(apps: NonNullable<LiveProgress['apps']>) {
+  if (!apps.total) return CHANGE_STAGE_SENTENCES.apps;
+  if (!apps.current) return `All ${apps.total} apps are rebuilt. Joining connected apps again.`;
+  const minutes = apps.remainingSeconds === null ? null : Math.max(1, Math.round(apps.remainingSeconds / 60));
+  return `Rebuilding your apps on the new address, one at a time: ${apps.current} now, ${apps.done} of ${apps.total} done.${minutes === null ? '' : ` About ${minutes === 1 ? 'a minute' : `${minutes} minutes`} left.`}`;
+}
+
+// The current address, or the move in progress in its place with what it is
+// doing right now.
+export function AddressBand({ note, status, suite }: { note: string; status: AddressStatus; suite: SuiteAddressController }) {
   const change = status.lastChange;
-  if (change.status === 'applying') {
-    return <PanelBand busy note={`${CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.'}${contact === 'unreachable' ? ' The web server is restarting, so this page has no answer for a moment. It keeps asking.' : ''}`} title={`Moving your suite to ${change.target?.host || 'its new address'}`} tone="info" />;
+  if (change.status !== 'applying') {
+    return <PanelBand icon="check" note={note} title={<a href={status.address.url}>{status.address.url}</a>} tone="accent" />;
   }
-  return <PanelBand icon="check" note={note} title={<a href={status.address.url}>{status.address.url}</a>} tone="accent" />;
+  const target = change.target?.host || 'its new address';
+  if (change.stage === 'dns') {
+    return <PanelBand busy note={`${change.live.dns?.sentence || 'Looking up the domain.'} MOS checks again every few seconds for up to half an hour, and changes nothing until it points here.`} title={`Waiting for ${target} to point at this server`} tone="info">
+      <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={Boolean(suite.busy)} onClick={() => void suite.cancelChange()} type="button">{suite.busy === 'cancel' ? 'Cancelling...' : 'Cancel'}</button>
+    </PanelBand>;
+  }
+  const doing = change.stage === 'apps' && change.live.apps ? appsSentence(change.live.apps) : CHANGE_STAGE_SENTENCES[change.stage || ''] || 'Starting.';
+  return <PanelBand busy note={`${doing}${suite.contact === 'unreachable' ? ' The web server is restarting, so this page has no answer for a moment. It keeps asking.' : ''}`} title={`Moving your suite to ${target}`} tone="info" />;
+}
+
+// Said before the owner moves: every installed app is rebuilt on the new address,
+// one at a time, which on a full suite takes long enough to look broken.
+export function RebuildNotice({ apps }: { apps: string[] }) {
+  if (!apps.length) return null;
+  const one = apps.length === 1;
+  return <Notice title={one ? 'Your app restarts on the new address' : `Your ${apps.length} apps restart on the new address`} variant="info">
+    <p>{listOf(apps)} {one ? 'is' : 'are'} rebuilt one at a time so {one ? 'it uses' : 'they use'} the new address, and each is briefly unavailable while it restarts. With many apps this takes several minutes; this page shows each one as it goes.</p>
+  </Notice>;
 }
 
 export function ContactNotices({ change, contact }: { change: AddressChange | null; contact: Contact }) {
@@ -28,8 +55,15 @@ export function ContactNotices({ change, contact }: { change: AddressChange | nu
 // How the change this screen started ended. `dnsHelp` is what the track has to
 // say when the new name does not point here yet.
 export function ChangeOutcome({ address, dnsHelp, outcome }: { address: SuiteAddress; dnsHelp?: ReactNode; outcome: AddressChange | null }) {
+  const stillAt = <>Your suite is still at <a href={address.url}>{address.url}</a>.</>;
+  if (outcome?.errorCode === 'ADDRESS_CHANGE_CANCELLED') {
+    return <Notice title="Move cancelled" variant="info"><p>Nothing changed. {stillAt}</p></Notice>;
+  }
+  if (outcome?.errorCode === 'DOMAIN_NOT_POINTED_HERE') {
+    return <Notice title="The domain never pointed at this server" variant="error"><p>{outcome.diagnostics?.split('\n')[0]}</p><p>{stillAt} Fix the record, then move again.</p></Notice>;
+  }
   if (outcome?.status === 'failed') {
-    return <Notice title="The address was not changed" variant="error"><p>Your suite is still at <a href={address.url}>{address.url}</a>. The reason is in the details below.</p></Notice>;
+    return <Notice title="The address was not changed" variant="error"><p>{stillAt} The reason is in the details below.</p></Notice>;
   }
   if (outcome?.status !== 'applied') return null;
   return <>

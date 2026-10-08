@@ -1544,13 +1544,15 @@ class AppPackageService {
   // Everything that baked the suite's address in, rebuilt on the current one:
   // Homepage's managed entries and routes first, then every installed app's
   // runtime. Per-app failures are reported, never thrown, because the address
-  // has already changed and each app is one retry away.
-  async reconcilePublicUrls(homepageService, requestContext = {}) {
+  // has already changed and each app is one retry away. `onApp` hears which app
+  // is being rebuilt, because one at a time is slow enough to need saying.
+  async reconcilePublicUrls(homepageService, requestContext = {}, { onApp = () => {} } = {}) {
     const { homepage, homepageEntryFailures } = await this.reconcileHomepageUrls(homepageService, requestContext);
     const runtime = [];
 
-    for (const instance of this.store.getAppInstances()) {
-      if (instance.status !== 'installed') continue;
+    const installed = this.store.getAppInstances().filter((instance) => instance.status === 'installed');
+    for (const [done, instance] of installed.entries()) {
+      onApp({ current: instance.displayNameSnapshot || instance.packageId, done, total: installed.length });
       const packageContext = requestContextForPackage(instance.packageId, requestContext);
       try {
         const result = await this.applyPackageRuntime(instance.packageId, packageContext);
@@ -1570,6 +1572,7 @@ class AppPackageService {
         });
       }
     }
+    onApp({ current: null, done: installed.length, total: installed.length });
 
     // Applying recreated every container, so each connected pair is joined
     // again, the way a restart joins it, with the consumer's imports re-resolved.
@@ -1632,6 +1635,22 @@ class AppPackageService {
       };
     }
     return { homepage, homepageEntryFailures };
+  }
+
+  // Runs after an update has committed, so a failure is reported, never thrown. Only the
+  // widget follows the new package; renaming or re-iconing a known tile is an open owner decision.
+  async refreshHomepageWidget(packageId, homepageService, requestContext = {}) {
+    try {
+      const instance = this.store.getAppInstanceByPackageId(packageId);
+      const projections = this.store.getAppProjections(instance.id);
+      if (!homepageProjectionApplied(projections)) return { status: 'skipped' };
+      const { widget } = homepageEntryForHomepage(instance, projections, this.configWithSecrets(instance.id), requestContextForPackage(packageId, requestContext));
+      if (widget === undefined) return { status: 'skipped' };
+      await homepageService.reconcileUrls({ entries: [{ id: instance.id, widget }] });
+      return { status: 'applied' };
+    } catch (error) {
+      return { errorCode: error.code || 'APP_HOMEPAGE_WIDGET_REFRESH_FAILED', status: 'failed' };
+    }
   }
 
   async removePackageFromHomepage(instance, homepageService) {

@@ -8,7 +8,7 @@ const { CodedError } = require('../../../shared/coded-error.cjs');
 const { CONSOLE_LOGIN_HANDOVER_FILE } = require('../../../shared/console-login-contract.cjs');
 const { ConsoleLoginService } = require('../src/settings/console-login-service.cjs');
 const { HandoverService } = require('../src/setup/handover-service.cjs');
-const { SetupError, TERMS_VERSION } = require('../src/setup/setup-service.cjs');
+const { SESSION_MAX_AGE_MS, SetupError, TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { withRoutes } = require('./support/route-harness.cjs');
 
 const OWNER = { email: 'owner@example.com', name: 'Suite Owner' };
@@ -107,6 +107,15 @@ test('session cookies become Secure only for HTTPS forwarded requests', async ()
 
     const overHttps = await call('POST', '/auth/login', { body: { email: OWNER.email }, headers: { 'X-Forwarded-Proto': 'https' }, signedIn: false });
     assert.match(overHttps.headers['set-cookie'][0], /; Secure/u);
+  });
+});
+
+test('the session cookie expires when the longest-lived session would', async () => {
+  const signIn = { signIn: async () => ({ knownBrowserToken: null, owner: OWNER, sessionToken: 'session', status: 'signed-in' }) };
+
+  await withRoutes({ signIn }, async (call) => {
+    const signedIn = await call('POST', '/auth/login', { body: { email: OWNER.email }, signedIn: false });
+    assert.equal(signedIn.headers['set-cookie'][0], `mos_session=session; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_MS / 1_000}`);
   });
 });
 

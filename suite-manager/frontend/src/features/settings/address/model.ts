@@ -24,10 +24,18 @@ export type AppReconciliationResult = {
   status?: string;
 };
 
+// What the change in flight is doing right now: where the owner's DNS record
+// stands, and which app is being rebuilt.
+export type LiveProgress = {
+  apps: { current: string | null; done: number; remainingSeconds: number | null; total: number } | null;
+  dns: { checkedAt: string; pointsHere: boolean; sentence: string } | null;
+};
+
 export type AddressChange = {
   at: string | null;
   diagnostics: string | null;
   errorCode: string | null;
+  live: LiveProgress;
   result: AppReconciliationResult | null;
   stage: string | null;
   stages: string[];
@@ -38,6 +46,7 @@ export type AddressChange = {
 export type AddressStatus = {
   address: SuiteAddress;
   agentAvailable: boolean;
+  appsToRebuild: string[];
   bootstrapUrl: string;
   // The recorded Easy Door name no longer matches the live one: the machine's
   // address moved under it.
@@ -70,7 +79,7 @@ export function useSuiteAddress() {
   const [status, setStatus] = useState<AddressStatus | null>(null);
   const [loadError, setLoadError] = useState('');
   const [contact, setContact] = useState<Contact>('ok');
-  const [busy, setBusy] = useState<'' | 'change' | 'dismiss'>('');
+  const [busy, setBusy] = useState<'' | 'cancel' | 'change' | 'dismiss'>('');
   const [error, setError] = useState('');
   // The change this screen started, so its outcome is shown once and the
   // history of an earlier one is not mistaken for it.
@@ -131,24 +140,27 @@ export function useSuiteAddress() {
     }
   }
 
-  async function dismissOffer() {
+  async function postAction(path: string, kind: 'cancel' | 'dismiss', failure: string) {
     setError('');
-    setBusy('dismiss');
+    setBusy(kind);
     try {
-      await jsonResponse(await fetch('/suite-manager/api/settings/address/offer/dismiss', { method: 'POST' }), 'The offer could not be dismissed.');
+      await jsonResponse(await fetch(path, { method: 'POST' }), failure);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The offer could not be dismissed.');
+      setError(caught instanceof Error ? caught.message : failure);
     } finally {
       setBusy('');
     }
   }
 
+  const cancelChange = () => postAction('/suite-manager/api/settings/address/change/cancel', 'cancel', 'The move could not be cancelled.');
+  const dismissOffer = () => postAction('/suite-manager/api/settings/address/offer/dismiss', 'dismiss', 'The offer could not be dismissed.');
+
   const change = status?.lastChange;
   // The outcome of the change this screen started, shown until the next one.
   const outcome = change && startedAt && change.at && change.at >= startedAt && change.status !== 'applying' ? change : null;
 
-  return { applying, busy, contact, dismissOffer, error, loadError, outcome, setError, startChange, status };
+  return { applying, busy, cancelChange, contact, dismissOffer, error, loadError, outcome, setError, startChange, status };
 }
 
 export type SuiteAddressController = ReturnType<typeof useSuiteAddress>;

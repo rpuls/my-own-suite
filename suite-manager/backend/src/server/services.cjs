@@ -94,6 +94,7 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
     logger,
     stage: (packageId, input, onStage) => appPackages.stagePackageUpdate(packageId, input, {
       ...appUrls.publicUrlOf(packageId),
+      homepageService: homepageConfig,
       publicUrlFor: appUrls.publicUrls(),
     }, onStage),
   });
@@ -180,6 +181,7 @@ function createServices({
     bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
     detectAddress,
     frontDoor,
+    installedApps: () => setup.store.getAppInstances().filter((instance) => instance.status === 'installed').map((instance) => instance.displayNameSnapshot || instance.packageId),
     probeCertificate: probeEasyDoorCertificate,
     logger,
     rebake: appUrls.rebake,

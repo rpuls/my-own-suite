@@ -286,7 +286,35 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'login-throttle-persistence',
     'known-browsers-and-sign-in-alerts',
     'suite-address-changes',
+    'session-expiry',
   ]);
+  upgraded.close();
+});
+
+test('a session from before expiry existed counts as used at the upgrade, and keeps its age', async () => {
+  const stateDir = await tempStateDir();
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  for (const migration of MIGRATIONS.filter(({ version }) => version < 20)) {
+    database.exec(migration.sql);
+    database.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
+      .run(migration.version, migration.name, '2026-09-01T00:00:00.000Z');
+  }
+  database.prepare("INSERT INTO owners (id, name, email, password_hash, created_at) VALUES (1, 'Suite Owner', 'owner@example.com', 'hash', '2026-06-20T10:00:00.000Z')").run();
+  database.prepare("INSERT INTO sessions (owner_id, token_hash, created_at) VALUES (1, 'old-session-hash', '2026-09-01T10:00:00.000Z')").run();
+  database.close();
+
+  const upgradedAt = new Date(Date.now() - 1000).toISOString();
+  const upgraded = new SuiteManagerStore(stateDir);
+  const live = upgraded.findLiveSession({ createdAfter: '2026-07-01T00:00:00.000Z', seenAfter: upgradedAt, tokenHash: 'old-session-hash' });
+  assert.match(live.lastSeenAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u);
+  assert.equal(upgraded.findLiveSession({ createdAfter: '2026-09-01T10:00:00.000Z', seenAfter: upgradedAt, tokenHash: 'old-session-hash' }), null);
   upgraded.close();
 });
 

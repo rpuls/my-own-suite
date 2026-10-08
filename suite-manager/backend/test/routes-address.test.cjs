@@ -3,10 +3,11 @@ const test = require('node:test');
 
 const { withRoutes } = require('./support/route-harness.cjs');
 
-test('the address routes hand the status, a change and a dismissed offer to the address service', async () => {
+test('the address routes hand the status, a change, a cancel and a dismissed offer to the address service', async () => {
   const calls = [];
   const addressService = {
     allowedHosts: () => new Set(['home.test']),
+    cancelChange: () => { calls.push(['cancel']); return { cancelling: true }; },
     change: async (input) => { calls.push(['change', input]); return { status: 'applying' }; },
     dismissOffer: async () => { calls.push(['dismiss']); return { dismissed: true }; },
     httpsRedirectFor: () => null,
@@ -19,8 +20,9 @@ test('the address routes hand the status, a change and a dismissed offer to the 
     const started = await call('POST', '/settings/address/change', { body: change });
     assert.equal(started.status, 202);
     assert.deepEqual(started.json(), { status: 'applying' });
+    assert.deepEqual((await call('POST', '/settings/address/change/cancel')).json(), { cancelling: true });
     assert.deepEqual((await call('POST', '/settings/address/offer/dismiss')).json(), { dismissed: true });
   });
 
-  assert.deepEqual(calls, [['change', change], ['dismiss']]);
+  assert.deepEqual(calls, [['change', change], ['cancel'], ['dismiss']]);
 });

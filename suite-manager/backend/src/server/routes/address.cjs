@@ -26,6 +26,14 @@ function addressRoutes({ addressService }) {
     },
     {
       method: 'POST',
+      path: '/settings/address/change/cancel',
+      signIn: ADDRESS,
+      handler: async ({ response }) => {
+        jsonResponse(response, 202, addressService.cancelChange());
+      },
+    },
+    {
+      method: 'POST',
       path: '/settings/address/offer/dismiss',
       signIn: ADDRESS,
       handler: async ({ response }) => {

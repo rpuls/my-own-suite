@@ -60,6 +60,6 @@ A server at a hosting provider can be reached from the internet, so the certific
 
 2. **Add one DNS record** where your domain's DNS is managed, usually at the company you bought it from. Settings shows it filled in: an **A** record named `*.yourdomain.example` pointing at your server's IP address. It covers your dashboard and every app.
 
-3. **Move your suite.** Click **Move my suite to this domain**. MOS first checks that the record points at your server, and if it does not yet, says so and changes nothing. Then each app gets its own certificate and your apps and Homepage move to `https://<app>.yourdomain.example/`.
+3. **Move your suite.** Click **Move my suite to this domain**. A new record can take a few minutes to arrive, so MOS waits for it, checking every few seconds for up to half an hour and saying what it sees each time, and changes nothing until the record points at your server. You can cancel while it waits. Then each app gets its own certificate, and your apps and Homepage move to `https://<app>.yourdomain.example/` one at a time, with Settings showing each one as it goes.
 
 </Steps>

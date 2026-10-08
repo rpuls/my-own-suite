@@ -458,6 +458,31 @@ const MIGRATIONS = [
     `,
     version: 19,
   },
+  {
+    // SQLite cannot add a NOT NULL column without a default, so the table is
+    // rebuilt. A session from before counts as used now, in toISOString's format,
+    // so the update that brings expiry does not sign out the owner watching it.
+    name: 'session-expiry',
+    sql: `
+      CREATE TABLE sessions_rebuilt (
+        id INTEGER PRIMARY KEY,
+        owner_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE CASCADE
+      ) STRICT;
+
+      INSERT INTO sessions_rebuilt (id, owner_id, token_hash, created_at, last_seen_at)
+      SELECT id, owner_id, token_hash, created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM sessions;
+
+      DROP TABLE sessions;
+      ALTER TABLE sessions_rebuilt RENAME TO sessions;
+
+      CREATE INDEX sessions_owner_id_idx ON sessions(owner_id);
+    `,
+    version: 20,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {
@@ -546,8 +571,16 @@ class SuiteManagerStore {
     `).get() || null;
   }
 
-  hasSession(tokenHash) {
-    return Boolean(this.database.prepare('SELECT 1 FROM sessions WHERE token_hash = ?').get(tokenHash));
+  findLiveSession({ createdAfter, seenAfter, tokenHash }) {
+    return this.database.prepare(`
+      SELECT last_seen_at AS lastSeenAt
+      FROM sessions
+      WHERE token_hash = ? AND created_at > ? AND last_seen_at > ?
+    `).get(tokenHash, createdAfter, seenAfter) || null;
+  }
+
+  markSessionSeen({ at, tokenHash }) {
+    this.database.prepare('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?').run(at, tokenHash);
   }
 
   getTermsAcceptance(termsVersion) {
@@ -1798,7 +1831,10 @@ class SuiteManagerStore {
     });
   }
 
-  createSession(session) {
+  // Every new session sweeps out the ones outside the live window, so the table
+  // holds only sessions that could still sign the owner in.
+  createSession(session, { createdAfter, seenAfter }) {
+    this.database.prepare('DELETE FROM sessions WHERE created_at <= ? OR last_seen_at <= ?').run(createdAfter, seenAfter);
     this.insertSession(session);
   }
 
@@ -1822,9 +1858,9 @@ class SuiteManagerStore {
 
   insertSession(session) {
     this.database.prepare(`
-      INSERT INTO sessions (owner_id, token_hash, created_at)
-      VALUES (1, ?, ?)
-    `).run(session.tokenHash, session.createdAt);
+      INSERT INTO sessions (owner_id, token_hash, created_at, last_seen_at)
+      VALUES (1, ?, ?, ?)
+    `).run(session.tokenHash, session.createdAt, session.createdAt);
   }
 
   close() {

@@ -40,7 +40,9 @@ const DEFAULT_LIMITS = Object.freeze({
 const HOST_DESCRIPTORS = Object.freeze({
   'github.com': {
     archiveUrl: (owner, repo, sha) => `https://codeload.github.com/${owner}/${repo}/tar.gz/${sha}`,
-    commitSha: (json) => json?.sha,
+    // The commit id alone: the full commit carries its whole diff, which a large
+    // tip commit pushes past the metadata limit.
+    commitIdHeaders: { Accept: 'application/vnd.github.sha' },
     commitUrl: (owner, repo, ref) => `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`,
     defaultBranch: (json) => json?.default_branch,
     repoInfoUrl: (owner, repo) => `https://api.github.com/repos/${owner}/${repo}`,
@@ -135,8 +137,9 @@ async function resolveCommit(fetchImpl, { host, owner, ref, repo }, limits = DEF
     targetRef = descriptor.defaultBranch(info);
     if (!targetRef) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'Could not determine the repository default branch.');
   }
-  const sha = descriptor.commitSha(await requestJson(fetchImpl, descriptor.commitUrl(owner, repo, targetRef), limits));
-  if (!COMMIT_PATTERN.test(String(sha || ''))) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'The git host did not resolve the ref to an immutable commit.');
+  const response = await request(fetchImpl, descriptor.commitUrl(owner, repo, targetRef), limits, descriptor.commitIdHeaders);
+  const sha = (await boundedBytes(response, 1024)).toString('utf8').trim();
+  if (!COMMIT_PATTERN.test(sha)) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'The git host did not resolve the ref to an immutable commit.');
   return sha;
 }
 

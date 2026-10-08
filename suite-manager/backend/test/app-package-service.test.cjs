@@ -3,12 +3,15 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const YAML = require('yaml');
 
 const {
   AppPackageService,
   digestFor,
+  homepageProjectionApplied,
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
+const { addEntry, reconcileManagedUrls, revisionFor } = require('../../../system-agents/homepage/document.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
@@ -1900,24 +1903,52 @@ test('an official candidate that ships a privacy review updates and keeps its re
   store.close();
 });
 
-test('an app update completes without Homepage and keeps its tile applied', async () => {
+// Homepage on the agent's own services document, where adding a tile that
+// already exists changes nothing, exactly as on a server.
+function homepageOnRealDocument() {
+  const homepage = {
+    content: '- Office: []\n',
+    outage: null,
+    async read() { return { content: homepage.content, file: 'services.template.yaml', revision: revisionFor(homepage.content) }; },
+    async addManagedApp({ entry, requestId }) { return homepage.write(addEntry(homepage.content, entry, { id: requestId, managed: true })); },
+    async reconcileUrls({ entries }) { return homepage.write(reconcileManagedUrls(homepage.content, entries)); },
+    write(mutation) {
+      if (homepage.outage) throw homepage.outage;
+      homepage.content = mutation.content;
+      return { changed: mutation.changed, file: 'services.template.yaml', revision: revisionFor(mutation.content) };
+    },
+    tiles() {
+      return YAML.parse(homepage.content).flatMap((group) => Object.values(group).flat()).map((service) => {
+        const [name, config] = Object.entries(service)[0];
+        return { name, ...config };
+      });
+    },
+  };
+  return homepage;
+}
+
+// Radicale on Homepage, with a published update that changes only its calendar widget.
+async function radicaleUpdateOnHomepage(homepage) {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
-  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  await fsp.cp(path.join(v2AppsDir, 'radicale'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
+  const candidateWidget = { ...manifest.homepage.widget, maxEvents: manifest.homepage.widget.maxEvents + 1 };
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, homepage: { ...manifest.homepage, widget: candidateWidget }, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
-  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const source = { kind: 'official-git', path: 'apps/radicale', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent: {
       async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+      async apply(input) { return { appHost: input.appHost, publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
       async buildPackageUpdate() { return { status: 'built' }; },
+      async checkHealth() { return { status: 'healthy' }; },
       async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
-      async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
+      async rollbackPackageUpdate() { throw new Error('rollback must not run for a healthy candidate'); },
       async snapshotPackage(input) { return snapshotResult(input); },
       async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
       async status() { return agentStatus(); },
@@ -1926,18 +1957,50 @@ test('an app update completes without Homepage and keeps its tile applied', asyn
     catalogService: { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
-  await service.installPackage('stirling-pdf');
-  const installed = store.getAppInstanceByPackageId('stirling-pdf');
-  store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
-  const comparison = await service.preparePackageUpdate('stirling-pdf');
-  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
+  const urls = { ...requestContext().publicUrlFor('radicale'), homepageService: homepage };
+  await service.installPackage('radicale', { config: { adminPassword: 'calendar passphrase', adminUsername: 'owner', calendarName: 'Family' } });
+  await service.applyPackageRuntime('radicale', urls);
+  await service.addPackageToHomepage('radicale', homepage, urls);
+  const { id } = store.getAppInstanceByPackageId('radicale');
+  const comparison = await service.preparePackageUpdate('radicale');
+  return {
+    candidateWidget,
+    id,
+    store,
+    tiles: () => homepage.tiles().filter((tile) => tile.mos.id === id),
+    update: () => service.stagePackageUpdate('radicale', { confirmationToken: comparison.confirmationToken }, urls),
+  };
+}
+
+test('an app update refreshes its Homepage widget', async (t) => {
+  const radicale = await radicaleUpdateOnHomepage(homepageOnRealDocument());
+  t.after(() => radicale.store.close());
+
+  const result = await radicale.update();
+
+  assert.deepEqual(result.homepage, { status: 'applied' });
+  const [tile, ...duplicates] = radicale.tiles();
+  assert.equal(duplicates.length, 0);
+  assert.equal(tile.widget.maxEvents, radicale.candidateWidget.maxEvents);
+  assert.match(tile.widget.integrations[0].url, /^https:\/\/radicale\.example\.test\/__mos\/ical\/[A-Za-z0-9_-]{40,}$/u);
+  assert.equal(homepageProjectionApplied(radicale.store.getAppProjections(radicale.id)), true);
+});
+
+test('a Homepage outage does not roll back a healthy update', async (t) => {
+  const homepage = homepageOnRealDocument();
+  const radicale = await radicaleUpdateOnHomepage(homepage);
+  t.after(() => radicale.store.close());
+  const tilesBefore = radicale.tiles();
+  homepage.outage = Object.assign(new Error('Homepage system agent is unavailable.'), { code: 'HOMEPAGE_AGENT_UNAVAILABLE', statusCode: 503 });
+
+  const result = await radicale.update();
 
   assert.equal(result.operation.status, 'succeeded');
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, CANDIDATE_VERSION);
-  const homepageProjection = store.getAppProjections(installed.id).find((projection) => projection.kind === 'homepage');
-  assert.equal(homepageProjection.status, 'applied');
-  assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
-  store.close();
+  assert.deepEqual(result.homepage, { errorCode: 'HOMEPAGE_AGENT_UNAVAILABLE', status: 'failed' });
+  const updated = radicale.store.getAppInstanceByPackageId('radicale');
+  assert.equal(updated.packageVersion, CANDIDATE_VERSION);
+  assert.equal(updated.updateRecoveryState, 'none');
+  assert.deepEqual(radicale.tiles(), tilesBefore);
 });
 
 test('startup classifies every interrupted update boundary into an actionable recovery state', async () => {

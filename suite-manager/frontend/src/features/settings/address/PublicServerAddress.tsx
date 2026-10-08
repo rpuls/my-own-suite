@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { Notice, Panel, PanelBody, PanelHead, TextInput } from '../../../components/ui';
 import { EditToggle } from '../EditToggle';
 import { DOMAIN_PATTERN, normalizeDomain, type AddressStatus, type SuiteAddress, type SuiteAddressController } from './model';
-import { AddressBand, AddressDiagnostics, ChangeOutcome, ContactNotices } from './shared';
+import { AddressBand, AddressDiagnostics, ChangeOutcome, ContactNotices, RebuildNotice } from './shared';
 
 const ADDRESS_KIND_SENTENCES: Record<SuiteAddress['kind'], string> = {
   domain: 'Your own domain, with a trusted certificate.',
@@ -57,7 +57,7 @@ export function PublicServerAddress({ status, suite }: { status: AddressStatus; 
       heading="h3"
       title="Suite address"
     ><p>Where every app and your Homepage are published. MOS itself also keeps answering on <a href={status.bootstrapUrl}>{status.bootstrapUrl}</a>, so you can always get back here.</p></PanelHead>
-    <AddressBand contact={contact} note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} />
+    <AddressBand note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} suite={suite} />
     {outcome || notices.length || editing || contact !== 'ok' ? <PanelBody>
       <ContactNotices change={status.lastChange} contact={contact} />
       <ChangeOutcome address={address} outcome={outcome} />
@@ -68,10 +68,11 @@ export function PublicServerAddress({ status, suite }: { status: AddressStatus; 
         <TextInput autoComplete="url" helperText={`Your Home URL becomes home.${DOMAIN_PATTERN.test(domain) ? domain : 'example.com'}.`} label="Your domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="example.com" value={baseDomain} />
         <p>Add this record where your domain&apos;s DNS is managed, usually at the company you bought it from:</p>
         <DnsRecord domain={DOMAIN_PATTERN.test(domain) ? domain : 'example.com'} serverAddress={serverAddress} />
-        <p className="suite-meta">A new record can take a few minutes to reach everyone. MOS checks it before anything moves.</p>
+        <p className="suite-meta">A new record can take a few minutes to reach this server. After you press Move, MOS keeps checking and changes nothing until it has.</p>
+        <RebuildNotice apps={status.appsToRebuild} />
         {error ? <Notice title="The address was not changed" variant="error"><p>{error}</p></Notice> : null}
         <div className="suite-settings-actions">
-          <button className="mos-btn mos-btn-primary" disabled={!status.agentAvailable || !domain || Boolean(busy) || applying} type="submit">{busy === 'change' ? 'Checking...' : 'Move my suite to this domain'}</button>
+          <button className="mos-btn mos-btn-primary" disabled={!status.agentAvailable || !domain || Boolean(busy) || applying} type="submit">{busy === 'change' ? 'Starting...' : 'Move my suite to this domain'}</button>
         </div>
       </form> : null}
     </PanelBody> : null}

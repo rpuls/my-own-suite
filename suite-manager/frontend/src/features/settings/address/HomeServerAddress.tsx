@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { AdvancedPanel, Notice, Panel, PanelBand, PanelBody, PanelHead, TextInput } from '../../../components/ui';
 import { EditToggle } from '../EditToggle';
 import { DOMAIN_PATTERN, normalizeDomain, type AddressStatus, type SuiteAddress, type SuiteAddressController } from './model';
-import { AddressBand, AddressDiagnostics, ChangeOutcome, ContactNotices } from './shared';
+import { AddressBand, AddressDiagnostics, ChangeOutcome, ContactNotices, RebuildNotice } from './shared';
 
 const ADDRESS_KIND_SENTENCES: Record<SuiteAddress['kind'], string> = {
   domain: 'Your own domain, with a trusted certificate.',
@@ -101,7 +101,7 @@ export function HomeServerAddress({ status, suite }: { status: AddressStatus; su
       heading="h3"
       title="Suite address"
     ><p>{ADDRESS_INTRO}</p></PanelHead>
-    <AddressBand contact={contact} note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} />
+    <AddressBand note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} suite={suite} />
     {!applying && address.kind === 'easy-door' && status.easyDoorCertificate.state !== 'not-applicable' ? <EasyDoorLockBand certificate={status.easyDoorCertificate} /> : null}
     {outcome || notices.length || editing || contact !== 'ok' ? <PanelBody>
       <ContactNotices change={status.lastChange} contact={contact} />
@@ -115,6 +115,7 @@ export function HomeServerAddress({ status, suite }: { status: AddressStatus; su
           <TextInput autoComplete="email" helperText="For account notices from the certificate authority." label="Certificate contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />
         </div>
         <TextInput autoComplete="off" helperText="Needs Zone Read and DNS Edit for the relevant Cloudflare zone. Used once, never shown again." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={address.kind === 'domain' ? 'Paste a token to apply again' : 'Paste token once'} type="password" value={token} />
+        <RebuildNotice apps={status.appsToRebuild} />
         {error ? <Notice title="The address was not changed" variant="error"><p>{error}</p></Notice> : null}
         <div className="suite-settings-actions">
           <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">Move my suite to this domain</button>

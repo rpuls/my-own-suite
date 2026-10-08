@@ -289,22 +289,84 @@ test('every public install is on the public-server track and names its public ad
   assert.equal((await home.service.status()).track, 'home-server');
 });
 
-test('a public server moves to a domain from its name alone, once a wildcard points here', async () => {
-  const unpointed = publicServer();
-  await assert.rejects(() => unpointed.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_NOT_POINTED_HERE' && error.statusCode === 409 && error.message.includes('*.example.com → 203.0.113.5'));
-  const homeOnly = publicServer({ records: { 'home.example.com': ['203.0.113.5'] } });
-  await assert.rejects(() => homeOnly.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_NOT_POINTED_HERE');
-  const unanswered = publicServer({ records: { '*.example.com': Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }) } });
-  await assert.rejects(() => unanswered.service.change({ baseDomain: 'example.com', kind: 'domain' }), (error) => error.code === 'DOMAIN_LOOKUP_FAILED');
-  assert.equal([unpointed, homeOnly, unanswered].some(({ agent }) => agent.calls.some(([name]) => name === 'apply')), false);
+async function until(predicate) {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('condition never held');
+}
 
-  const { agent, service } = publicServer({ records: { '*.example.com': ['203.0.113.5'] } });
+const applied = (agent) => agent.calls.some(([name]) => name === 'apply');
+
+test('a public server waits for its record, says what it sees, and moves once the wildcard points here', async () => {
+  const records = {};
+  const { agent, service } = publicServer({ dnsRecheckMs: 5, records });
   await assert.rejects(() => service.change(domainInput), (error) => error.code === 'INVALID_HTTPS_REQUEST');
+
   await service.change({ baseDomain: 'Example.com', kind: 'domain' });
-  const status = await settled(service);
+  await until(() => service.liveProgress().dns);
+  let status = await service.status();
+  assert.equal(status.lastChange.stage, 'dns');
+  assert.match(status.lastChange.live.dns.sentence, /home\.example\.com has no DNS record yet\. Add \*\.example\.com → 203\.0\.113\.5/u);
+  assert.equal(applied(agent), false);
+
+  records['*.example.com'] = ['203.0.113.5'];
+  status = await settled(service);
   assert.equal(status.lastChange.status, 'applied');
   assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { baseDomain: 'example.com' });
   assert.deepEqual({ host: status.address.host, resolvesHere: status.address.resolvesHere, scheme: status.address.scheme }, { host: 'home.example.com', resolvesHere: true, scheme: 'https' });
+});
+
+test('a record that never arrives fails the move with what DNS last said, and nothing changes', async () => {
+  for (const [records, said] of [
+    [{ '*.example.com': ['104.21.5.6'] }, /home\.example\.com points at 104\.21\.5\.6, not this server \(203\.0\.113\.5\)\. If your DNS provider proxies the record, such as Cloudflare's orange cloud, set it to DNS only\./u],
+    [{ 'home.example.com': ['203.0.113.5'] }, /other names under example\.com do not, and every app needs its own\. Make the record \*\.example\.com\./u],
+    [{ '*.example.com': Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }) }, /MOS could not look up example\.com just now\./u],
+  ]) {
+    const { agent, service, suiteAddress } = publicServer({ dnsWaitMs: 0, records });
+    await service.change({ baseDomain: 'example.com', kind: 'domain' });
+    const status = await settled(service);
+    assert.equal(status.lastChange.errorCode, 'DOMAIN_NOT_POINTED_HERE');
+    assert.match(status.lastChange.diagnostics, said);
+    assert.match(status.lastChange.diagnostics, /changed nothing/u);
+    assert.equal(applied(agent), false);
+    assert.equal(suiteAddress.read().host, 'home.203.0.113.5.sslip.io');
+  }
+});
+
+test('a move still waiting for DNS can be cancelled, and nothing else can', async () => {
+  const { agent, service, suiteAddress } = publicServer({ dnsRecheckMs: 60_000 });
+  assert.throws(() => service.cancelChange(), (error) => error.code === 'ADDRESS_CHANGE_NOT_CANCELLABLE');
+  await service.change({ baseDomain: 'example.com', kind: 'domain' });
+  await until(() => service.liveProgress().dns);
+  assert.deepEqual(service.cancelChange(), { cancelling: true });
+  const status = await settled(service);
+  assert.equal(status.lastChange.errorCode, 'ADDRESS_CHANGE_CANCELLED');
+  assert.equal(applied(agent), false);
+  assert.equal(suiteAddress.read().host, 'home.203.0.113.5.sslip.io');
+});
+
+test('the status names the apps a move rebuilds, and a move reports each one with the time left', async () => {
+  const seen = [];
+  let service;
+  const rebake = async (address, { onApp }) => {
+    onApp({ current: 'Immich', done: 0, total: 3 });
+    seen.push(service.liveProgress().apps);
+    onApp({ current: 'Seafile', done: 1, total: 3 });
+    seen.push(service.liveProgress().apps);
+    onApp({ current: null, done: 3, total: 3 });
+    return { status: 'applied' };
+  };
+  ({ service } = makeService({ address: addressForHost('home.mos.home'), installedApps: () => ['Immich', 'Seafile', 'Vaultwarden'], rebake }));
+  service.start();
+  assert.deepEqual((await service.status()).appsToRebuild, ['Immich', 'Seafile', 'Vaultwarden']);
+
+  await service.change(domainInput);
+  await settled(service);
+  assert.deepEqual(seen[0], { current: 'Immich', done: 0, remainingSeconds: null, total: 3 });
+  assert.equal(seen[1].current, 'Seafile');
+  assert.ok(seen[1].remainingSeconds > 0);
 });
 
 test('a home server\'s domain change takes exactly the three fields', async () => {

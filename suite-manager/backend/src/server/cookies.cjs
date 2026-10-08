@@ -1,4 +1,4 @@
-const { KNOWN_BROWSER_MAX_AGE_MS } = require('../setup/setup-service.cjs');
+const { KNOWN_BROWSER_MAX_AGE_MS, SESSION_MAX_AGE_MS } = require('../setup/setup-service.cjs');
 
 const SESSION_COOKIE = 'mos_session';
 const KNOWN_BROWSER_COOKIE = 'mos_known_browser';
@@ -20,7 +20,7 @@ function parseCookies(header = '') {
 }
 
 function sessionCookie(token, secure = false) {
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_MAX_AGE_MS / 1_000)}${secure ? '; Secure' : ''}`;
 }
 
 function knownBrowserCookie(token, secure = false) {

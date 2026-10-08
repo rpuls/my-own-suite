@@ -306,8 +306,10 @@ class AppUpdateService {
       const committed = this.commitPromotedPackageUpdate(instance, operation);
       let integrations = [];
       try { integrations = await this.apps.reconcilePackageIntegrations(packageId, requestContext); } catch {}
+      const homepage = await this.apps.refreshHomepageWidget(packageId, requestContext.homepageService, requestContext);
       return {
         action: 'committed',
+        homepage,
         instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
         integrations,
         operation: committed,
@@ -705,7 +707,8 @@ class AppUpdateService {
       } catch (reconcileError) {
         integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
       }
-      return { activated, built, comparison, integrations, operation, promoted, staged };
+      const homepage = await this.apps.refreshHomepageWidget(packageId, requestContext.homepageService, requestContext);
+      return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
     } catch (caught) {
       // A rollback that fails replaces the error but not the reason: the record
       // keeps why the update failed and then why the restore did, in that order.

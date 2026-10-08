@@ -148,8 +148,8 @@ render_tall() {
   printf '      \033[2mThen open\033[0m        \033[1;36m%s\033[0m\n' "$home_url"
   printf '\n'
   if [ -n "$easy_host" ]; then
-    printf '      \033[2mNothing about your suite ever leaves your network. Take this one\033[0m\n'
-    printf '      \033[2mif you can - many routers cannot do it, and that is why B exists.\033[0m\n'
+    printf '      \033[2mIt keeps working without the internet or any server of ours. Take\033[0m\n'
+    printf '      \033[2mthis one if you can - many routers cannot, and that is why B exists.\033[0m\n'
     printf '\n'
     printf '  \033[1;32mB   THE EASY WAY IN\033[0m \033[2m- nothing to set up\033[0m\n'
     printf '\n'
@@ -163,7 +163,7 @@ render_tall() {
     printf '      \033[2myour own network. Allow local.myownsuite.org in its DNS settings,\033[0m\n'
     printf '      \033[2mor use A instead.\033[0m\n'
   else
-    printf '      \033[2mNothing about your suite ever leaves your network.\033[0m\n'
+    printf '      \033[2mYour apps and your data stay on this machine.\033[0m\n'
   fi
   printf '\n'
   printf '  \033[33m>\033[0m  \033[1mOnce inside, follow the instructions on screen.\033[0m\n'
@@ -206,8 +206,8 @@ render_short() {
   printf '      \033[1;36m*.%s  ->  %s\033[0m\n' "$domain" "$lan_ip"
   printf '      \033[2mThen open\033[0m  \033[1;36m%s\033[0m\n' "$home_url"
   if [ -n "$easy_host" ]; then
-    printf '      \033[2mNothing about your suite ever leaves your network. Take this one if\033[0m\n'
-    printf '      \033[2myou can - many routers cannot do it, and that is why B exists.\033[0m\n'
+    printf '      \033[2mIt keeps working without the internet or any server of ours. Take\033[0m\n'
+    printf '      \033[2mthis one if you can - many routers cannot, and that is why B exists.\033[0m\n'
     printf '\n'
     printf '  \033[1;32mB   THE EASY WAY IN\033[0m \033[2m- nothing to set up\033[0m\n'
     printf '      \033[2mOpen\033[0m  \033[1;36m%s://%s/\033[0m\n' "$easy_scheme" "$easy_host"
@@ -215,7 +215,7 @@ render_short() {
     printf '      \033[2mbut it is not - nothing outside can reach your suite.\033[0m\n'
     printf '      \033[2mNothing loads? Allow local.myownsuite.org in your router DNS settings.\033[0m\n'
   else
-    printf '      \033[2mNothing about your suite ever leaves your network.\033[0m\n'
+    printf '      \033[2mYour apps and your data stay on this machine.\033[0m\n'
   fi
   printf '\n'
   printf '  \033[33m>\033[0m  \033[1mOnce inside, follow the instructions on screen.\033[0m\n'

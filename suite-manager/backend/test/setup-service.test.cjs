@@ -7,7 +7,14 @@ const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 
 const { hashSessionToken } = require('../src/auth/sessions.cjs');
-const { SetupError, SetupService, TERMS_VERSION } = require('../src/setup/setup-service.cjs');
+const {
+  SESSION_IDLE_TIMEOUT_MS,
+  SESSION_MAX_AGE_MS,
+  SESSION_SEEN_INTERVAL_MS,
+  SetupError,
+  SetupService,
+  TERMS_VERSION,
+} = require('../src/setup/setup-service.cjs');
 const { DATABASE_FILENAME } = require('../src/state/suite-manager-store.cjs');
 
 async function tempStateDir() {
@@ -145,6 +152,79 @@ test('logout invalidates a persisted session across restart', async () => {
   const afterLogout = new SetupService({ stateDir });
   assert.equal(afterLogout.status(created.sessionToken).status, 'signed-out');
   afterLogout.close();
+});
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+const OWNER_INPUT = { email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' };
+
+function movableClock() {
+  let current = Date.parse('2026-10-01T09:00:00.000Z');
+  return { advance: (ms) => { current += ms; }, now: () => new Date(current) };
+}
+
+async function ownerWithClock() {
+  const clock = movableClock();
+  const service = new SetupService({ now: clock.now, stateDir: await tempStateDir() });
+  const { sessionToken } = await service.createOwner(OWNER_INPUT);
+  return { clock, service, sessionToken };
+}
+
+test('a session left unused past the idle timeout is refused', async () => {
+  const { clock, service, sessionToken } = await ownerWithClock();
+
+  clock.advance(SESSION_IDLE_TIMEOUT_MS);
+  assert.equal(service.status(sessionToken).status, 'signed-out');
+  service.close();
+});
+
+test('using a session extends its idle window', async () => {
+  const { clock, service, sessionToken } = await ownerWithClock();
+
+  clock.advance(SESSION_IDLE_TIMEOUT_MS - DAY_MS);
+  assert.equal(service.status(sessionToken).status, 'signed-in');
+  clock.advance(SESSION_IDLE_TIMEOUT_MS - DAY_MS);
+  assert.equal(service.status(sessionToken).status, 'signed-in');
+  service.close();
+});
+
+test('a session older than its absolute lifetime is refused even when used every day', async () => {
+  const { clock, service, sessionToken } = await ownerWithClock();
+
+  for (let day = 1; day < SESSION_MAX_AGE_MS / DAY_MS; day += 1) {
+    clock.advance(DAY_MS);
+    assert.equal(service.status(sessionToken).status, 'signed-in', `day ${day}`);
+  }
+  clock.advance(DAY_MS);
+  assert.equal(service.status(sessionToken).status, 'signed-out');
+  service.close();
+});
+
+test('a busy session is written back at most once per interval', async () => {
+  const { clock, service, sessionToken } = await ownerWithClock();
+  const lastSeenAt = () => service.store.database.prepare('SELECT last_seen_at AS lastSeenAt FROM sessions').get().lastSeenAt;
+  const createdAt = lastSeenAt();
+
+  clock.advance(SESSION_SEEN_INTERVAL_MS - 1);
+  assert.equal(service.status(sessionToken).status, 'signed-in');
+  assert.equal(lastSeenAt(), createdAt);
+
+  clock.advance(1);
+  assert.equal(service.status(sessionToken).status, 'signed-in');
+  assert.equal(lastSeenAt(), clock.now().toISOString());
+  service.close();
+});
+
+test('expired sessions are pruned on the next sign-in', async () => {
+  const { clock, service } = await ownerWithClock();
+  clock.advance(SESSION_IDLE_TIMEOUT_MS - DAY_MS);
+  const live = await service.login(OWNER_INPUT);
+  clock.advance(2 * DAY_MS);
+
+  const fresh = await service.login(OWNER_INPUT);
+
+  const stored = service.store.database.prepare('SELECT token_hash AS tokenHash FROM sessions ORDER BY id').all();
+  assert.deepEqual(stored.map(({ tokenHash }) => tokenHash), [live, fresh].map(({ sessionToken }) => hashSessionToken(sessionToken)));
+  service.close();
 });
 
 test('terms acceptance persists across restart and only for the version shown', async () => {
