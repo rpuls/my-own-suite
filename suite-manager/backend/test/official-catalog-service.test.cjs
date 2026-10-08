@@ -44,7 +44,7 @@ function signedResponse(value, key = publisher.privateKey) {
 // feed, at one revision.
 function serveRepo({ advisories = null, key = publisher.privateKey, value = catalog } = {}) {
   return async (url) => {
-    if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+    if (url.includes('/commits/')) return new Response(revision);
     if (url.endsWith('/apps/catalog.json')) return jsonResponse(value);
     if (url.endsWith('/apps/catalog.json.sig')) return signedResponse(value, key);
     if (url.endsWith('/apps/advisories.json')) return advisories ? jsonResponse(advisories) : new Response('Not Found', { status: 404 });
@@ -94,6 +94,24 @@ test('refresh resolves the branch once and downloads catalog content from that i
   assert.equal(result.status.freshness, 'fresh');
 });
 
+// Measured on a stable droplet on 2026-10-08: the full commit for main's tip,
+// a release merge, was 1,247,962 bytes.
+test('a release merge on main does not stop the catalog from refreshing', async () => {
+  const serve = serveRepo();
+  const service = catalogService({
+    fetchImpl: async (url, options) => {
+      if (!url.includes('/commits/')) return serve(url);
+      return options.headers.Accept === 'application/vnd.github.sha'
+        ? new Response(revision)
+        : jsonResponse({ files: [{ patch: 'x'.repeat(1_247_962) }], sha: revision });
+    },
+    stateDir: tempDir(),
+  });
+  const result = await service.refresh();
+  assert.equal(result.status.error, null);
+  assert.equal(result.status.revision, revision);
+});
+
 test('refresh treats a 304 on the conditional catalog request as unchanged, not a redirect', async () => {
   const stateDir = tempDir();
   // Seed the cache a prior successful refresh leaves behind: signed bytes, the
@@ -110,7 +128,7 @@ test('refresh treats a 304 on the conditional catalog request as unchanged, not 
   let conditional = false;
   const service = catalogService({
     fetchImpl: async (url, options) => {
-      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.includes('/commits/')) return new Response(revision);
       if (url.endsWith('/apps/catalog.json')) {
         // Main is unchanged, so the refresh sends If-None-Match and GitHub answers
         // 304 — a Location-less 3xx that must not be read as a redirect.
@@ -342,7 +360,7 @@ test('a catalog signed by anyone else is refused and never becomes the cache', a
 test('a catalog whose contents no longer match its signature is refused', async () => {
   const service = catalogService({
     fetchImpl: async (url) => {
-      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.includes('/commits/')) return new Response(revision);
       // Signed as one thing, served as another: a single flipped version.
       if (url.endsWith('/apps/catalog.json')) return jsonResponse({ ...catalog, packages: { ...catalog.packages, immich: { ...catalog.packages.immich, packageVersion: '9.9.9' } } });
       return signedResponse(catalog);
@@ -547,7 +565,7 @@ test('a refresh failure is logged once per state, not once per attempt', async (
 test('a branch track reads its own branch, and a release tag reads main', async () => {
   const asked = [];
   const serveRef = async (url) => {
-    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return jsonResponse({ sha: revision }); }
+    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return new Response(revision); }
     return serveRepo()(url);
   };
 

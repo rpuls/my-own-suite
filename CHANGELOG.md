@@ -27,6 +27,8 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ### Fixed
 
+- **Servers on stable releases read the app catalog again.** After a release with many changes, the catalog check failed with "Official catalog response exceeds the byte limit", so app updates published since, security fixes included, were not offered. MOS now asks GitHub only for the commit it needs, which stays small whatever the release contains.
+
 - **Booting the USB stick always reaches the installer, even on a machine that already runs MOS or Ubuntu.** The stick could restart into the existing install on the disk instead of installing, so reinstalling or starting over was impossible. If anything goes wrong it now stops with the reason on screen and restarts into the installer. **Compatibility:** this arrives with the next release's image, not through a platform update.
 - **Three app privacy assessments said less left your server than does, and are corrected.** A network capture found these:
   - Stirling PDF's pages loaded Stripe and PostHog despite its analytics setting. Its new package keeps both on your server, though its pages still fetch icons from Iconify, so it is rated External dependency.

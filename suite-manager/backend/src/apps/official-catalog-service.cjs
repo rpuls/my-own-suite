@@ -339,9 +339,10 @@ class OfficialCatalogService {
       // would make a conditional request return 304 for the wrong document.
       if (this.cache && this.cache.ref !== catalogRef) this.cache = null;
       const refUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/commits/${encodeURIComponent(catalogRef)}`;
-      const ref = JSON.parse((await boundedResponse(await this.request(refUrl), this.limits.catalogBytes)).toString('utf8'));
-      if (!COMMIT_PATTERN.test(String(ref.sha || ''))) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
-      const revision = ref.sha;
+      // The commit id alone: the full commit carries its whole diff, and a release
+      // merge on `main` made that 1.2 MB, over the limit for every stable server.
+      const revision = (await boundedResponse(await this.request(refUrl, { Accept: 'application/vnd.github.sha' }), 1024)).toString('utf8').trim();
+      if (!COMMIT_PATTERN.test(revision)) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
       const catalogUrl = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/catalog.json`;
       const response = await this.request(catalogUrl, this.cache?.revision === revision && this.cache?.etag ? { 'If-None-Match': this.cache.etag } : {});
       if (response.status === 304 && this.cache) {
