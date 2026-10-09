@@ -18,7 +18,7 @@ const HOMEPAGE_PORT = 3200;
 const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'digitalocean-smoke', 'public-vps']);
 
 // The two ways a suite is hosted. A public server is reachable from the internet,
-// so a domain proves itself over HTTP like any website's; a home server is not,
+// so a domain proves itself the way any website's does; a home server is not,
 // so its domain proves itself through Cloudflare DNS, and it has the Easy Door.
 function hostingTrack(frontDoor) {
   return PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'public-server' : 'home-server';

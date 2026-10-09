@@ -115,7 +115,7 @@ test('a domain keeps its global Cloudflare challenge beside the Easy Door wildca
   assert.match(caddyfile, /^https:\/\/home\.example\.com \{/mu);
 });
 
-test('a public server serves a domain without a DNS challenge, so the authority checks it over HTTP', () => {
+test('a public server serves a domain without a DNS challenge, so the authority checks it directly', () => {
   const caddyfile = renderMachineCaddyfile({ bootstrapHost: 'home.203.0.113.5.sslip.io', frontDoor: 'public-vps', liveAddress: '203.0.113.5', recorded: { acmeEmail: null, baseDomain: 'example.com', host: 'home.example.com', kind: 'domain', scheme: 'https' }, suiteManagerPort: '3100' });
   assert.match(caddyfile, /^https:\/\/home\.example\.com \{/mu);
   assert.doesNotMatch(caddyfile, /acme_dns|CLOUDFLARE|email/u);
