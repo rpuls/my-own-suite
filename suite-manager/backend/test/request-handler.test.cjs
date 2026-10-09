@@ -77,6 +77,19 @@ test('static frontend assets are served from the reserved asset namespace', asyn
   });
 });
 
+test('the dashboard icons are MOS brand and need no session', async () => {
+  const distDir = frontendDistDir();
+  fs.writeFileSync(path.join(distDir, 'brand', 'apple-touch-icon.png'), 'mos touch icon');
+  const { homepage, proxied } = countingHomepage();
+  await withHandler({ frontendDistDir: distDir, homepage }, async (request) => {
+    const icon = await request('GET', '/apple-touch-icon.png?v=4', { signedIn: false });
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers['content-type'], 'image/png');
+    assert.equal(icon.body, 'mos touch icon');
+    assert.deepEqual(proxied, []);
+  });
+});
+
 test('Suite Manager paths and unknown hosts never reach Homepage, and a signed-in owner does', async () => {
   const { homepage, proxied } = countingHomepage();
   await withHandler({ frontendDistDir: frontendDistDir(), homepage }, async (request) => {

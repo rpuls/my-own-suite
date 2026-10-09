@@ -135,7 +135,9 @@ function checkStep(step, catalogIds) {
 
 // Expands named paths, checks every token, and puts `dns01` in front of the first
 // step that needs HTTPS for an app that requires it, since a reset drops the domain.
-export function resolvePath(items, catalog, { eachApp = null } = {}) {
+// A cloud server serves HTTPS from its first address, so `startsSecure` runs need no
+// dns01, and a reset returns them to HTTPS rather than to plain HTTP.
+export function resolvePath(items, catalog, { eachApp = null, startsSecure = false } = {}) {
   const catalogIds = new Set(catalog.map((item) => item.id));
   const byId = new Map(catalog.map((item) => [item.id, item]));
   const tokens = [];
@@ -183,7 +185,7 @@ export function resolvePath(items, catalog, { eachApp = null } = {}) {
   }
 
   const steps = [];
-  let secure = false;
+  let secure = startsSecure;
   for (const token of tokens) {
     const step = { ...parseToken(token), token };
     const problem = checkStep(step, catalogIds);
@@ -191,7 +193,7 @@ export function resolvePath(items, catalog, { eachApp = null } = {}) {
       errors.push(problem);
       continue;
     }
-    if (step.name === 'reset') secure = false;
+    if (step.name === 'reset') secure = startsSecure;
     if (step.name === 'dns01') secure = true;
     if (!secure && STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps) {
       steps.push({ arg: null, auto: true, name: 'dns01', token: 'dns01' });

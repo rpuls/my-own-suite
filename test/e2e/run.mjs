@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { catalogApps } from './support/catalog.mjs';
-import { e2eRoot, repoRoot } from './support/env.mjs';
+import { e2eRoot, labBaseURL, repoRoot } from './support/env.mjs';
 import { NAMED_PATHS, STEPS, resolvePath } from './steps.mjs';
 
 const USAGE = `Usage: npm run e2e -- <steps and @paths> [options]
@@ -95,6 +95,7 @@ function printMatrix(rows) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const catalog = catalogApps();
+  const startsSecure = labBaseURL().startsWith('https:');
   if (options.help || (!options.items.length && !options.list)) {
     console.log(USAGE);
     return 0;
@@ -105,7 +106,7 @@ function main() {
   }
 
   if (!options.eachApp) {
-    const plan = resolvePath(options.items, catalog);
+    const plan = resolvePath(options.items, catalog, { startsSecure });
     if (plan.errors.length) throw new Error(plan.errors.join('\n'));
     if (options.dryRun) {
       console.log(`${options.items.join(' ')}  (${plan.steps.length} steps, budget ${plan.budgetMinutes} min)\n${describePlan(plan)}`);
@@ -115,7 +116,7 @@ function main() {
   }
 
   const apps = (options.apps || catalog.filter((item) => item.hasModule).map((item) => item.id));
-  const plans = apps.map((app) => ({ app, plan: resolvePath(options.items, catalog, { eachApp: app }) }));
+  const plans = apps.map((app) => ({ app, plan: resolvePath(options.items, catalog, { eachApp: app, startsSecure }) }));
   const errors = plans.flatMap(({ plan }) => plan.errors);
   if (errors.length) throw new Error([...new Set(errors)].join('\n'));
   if (options.dryRun) {

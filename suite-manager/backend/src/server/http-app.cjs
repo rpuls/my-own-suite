@@ -2,7 +2,7 @@ const http = require('node:http');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { SESSION_COOKIE, parseCookies } = require('./cookies.cjs');
-const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset } = require('./frontend.cjs');
+const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset, serveHomeIcon } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost } = require('./request.cjs');
 const { jsonResponse, respondError } = require('./responses.cjs');
 const { createRouter } = require('./router.cjs');
@@ -92,6 +92,10 @@ function createRequestHandler(services) {
 
       if (url.pathname.startsWith(SUITE_MANAGER_BASE_PATH)) {
         jsonResponse(response, 404, { error: 'Not found.' });
+        return;
+      }
+
+      if (request.method === 'GET' && serveHomeIcon(response, frontendDistDir, url.pathname)) {
         return;
       }
 

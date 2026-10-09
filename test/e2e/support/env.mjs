@@ -75,12 +75,16 @@ function readBucket() {
 
 // Core settings only. App credentials belong to the app modules, which read
 // their own variables through `read`.
-export function loadEnv() {
+export function labBaseURL() {
   loadLocalEnv();
+  return normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv'));
+}
+
+export function loadEnv() {
+  const baseURL = labBaseURL();
   loadSecretsCommand();
   const cloudflareApiToken = envString('CLOUDFLARE_API_TOKEN');
   const dns01BaseDomain = envString('MOS_E2E_DNS01_BASE_DOMAIN');
-  const baseURL = normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv'));
   return {
     baseURL,
     bucket: readBucket,

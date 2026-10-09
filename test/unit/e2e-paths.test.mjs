@@ -41,6 +41,11 @@ test('dns01 goes in front of the first step that needs HTTPS, once per reset', (
   assert.deepEqual(plan.steps.filter((step) => step.auto).length, 2);
 });
 
+test('a lab that starts on HTTPS gets no dns01, before or after a reset', () => {
+  const plan = resolvePath(['owner', 'install:secure-c', 'reset', 'owner', 'verify:secure-c'], catalog, { startsSecure: true });
+  assert.deepEqual(tokens(plan), ['owner', 'install:secure-c', 'reset', 'owner', 'verify:secure-c']);
+});
+
 test('an app that works over http gets no dns01', () => {
   assert.ok(!tokens(resolvePath(['@app-cycle', 'plain-a'], catalog)).includes('dns01'));
 });

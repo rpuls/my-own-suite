@@ -54,8 +54,7 @@ function assetCacheControl(relativePath) {
     : 'public, max-age=3600';
 }
 
-function serveFrontendAsset(response, frontendDistDir, pathname) {
-  const relativePath = pathname.slice(FRONTEND_ASSET_PREFIX.length);
+function serveDistFile(response, frontendDistDir, relativePath) {
   const staticPath = resolveStaticPath(frontendDistDir, relativePath);
   if (!staticPath || !fs.existsSync(staticPath) || !fs.statSync(staticPath).isFile()) {
     return false;
@@ -63,6 +62,27 @@ function serveFrontendAsset(response, frontendDistDir, pathname) {
 
   fileResponse(response, staticPath, { 'Cache-Control': assetCacheControl(relativePath) });
   return true;
+}
+
+function serveFrontendAsset(response, frontendDistDir, pathname) {
+  return serveDistFile(response, frontendDistDir, pathname.slice(FRONTEND_ASSET_PREFIX.length));
+}
+
+// The icons Homepage's page and web manifest link at the root, plus the one
+// browsers probe. A phone fetches a bookmark's icon without the session cookie.
+const HOME_ICON_FILES = new Map([
+  ['/apple-touch-icon.png', 'brand/apple-touch-icon.png'],
+  ['/favicon.ico', 'brand/favicon.ico'],
+  ['/homepage.ico', 'brand/favicon.ico'],
+  ['/favicon-16x16.png', 'brand/favicon-16x16.png'],
+  ['/favicon-32x32.png', 'brand/favicon-32x32.png'],
+  ['/android-chrome-192x192.png', 'brand/android-chrome-192x192.png'],
+  ['/android-chrome-512x512.png', 'brand/android-chrome-512x512.png'],
+]);
+
+function serveHomeIcon(response, frontendDistDir, pathname) {
+  const relativePath = HOME_ICON_FILES.get(pathname);
+  return relativePath ? serveDistFile(response, frontendDistDir, relativePath) : false;
 }
 
 function serveFrontend(response, frontendDistDir) {
@@ -87,4 +107,5 @@ module.exports = {
   frontendBuildId,
   serveFrontend,
   serveFrontendAsset,
+  serveHomeIcon,
 };
