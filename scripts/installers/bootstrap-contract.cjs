@@ -6,7 +6,7 @@ const DEFAULT_STATE_ROOT = '/var/lib/mos';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
-const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
+const FRONT_DOORS = ['cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
 
 const OWNER_KEYS = [
   'ownerEmail',
@@ -153,14 +153,6 @@ set -euo pipefail
 ${renderBootstrapEnv(config)}
 export MOS_REPO_URL MOS_REPO_REF MOS_FRONT_DOOR MOS_DOMAIN MOS_INSTALL_ROOT MOS_STATE_ROOT MOS_RUNTIME_USER MOS_SUITE_MANAGER_PORT MOS_HOMEPAGE_PORT MOS_COMPONENTS MOS_DISPOSABLE_LAB MOS_OWNER_SETUP MOS_APP_SELECTION
 
-if [ "$MOS_DOMAIN" = "localhost" ] && [ "$MOS_FRONT_DOOR" = "digitalocean-smoke" ]; then
-  metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
-  if [ -n "$metadata_ip" ]; then
-    MOS_DOMAIN="$metadata_ip.sslip.io"
-    export MOS_DOMAIN
-  fi
-fi
-
 if [ "$MOS_DOMAIN" = "localhost" ]; then
   MOS_HOME_HOST="home.localhost"
 else
@@ -286,7 +278,7 @@ if ! getent group mos-agent >/dev/null; then
 fi
 usermod -a -G mos-agent "$MOS_RUNTIME_USER"
 install -d -m 0750 /etc/mos /etc/mos/secrets /var/lib/mos/https-agent /var/lib/mos/homepage-agent "$MOS_STATE_ROOT/app-packages"
-if [ "$MOS_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_FRONT_DOOR" = 'public-vps' ]; then
+if [ "$MOS_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_FRONT_DOOR" = 'public-vps' ]; then
   MOS_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
   cat > /etc/mos/secrets/owner-claim.env <<MOS_OWNER_CLAIM
 MOS_OWNER_CLAIM_TOKEN=$MOS_OWNER_CLAIM_TOKEN

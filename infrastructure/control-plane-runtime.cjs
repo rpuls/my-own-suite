@@ -15,7 +15,7 @@ const HOMEPAGE_PORT = 3200;
 
 // The installs that front Suite Manager with their own public name and never
 // have an Easy Door.
-const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'digitalocean-smoke', 'public-vps']);
+const PUBLIC_CLOUD_FRONT_DOORS = Object.freeze(['cloud-init', 'public-vps']);
 
 // The two ways a suite is hosted. A public server is reachable from the internet,
 // so a domain proves itself the way any website's does; a home server is not,

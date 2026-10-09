@@ -93,9 +93,9 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.shell, /add a DNS override in your router/);
 });
 
-test('bootstrap contract derives sslip.io domain for cloud smoke installs', () => {
+test('bootstrap contract derives sslip.io domain for cloud installs', () => {
   const config = createBootstrapConfig({
-    frontDoor: 'digitalocean-smoke',
+    frontDoor: 'cloud-init',
     publicIpv4: '203.0.113.42',
     repoRef: 'feature/test-ref',
   });

@@ -101,6 +101,9 @@
 // Moved 2026-10-06, all five: the installer fetches Node unless /usr/bin/node, the
 // path every MOS unit runs, is 22 or newer, not unless any Node on the PATH is. A
 // fresh machine has neither, so it installs exactly as before; no `echo` line changed.
+//
+// Moved 2026-10-09, all four: the digitalocean-smoke front door is gone with its harness,
+// and with it the droplet-metadata lookup only it ran. No `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -114,27 +117,21 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'faead784f8b720d0fd79631daeb9e3a72960be232339b9917ef2d60b7530dd76',
+    digest: '795f3bce2f6b1c83d79c5ba5bb677bc113895add8f93ffe587b8fa5c86524a10',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '71dc8344afd24383c092e4939e7e1288336515062a8a93e76055d43063d75321',
+    digest: '7da30158066bbcc265cb420c8d8e0e4e6d2fa43b01e103a17f45c3fdf11a1969',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '6dde516cb14bd190eb06ceb8d253648c9f55cd681be2dacc798677484010ca07',
+    digest: 'ba2317e164fa6cf964d3c30c3e0ca67e2823b825f3abc1ef3d58be1a11d68c0c',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
-    output: 'cloudInit',
-  },
-  {
-    digest: '2f2d6e50b66bffff32505668ddd0172d8bd69d0ef5b2f81ca6af74ec7d4b223e',
-    input: { frontDoor: 'digitalocean-smoke' },
-    name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
   },
   {
@@ -142,7 +139,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '208df9590b65778f1f279e70c2e5a81384db0b9cdecb3ec9903afba5a802f995',
+    digest: '52b80160d7a56ffa2a1972d7928f8b41c27910dbfb249a9a5cdeda7069afe9f0',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

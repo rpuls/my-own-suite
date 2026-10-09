@@ -279,7 +279,7 @@ function publicServer({ records = {}, ...rest } = {}) {
 }
 
 test('every public install is on the public-server track and names its public address', async () => {
-  for (const frontDoor of ['cloud-init', 'digitalocean-smoke', 'public-vps']) {
+  for (const frontDoor of ['cloud-init', 'public-vps']) {
     const status = await publicServer({ frontDoor }).service.status();
     assert.equal(status.track, 'public-server');
     assert.equal(status.serverAddress, '203.0.113.5');
