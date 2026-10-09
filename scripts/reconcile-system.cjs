@@ -10,8 +10,10 @@ const { applyHostPatching } = require('../infrastructure/host-patching.cjs');
 const {
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
+  CADDY_SERVICE_OVERRIDE_PATH,
   HOMEPAGE_IMAGE,
   JOURNALD_CONFIG_PATH,
+  renderCaddyServiceOverride,
   renderMachineCaddyfile,
   renderUnavailablePage,
   UNAVAILABLE_PAGE_FILENAME,
@@ -106,6 +108,14 @@ function writeFile(filePath, content, mode) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content.replace(/\r\n/g, '\n'), 'utf8');
   if (mode) fs.chmodSync(filePath, mode);
+}
+
+function removeFile(filePath) {
+  if (dryRun) {
+    log(`would remove ${filePath}`);
+    return;
+  }
+  fs.rmSync(filePath, { force: true });
 }
 
 // Fatal by default: every other step here is something the control plane cannot
@@ -487,13 +497,11 @@ function main() {
   // reflashed machines and no others. It records what it decided instead of
   // throwing — an update must not fail because apt could not reach an archive.
   applyHostPatching({ dryRun, log, repoRoot: mosRoot, stateRoot });
-  writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
-EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
-ExecStart=
-ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
-ExecReload=
-ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
-`, 0o644);
+  writeFile(CADDY_SERVICE_OVERRIDE_PATH, renderCaddyServiceOverride(), 0o644);
+  // The installer takes the caddy package from Ubuntu now. Caddy's own repository,
+  // which it used to add, failed every apt update on the machine while it was down.
+  removeFile('/etc/apt/sources.list.d/caddy-stable.list');
+  removeFile('/usr/share/keyrings/caddy-stable-archive-keyring.gpg');
 
   const homepageSeedMarker = path.join(stateRoot, 'homepage/config/.mos-defaults');
   if (!fs.existsSync(homepageSeedMarker) || dryRun) {

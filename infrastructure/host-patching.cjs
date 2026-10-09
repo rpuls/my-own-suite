@@ -10,9 +10,9 @@
 // The pinning is the entire safety argument. Only the security pocket is
 // allowed, so everything that could plausibly break the suite is out of scope by
 // construction: Docker and containerd come from Docker's repository, Node from
-// NodeSource, Caddy is a binary this repo builds, and every app runs in a
-// container carrying its own userland, so a host libssl patch cannot change a
-// byte inside an app image. What is left is the kernel, systemd, the system
+// NodeSource, Caddy is a binary this repo builds (its Ubuntu package is held),
+// and every app runs in a container carrying its own userland, so a host libssl
+// patch cannot change a byte inside an app image. What is left is the kernel, systemd, the system
 // libraries the host agents' Node links against, and the storage and network
 // plumbing — four things, not "Ubuntu".
 

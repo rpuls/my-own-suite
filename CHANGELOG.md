@@ -28,6 +28,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ### Fixed
 
+- **New installs work again while Caddy's own download server is down.** Since 9 October, Caddy's package repository has refused every download, so every fresh install and image build failed. MOS now takes the `caddy` package from Ubuntu. It only supplies Caddy's user and service, so your server keeps running Caddy 2.11.6, the version MOS builds itself. The platform update also removes Caddy's repository from your server.
 - **An app update brings its Homepage tile's widget along, and a Homepage hiccup can no longer undo a healthy update.** An update left the tile's widget, such as Radicale's calendar, on the old package, and if Homepage was briefly unreachable it rolled back an update that had already succeeded. The tile's name and icon stay as they were.
 - **Servers on stable releases read the app catalog again.** After a release with many changes, the catalog check failed with "Official catalog response exceeds the byte limit", so app updates published since, security fixes included, were not offered. An added app source whose latest commit was large failed the same way. MOS now asks GitHub only for the commit it needs, which stays small whatever the commit contains.
 

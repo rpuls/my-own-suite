@@ -182,12 +182,12 @@ cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'
 ${renderJournaldConfig()}MOS_JOURNALD
 systemctl restart systemd-journald || true
 
-if ! command -v caddy >/dev/null 2>&1; then
-  rm -f /etc/apt/sources.list.d/caddy-stable.list
-fi
-
 apt-get update
-apt-get install -y bzip2 ca-certificates curl cryptsetup-bin docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ufw
+# Ubuntu's caddy package only supplies the caddy user, its unit and /etc/caddy; the
+# binary that runs is the one built below. Held, so unattended upgrades never restart
+# Caddy to update a binary nothing runs.
+apt-mark hold caddy
 # The TPM half is best effort: a machine without these still gets an encrypted
 # vault that its owner unlocks by hand, so failing the whole install over them
 # would be the wrong trade. On Ubuntu 24.04 systemd-cryptenroll and the TPM2
@@ -205,14 +205,6 @@ homepage_pull_pid="$!"
 if [ ! -x /usr/bin/node ] || [ "$(/usr/bin/node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
-fi
-
-if ! command -v caddy >/dev/null 2>&1; then
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
-  chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  apt-get update
-  apt-get install -y caddy
 fi
 
 if ! id -u "$MOS_RUNTIME_USER" >/dev/null 2>&1; then
@@ -300,14 +292,8 @@ install -d -m 0700 /var/lib/mos/backup-agent
 install -d -m 0700 /var/lib/mos/update-agent /var/lib/mos/update-agent/jobs
 
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-cat > /etc/systemd/system/caddy.service.d/mos.conf <<'MOS_CADDY_OVERRIDE'
-[Service]
-EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
-ExecStart=
-ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
-ExecReload=
-ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
-MOS_CADDY_OVERRIDE
+cat > ${CADDY_SERVICE_OVERRIDE_PATH} <<'MOS_CADDY_OVERRIDE'
+${renderCaddyServiceOverride()}MOS_CADDY_OVERRIDE
 
 homepage_seed_marker="$MOS_STATE_ROOT/homepage/config/.mos-defaults"
 for source_file in "$MOS_INSTALL_ROOT/repo/infrastructure/homepage/"*; do
@@ -830,11 +816,13 @@ module.exports = {
 const {
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
+  CADDY_SERVICE_OVERRIDE_PATH,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   JOURNALD_CONFIG_PATH,
   PUBLIC_CLOUD_FRONT_DOORS,
   renderCaddyfile,
+  renderCaddyServiceOverride,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
   renderUnavailablePage,

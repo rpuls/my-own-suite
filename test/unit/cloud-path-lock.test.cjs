@@ -104,6 +104,9 @@
 //
 // Moved 2026-10-09, all four: the digitalocean-smoke front door is gone with its harness,
 // and with it the droplet-metadata lookup only it ran. No `echo` line changed.
+//
+// Moved again 2026-10-09, all four: the caddy package comes from Ubuntu, held, after
+// Caddy's own apt repository went down for everyone. No `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -117,19 +120,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '795f3bce2f6b1c83d79c5ba5bb677bc113895add8f93ffe587b8fa5c86524a10',
+    digest: 'dd9a186727b63ea553c442bbfe399c865a44fffa67555a4a7f377d5a53acdb85',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '7da30158066bbcc265cb420c8d8e0e4e6d2fa43b01e103a17f45c3fdf11a1969',
+    digest: '0426b495f2dcc91474cd5f924d5a23c055154b24d05624eefc234bca01d1ecb0',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'ba2317e164fa6cf964d3c30c3e0ca67e2823b825f3abc1ef3d58be1a11d68c0c',
+    digest: '0104641bf90c4b64cd8ad330165082a34d1f1bbd9b1349a9200ecd1485858957',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -139,7 +142,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '52b80160d7a56ffa2a1972d7928f8b41c27910dbfb249a9a5cdeda7069afe9f0',
+    digest: '23e322f7a1e72569b9e118b259a6b15e9a7c56cac775a33321b23c8880ded2b9',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

@@ -75,14 +75,9 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
     plan.cloudInit.indexOf('systemctl restart mos-homepage.service')
       < plan.cloudInit.indexOf('systemctl restart mos-suite-manager.service'),
   );
-  assert.match(plan.cloudInit, /\/usr\/share\/keyrings\/caddy-stable-archive-keyring\.gpg/);
   assert.match(plan.cloudInit, /http:\/\/\$MOS_HOME_HOST/);
   assert.doesNotMatch(plan.cloudInit, /MOS_SUITE_MANAGER_HOSTNAME|suite-manager\.\$MOS_DOMAIN/);
   assert.doesNotMatch(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:3200/);
-  assert.ok(
-    plan.cloudInit.indexOf('rm -f /etc/apt/sources.list.d/caddy-stable.list')
-      < plan.cloudInit.indexOf('apt-get update'),
-  );
   assert.doesNotMatch(plan.cloudInit, /\r/);
   assert.match(plan.shell, /^#!\/usr\/bin\/env bash/);
   assert.doesNotMatch(plan.sshBootstrap, /\r/);
@@ -91,6 +86,15 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.shell, /mos_lan_ip="\$\(ip -4 route get/);
   assert.match(plan.shell, /LAN IP/);
   assert.match(plan.shell, /add a DNS override in your router/);
+});
+
+test('the caddy package comes from Ubuntu, held, and its unit runs the binary MOS builds', () => {
+  const { shell } = renderBootstrapPlan({});
+  assert.doesNotMatch(shell, /cloudsmith|caddy-stable/u);
+  assert.match(shell, /apt-get install -y [^\n]*\bcaddy\b/u);
+  assert.match(shell, /apt-mark hold caddy/u);
+  assert.match(shell, /ExecStart=\/usr\/local\/libexec\/mos\/caddy run/u);
+  assert.match(shell, /LimitNPROC=infinity\nAmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\nMOS_CADDY_OVERRIDE/u);
 });
 
 test('bootstrap contract derives sslip.io domain for cloud installs', () => {

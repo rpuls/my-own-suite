@@ -5,6 +5,7 @@
 //
 //   node scripts/smoke/local-lab.cjs install <base>            install MOS from <base>
 //   node scripts/smoke/local-lab.cjs drill <app> <candidate>   @update <app> onto <candidate>, then @app-dr <app>
+//   node scripts/smoke/local-lab.cjs run <steps...>            any E2E steps or @paths on the lab as it is, e.g. run @full
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -175,11 +176,24 @@ async function drill(app, candidate) {
   return passed;
 }
 
+// Leaves the same drill.json as a drill, naming the commit the lab really runs.
+async function runSteps(items) {
+  const since = epoch();
+  const result = await e2e(items);
+  const candidate = run('sudo', ['git', '-C', LAB_REPO, 'rev-parse', `refs/heads/${LAB_BRANCH}`], { capture: true }).trim();
+  fs.writeFileSync(path.join(RESULTS, 'drill.json'), `${JSON.stringify({ candidate, runs: [result] }, null, 2)}\n`);
+  console.log(`[local-lab] ${result.path}: ${result.status}${result.failedStep ? ` at ${result.failedStep}` : ''}`);
+  const passed = result.status === 'passed';
+  if (!passed) reportSystemd(since);
+  return passed;
+}
+
 async function main([command, ...args]) {
   if (process.platform !== 'linux') throw new Error('The local lab installs MOS on this machine, so it runs on Linux only.');
   if (command === 'install' && args[0]) return install(args[0]);
   if (command === 'drill' && args[1]) return drill(args[0], args[1]);
-  throw new Error('Usage: local-lab.cjs install <base> | drill <app> <candidate>');
+  if (command === 'run' && args[0]) return runSteps(args);
+  throw new Error('Usage: local-lab.cjs install <base> | drill <app> <candidate> | run <steps...>');
 }
 
 main(process.argv.slice(2)).then((ok) => {

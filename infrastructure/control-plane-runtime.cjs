@@ -536,6 +536,23 @@ MaxRetentionSec=1month
 `;
 }
 
+// Points Ubuntu's caddy unit at the binary this repo builds. Its unit is Caddy's from
+// 2022, so the last two lines carry what Caddy's own unit has since gained: no thread
+// cap, and CAP_NET_ADMIN, which HTTP/3 needs to size its UDP buffers.
+const CADDY_SERVICE_OVERRIDE_PATH = '/etc/systemd/system/caddy.service.d/mos.conf';
+
+function renderCaddyServiceOverride() {
+  return `[Service]
+EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
+ExecStart=
+ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
+ExecReload=
+ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
+LimitNPROC=infinity
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+`;
+}
+
 // Upstream serves "/" as rendered inside its own image build, against the stock
 // config, until something revalidates it; every start re-renders it from ours.
 // No "$" in this unit: the bootstrap writes it through an unquoted heredoc.
@@ -567,6 +584,7 @@ WantedBy=multi-user.target
 module.exports = {
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
+  CADDY_SERVICE_OVERRIDE_PATH,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   VAULT_AGENT_PORT,
@@ -579,6 +597,7 @@ module.exports = {
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
   renderCaddyfile,
+  renderCaddyServiceOverride,
   renderUnavailablePage,
   renderUnavailablePageScript,
   renderJournaldConfig,
