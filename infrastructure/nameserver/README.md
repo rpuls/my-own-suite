@@ -105,8 +105,8 @@ A Reserved IP is free while it is assigned to a Droplet. Unassigned it costs $5.
 ($0.01/hour), so destroying the Droplet and leaving the address parked for weeks is a real if small
 cost — a rebuild is a free hold only when it is prompt.
 
-Provisioning reads `DIGITALOCEAN_ACCESS_TOKEN` from the environment, or from `.mos-nameserver.env`,
-or from the existing `.mos-smoke/digitalocean.env`. All three are git-ignored.
+Provisioning reads `DIGITALOCEAN_ACCESS_TOKEN` from the environment, or from the git-ignored
+`.mos-nameserver.env`.
 
 ### Settings the provisioner uses
 

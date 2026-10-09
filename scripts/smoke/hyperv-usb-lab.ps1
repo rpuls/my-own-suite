@@ -15,7 +15,7 @@ $IsoPath = Join-Path $LabRoot 'my-own-suite-installer.iso'
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $HostsStartMarker = '# BEGIN MOS HYPERV USB SMOKE'
 $HostsEndMarker = '# END MOS HYPERV USB SMOKE'
-$DefaultDns01SmokeDomain = 'hyperv.diemernet.uk'
+$DefaultDns01SmokeDomain = 'hyperv.lab.my-demo-domain.site'
 
 function Fail([string]$Message) {
   throw "[mos-smoke:hyperv-usb] $Message"

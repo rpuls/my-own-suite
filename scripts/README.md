@@ -60,15 +60,7 @@ Minimum input is intentionally empty. Defaults are:
 - repository ref: `staging`
 - domain: `<public-ip>.sslip.io` when a public IPv4 is known, otherwise `localhost`
 
-The MOS DigitalOcean smoke entry point can create a fresh Droplet and install the MOS control plane:
-
-```powershell
-npm run smoke:do:reset
-npm run smoke:do:destroy
-npm run smoke:do:render
-```
-
-`smoke:do:reset` creates or replaces paid DigitalOcean resources through the public development installer, waits for HTTPS Suite Manager readiness, and prints the Home, Suite Manager, and one-time owner setup URLs. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
+To try a cloud install from a branch, give a fresh Ubuntu 24.04 server with ports 80 and 443 open the development installer, as root or as its cloud-init: `curl -fsSL https://get-dev.myownsuite.org/install.sh | sudo bash`. It installs the branch `infrastructure/installer-endpoint/dev` points at; check with `curl -I` first that it is serving one, because a pipe into `bash` turns a failing endpoint into a server that silently installs nothing. The server comes up at `https://home.<ip>.sslip.io`, and its one-time owner setup key is in `/etc/mos/secrets/owner-claim.env`. To run the E2E tests against it, set `MOS_E2E_BASE_URL`, `MOS_E2E_LAB_SSH=root@<ip>` with its key, and `MOS_E2E_OWNER_CLAIM_TOKEN` (see [test/README.md](../test/README.md)).
 
 Bootstrap also builds the pinned Cloudflare-capable Caddy binary, verifies its DNS module, installs the separate restricted HTTPS and Homepage agents, seeds the MOS-owned Homepage route snippet, and connects Suite Manager to both protected Unix sockets. No domain credential or DNS token is accepted during installation.
 
@@ -80,24 +72,6 @@ node scripts/reconcile-system.cjs --dry-run
 ```
 
 `reconcile-system.cjs` is the Linux/root apply path used by `mos-update-agent`. It refreshes repo-owned systemd units, socket directories, the Cloudflare-capable Caddy binary/override, journald persistence and retention, Suite Manager service wiring, and all MOS host agents. Host settings that both the installer and an update must apply are rendered from one definition in `infrastructure/control-plane-runtime.cjs` and written here too, because the installer is the one path a machine that already exists never runs again. `--dry-run` is for deterministic validation only; it does not touch systemd, Docker, or host files.
-
-The smoke harness reads the ignored local file `.mos-smoke/digitalocean.env`. Smoke credentials, state, and logs all stay under `.mos-smoke/`.
-
-Required for `up`, `reset`, and `destroy`:
-
-- `DIGITALOCEAN_ACCESS_TOKEN`
-
-Optional:
-
-- `MOS_SMOKE_REPO_URL`
-- `MOS_SMOKE_REPO_REF`
-- `MOS_SMOKE_REGION`
-- `MOS_SMOKE_SIZE`
-- `MOS_SMOKE_DOMAIN`
-- `MOS_SMOKE_SSH_KEY_ID`, `MOS_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_SMOKE_SSH_KEY_NAME`
-- `MOS_SMOKE_SSH_PRIVATE_KEY` (local key path used to retrieve and print the one-time owner claim URL)
-
-The smoke install uses cloud-init, so SSH keys are optional for installation. When both a Droplet SSH key and `MOS_SMOKE_SSH_PRIVATE_KEY` are configured, the harness reads the root-only claim secret over SSH and prints the owner setup URL without storing the token in smoke state or harness-created log files.
 
 ### Local Hyper-V smoke
 
@@ -149,7 +123,7 @@ node scripts/smoke/local-lab.cjs drill <app> <candidate>    # @update <app> onto
 - `install` puts both commits in a local repository (`/srv/mos-lab.git`, fetched from the public repository) and installs MOS from its `lab` branch with the `--disposable-lab` bootstrap, so the lab reset agent is there. The app hosts resolve to the machine's own address through `/etc/hosts`.
 - `drill` runs `@update <app>`, moves `lab` to `<candidate>` when `platform-update` starts, then runs `@app-dr <app>` if the platform update went through. Each run's results land in `test/e2e/results/` as usual, with `drill.json` beside them listing both runs. The tests run on the lab itself, so the network capture reads it with `sudo` directly (`MOS_E2E_LAB_SSH=local`).
 - An app that requires HTTPS goes through the `dns01` step. Set `MOS_E2E_DNS01_BASE_DOMAIN` for `install`, which writes that domain's hosts beside `mos.lab`'s, and add `CLOUDFLARE_API_TOKEN` for `drill`. DNS-01 needs only the TXT record the token writes, so no public record points at the lab.
-- It needs `sudo` without a password, and the lab bucket in `.local-tools/lab-bucket/bucket.env` for `@app-dr`. Never run it on a machine you want to keep: it installs MOS as root and its lab reset agent can wipe that MOS.
+- It needs `sudo` without a password, and the lab bucket for `@app-dr`: its `MOS_LAB_S3_*` values in the environment. Never run it on a machine you want to keep: it installs MOS as root and its lab reset agent can wipe that MOS.
 
 ### Marketing screenshot pipeline
 
@@ -197,7 +171,7 @@ Readiness and access:
 
 - The command discovers the guest IPv4 from Hyper-V integration data or, when Hyper-V does not report it, from the Windows neighbor table using the VM MAC address.
 - It probes both `http://home.<domain>/suite-manager/api/setup/status` and `http://home.<domain>/` with per-request `curl --resolve`, so readiness requires Suite Manager and Homepage without depending on Windows DNS being configured yet.
-- After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS. The block includes `home.<domain>` plus route hosts discovered from local MOS app package manifests for both the bootstrap domain and the DNS-01 E2E domain, so packaged-app smoke and post-HTTPS browser checks do not require a separate hosts edit. The DNS-01 host domain defaults to `hyperv.diemernet.uk`; set `MOS_HYPERV_EXTRA_HOST_DOMAINS` to a comma-separated list to override or add domains for another lab.
+- After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS. The block includes `home.<domain>` plus route hosts discovered from local MOS app package manifests for both the bootstrap domain and the DNS-01 E2E domain, so packaged-app smoke and post-HTTPS browser checks do not require a separate hosts edit. The DNS-01 host domain defaults to `hyperv.lab.my-demo-domain.site`; set `MOS_HYPERV_EXTRA_HOST_DOMAINS` to a comma-separated list to override or add domains for another lab.
 - External packages are not discoverable this way. They are installed at runtime from a GitHub repository and have no folder under `apps/`, so the scan above cannot see them and their hostnames would not resolve. They are declared in `scripts/smoke/external-lab-apps.cjs` instead, which applies the same `ext-` prefix the Suite Manager serves them under. Add an entry there when a new external package needs to be reachable in the lab.
 
 ```text
@@ -206,10 +180,10 @@ Readiness and access:
 <guest-ip> ext-notes.<domain>
 <guest-ip> stirling-pdf.<domain>
 <guest-ip> vaultwarden.<domain>
-<guest-ip> home.hyperv.diemernet.uk
-<guest-ip> ext-notes.hyperv.diemernet.uk
-<guest-ip> stirling-pdf.hyperv.diemernet.uk
-<guest-ip> vaultwarden.hyperv.diemernet.uk
+<guest-ip> home.hyperv.lab.my-demo-domain.site
+<guest-ip> ext-notes.hyperv.lab.my-demo-domain.site
+<guest-ip> stirling-pdf.hyperv.lab.my-demo-domain.site
+<guest-ip> vaultwarden.hyperv.lab.my-demo-domain.site
 # END MOS HYPERV USB SMOKE
 ```
 
@@ -230,23 +204,6 @@ Use the non-Docker IPv4 from `hostname -I`; Docker bridge addresses such as `172
 
 Set `MOS_HYPERV_READY_TIMEOUT_MINUTES` to override the default 90 minute readiness timeout. The remasterer uses the supported Ubuntu ISO under `infrastructure/self-host/autoinstall/ubuntu-iso/` and Docker Desktop's Linux container engine.
 
-### Explicit DigitalOcean DNS-01 validation
-
-After creating the owner on an existing MOS smoke Droplet and pointing `home.<base-domain>` at it, real DNS-01 validation is available only with explicit confirmation:
-
-```powershell
-$env:MOS_DNS01_CONFIRM='APPLY_REAL_DNS01'
-$env:MOS_DNS01_BASE_DOMAIN='mos.example.com'
-$env:MOS_DNS01_ACME_EMAIL='owner@example.com'
-$env:MOS_DNS01_OWNER_EMAIL='owner@example.com'
-$env:MOS_DNS01_OWNER_PASSWORD='<owner password>'
-$env:CLOUDFLARE_API_TOKEN='<scoped token>'
-$env:DIGITALOCEAN_ACCESS_TOKEN='<DigitalOcean token>'
-cmd /c npm run smoke:do:dns01
-```
-
-The command signs in through the bootstrap URL, submits the production Settings API, and waits for the HTTPS Home status endpoint. It never prints either credential. It refuses to run without the exact confirmation value and existing smoke state.
-
 ### MOS-operated nameserver
 
 `scripts/nameserver.cjs` provisions and operates the Easy Door nameserver — the MOS-run box that
@@ -265,8 +222,8 @@ npm run nameserver:ssh-open   # point the firewall's SSH rule at wherever you ar
 ```
 
 `npm run nameserver:apply` **creates billable DigitalOcean resources** (a $6/mo Droplet plus a
-firewall) and `npm run nameserver:destroy` removes them. Treat both the way `AGENTS.md` treats the
-DigitalOcean smoke commands: an agent runs them only when explicitly asked. Run `plan` first — it
+firewall) and `npm run nameserver:destroy` removes them. Treat both the way `AGENTS.md` treats paid
+test servers: an agent runs them only when explicitly asked. Run `plan` first — it
 prices the change against live state before anything is created.
 
 `destroy` keeps the Reserved IP on purpose, because the parent zone's `ns1` A record points at it and
@@ -274,7 +231,7 @@ an owner install resolving through this box depends on that address surviving a 
 unattached Reserved IP is billed, and the next `apply` reattaches it.
 
 `DIGITALOCEAN_ACCESS_TOKEN` is required for everything except `render`. It is read from the
-environment, or from `.mos-nameserver.env` or `.mos-smoke/digitalocean.env` — all git-ignored. Run
+environment, or from the git-ignored `.mos-nameserver.env`. Run
 `node scripts/nameserver.cjs` with no arguments for the full environment-variable list.
 
 The acceptance checks in `infrastructure/nameserver/verify.cjs` also run standalone against a local

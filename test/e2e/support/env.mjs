@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +8,6 @@ import { labSshKeyPath } from '../../../scripts/smoke/lab-ssh-key.cjs';
 export const e2eRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const repoRoot = path.resolve(e2eRoot, '..', '..');
 const localEnvPath = path.join(e2eRoot, '.env');
-const defaultBucketEnvPath = path.join(repoRoot, '.local-tools', 'lab-bucket', 'bucket.env');
 
 export function parseEnvFile(raw) {
   const values = {};
@@ -26,10 +26,25 @@ export function parseEnvFile(raw) {
   return values;
 }
 
-function loadLocalEnv() {
-  if (!fs.existsSync(localEnvPath)) return;
-  for (const [key, value] of Object.entries(parseEnvFile(fs.readFileSync(localEnvPath, 'utf8')))) {
+function adopt(values) {
+  for (const [key, value] of Object.entries(values)) {
     if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+function loadLocalEnv() {
+  if (fs.existsSync(localEnvPath)) adopt(parseEnvFile(fs.readFileSync(localEnvPath, 'utf8')));
+}
+
+// A command that prints KEY=value lines, such as a secrets broker's handout, so lab keys never sit in a file.
+// The environment and .env win over what it prints. A failure only warns: the steps that need its keys say so.
+function loadSecretsCommand() {
+  const command = envString('MOS_E2E_SECRETS_COMMAND');
+  if (!command) return;
+  try {
+    adopt(parseEnvFile(execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })));
+  } catch (error) {
+    console.warn(`MOS_E2E_SECRETS_COMMAND failed, so its keys are missing: ${String(error.stderr || error.message).trim()}`);
   }
 }
 
@@ -46,18 +61,14 @@ function normalizeBaseURL(value) {
   return parsed.toString().replace(/\/$/u, '');
 }
 
-// The disposable lab bucket, never a personal one (AGENTS.md). Read on demand so
-// a path that never touches the bucket never needs the file.
+// The disposable lab bucket, never a personal one (AGENTS.md).
 function readBucket() {
-  const file = envString('MOS_E2E_BUCKET_ENV', defaultBucketEnvPath);
-  if (!fs.existsSync(file)) return null;
-  const values = parseEnvFile(fs.readFileSync(file, 'utf8'));
   const bucket = {
-    accessKeyId: values.MOS_LAB_S3_ACCESS_KEY_ID,
-    bucket: values.MOS_LAB_S3_BUCKET,
-    endpoint: values.MOS_LAB_S3_ENDPOINT,
-    region: values.MOS_LAB_S3_REGION,
-    secretAccessKey: values.MOS_LAB_S3_SECRET_ACCESS_KEY,
+    accessKeyId: envString('MOS_LAB_S3_ACCESS_KEY_ID'),
+    bucket: envString('MOS_LAB_S3_BUCKET'),
+    endpoint: envString('MOS_LAB_S3_ENDPOINT'),
+    region: envString('MOS_LAB_S3_REGION'),
+    secretAccessKey: envString('MOS_LAB_S3_SECRET_ACCESS_KEY'),
   };
   return Object.values(bucket).every(Boolean) ? bucket : null;
 }
@@ -66,6 +77,7 @@ function readBucket() {
 // their own variables through `read`.
 export function loadEnv() {
   loadLocalEnv();
+  loadSecretsCommand();
   const cloudflareApiToken = envString('CLOUDFLARE_API_TOKEN');
   const dns01BaseDomain = envString('MOS_E2E_DNS01_BASE_DOMAIN');
   const baseURL = normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv'));
@@ -77,6 +89,7 @@ export function loadEnv() {
     dns01BaseDomain,
     dns01Configured: Boolean(cloudflareApiToken && dns01BaseDomain),
     owner: {
+      claimToken: envString('MOS_E2E_OWNER_CLAIM_TOKEN'),
       email: envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com'),
       name: envString('MOS_E2E_OWNER_NAME', 'MOS Owner'),
       password: envString('MOS_E2E_OWNER_PASSWORD', 'correct horse battery'),

@@ -88,7 +88,7 @@ async function backupToDisk(ctx) {
 
 function bucketSettings(ctx, folder) {
   const bucket = ctx.env.bucket();
-  if (!bucket) throw new Error('The lab bucket is not configured: .local-tools/lab-bucket/bucket.env (or MOS_E2E_BUCKET_ENV) needs MOS_LAB_S3_ENDPOINT, _REGION, _BUCKET, _ACCESS_KEY_ID and _SECRET_ACCESS_KEY.');
+  if (!bucket) throw new Error('The lab bucket is not configured: set MOS_LAB_S3_ENDPOINT, _REGION, _BUCKET, _ACCESS_KEY_ID and _SECRET_ACCESS_KEY in the environment or through MOS_E2E_SECRETS_COMMAND.');
   return { ...bucket, folder, label: `E2E ${folder}` };
 }
 

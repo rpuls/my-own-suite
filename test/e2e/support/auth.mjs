@@ -19,6 +19,12 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
   const status = await apiJson(page, apiPathFor(entryUrl, '/suite-manager/api/setup/status'));
 
   if (status.status === 'needs-owner') {
+    if (status.ownerClaimRequired) {
+      if (!env.owner.claimToken) throw new Error('This install asks for its one-time owner setup key: set MOS_E2E_OWNER_CLAIM_TOKEN from /etc/mos/secrets/owner-claim.env on the server.');
+      const claimUrl = new URL(page.url());
+      claimUrl.searchParams.set('claim', env.owner.claimToken);
+      await page.goto(claimUrl.toString());
+    }
     await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
     await page.getByLabel(/name/i).fill(env.owner.name);
     await page.getByLabel(/email/i).fill(env.owner.email);

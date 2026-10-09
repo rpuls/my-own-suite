@@ -10,7 +10,7 @@ const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const apiBaseUrl = 'https://api.digitalocean.com/v2';
-const envFiles = ['.mos-nameserver.env', path.join('.mos-smoke', 'digitalocean.env')];
+const envFiles = ['.mos-nameserver.env'];
 const monthlyCost = { 's-1vcpu-1gb': 6, 's-1vcpu-512mb-10gb': 4, 's-2vcpu-2gb': 18 };
 
 const COREDNS_VERSION = '1.14.6';

@@ -73,12 +73,14 @@ Copy-Item test\e2e\.env.example test\e2e\.env
 
 - `MOS_E2E_BASE_URL`: the Home origin, for example `http://home.mos.hyperv`.
 - `MOS_E2E_OWNER_EMAIL` and `MOS_E2E_OWNER_PASSWORD`: used to create the owner on a fresh install or sign in on an existing one.
+- `MOS_E2E_OWNER_CLAIM_TOKEN`: the one-time owner setup key a cloud install asks for, from `/etc/mos/secrets/owner-claim.env` on the server.
 - `MOS_E2E_DNS01_BASE_DOMAIN` and `CLOUDFLARE_API_TOKEN` (never commit it): the Cloudflare-managed domain the `dns01` step moves the suite to.
+- `MOS_E2E_SECRETS_COMMAND`: a command that prints `KEY=value` lines, whose output joins the environment below anything set in `.env`. It keeps lab keys out of files.
 - App credentials have defaults in each app module and can be overridden with that module's own variables, such as `MOS_E2E_RADICALE_PASSWORD`.
 - `MOS_E2E_LAB_SSH` (`user@host`, or `local` when the tests run on the lab itself) and `MOS_E2E_LAB_SSH_KEY`: a root shell on the lab for the network capture (`sudo -n` must work). The Hyper-V lab needs neither: `smoke:hyperv:reset` bakes in the key it makes at `.mos-smoke/lab-ssh/id_ed25519`, which also gives the lab user passwordless `sudo`, and runs use `mos@` the Home host with that key.
-- `backup:bucket` and `restore:bucket` use only the disposable lab bucket in the git-ignored `.local-tools/lab-bucket/bucket.env` (or the file named by `MOS_E2E_BUCKET_ENV`), each run in a folder of its own.
+- `backup:bucket` and `restore:bucket` use only the disposable lab bucket, whose `MOS_LAB_S3_*` values come from the environment (such as `MOS_E2E_SECRETS_COMMAND`), each run in a folder of its own.
 
-Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.hyperv`, and the post-DNS-01 hosts, such as `home.hyperv.diemernet.uk`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
+Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.hyperv`, and the post-DNS-01 hosts, such as `home.hyperv.lab.my-demo-domain.site`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
 
 Site screenshots are captured best-effort by the `marketing` step and during installs into the ignored `test/e2e/screenshots/` folder, harvested by `npm run screenshots:update` (see `scripts/README.md`). A failed capture logs a warning and never fails the run.
 
