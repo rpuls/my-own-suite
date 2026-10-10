@@ -79,6 +79,7 @@ Copy-Item test\e2e\.env.example test\e2e\.env
 - App credentials have defaults in each app module and can be overridden with that module's own variables, such as `MOS_E2E_RADICALE_PASSWORD`.
 - `MOS_E2E_LAB_SSH` (`user@host`, or `local` when the tests run on the lab itself) and `MOS_E2E_LAB_SSH_KEY`: a root shell on the lab for the network capture (`sudo -n` must work). The Hyper-V lab needs neither: `smoke:hyperv:reset` bakes in the key it makes at `.mos-smoke/lab-ssh/id_ed25519`, which also gives the lab user passwordless `sudo`, and runs use `mos@` the Home host with that key.
 - `backup:bucket` and `restore:bucket` use only the disposable lab bucket, whose `MOS_LAB_S3_*` values come from the environment (such as `MOS_E2E_SECRETS_COMMAND`), each run in a folder of its own.
+- `MOS_E2E_BACKUP_TO=bucket`: a plain `backup` or `restore`, as in `@full`, uses the lab bucket, for a lab with no backup disk. `scripts/smoke/local-lab.cjs` sets it, since the machine it runs on is the lab.
 
 Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.hyperv`, and the post-DNS-01 hosts, such as `home.hyperv.lab.my-demo-domain.site`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
 

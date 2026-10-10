@@ -46,6 +46,12 @@ test('a lab that starts on HTTPS gets no dns01, before or after a reset', () => 
   assert.deepEqual(tokens(plan), ['owner', 'install:secure-c', 'reset', 'owner', 'verify:secure-c']);
 });
 
+test('a lab with no backup disk sends plain backups and restores to the bucket', () => {
+  const steps = tokens(resolvePath(['@full'], catalog, { backupTo: 'bucket' }));
+  assert.ok(steps.includes('backup:bucket') && steps.includes('restore:bucket'));
+  assert.ok(!steps.includes('backup') && !steps.includes('restore'));
+});
+
 test('an app that works over http gets no dns01', () => {
   assert.ok(!tokens(resolvePath(['@app-cycle', 'plain-a'], catalog)).includes('dns01'));
 });

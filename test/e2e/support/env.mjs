@@ -80,6 +80,12 @@ export function labBaseURL() {
   return normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv'));
 }
 
+// What the lab itself settles for every path it runs.
+export function labPlanOptions() {
+  const startsSecure = labBaseURL().startsWith('https:');
+  return { backupTo: envString('MOS_E2E_BACKUP_TO') || null, startsSecure };
+}
+
 export function loadEnv() {
   const baseURL = labBaseURL();
   loadSecretsCommand();

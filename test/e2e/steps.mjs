@@ -103,6 +103,13 @@ export const NAMED_PATHS = {
 };
 
 const STEPS_NEEDING_HTTPS = new Set(['install', 'app', 'verify', 'update', 'lifecycle']);
+const STEPS_WITH_DESTINATION = new Set(['backup', 'restore']);
+
+// A plain backup or restore goes where the lab keeps its backups: the bucket, on a lab with no backup disk.
+function toLabDestination(step, backupTo) {
+  if (!backupTo || step.arg !== null || !STEPS_WITH_DESTINATION.has(step.name)) return step;
+  return { arg: backupTo, name: step.name, token: `${step.name}:${backupTo}` };
+}
 
 export function parseToken(text) {
   const separator = text.indexOf(':');
@@ -137,7 +144,7 @@ function checkStep(step, catalogIds) {
 // step that needs HTTPS for an app that requires it, since a reset drops the domain.
 // A cloud server serves HTTPS from its first address, so `startsSecure` runs need no
 // dns01, and a reset returns them to HTTPS rather than to plain HTTP.
-export function resolvePath(items, catalog, { eachApp = null, startsSecure = false } = {}) {
+export function resolvePath(items, catalog, { backupTo = null, eachApp = null, startsSecure = false } = {}) {
   const catalogIds = new Set(catalog.map((item) => item.id));
   const byId = new Map(catalog.map((item) => [item.id, item]));
   const tokens = [];
@@ -187,7 +194,7 @@ export function resolvePath(items, catalog, { eachApp = null, startsSecure = fal
   const steps = [];
   let secure = startsSecure;
   for (const token of tokens) {
-    const step = { ...parseToken(token), token };
+    const step = toLabDestination({ ...parseToken(token), token }, backupTo);
     const problem = checkStep(step, catalogIds);
     if (problem) {
       errors.push(problem);

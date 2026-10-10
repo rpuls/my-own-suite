@@ -122,7 +122,8 @@ function e2e(items, onStep = () => {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ['test/e2e/run.mjs', ...items], {
       cwd: repoRoot,
-      env: { ...process.env, MOS_E2E_BASE_URL: HOME_URL, MOS_E2E_LAB_SSH: 'local' },
+      // This machine is the lab, and it has no backup disk.
+      env: { ...process.env, MOS_E2E_BACKUP_TO: 'bucket', MOS_E2E_BASE_URL: HOME_URL, MOS_E2E_LAB_SSH: 'local' },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     let id = null;
