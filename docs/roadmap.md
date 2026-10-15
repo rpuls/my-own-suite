@@ -188,20 +188,13 @@ on its own: machines that install but will not boot, and reaching the suite once
   in the owner's browser and the onboarding screen has to react to what it finds. The banner's
   standing advice — no answer on the second address means your router refuses names pointing into
   your own network, use the first — is the fallback this replaces, not a stopgap to remove. *(Small)*
-- **H8 — Trusted HTTPS with no domain to buy.** A self-hosted suite serves plain HTTP, so the owner
-  password is first set over an unencrypted connection and secure-origin apps do not work at all.
-  Promoted out of the alpha gate: it is not hardening, it is the only entry door that half the
-  audience has. **The address half has landed** — the box answers on
-  `home.<lan-ip-with-dashes>.local.myownsuite.org` and serves every installed app under the same
-  base, `http://home.mos.home` stays the recovery door, and applying a real domain closes it; the
-  contract is in `docs/decisions.md`. It left two things behind: rebinding protection, which belongs
-  to **H7**, and address instability, which is **H9**.
-
-  **The certificate half is built** (decision 2026-10-03): one wildcard per box through a token-only
-  ACME responder, and the suite switches to HTTPS by itself. The gate is the rest: the responder
-  Droplet and its two parent-zone records live, an issuance against Let's Encrypt staging and then
-  production from the lab box, the lab drills, and the Let's Encrypt rate-limit adjustment request
-  filed. *(Large)*
+- **H11 — Install the published image in the release gate.** `bake.sh verify` boots the image as an
+  internal disk, so `mos-self-install` sees an installed machine and steps aside: the USB install path
+  — disk picker, ERASE, copy, restart onto the internal disk — never runs before a download is
+  published. QEMU can attach the image as removable USB storage (`usb-storage,removable=on`), so the
+  gate can install onto a blank disk, boot it without the stick and require Suite Manager to answer,
+  then install again over that machine, the reinstall case `AGENTS.md` rule 8 guards. Real hardware
+  stays the release's last check, for firmware quirks no VM reproduces. *(Medium)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
@@ -299,8 +292,8 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
 **A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
-artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers ·
-**H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become the bar.
+artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers. Alpha is
+where these stop being roadmap and become the bar.
 
 ---
 
@@ -482,8 +475,8 @@ Owner decisions. Future agents and reviews should not resurface these.
   *not* the reason, because MOS owns the app lifecycle and could publish a record per app on install.
 - **MOS shipping its own LAN DNS resolver** — declined. It adds nothing for owners already running a
   resolver, and buying the router-only case costs an always-on service, a `systemd-resolved` port
-  conflict, and a failure mode where the box going down takes the household's DNS with it. **H8**
-  reaches the same owners without any of that.
+  conflict, and a failure mode where the box going down takes the household's DNS with it. The Easy
+  Door reaches the same owners without any of that.
 - **A bare-IP catch-all as the answer to reachability** — declined as a solution, though it may still
   ship as a convenience. It fixes first contact and nothing after it: `seafile.192.168.123.45` cannot
   exist, so the first app an owner installs puts them back where they started.
@@ -491,7 +484,7 @@ Owner decisions. Future agents and reviews should not resurface these.
   now. It is free and gives stable names that survive a DHCP change, but it is security-sensitive code
   holding a credential that can edit a DNS zone, against a stateless nameserver with no code to audit
   and no credential to lose. It stays the documented upgrade path if name instability annoys real
-  testers, and **H8**'s certificate half may force a narrow version of it regardless.
+  testers.
 - **Hosting authoritative DNS on Railway, Cloudflare Workers, or any PaaS** — impossible, verified,
   not a budget question. Recursive resolvers query authoritative servers over plain UDP/53 and need a
   static inbound address; DNS-over-HTTPS is a stub-to-resolver protocol and does not substitute. This
