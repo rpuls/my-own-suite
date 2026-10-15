@@ -84,7 +84,7 @@ jobs:
       # whatever was published that morning.
       - name: Serve the built site
         run: |
-          nohup npx --yes http-server@14.1.1 site/dist -p 4321 --silent > /tmp/http-server.log 2>&1 &
+          (cd site && nohup npx astro preview --host 127.0.0.1 --port 4321 > /tmp/http-server.log 2>&1 &)
           for attempt in $(seq 1 30); do
             if curl -sf --max-time 5 http://127.0.0.1:4321/ > /dev/null; then
               echo "site is answering after ${attempt} attempts"
