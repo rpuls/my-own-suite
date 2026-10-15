@@ -1,9 +1,12 @@
 version: 2
 # App packages are not here: Norn updates them, moving a pin together with the package
 # version, privacy review and catalog, which a Dependabot pull request cannot do.
+# Every update goes to staging, which is always ahead of main and where it is tested.
+# Dependabot reads this file from main only, so a change here waits for a release.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -17,6 +20,7 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/site"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -32,6 +36,7 @@ updates:
   # bump them, security patches included.
   - package-ecosystem: "npm"
     directory: "/site/planner"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -45,6 +50,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/infrastructure/caddy"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"

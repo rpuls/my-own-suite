@@ -25,6 +25,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **Paperless-ngx package 0.3.4 updates Paperless-ngx to 3.3.0.** It brings sharper full-text search, OCR text-layer fixes, stricter checks on bulk edits and permissions, and a two-factor prompt on Paperless' `/admin/` page. The first start after the update rebuilds the search index from scratch, so a large archive takes longer to come back. Suggestions for sender, type and tags return after the next hourly training. **Migrations run on start and are forward-only.**
 - **Seafile package 0.3.3 updates Seafile to 13.0.28.** A read-only library API token can no longer move, copy or delete files. Your files, settings, WebDAV and ONLYOFFICE editing carry over unchanged, with no database migration.
 - **Radicale package 0.5.3 updates Radicale to 3.8.1.** Free-busy lookups work again, all-day events and completed tasks show up when a client asks for a date range, contact searches by name or address no longer fail, and large calendars list faster. Calendar sharing, new in 3.8, stays off. **Compatibility:** Radicale 3.8 rejects usernames that start or end with `@`, contain more than one `@`, or contain a `,`. An install with such a username fails to start on 3.8.1, so its update rolls back to 3.7.6 instead of locking you out; the default username, your email address, is unaffected.
+- **Suite Manager is built on newer libraries.** It now uses React 19.3, Vite 8.3 and TypeScript 7, plus the latest CodeMirror and YAML releases. Nothing changes in how you use it.
 
 ### Fixed
 
