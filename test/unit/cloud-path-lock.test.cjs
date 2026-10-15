@@ -107,6 +107,10 @@
 //
 // Moved again 2026-10-09, all four: the caddy package comes from Ubuntu, held, after
 // Caddy's own apt repository went down for everyone. No `echo` line changed.
+//
+// Moved 2026-10-15, all four: Dependabot repinned the caddy:2.11.6-builder image
+// digest, which the installer's `docker image rm` line names. That one line; no
+// `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -120,19 +124,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'dd9a186727b63ea553c442bbfe399c865a44fffa67555a4a7f377d5a53acdb85',
+    digest: 'f12676e6717d19b2fd6d006d3ac7959091c93f4f0e4f9d3430b5a324d905c31c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '0426b495f2dcc91474cd5f924d5a23c055154b24d05624eefc234bca01d1ecb0',
+    digest: '51beeacf7a85e2293232d14a3566d90f15ec79af4b11a60308b5484fd1c06652',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '0104641bf90c4b64cd8ad330165082a34d1f1bbd9b1349a9200ecd1485858957',
+    digest: 'b50be448e3880d099e240801880e087cc919f381265e67d831ff63ade3a3eeeb',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -142,7 +146,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '23e322f7a1e72569b9e118b259a6b15e9a7c56cac775a33321b23c8880ded2b9',
+    digest: 'fb205807191769a0051381f4dbd26bacd4f3538ad9c1749a9c9f54708ec9ba13',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',
