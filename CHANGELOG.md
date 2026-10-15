@@ -10,6 +10,12 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-15
+
+**This release is mostly behind the scenes: better infrastructure for app updates, and more automated testing to back it.** There aren't many new platform features this time, but this work matters for everything that comes next.
+
+New app versions are now picked up, tested on a fresh server and prepared for release with far less manual work. That frees up time we used to spend on keeping up, so your apps stay up to date more reliably and we can spend more time on new features. It also means each new app adds less maintenance, which creates room for more apps to join the catalog 👀
+
 ### Added
 
 - **Your suite's generated address gets trusted HTTPS by itself, with nothing to buy.** A server on your home network serves `https://home.192-168-…-….local.myownsuite.org` with a certificate every browser trusts. It switches over a few minutes after the certificate arrives, takes your apps with it, and enables apps that need HTTPS, such as password managers. Until it arrives, everything works over HTTP as before and **Settings → Suite address** says the certificate is on its way. **Compatibility:** the platform update rebuilds Caddy on 2.11.6 with a new DNS module, renders the whole Caddyfile from the machine's settings on every update, and stops sending `bootstrapHost` to the HTTPS agent. Existing home servers recorded on the generated address switch to HTTPS on their own, which restarts each installed app once. Caddy 2.11 caps request headers at 16 KiB, aborts stalled transfers after a minute and drops header names containing `_` or `.`, for every app.
