@@ -349,8 +349,11 @@ class SuiteAddressService {
         throw new HttpsSettingsError('DOMAIN_NOT_POINTED_HERE', `${this.live.dns.sentence} MOS checked for ${Math.round(this.dnsWaitMs / 60_000)} minutes and changed nothing.`, 409);
       }
       await new Promise((resolve) => {
-        this.wake = resolve;
-        setTimeout(resolve, this.dnsRecheckMs).unref?.();
+        const recheck = setTimeout(resolve, this.dnsRecheckMs);
+        this.wake = () => {
+          clearTimeout(recheck);
+          resolve();
+        };
       });
     }
   }
