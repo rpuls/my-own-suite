@@ -296,8 +296,10 @@ export async function tiles(ctx) {
   const withTiles = (await listPackages(page)).filter(hasTile);
   await waitForHomepageAvailable(page, ctx.url('/'));
   for (const app of withTiles) {
-    await expect(page.getByText(app.homepage.name)).toBeVisible({ timeout: 60000 });
-    await expectTileRedirect(page, ctx.homeUrl, app, await tileLink(page, app).getAttribute('href'), { needsHttps: needsHttps(app.id) });
+    // The tile itself: a widget's error text can name the app too.
+    const link = tileLink(page, app);
+    await expect(link).toBeVisible({ timeout: 60000 });
+    await expectTileRedirect(page, ctx.homeUrl, app, await link.getAttribute('href'), { needsHttps: needsHttps(app.id) });
   }
 }
 

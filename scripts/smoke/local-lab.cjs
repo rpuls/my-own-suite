@@ -44,18 +44,29 @@ function routeHosts() {
   });
 }
 
+function sudoWrite(target, content) {
+  const file = path.join(os.tmpdir(), `mos-local-lab-${path.basename(target)}`);
+  fs.writeFileSync(file, content);
+  run('sudo', ['install', '-D', '-m', '0644', file, target]);
+}
+
 // The machine's own address rather than loopback, so app containers reach each other's
 // public addresses too. The `dns01` step's domain is here as well: DNS-01 proves it
 // through a TXT record alone, so nothing public points it at this machine.
-function writeHosts() {
-  const address = run('hostname', ['-I'], { capture: true }).trim().split(/\s+/u)[0];
+function writeHosts(address) {
   const hosts = ['home', ...new Set(routeHosts())];
   const domains = [DOMAIN, process.env.MOS_E2E_DNS01_BASE_DOMAIN?.trim()].filter(Boolean);
   const lines = domains.map((domain) => `${address} ${hosts.map((host) => `${host}.${domain}`).join(' ')} ${HOSTS_MARK}`);
   const kept = fs.readFileSync('/etc/hosts', 'utf8').split('\n').filter((line) => !line.endsWith(HOSTS_MARK));
-  const file = path.join(os.tmpdir(), 'mos-local-lab-hosts');
-  fs.writeFileSync(file, `${[...kept.filter(Boolean), ...lines].join('\n')}\n`);
-  run('sudo', ['cp', file, '/etc/hosts']);
+  sudoWrite('/etc/hosts', `${[...kept.filter(Boolean), ...lines].join('\n')}\n`);
+}
+
+// Docker gives containers the host's upstream DNS, never its /etc/hosts. An owner's router
+// answers the suite's names; here resolved does, on the machine's address, for both.
+function serveHostsToContainers(address) {
+  sudoWrite('/etc/systemd/resolved.conf.d/mos-local-lab.conf', `[Resolve]\nDNSStubListenerExtra=${address}\n`);
+  run('sudo', ['systemctl', 'restart', 'systemd-resolved']);
+  sudoWrite('/etc/resolv.conf', `nameserver ${address}\n`);
 }
 
 async function waitForSuiteManager() {
@@ -100,7 +111,9 @@ function reportSystemd(since) {
 async function install(base) {
   const since = epoch();
   move(base);
-  writeHosts();
+  const address = run('hostname', ['-I'], { capture: true }).trim().split(/\s+/u)[0];
+  writeHosts(address);
+  serveHostsToContainers(address);
   removeForeignEngine();
   const script = run(process.execPath, [
     'scripts/installers/render-bootstrap.cjs', '--target', 'shell', '--repo-url', LAB_REPO, '--repo-ref', LAB_BRANCH,
