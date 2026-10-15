@@ -9,6 +9,8 @@ Wants=local-fs.target
 After=local-fs.target
 Before=basic.target shutdown.target
 Conflicts=shutdown.target
+# A killed installer must never let the boot carry on and run MOS from the stick.
+FailureAction=reboot-force
 
 [Service]
 Type=oneshot

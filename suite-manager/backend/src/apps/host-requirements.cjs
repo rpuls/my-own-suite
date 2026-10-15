@@ -17,7 +17,12 @@ function unmetHostRequirements(declared, host = {}) {
       .map((reason) => ({ id: 'architecture', reason }))
     : [];
   if (declared.https && host.https === false) {
-    unmet.push({ id: 'https', reason: 'This app only works over HTTPS. Serve your suite from your own domain in Settings first.' });
+    unmet.push({
+      id: 'https',
+      reason: host.httpsPending
+        ? 'This app only works over HTTPS. Your suite\'s certificate is on its way, and the app becomes available by itself when it arrives.'
+        : 'This app only works over HTTPS. Serve your suite from the Easy Door or your own domain in Settings first.',
+    });
   }
   return unmet;
 }

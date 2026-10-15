@@ -282,7 +282,6 @@ class ProgressPublisher {
 }
 
 module.exports = {
-  HEADLINES,
   JOB_GROUPS,
   JOB_PLANS,
   PROGRESS_FILENAME,
@@ -292,13 +291,8 @@ module.exports = {
   STAGE_WORDS,
   advanceTimeline,
   closeTimeline,
-  countRecord,
-  groupsFor,
-  headlineFor,
   minutesWords,
-  planFor,
   progressFor,
   publicProgress,
   stageSentence,
-  stepsOfStage,
 };

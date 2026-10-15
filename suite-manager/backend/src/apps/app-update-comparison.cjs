@@ -7,6 +7,7 @@ const {
   compareSemver,
   describeRequestedPermissions,
   diffRequestedPermissions,
+  reviewOutbound,
   stableJson,
   validatePlatformCompatibility,
   validatePrivacyBinding,
@@ -40,7 +41,15 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
   const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
   return errors.length
     ? { dimensions: null, errors, posture: null, reviewedAt: null, status: 'invalid' }
-    : { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+    : { dimensions: review.dimensions || null, outbound: reviewOutbound(review), posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+}
+
+// The hosts outside the server an update starts contacting. Empty when either review
+// predates the list, since there is nothing to compare.
+function addedOutboundHosts(installed, candidate) {
+  if (!Array.isArray(installed.outbound) || !Array.isArray(candidate.outbound)) return [];
+  const before = new Set(installed.outbound.map((item) => `${item.from} ${item.host}`));
+  return candidate.outbound.filter((item) => !before.has(`${item.from} ${item.host}`)).map((item) => item.host);
 }
 
 // Why the app agent cannot apply this update, in the owner's terms, or null when
@@ -139,6 +148,9 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   const installedPrivacy = privacyFor(installed.packageDir, installed.manifest, installed.packageDigest, installed.source);
   const candidatePrivacy = privacyFor(candidate.packageDir, candidate.manifest, candidate.packageDigest, candidate.source);
   if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: installedPrivacy.posture === candidatePrivacy.posture ? 'The privacy assessment changes without changing the overall posture.' : `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
+  // A new outside host is the owner's to weigh, even when MOS reviewed it.
+  const newHosts = addedOutboundHosts(installedPrivacy, candidatePrivacy);
+  if (newHosts.length) changes.push({ area: 'network', classification: 'operator-action-required', summary: `The new version starts contacting ${newHosts.join(', ')}. The privacy section above says why and who receives it.` });
   // A candidate needing a capability nothing provides still builds and goes healthy,
   // with nothing to talk to. Flags rather than blocks, and only if the update caused it.
   const requirements = unmetRequirements(candidate.manifest, peers);

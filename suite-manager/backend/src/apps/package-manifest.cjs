@@ -10,6 +10,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { validateManifestStructure } = require('./manifest-schema.cjs');
 const { declaredHostRequirements } = require('./host-requirements.cjs');
 const { APP_ID_PATTERN, validateManifestSemantics } = require('./manifest-semantics.cjs');
@@ -18,14 +19,6 @@ const MANIFEST_FILENAME = 'manifest.json';
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
 const SUPPORTED_PACKAGE_ROLES = new Set(['standalone', 'capability-provider']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
-
-class AppPackageManifestError extends Error {
-  constructor(message, details = []) {
-    super(message);
-    this.code = 'INVALID_APP_PACKAGE_MANIFEST';
-    this.details = details;
-  }
-}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -63,7 +56,7 @@ function readAppPackageManifest(packageDir) {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const errors = validateAppPackageManifest(manifest, { packageDir });
   if (errors.length) {
-    throw new AppPackageManifestError(`Invalid app package manifest at ${manifestPath}.`, errors);
+    throw new CodedError('INVALID_APP_PACKAGE_MANIFEST', `Invalid app package manifest at ${manifestPath}.`, { details: errors });
   }
   return {
     manifest,
@@ -305,7 +298,6 @@ function discoverAppPackages(appsDir) {
 }
 
 module.exports = {
-  AppPackageManifestError,
   MANIFEST_FILENAME,
   discoverAppPackages,
   inspectAppPackages,

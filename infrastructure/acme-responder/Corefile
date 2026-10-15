@@ -1,0 +1,17 @@
+# MOS ACME responder zone. Holds the DNS-01 challenge tokens the responder
+# writes; the stateless Easy Door zone CNAMEs each box's challenge name here.
+# The zone file is the responder's only state and is reloaded within seconds.
+
+acme.myownsuite.org.:53 {
+    errors
+
+    bufsize 512
+    any
+
+    health 127.0.0.1:8080
+    prometheus 127.0.0.1:9153
+
+    file /var/lib/mos-acme/acme.myownsuite.org.zone acme.myownsuite.org {
+        reload 2s
+    }
+}

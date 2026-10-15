@@ -3,7 +3,7 @@
 ## Environment Variables
 
 - `SERVER_HOST`: Projected from the app public URL.
-- `SYSTEM_ENABLEANALYTICS=false`: Disables Stirling PDF analytics (see Privacy Controls).
+- `SYSTEM_ENABLEANALYTICS=false`: Disables Stirling PDF's own analytics; the web client needs a patch as well (see Privacy Controls).
 
 ## Volumes And Persistence
 
@@ -25,4 +25,8 @@ No user inputs are required; the package installs with an empty setup form.
 
 ## Privacy Controls
 
-MOS sets `SYSTEM_ENABLEANALYTICS=false`, the upstream-supported system-wide control for disabling Stirling PDF analytics and suppressing its analytics consent prompt. This disables known optional PostHog and Scarf telemetry in the assessed 2.10.0 image; it is not evidence that the container makes no outbound requests. User-invoked features such as trusted timestamping can still contact an external service.
+MOS sets `SYSTEM_ENABLEANALYTICS=false`, the upstream-supported system-wide control for disabling Stirling PDF analytics and suppressing its analytics consent prompt. It does not reach two things the web client starts on every page: PostHog, initialised at load with `api_host: "https://eu.i.posthog.com"`, and Stripe's `@stripe/stripe-js`, which injects `https://js.stripe.com/basil/stripe.js` on import.
+
+`patch-web-client.py` runs at build time and rewrites those two hosts in `static/assets/*.js` inside `/app/app.jar` to `/mos-blocked/posthog` and `/mos-blocked/stripe`, so the requests go to Stirling PDF's own server and fail there. The build stops unless each host occurs exactly once, so a new upstream version cannot bring them back unnoticed. Side effect: the in-app licence purchase, which uses Stripe, no longer works. Icons the interface fetches from `api.iconify.design` are left alone.
+
+User-invoked features such as trusted timestamping can still contact an external service.

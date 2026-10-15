@@ -1,3 +1,4 @@
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { hashPassword, needsRehash, verifyPassword } = require('../auth/passwords.cjs');
 const { createSessionToken, hashSessionToken } = require('../auth/sessions.cjs');
 const {
@@ -6,7 +7,13 @@ const {
 } = require('../state/suite-manager-store.cjs');
 
 const MIN_PASSWORD_LENGTH = 12;
-const KNOWN_BROWSER_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1_000;
+const HOUR_MS = 60 * 60 * 1_000;
+const DAY_MS = 24 * HOUR_MS;
+const KNOWN_BROWSER_MAX_AGE_MS = 365 * DAY_MS;
+const SESSION_IDLE_TIMEOUT_MS = 14 * DAY_MS;
+const SESSION_MAX_AGE_MS = 90 * DAY_MS;
+// Use is written back no more often than this, so a busy page is not a write per request.
+const SESSION_SEEN_INTERVAL_MS = HOUR_MS;
 
 // The terms the owner is asked to accept, versioned by the "Last updated" date
 // on site/src/content/docs/docs/terms.md. Bumping this date there means bumping
@@ -21,10 +28,15 @@ const OWNER_PREFERENCE_DEFAULTS = Object.freeze({
   technicalControls: false,
 });
 
-class SetupError extends Error {
+const SETUP_ERROR_STATUS = Object.freeze({
+  INVALID_LOGIN: 401,
+  OWNER_ALREADY_EXISTS: 409,
+  OWNER_NOT_CREATED: 401,
+});
+
+class SetupError extends CodedError {
   constructor(code, message) {
-    super(message);
-    this.code = code;
+    super(code, message, { statusCode: SETUP_ERROR_STATUS[code] || 400 });
   }
 }
 
@@ -41,6 +53,14 @@ function publicOwner(owner) {
     createdAt: owner.createdAt,
     email: owner.email,
     name: owner.name,
+  };
+}
+
+// A session signs the owner in only while it is newer than both cut-offs.
+function liveSessionWindow(now) {
+  return {
+    createdAfter: new Date(now.getTime() - SESSION_MAX_AGE_MS).toISOString(),
+    seenAfter: new Date(now.getTime() - SESSION_IDLE_TIMEOUT_MS).toISOString(),
   };
 }
 
@@ -200,17 +220,9 @@ class SetupService {
       this.store.upgradeOwnerPasswordHash(await hashPassword(password), { replacing: owner.passwordHash });
     }
 
-    const token = createSessionToken();
-    const session = {
-      createdAt: this.now().toISOString(),
-      tokenHash: hashSessionToken(token),
-    };
-
-    this.store.createSession(session);
-
     return {
       owner: publicOwner(owner),
-      sessionToken: token,
+      sessionToken: this.#startSession(),
       status: 'signed-in',
     };
   }
@@ -254,15 +266,9 @@ class SetupService {
     const startupProtection = beforeCommit ? await beforeCommit(newPassword) : null;
     this.store.replaceOwnerPassword(await hashPassword(newPassword));
 
-    const token = createSessionToken();
-    this.store.createSession({
-      createdAt: this.now().toISOString(),
-      tokenHash: hashSessionToken(token),
-    });
-
     return {
       owner: publicOwner(owner),
-      sessionToken: token,
+      sessionToken: this.#startSession(),
       startupProtection,
       status: 'signed-in',
     };
@@ -291,8 +297,23 @@ class SetupService {
       return null;
     }
 
+    const now = this.now();
     const tokenHash = hashSessionToken(sessionToken);
-    return this.store.hasSession(tokenHash);
+    const session = this.store.findLiveSession({ tokenHash, ...liveSessionWindow(now) });
+    if (!session) {
+      return false;
+    }
+    if (now.getTime() - Date.parse(session.lastSeenAt) >= SESSION_SEEN_INTERVAL_MS) {
+      this.store.markSessionSeen({ at: now.toISOString(), tokenHash });
+    }
+    return true;
+  }
+
+  #startSession() {
+    const now = this.now();
+    const token = createSessionToken();
+    this.store.createSession({ createdAt: now.toISOString(), tokenHash: hashSessionToken(token) }, liveSessionWindow(now));
+    return token;
   }
 
   // A browser that has signed in successfully carries a random token, of which
@@ -322,6 +343,9 @@ class SetupService {
 module.exports = {
   KNOWN_BROWSER_MAX_AGE_MS,
   MIN_PASSWORD_LENGTH,
+  SESSION_IDLE_TIMEOUT_MS,
+  SESSION_MAX_AGE_MS,
+  SESSION_SEEN_INTERVAL_MS,
   SetupError,
   SetupService,
   TERMS_VERSION,

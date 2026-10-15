@@ -106,6 +106,7 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
 
 function groupSummary(view: DestinationView, points: BackupEntry[]) {
   if (view.destination.locked) return 'Locked — enter the other server’s recovery key to see what is kept here.';
+  if (!view.selectable && view.destination.canMount) return 'Plugged in, but not opened yet. Open it above to see what is kept here.';
   if (!view.selectable) return 'Not connected. Plug it in to see what is kept here.';
   if (!points.length) return 'Nothing here yet. Your next backup lands here.';
   const stored = view.destination.repository?.storedBytes;

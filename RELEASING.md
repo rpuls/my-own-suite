@@ -168,8 +168,8 @@ one definition of "ready to release" and no way for local and CI to disagree abo
 Only three things are yours:
 
 1. **The version number.** SemVer, per the rules above. No script can judge this.
-2. **Whether the changelog reads like release notes.** The gate checks entries exist, not
-   that they are worth reading.
+2. **Whether the changelog reads like release notes.** The gate checks entries exist and
+   have the shape Suite Manager's update screen reads, not that they are worth reading.
 3. **When to tag.** Everything after that is automatic.
 
 Everything else is enforced. Do **not** hand-edit `VERSION`, `releases/stable.json`, or the

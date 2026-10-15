@@ -2,4 +2,6 @@ FROM stirlingtools/stirling-pdf@sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf
 
 # MOS package wrapper:
 # - Keeps the app self-contained under apps/stirling-pdf.
-# - Reuses the official Stirling PDF image without runtime changes.
+# - Keeps the web client's PostHog and Stripe on Stirling's own server (patch-web-client.py).
+COPY patch-web-client.py /tmp/patch-web-client.py
+RUN python3 /tmp/patch-web-client.py && rm /tmp/patch-web-client.py

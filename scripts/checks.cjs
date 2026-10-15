@@ -32,6 +32,12 @@ const SITE_PORT = 4321;
 const CHECKS = [
   {
     lane: 'workspace',
+    id: 'no-nul',
+    title: 'Check tracked text files for NUL bytes',
+    command: 'node scripts/no-nul-bytes.cjs',
+  },
+  {
+    lane: 'workspace',
     id: 'unit',
     title: 'Unit tests',
     command: 'npm run test:unit',
@@ -205,13 +211,19 @@ function portAnswers(port) {
   });
 }
 
-// Reuses a server that is already answering — CI serves the built site for the
-// link report — and otherwise owns one for the length of a single check.
+// Reuses a server that is already answering, and otherwise owns one for the
+// length of a single check. The site's own Astro serves it, so nothing is
+// downloaded at check time.
 async function startSite() {
   if (await portAnswers(SITE_PORT)) return null;
   const child = spawn(
-    `npx --yes http-server@14.1.1 site/dist -p ${SITE_PORT} --silent`,
-    { cwd: repoRoot, shell: true, stdio: 'ignore' },
+    `npx astro preview --host 127.0.0.1 --port ${SITE_PORT}`,
+    {
+      cwd: path.join(repoRoot, 'site'),
+      shell: true,
+      stdio: ['ignore', 'ignore', 'inherit'],
+      detached: process.platform !== 'win32',
+    },
   );
   for (let attempt = 0; attempt < 60; attempt += 1) {
     if (await portAnswers(SITE_PORT)) return child;

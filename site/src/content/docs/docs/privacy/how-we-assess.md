@@ -83,6 +83,25 @@ and runtime evidence over marketing language. A supported setting that disables
 known analytics is evidence for that control, but is not proof of complete
 network silence. Open questions and untested boundaries stay visible.
 
+## What each app connects to
+
+Every assessment lists each host the app contacts in normal use, as MOS ships
+it and before you turn anything on. For each host it says whether the app's
+server or your own browser makes the request, why, and who receives it. An
+empty list means the app contacts nothing outside your server. You can read the
+list beside the grade in Suite Manager and on each app's page here. When an
+update starts contacting a new host, the update's review in Suite Manager names
+it before you apply anything.
+
+The list is checked rather than just written down. MOS's test suite installs
+each app on a test server and uses it the way an owner would. While it does,
+the test suite records every lookup and connection the app's containers make
+and every request your browser sends outside the suite, and it fails if the
+app contacts a host its list does not name. It first sends a test request from
+inside each app, so a quiet result is a measurement, not a capture that missed
+everything. It sees addresses, not the content of encrypted traffic, and only
+what the test's own use of the app triggers.
+
 ## Where AI fits in
 
 The division of labor is simple: people decide, AI reads. Which apps are worth

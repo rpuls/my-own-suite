@@ -2,11 +2,16 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const DEFAULT_PACKAGE_LIMITS = Object.freeze({
   maxFileBytes: 32 * 1024 * 1024,
   maxFiles: 256,
   maxPackageBytes: 128 * 1024 * 1024,
 });
+// The package's own end-to-end tests. They describe the package rather than ship
+// with it, so a test edit never changes the digest, the snapshot, or the version.
+const PACKAGE_TESTS_DIR = 'e2e';
 const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|entrypoint\.sh|icon\.(?:avif|gif|jpe?g|png|svg|webp)|manifest\.json|privacy-review\.json)$/iu;
 const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|svg|txt|yaml|yml)$)/iu;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
@@ -32,14 +37,6 @@ const CATALOG_REFRESH_POLICY = Object.freeze({
   jitterRatio: 0.1,
   reuseWindowMs: 30 * 1000, // resolving the branch tip spends one of api.github.com's 60 unauthenticated calls/hour
 });
-
-class AppPackageContractError extends Error {
-  constructor(message, details = []) {
-    super(message);
-    this.code = 'INVALID_APP_PACKAGE_CONTENTS';
-    this.details = details;
-  }
-}
 
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
@@ -68,7 +65,7 @@ function canonicalFileBytes(relativePath, bytes) {
   if (!TEXT_FILE.test(relativePath)) return bytes;
   const text = bytes.toString('utf8');
   if (Buffer.from(text, 'utf8').compare(bytes) !== 0) {
-    throw new AppPackageContractError(`Text package file is not valid UTF-8: ${relativePath}.`);
+    throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', `Text package file is not valid UTF-8: ${relativePath}.`);
   }
   if (relativePath === 'privacy-review.json') {
     let review;
@@ -79,7 +76,7 @@ function canonicalFileBytes(relativePath, bytes) {
       // every install/migration/backup path does to a package, so an unfenced
       // parse here turns one malformed review into an unclassified failure of
       // whatever operation touched the package first.
-      throw new AppPackageContractError('Package privacy-review.json is not valid JSON.');
+      throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', 'Package privacy-review.json is not valid JSON.');
     }
     if (review?.scope) review.scope.packageDigest = 'sha256:<package-digest>';
     return Buffer.from(`${JSON.stringify(review, null, 2)}\n`, 'utf8');
@@ -95,6 +92,7 @@ function collectPackageFiles(packageDir, { limits = DEFAULT_PACKAGE_LIMITS, mani
     const entries = fs.readdirSync(directory, { withFileTypes: true })
       .sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
+      if (!relativeRoot && entry.name === PACKAGE_TESTS_DIR && entry.isDirectory()) continue;
       const relativePath = canonicalPackagePath(relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name);
       if (!relativePath) {
         errors.push(`Package path is not canonical: ${relativeRoot}/${entry.name}.`);
@@ -120,7 +118,7 @@ function collectPackageFiles(packageDir, { limits = DEFAULT_PACKAGE_LIMITS, mani
   visit(packageDir);
   if (files.length > limits.maxFiles) errors.push(`Package contains more than ${limits.maxFiles} files.`);
   if (totalBytes > limits.maxPackageBytes) errors.push(`Package exceeds ${limits.maxPackageBytes} bytes.`);
-  if (errors.length) throw new AppPackageContractError(`Invalid app package contents at ${packageDir}.`, errors);
+  if (errors.length) throw new CodedError('INVALID_APP_PACKAGE_CONTENTS', `Invalid app package contents at ${packageDir}.`, { details: errors });
   return files.sort((left, right) => Buffer.from(left.relativePath).compare(Buffer.from(right.relativePath)));
 }
 
@@ -351,6 +349,12 @@ function validatePrivacyAssessment(review) {
   const concrete = evidence.filter((entry) => entry && typeof entry === 'object'
     && String(entry.claim || '').trim() && String(entry.source || '').trim());
   if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
+  // Optional here, because reviews written before the list existed are still valid on installed servers.
+  if (Array.isArray(review.outbound)) {
+    const egress = review.dimensions?.defaultEgress;
+    if (egress === 'none' && review.outbound.length) errors.push('privacy review lists outbound hosts but says nothing leaves by default.');
+    if (egress === 'external-contact' && !review.outbound.length) errors.push('privacy review says something leaves by default but lists no outbound host.');
+  }
   return errors;
 }
 
@@ -405,6 +409,31 @@ function isListOf(check, { minItems = 0 } = {}) {
   };
 }
 
+// One host the app contacts in normal use as MOS ships it, before the owner turns anything
+// on, and whether the app's server or the owner's browser makes the request. `*` is any
+// host, for behaviour that follows what people store, such as fetching a saved site's icon.
+const OUTBOUND_SOURCES = Object.freeze(['server', 'browser']);
+const OUTBOUND_HOST_PATTERN = /^(?:\*|(?:\*\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)$/u;
+const isText = (value, pointer) => (NON_EMPTY_STRING(value) ? [] : [`${pointer} must be a non-empty string.`]);
+
+// What the screens show. Null rather than empty for a review written before reviews listed
+// their outside hosts, because "contacts nothing" is a claim that review never made.
+function reviewOutbound(review) {
+  if (!Array.isArray(review?.outbound)) return null;
+  return review.outbound
+    .filter((item) => item && OUTBOUND_SOURCES.includes(item.from) && typeof item.host === 'string')
+    .map((item) => ({ from: item.from, host: item.host, purpose: String(item.purpose || ''), receiver: String(item.receiver || '') }));
+}
+
+const isOutbound = (value, pointer) => checkRecord(value, pointer, {
+  required: {
+    from: isOneOf(OUTBOUND_SOURCES),
+    host: matches(OUTBOUND_HOST_PATTERN, 'a lowercase host name, *. and a domain, or *'),
+    purpose: isText,
+    receiver: isText,
+  },
+});
+
 const isEvidence = (value, pointer) => checkRecord(value, pointer, {
   optional: { retrievedAt: isString, url: isString },
   required: {
@@ -429,6 +458,7 @@ function validatePrivacyAssessmentDocument(review) {
       }),
       evidence: isListOf(isEvidence),
       openQuestions: isListOf(isString),
+      outbound: isListOf(isOutbound),
       policies: isListOf((value, pointer) => checkRecord(value, pointer, {
         optional: { contentHash: isString, effectiveDate: isString, publisher: isString },
         required: { kind: isOneOf(['terms', 'privacy', 'license']), retrievedAt: isString, url: isString },
@@ -588,11 +618,6 @@ const FORBIDDEN_SERVICE_KEYS = Object.freeze([
   'dns', 'dockerSocket', 'extraHosts', 'groupAdd', 'ipc', 'mounts', 'network', 'networkMode',
   'pid', 'ports', 'privileged', 'securityOpt', 'sysctls', 'userns', 'uts',
 ]);
-const CONSTRAINED_CAPABILITY_PROFILE = Object.freeze({
-  forbiddenManifestKeys: FORBIDDEN_MANIFEST_KEYS,
-  forbiddenServiceKeys: FORBIDDEN_SERVICE_KEYS,
-  volumeNamePattern: VOLUME_NAME_PATTERN.source,
-});
 const RESERVED_ID_PREFIXES = Object.freeze(['mos', 'official', 'suite']);
 
 function isPlainRecord(value) {
@@ -781,13 +806,10 @@ function advisoriesForVersion(index, packageId, packageVersion) {
 }
 
 module.exports = {
-  ADVISORY_SEVERITY_RANK,
-  AppPackageContractError,
   CATALOG_REFRESH_POLICY,
-  CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
-  EXTERNAL_ROUTE_HOST_MAX_LENGTH,
   EXTERNAL_ROUTE_HOST_PREFIX,
+  PACKAGE_TESTS_DIR,
   SUPPORTED_ARCHITECTURES,
   advisoriesForVersion,
   advisoryAffectsVersion,
@@ -800,9 +822,9 @@ module.exports = {
   digestAppPackage,
   effectiveRouteHost,
   hostHeldPackages,
-  isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
+  reviewOutbound,
   stableJson,
   validateAdvisory,
   validateAdvisoryIndex,

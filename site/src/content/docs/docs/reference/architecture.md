@@ -9,7 +9,7 @@ This section is for readers who want to see the machinery. Nothing here is requi
 
 A MOS install is a single Ubuntu 24.04 machine running a small set of systemd services:
 
-- **Caddy** is the only public entry point, on ports 80/443. It is not distro Caddy: MOS builds a version-pinned Caddy (currently 2.10.2) with the Cloudflare DNS module compiled in, installs it to `/usr/local/libexec/mos/`, and verifies the module list at install time.
+- **Caddy** is the only public entry point, on ports 80/443. It is not distro Caddy: MOS builds a version-pinned Caddy with two DNS modules compiled in, Cloudflare for an owned domain and acme-dns for the Easy Door certificate, installs it to `/usr/local/libexec/mos/`, and verifies the module list on install and on every update.
 - **Suite Manager** (Node.js) listens only on loopback `127.0.0.1:3100`. It owns the `home.<domain>` origin: it serves the control room under `/suite-manager/`, authenticates every request to the origin, and reverse-proxies everything else to Homepage.
 - **Homepage** (the dashboard) runs as a digest-pinned container on loopback `127.0.0.1:3200`, with no route of its own — it is only reachable through Suite Manager's session check. An unauthenticated visitor never sees your dashboard.
 - **Installed apps** get their own hosts (`<app>.<domain>`) routed by Caddy to loopback ports, declared by each [app package](/docs/reference/app-packages/).
@@ -36,7 +36,7 @@ Secrets follow a redaction discipline end to end: generated app secrets live in 
 
 ## Install front doors
 
-Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init`, `public-vps`, or the DigitalOcean validation harness. All five render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then gates context-dependent features: the private-LAN [DNS-01 HTTPS flow](/docs/guides/https-domain/) is offered on self-host front doors and blocked on cloud ones, and the disposable lab-reset agent exists only on USB lab installs.
+Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init` or `public-vps`. All four render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then puts the install on one of two hosting tracks (`hostingTrack()` in `infrastructure/control-plane-runtime.cjs`): a home server proves [its own domain](/docs/guides/https-domain/) through Cloudflare DNS-01 and has the Easy Door, while a public server (`cloud-init`, `public-vps`) proves it by answering the certificate authority directly, with no token. The disposable lab-reset agent exists only on USB lab installs.
 
 ## Determinism and supply chain
 

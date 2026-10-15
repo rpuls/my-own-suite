@@ -128,4 +128,4 @@ async function rotateRecoveryKey({
   };
 }
 
-module.exports = { ROTATION_REFUSALS, refusalSentence, rotateRecoveryKey };
+module.exports = { refusalSentence, rotateRecoveryKey };

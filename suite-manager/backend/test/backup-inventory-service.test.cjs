@@ -56,7 +56,6 @@ function makeInstance(overrides = {}) {
     packageId: 'app-1',
     packageVersion: '1.0.0',
     snapshotPath: null,
-    snapshotState: 'missing',
     sourceKind: 'github',
     sourcePath: 'https://github.com/acme/app',
     sourceRepository: 'acme/app',
@@ -198,11 +197,10 @@ test('inventory summarizes an empty store', () => {
   assert.equal(Number.isNaN(Date.parse(result.checkedAt)), false);
 });
 
-test('inventory reports missing snapshot warnings for uninstalled snapshot states', () => {
+test('inventory reports a missing snapshot warning when the snapshot is gone', () => {
   const instance = makeInstance({
     id: 'inst-1',
     packageId: 'app-1',
-    snapshotState: 'missing',
     snapshotPath: '/does/not/exist',
   });
 
@@ -227,7 +225,6 @@ test('inventory reports missing snapshot warnings for uninstalled snapshot state
 test('inventory treats manifest read failures as invalid snapshots', () => {
   const instance = makeInstance({
     packageId: 'app-1',
-    snapshotState: 'installed',
     snapshotPath: '/snap/app-1', // will fail to read since it doesn't exist
   });
 
@@ -256,7 +253,6 @@ test('inventory maps a verified installed package and its declared volumes', () 
     manifestDigest: 'manifest-digest-1',
     packageDigest: digest,
     snapshotPath,
-    snapshotState: 'installed',
   });
 
   const service = new BackupInventoryService({
@@ -288,7 +284,6 @@ test('inventory marks snapshot unverified when manifest id does not match packag
   const instance = makeInstance({
     packageId: 'app-1',
     packageDigest: digest,
-    snapshotState: 'installed',
     snapshotPath,
   });
 
@@ -312,7 +307,6 @@ test('inventory marks snapshot unverified when package digest does not match', (
   const instance = makeInstance({
     packageId: 'app-1',
     packageDigest: 'wrong-digest',
-    snapshotState: 'installed',
     snapshotPath,
   });
 

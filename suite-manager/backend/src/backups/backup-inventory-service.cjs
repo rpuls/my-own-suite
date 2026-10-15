@@ -96,12 +96,10 @@ class BackupInventoryService {
     const packages = installed.map((instance) => {
       let manifest = null;
       let snapshotVerified = false;
-      if (instance.snapshotState === 'installed' && instance.snapshotPath) {
-        try {
-          manifest = readAppPackageManifest(instance.snapshotPath).manifest;
-          snapshotVerified = manifest.id === instance.packageId && digestAppPackage(instance.snapshotPath) === instance.packageDigest;
-        } catch {}
-      }
+      try {
+        manifest = readAppPackageManifest(instance.snapshotPath).manifest;
+        snapshotVerified = manifest.id === instance.packageId && digestAppPackage(instance.snapshotPath) === instance.packageDigest;
+      } catch {}
       const declaredVolumes = manifest ? uniqueVolumesFor(manifest) : [];
       return {
         declaredVolumes,
@@ -112,7 +110,7 @@ class BackupInventoryService {
         packageDigest: instance.packageDigest,
         packageId: instance.packageId,
         packageVersion: instance.packageVersion,
-        snapshot: { path: instance.snapshotPath, state: instance.snapshotState, verified: snapshotVerified },
+        snapshot: { path: instance.snapshotPath, verified: snapshotVerified },
         source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,

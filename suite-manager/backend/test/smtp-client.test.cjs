@@ -11,7 +11,8 @@ const net = require('node:net');
 const tls = require('node:tls');
 const test = require('node:test');
 
-const { SmtpError, parseReply, sendTestMessage, verifyRelay } = require('../src/settings/smtp-client.cjs');
+const { CodedError } = require('../../../shared/coded-error.cjs');
+const { parseReply, sendTestMessage, verifyRelay } = require('../src/settings/smtp-client.cjs');
 
 // A throwaway self-signed certificate for localhost, generated once for these
 // tests. It is not trusted by anything, which is the point: the client must
@@ -207,7 +208,7 @@ test('AUTH PLAIN is used when the relay advertises it, and carries the credentia
     await verifyRelay(relay(fake.port));
     const decoded = Buffer.from(fake.state.auth.payload, 'base64').toString('utf8');
     assert.equal(fake.state.auth.mechanism, 'PLAIN');
-    assert.equal(decoded, ' me@example.com pw-secret');
+    assert.equal(decoded, '\u0000me@example.com\u0000pw-secret');
   } finally {
     await fake.close();
   }
@@ -227,7 +228,7 @@ test('a rejected login fails with the relay message and no credential in it', as
   const fake = await listen(fakeRelay({ advertiseAuth: ['PLAIN'], rejectAuth: true }));
   try {
     await assert.rejects(verifyRelay(relay(fake.port)), (error) => {
-      assert.ok(error instanceof SmtpError);
+      assert.ok(error instanceof CodedError);
       assert.equal(error.code, 'SMTP_COMMAND_REJECTED');
       assert.match(error.message, /Authentication failed/u);
       assert.ok(!error.message.includes('pw-secret'), 'the password must not appear in the error');
@@ -318,7 +319,7 @@ test('a test message is delivered through the relay and its body reaches DATA in
 test('a connection to a port nobody answers fails as a connection error, in time', async () => {
   // Port 1 is not listening; connecting fails fast with a coded error.
   await assert.rejects(verifyRelay(relay(1, { host: '127.0.0.1', username: '', password: '' }), { timeoutMs: 2000 }), (error) => {
-    assert.ok(error instanceof SmtpError);
+    assert.ok(error instanceof CodedError);
     assert.equal(error.code, 'SMTP_CONNECTION_FAILED');
     return true;
   });

@@ -10,3 +10,7 @@ image-builder/payload/** text eol=lf
 # Git hooks are extensionless too, and are run as shell scripts on whichever
 # machine checked them out.
 .githooks/** text eol=lf
+
+# A package digest reads file types it does not list as text byte for byte, so a
+# CRLF checkout would stamp a digest no server computes (package-contracts.cjs).
+apps/**/*.py text eol=lf

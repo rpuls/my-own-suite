@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const DATABASE_FILENAME = 'suite-manager.sqlite';
 
 const MIGRATIONS = [
@@ -456,9 +458,39 @@ const MIGRATIONS = [
     `,
     version: 19,
   },
+  {
+    // SQLite cannot add a NOT NULL column without a default, so the table is
+    // rebuilt. A session from before counts as used now, in toISOString's format,
+    // so the update that brings expiry does not sign out the owner watching it.
+    name: 'session-expiry',
+    sql: `
+      CREATE TABLE sessions_rebuilt (
+        id INTEGER PRIMARY KEY,
+        owner_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE CASCADE
+      ) STRICT;
+
+      INSERT INTO sessions_rebuilt (id, owner_id, token_hash, created_at, last_seen_at)
+      SELECT id, owner_id, token_hash, created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM sessions;
+
+      DROP TABLE sessions;
+      ALTER TABLE sessions_rebuilt RENAME TO sessions;
+
+      CREATE INDEX sessions_owner_id_idx ON sessions(owner_id);
+    `,
+    version: 20,
+  },
 ];
 
-class OwnerAlreadyExistsError extends Error {}
+class OwnerAlreadyExistsError extends CodedError {
+  constructor(cause) {
+    super('OWNER_ALREADY_EXISTS', 'The MOS owner account already exists.', { statusCode: 409 });
+    this.cause = cause;
+  }
+}
 
 class SuiteManagerStore {
   constructor(stateDir) {
@@ -539,8 +571,16 @@ class SuiteManagerStore {
     `).get() || null;
   }
 
-  hasSession(tokenHash) {
-    return Boolean(this.database.prepare('SELECT 1 FROM sessions WHERE token_hash = ?').get(tokenHash));
+  findLiveSession({ createdAfter, seenAfter, tokenHash }) {
+    return this.database.prepare(`
+      SELECT last_seen_at AS lastSeenAt
+      FROM sessions
+      WHERE token_hash = ? AND created_at > ? AND last_seen_at > ?
+    `).get(tokenHash, createdAfter, seenAfter) || null;
+  }
+
+  markSessionSeen({ at, tokenHash }) {
+    this.database.prepare('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?').run(at, tokenHash);
   }
 
   getTermsAcceptance(termsVersion) {
@@ -620,10 +660,6 @@ class SuiteManagerStore {
     }
     this.database.prepare('UPDATE known_browsers SET last_seen_at = ? WHERE token_hash = ?').run(at, tokenHash);
     return true;
-  }
-
-  countKnownBrowsers() {
-    return Number(this.database.prepare('SELECT COUNT(*) AS count FROM known_browsers').get().count);
   }
 
   getSignInAlertSentAt() {
@@ -962,7 +998,6 @@ class SuiteManagerStore {
         privacy_reviewed_at AS privacyReviewedAt,
         privacy_status AS privacyStatus,
         snapshot_path AS snapshotPath,
-        snapshot_state AS snapshotState,
         source_kind AS sourceKind,
         source_path AS sourcePath,
         source_repository AS sourceRepository,
@@ -994,7 +1029,6 @@ class SuiteManagerStore {
         privacy_reviewed_at AS privacyReviewedAt,
         privacy_status AS privacyStatus,
         snapshot_path AS snapshotPath,
-        snapshot_state AS snapshotState,
         source_kind AS sourceKind,
         source_path AS sourcePath,
         source_repository AS sourceRepository,
@@ -1502,7 +1536,7 @@ class SuiteManagerStore {
         UPDATE app_instances SET
           package_version = ?, manifest_digest = ?, display_name_snapshot = ?, category_snapshot = ?,
           package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?, source_revision = ?, source_trust = ?,
-          snapshot_path = ?, snapshot_state = 'installed', privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?,
+          snapshot_path = ?, privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?,
           update_recovery_state = 'none', update_recovery_error = NULL, updated_at = ?
         WHERE id = ?
       `).run(
@@ -1716,37 +1750,6 @@ class SuiteManagerStore {
     });
   }
 
-  markAppPackageRecoveryRequired({ at, instanceId }) {
-    this.database.prepare(`
-      UPDATE app_instances
-      SET snapshot_state = 'needs-package-recovery', updated_at = ?
-      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
-    `).run(at, instanceId);
-  }
-
-  migrateAppPackageIdentity({ at, instanceId, packageDigest, privacy, snapshotPath, source }) {
-    this.database.prepare(`
-      UPDATE app_instances
-      SET package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?,
-          source_revision = ?, source_trust = ?, snapshot_path = ?, snapshot_state = 'installed',
-          privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?, updated_at = ?
-      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
-    `).run(
-      packageDigest,
-      source.kind,
-      source.repository,
-      source.path,
-      source.revision,
-      source.trust,
-      snapshotPath,
-      privacy.status,
-      privacy.posture,
-      privacy.reviewedAt,
-      at,
-      instanceId,
-    );
-  }
-
   deleteAppInstance({ instanceId }) {
     this.transaction(() => {
       this.database.prepare('DELETE FROM app_instances WHERE id = ?').run(instanceId);
@@ -1762,7 +1765,7 @@ class SuiteManagerStore {
           package_digest, source_kind, source_repository, source_path, source_revision, source_trust,
           snapshot_path, snapshot_state, privacy_status, privacy_posture, privacy_reviewed_at
         )
-        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installed', ?, ?, ?)
       `).run(
         instance.id,
         instance.packageId,
@@ -1780,7 +1783,6 @@ class SuiteManagerStore {
         instance.source?.revision ?? null,
         instance.source?.trust ?? null,
         instance.snapshotPath ?? null,
-        instance.snapshotState ?? 'legacy-unmigrated',
         instance.privacy?.status ?? null,
         instance.privacy?.posture ?? null,
         instance.privacy?.reviewedAt ?? null,
@@ -1829,7 +1831,10 @@ class SuiteManagerStore {
     });
   }
 
-  createSession(session) {
+  // Every new session sweeps out the ones outside the live window, so the table
+  // holds only sessions that could still sign the owner in.
+  createSession(session, { createdAfter, seenAfter }) {
+    this.database.prepare('DELETE FROM sessions WHERE created_at <= ? OR last_seen_at <= ?').run(createdAfter, seenAfter);
     this.insertSession(session);
   }
 
@@ -1845,7 +1850,7 @@ class SuiteManagerStore {
       `).run(owner.name, owner.email, owner.passwordHash, owner.createdAt);
     } catch (error) {
       if (error.code?.startsWith('ERR_SQLITE_CONSTRAINT')) {
-        throw new OwnerAlreadyExistsError('The MOS owner account already exists.', { cause: error });
+        throw new OwnerAlreadyExistsError(error);
       }
       throw error;
     }
@@ -1853,9 +1858,9 @@ class SuiteManagerStore {
 
   insertSession(session) {
     this.database.prepare(`
-      INSERT INTO sessions (owner_id, token_hash, created_at)
-      VALUES (1, ?, ?)
-    `).run(session.tokenHash, session.createdAt);
+      INSERT INTO sessions (owner_id, token_hash, created_at, last_seen_at)
+      VALUES (1, ?, ?, ?)
+    `).run(session.tokenHash, session.createdAt, session.createdAt);
   }
 
   close() {

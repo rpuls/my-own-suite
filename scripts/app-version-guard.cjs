@@ -40,9 +40,13 @@ function readBaselineCatalog(refs) {
   return { attempts, catalog: null, ref: null };
 }
 
-function main(args = process.argv.slice(2)) {
+function baselineRefs() {
   const explicit = String(process.env.MOS_CATALOG_BASELINE_REF || '').trim();
-  const refs = explicit ? [explicit] : DEFAULT_BASELINE_REFS;
+  return explicit ? [explicit] : DEFAULT_BASELINE_REFS;
+}
+
+function main(args = process.argv.slice(2)) {
+  const refs = baselineRefs();
   const { attempts, catalog: baseline, ref } = readBaselineCatalog(refs);
   if (!baseline) {
     // A checkout without the published branch cannot answer the question. That is
@@ -101,4 +105,4 @@ function compare(left, right) {
 
 if (require.main === module) main();
 
-module.exports = { compareCatalogs, main };
+module.exports = { baselineRefs, compareCatalogs, main, readBaselineCatalog };

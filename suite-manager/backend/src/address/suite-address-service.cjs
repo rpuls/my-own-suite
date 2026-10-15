@@ -8,43 +8,63 @@
 // them back — because a domain change restarts the web server under the very
 // connection that asked for it, so the reply to that request is lost by design.
 
+const crypto = require('node:crypto');
 const dns = require('node:dns');
 const os = require('node:os');
 
-const { HttpsSettingsError, normalizeBaseDomain, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
+const { hostingTrack } = require('../../../../infrastructure/control-plane-runtime.cjs');
+const { HttpsSettingsError, normalizeBaseDomain, validBaseDomain, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
+const { tlsHandshake } = require('../../../../shared/tls-handshake.cjs');
 const { SuiteAddressError, addressForHost, domainAddress } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { HttpsAgentError } = require('../settings/https-agent-client.cjs');
 
-// The stages of a change, in order. `caddy` only exists for a domain: it is the
-// web server rewrite, restart and the wait for the certificate, all inside the
-// HTTPS agent's own transaction. `recorded` is the point of no return — after it
-// every URL-builder answers with the new address — and `apps` is the rebuild of
-// everything that baked the old one in.
-const CHANGE_STAGES = Object.freeze(['caddy', 'recorded', 'apps']);
+// The stages of a change, in order. `dns` only exists for a public server's
+// domain: the wait for the owner's record to reach this server. `caddy` only
+// exists for a domain: it is the web server rewrite, restart and the wait for the
+// certificate, all inside the HTTPS agent's own transaction. `recorded` is the
+// point of no return — after it every URL-builder answers with the new address —
+// and `apps` is the rebuild of everything that baked the old one in.
+const CHANGE_STAGES = Object.freeze(['dns', 'caddy', 'recorded', 'apps']);
 const CHANGE_KINDS = Object.freeze(['domain', 'easy-door']);
-
-function privateHttpsAvailable(frontDoor) {
-  return !['cloud-init', 'digitalocean-smoke'].includes(frontDoor);
-}
 
 function localAddresses() {
   return Object.values(os.networkInterfaces()).flat().filter((entry) => entry && entry.family === 'IPv4').map((entry) => entry.address);
 }
 
-// Whether a name points at this machine: true, false, or null when DNS could not
-// be asked. Reported, never enforced — the owner creates the override after the
-// certificate exists, and MOS reads DNS without ever writing it.
-async function resolvesHere(host, resolveHost) {
-  let addresses;
+// What a name resolves to from here: its addresses, an empty list when it has no
+// record, or null when DNS could not be asked. MOS reads DNS without ever writing it.
+async function lookUp(host, resolveHost) {
   try {
-    addresses = await resolveHost(host);
+    return (await resolveHost(host)) || [];
   } catch (error) {
-    return ['ENOTFOUND', 'ENODATA', 'NXDOMAIN'].includes(error?.code) ? false : null;
+    return ['ENOTFOUND', 'ENODATA', 'NXDOMAIN'].includes(error?.code) ? [] : null;
   }
-  const local = new Set(localAddresses());
-  return (addresses || []).some((address) => local.has(address));
+}
+
+async function resolvesHere(host, resolveHost, here = localAddresses()) {
+  const addresses = await lookUp(host, resolveHost);
+  return addresses === null ? null : addresses.some((address) => here.includes(address));
+}
+
+// Where the owner's record stands, in the one sentence that says what to fix.
+function describeDomain(baseDomain, { home, other }, here) {
+  const homeHost = `home.${baseDomain}`;
+  const server = here[0] || 'this server';
+  const pointsHere = (addresses) => addresses.some((address) => here.includes(address));
+  if (home === null || other === null) return `MOS could not look up ${baseDomain} just now.`;
+  if (!home.length) return `${homeHost} has no DNS record yet. Add *.${baseDomain} → ${server}; a new record can take a few minutes to appear.`;
+  if (!pointsHere(home)) return `${homeHost} points at ${home.join(', ')}, not this server (${server}). If your DNS provider proxies the record, such as Cloudflare's orange cloud, set it to DNS only.`;
+  if (!pointsHere(other)) return `${homeHost} points here, but other names under ${baseDomain} do not, and every app needs its own. Make the record *.${baseDomain}.`;
+  return `${baseDomain} points at this server.`;
+}
+
+// Held only when the local web server presents a certificate for exactly this
+// name that the system trusts. Anything else means the certificate has not
+// arrived yet; Caddy keeps trying on its own.
+function probeLocalCertificate(host) {
+  return tlsHandshake({ host: '127.0.0.1', port: 443, servername: host, timeoutMs: 5_000 });
 }
 
 function defaultResolver() {
@@ -58,19 +78,30 @@ class SuiteAddressService {
     bootstrapHost,
     bootstrapScheme = 'http',
     detectAddress = detectServerAddress,
+    dnsRecheckMs = 15_000,
+    dnsWaitMs = 30 * 60_000,
     frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
+    installedApps = () => [],
     logger = null,
     now = () => new Date(),
+    probeCertificate = probeLocalCertificate,
     rebake = async () => ({ skipped: true }),
     resolveHost = defaultResolver(),
     store,
     suiteAddress,
+    watchIntervalMs = 60_000,
   }) {
     this.agent = agent;
     this.bootstrapHost = String(bootstrapHost || '').toLowerCase().replace(/:\d+$/u, '');
     this.bootstrapScheme = bootstrapScheme === 'https' ? 'https' : 'http';
     this.detectAddress = detectAddress;
+    this.dnsRecheckMs = dnsRecheckMs;
+    this.dnsWaitMs = dnsWaitMs;
     this.frontDoor = frontDoor;
+    this.track = hostingTrack(frontDoor);
+    this.installedApps = installedApps;
+    this.live = null;
+    this.cancelRequested = false;
     this.logger = logger;
     this.now = now;
     this.rebake = rebake;
@@ -78,6 +109,9 @@ class SuiteAddressService {
     this.store = store;
     this.suiteAddress = suiteAddress;
     this.running = null;
+    this.probeCertificate = probeCertificate;
+    this.watchIntervalMs = watchIntervalMs;
+    this.certificate = { host: null, notAfter: null, state: 'pending' };
   }
 
   // A machine always has a recorded address once Suite Manager has started on
@@ -96,6 +130,68 @@ class SuiteAddressService {
 
   address() {
     return this.suiteAddress.read();
+  }
+
+  // Keeps the web server rendered for the machine's live facts, and the suite
+  // on HTTPS once the Easy Door certificate arrives. Never during an address
+  // change, which owns the web server until it finishes.
+  watchEasyDoor() {
+    const tick = () => this.watchTick().catch((error) => this.logger?.warn('easy-door-watch-failed', { code: error?.code, error }));
+    tick();
+    this.watchTimer = setInterval(tick, this.watchIntervalMs);
+    this.watchTimer.unref?.();
+  }
+
+  stopWatchingEasyDoor() {
+    clearInterval(this.watchTimer);
+  }
+
+  async watchTick() {
+    if (this.running) return;
+    await this.agent.ensure();
+    await this.refreshCertificate();
+    if (this.running) return;
+    const address = this.address();
+    const held = this.certificate.state === 'held' && this.certificate.host === address.host;
+    if (held && address.kind === 'easy-door' && address.scheme === 'http') await this.change({ kind: 'easy-door' });
+  }
+
+  // The Easy Door name a trusted certificate is possible for: none on a public
+  // server, which has no door, or off a private network.
+  easyDoorTlsHost() {
+    return this.track === 'public-server' ? null : this.easyDoorHost();
+  }
+
+  // The addresses a domain has to point at. A public server's install-time name
+  // already resolves to its public address, which some providers keep off the
+  // machine's own interfaces.
+  async serverAddresses() {
+    if (this.track !== 'public-server') return localAddresses();
+    const named = await this.resolveHost(this.bootstrapHost).catch(() => []);
+    return [...new Set([...named, ...localAddresses()])];
+  }
+
+  async refreshCertificate() {
+    const host = this.easyDoorTlsHost();
+    if (!host) {
+      this.certificate = { host: null, notAfter: null, state: 'not-applicable' };
+      return this.certificate;
+    }
+    try {
+      const leaf = await this.probeCertificate(host);
+      const notAfter = Date.parse(leaf?.valid_to);
+      this.certificate = { host, notAfter: Number.isFinite(notAfter) ? new Date(notAfter).toISOString() : null, state: 'held' };
+    } catch {
+      this.certificate = { host, notAfter: null, state: 'pending' };
+    }
+    return this.certificate;
+  }
+
+  // A page asked for over plain HTTP on a door whose certificate is held goes to
+  // the same page over HTTPS. Only page loads: an API call from a tab opened
+  // over HTTP would fail the cross-origin redirect, so it is answered where it is.
+  httpsRedirectFor(host) {
+    return this.certificate.state === 'held' && this.certificate.host === host ? `https://${host}` : null;
   }
 
   // The Easy Door name this machine answers on right now, or null off a private
@@ -137,46 +233,56 @@ class SuiteAddressService {
     let agentAvailable = false;
     try {
       const status = await this.agent.status();
-      agentAvailable = status?.capabilities?.includes('cloudflare-dns01.apply') === true;
+      agentAvailable = this.track === 'public-server' || status?.capabilities?.includes('cloudflare-dns01.apply') === true;
     } catch {}
     const address = this.address();
     const easyDoorHost = this.easyDoorHost();
     const change = this.store.getAddressChange();
+    const certificate = this.certificate;
+    let certificateLog = [];
+    if (certificate.state === 'pending') {
+      try { certificateLog = (await this.agent.easyDoorStatus())?.log || []; } catch {}
+    }
+    const here = await this.serverAddresses();
     return {
       address: {
         ...address,
-        resolvesHere: address.kind === 'domain' ? await resolvesHere(address.host, this.resolveHost) : null,
+        resolvesHere: address.kind === 'domain' ? await resolvesHere(address.host, this.resolveHost, here) : null,
         url: `${address.scheme}://${address.host}/`,
       },
       agentAvailable,
       bootstrapUrl: `${this.bootstrapScheme}://${this.bootstrapHost}/`,
       drifted: this.drift(address),
-      easyDoorUrl: easyDoorHost ? `http://${easyDoorHost}/` : null,
+      easyDoorCertificate: { ...certificate, log: certificateLog },
+      easyDoorUrl: easyDoorHost ? `${this.httpsRedirectFor(easyDoorHost) ? 'https' : 'http'}://${easyDoorHost}/` : null,
       installContext: this.frontDoor,
       lastChange: {
         at: change.finishedAt || change.startedAt,
         diagnostics: change.diagnostics,
         errorCode: change.errorCode,
         result: change.result,
+        live: this.liveProgress(),
         stage: change.stage,
         stages: CHANGE_STAGES,
         status: change.status,
         target: change.target,
       },
+      appsToRebuild: this.installedApps(),
       offered: this.suiteAddress.readOffer(),
-      privateHttpsAvailable: privateHttpsAvailable(this.frontDoor),
-      serverAddress: this.detectAddress(),
+      serverAddress: this.track === 'public-server' ? here[0] || null : this.detectAddress(),
+      track: this.track,
     };
   }
 
   // Starts a change and answers before it finishes. Accepted shapes:
-  //   { kind: 'domain', baseDomain, acmeEmail, cloudflareApiToken }  the owner's own domain
+  //   { kind: 'domain', baseDomain }                                  a public server's own domain
+  //   { kind: 'domain', baseDomain, acmeEmail, cloudflareApiToken }  a home server's own domain
   //   { kind: 'domain', useOffered: true }                            the domain a restore offered, with its parked credential
   //   { kind: 'easy-door' }                                           follow the machine's live Easy Door name
   async change(rawInput) {
     const input = rawInput && typeof rawInput === 'object' ? rawInput : {};
     if (!CHANGE_KINDS.includes(input.kind)) throw new HttpsSettingsError('INVALID_ADDRESS_CHANGE', 'Only a domain or the Easy Door can be the suite address.');
-    const { credential, target } = input.kind === 'domain' ? this.domainTarget(input) : this.easyDoorTarget();
+    const { credential, target } = input.kind === 'domain' ? await this.domainTarget(input) : this.easyDoorTarget();
     const startedAt = this.now().toISOString();
     // The scheme travels with the target, because the screen has to be able to
     // link to where the suite went and only the address module decides whether
@@ -184,14 +290,84 @@ class SuiteAddressService {
     if (!this.store.beginAddressChange({ at: startedAt, target: { host: target.host, kind: target.kind, scheme: target.scheme, ...(target.baseDomain ? { baseDomain: target.baseDomain } : {}) } })) {
       throw new HttpsSettingsError('ADDRESS_CHANGE_IN_PROGRESS', 'The suite address is already being changed. Wait for that change to finish.', 409);
     }
+    this.live = {};
+    this.cancelRequested = false;
     this.running = this.run(target, credential).finally(() => { this.running = null; });
     return { startedAt, status: 'applying', target: { host: target.host, kind: target.kind, scheme: target.scheme } };
   }
 
-  domainTarget(input) {
-    if (!privateHttpsAvailable(this.frontDoor)) {
-      throw new HttpsSettingsError('PRIVATE_HTTPS_UNAVAILABLE', 'Private LAN HTTPS setup is only available for self-host installs.', 409);
+  // Only while the change waits for DNS, when nothing has been touched yet.
+  cancelChange() {
+    if (!this.running || this.store.getAddressChange().stage !== 'dns') {
+      throw new HttpsSettingsError('ADDRESS_CHANGE_NOT_CANCELLABLE', 'Only a move that is still waiting for DNS can be cancelled.', 409);
     }
+    this.cancelRequested = true;
+    this.wake?.();
+    return { cancelling: true };
+  }
+
+  // What the change in flight is doing, kept in memory because a restart closes
+  // the change anyway. Time left is the pace so far times the apps still to go.
+  liveProgress() {
+    const apps = this.live?.apps;
+    const elapsedMs = apps ? this.now().getTime() - Date.parse(apps.startedAt) : 0;
+    return {
+      apps: apps ? {
+        current: apps.current,
+        done: apps.done,
+        remainingSeconds: apps.done && apps.current ? Math.round(((elapsedMs / apps.done) * (apps.total - apps.done)) / 1000) : null,
+        total: apps.total,
+      } : null,
+      dns: this.live?.dns || null,
+    };
+  }
+
+  domainTarget(input) {
+    return this.track === 'public-server' ? this.publicDomainTarget(input) : this.homeDomainTarget(input);
+  }
+
+  publicDomainTarget(input) {
+    const keys = Object.keys(input).filter((key) => key !== 'kind');
+    if (keys.join(',') !== 'baseDomain') throw new HttpsSettingsError('INVALID_HTTPS_REQUEST', 'A public server needs only the domain.');
+    const baseDomain = validBaseDomain(input.baseDomain);
+    if (!baseDomain) throw new HttpsSettingsError('INVALID_BASE_DOMAIN', 'Enter a valid domain, such as example.com.');
+    return { credential: null, target: domainAddress({ baseDomain, provider: null }) };
+  }
+
+  // The certificate authority reaches a public server through the domain, and
+  // every failed attempt counts against its rate limit, so nothing changes until
+  // the owner's record has arrived here. A new record often has not when the
+  // owner presses Move, so it is asked again until it has, the owner cancels, or
+  // the wait runs out; only the owner can tell a slow record from a wrong one.
+  async waitForDns(baseDomain) {
+    const deadline = this.now().getTime() + this.dnsWaitMs;
+    for (;;) {
+      if (this.cancelRequested) throw new HttpsSettingsError('ADDRESS_CHANGE_CANCELLED', 'You cancelled the move before anything changed.', 409);
+      this.live.dns = await this.lookUpDomain(baseDomain);
+      if (this.live.dns.pointsHere) return;
+      if (this.now().getTime() >= deadline) {
+        throw new HttpsSettingsError('DOMAIN_NOT_POINTED_HERE', `${this.live.dns.sentence} MOS checked for ${Math.round(this.dnsWaitMs / 60_000)} minutes and changed nothing.`, 409);
+      }
+      await new Promise((resolve) => {
+        const recheck = setTimeout(resolve, this.dnsRecheckMs);
+        this.wake = () => {
+          clearTimeout(recheck);
+          resolve();
+        };
+      });
+    }
+  }
+
+  // Every app gets its own name under the domain, so the owner's one record is a
+  // wildcard, and a random name proves it is one.
+  async lookUpDomain(baseDomain) {
+    const here = await this.serverAddresses();
+    const [home, other] = await Promise.all([`home.${baseDomain}`, `mos-${crypto.randomBytes(4).toString('hex')}.${baseDomain}`].map((host) => lookUp(host, this.resolveHost)));
+    const pointsHere = [home, other].every((addresses) => addresses?.some((address) => here.includes(address)));
+    return { checkedAt: this.now().toISOString(), pointsHere, sentence: describeDomain(baseDomain, { home, other }, here) };
+  }
+
+  homeDomainTarget(input) {
     if (input.useOffered === true) {
       const offer = this.suiteAddress.readOffer();
       if (!offer) throw new HttpsSettingsError('NO_OFFERED_ADDRESS', 'No restored backup has offered a domain to this machine.', 409);
@@ -207,10 +383,12 @@ class SuiteAddressService {
     return { credential: { cloudflareApiToken: valid.cloudflareApiToken }, target: domainAddress({ acmeEmail: valid.acmeEmail, baseDomain: valid.baseDomain, provider: 'cloudflare' }) };
   }
 
+  // Served over HTTPS exactly when the certificate for that name is already
+  // held; otherwise over HTTP, and the watch switches it once the lock arrives.
   easyDoorTarget() {
     const host = this.easyDoorHost();
     if (!host) throw new HttpsSettingsError('EASY_DOOR_UNAVAILABLE', 'This machine has no Easy Door name: it is not on a private network.', 409);
-    return { credential: null, target: addressForHost(host, { scheme: 'http' }) };
+    return { credential: null, target: addressForHost(host, { scheme: this.httpsRedirectFor(host) ? 'https' : 'http' }) };
   }
 
   async run(target, credential) {
@@ -218,14 +396,17 @@ class SuiteAddressService {
     const secrets = credential?.cloudflareApiToken ? [credential.cloudflareApiToken] : [];
     let rollbackId = null;
     try {
+      if (target.kind === 'domain' && this.track === 'public-server') {
+        this.store.advanceAddressChange({ stage: 'dns' });
+        await this.waitForDns(target.baseDomain);
+      }
       if (target.kind === 'domain') {
         this.store.advanceAddressChange({ stage: 'caddy' });
-        const result = await this.agent.apply({
+        const result = await this.agent.apply(credential ? {
           acmeEmail: target.acmeEmail,
           baseDomain: target.baseDomain,
-          bootstrapHost: this.bootstrapHost,
           ...(credential.parked ? { useParkedCredential: true } : { cloudflareApiToken: credential.cloudflareApiToken }),
-        });
+        } : { baseDomain: target.baseDomain });
         rollbackId = typeof result?.rollbackId === 'string' ? result.rollbackId : null;
         if (!rollbackId) throw new Error('HTTPS_AGENT_INVALID_RESPONSE');
       }
@@ -243,12 +424,13 @@ class SuiteAddressService {
       // the owner may already be looking at through the new name.
       if (rollbackId) { try { await this.agent.commit(rollbackId); } catch {} }
       const offer = this.suiteAddress.readOffer();
-      if (target.kind === 'domain' && offer && offer.baseDomain === target.baseDomain) this.suiteAddress.clearOffer();
+      if (target.kind === 'domain' && offer && offer.baseDomain === target.baseDomain) await this.dismissOffer();
 
       this.store.advanceAddressChange({ stage: 'apps' });
       let rebake;
       try {
-        rebake = await this.rebake(this.suiteAddress.read());
+        const startedAt = at();
+        rebake = await this.rebake(this.suiteAddress.read(), { onApp: (progress) => { this.live.apps = { ...progress, startedAt }; } });
       } catch (error) {
         this.logger?.error('suite-address-rebake-failed', { error });
         rebake = { errorCode: error?.code || 'APP_PUBLIC_URL_RECONCILE_FAILED', skipped: false, status: 'failed' };
@@ -278,4 +460,4 @@ class SuiteAddressService {
   }
 }
 
-module.exports = { CHANGE_STAGES, SuiteAddressService, privateHttpsAvailable, resolvesHere };
+module.exports = { SuiteAddressService, resolvesHere };

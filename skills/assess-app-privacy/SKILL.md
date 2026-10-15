@@ -21,9 +21,10 @@ Prefer observed package/runtime evidence over upstream marketing. Label every co
 4. Verify which supported settings MOS uses to disable optional telemetry. Record exact package evidence. Do not claim network silence from a configuration setting alone.
 5. Review upstream Terms, privacy policy, license, publishing legal entity, effective dates, and account requirements. Record direct primary-source URLs and retrieval dates.
 6. Classify the dimensions defined in `apps/README.md`. Derive the overall posture mechanically; do not select it by intuition.
-7. Record provenance. Use the runtime-reported provider/model identifier when available and `unknown` otherwise. Never guess a model version. Record human review separately.
-8. Write the candidate package's `apps/<app>/privacy-review.json`, update its compact manifest `privacy` block, and document package-owned telemetry controls. This review travels with the package snapshot when installed.
-9. Run `npm run apps:privacy:check`, `npm run apps:catalog` after changing a review, `npm run apps:catalog:check`, and relevant manifest tests.
+7. Record `outbound`: every host the app contacts in normal use as MOS ships it, before the owner turns anything on. For each, give `host` (exact, `*.domain` when the hosts vary, or `*` for behaviour that follows stored content), `from` (`server` or `browser`), `purpose` (what it fetches or sends, and when, in plain words) and `receiver` (who operates it). Owners read this list before they install and when an update changes it. It is empty exactly when `defaultEgress` is `none`, and the E2E `network` step fails on any host it does not name, so ground it in a capture: `npm run e2e -- @app-cycle <app>` writes one to `network/report.md`.
+8. Record provenance. Use the runtime-reported provider/model identifier when available and `unknown` otherwise. Never guess a model version. Record human review separately.
+9. Write the candidate package's `apps/<app>/privacy-review.json`, update its compact manifest `privacy` block, and document package-owned telemetry controls. This review travels with the package snapshot when installed.
+10. Run `npm run apps:privacy:check`, `npm run apps:catalog` after changing a review, `npm run apps:catalog:check`, and relevant manifest tests.
 
 ## Catalog signing
 

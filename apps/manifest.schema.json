@@ -61,7 +61,7 @@
       "type": "array",
       "items": { "$ref": "#/$defs/relativePath" },
       "uniqueItems": true,
-      "description": "Extra files shipped with the package beyond the fixed root set (manifest.json, Dockerfile*, README.md, entrypoint.sh, icon.*, privacy-review.json). Only listed files survive packaging and count toward the package digest."
+      "description": "Extra files shipped with the package beyond the fixed root set (manifest.json, Dockerfile*, README.md, entrypoint.sh, icon.*, privacy-review.json). Only listed files survive packaging and count toward the package digest. Nothing inside a top-level e2e/ folder may be listed: it holds the package's own tests and never ships."
     },
     "summary": {
       "$ref": "#/$defs/text",

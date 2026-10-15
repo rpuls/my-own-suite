@@ -4,6 +4,11 @@ const path = require('node:path');
 const test = require('node:test');
 
 const frontendRoot = path.join(__dirname, '..', '..', 'suite-manager', 'frontend', 'src');
+const appsFeature = path.join(frontendRoot, 'features', 'apps');
+
+function readAppsFeature() {
+  return fs.readdirSync(appsFeature).filter((name) => /\.tsx?$/u.test(name)).map((name) => fs.readFileSync(path.join(appsFeature, name), 'utf8')).join('\n');
+}
 
 test('Customize request IDs work without crypto.randomUUID', () => {
   const customize = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CustomizeScreen.tsx'), 'utf8');
@@ -58,7 +63,7 @@ test('authenticated page routes render inside the shared shell and route boundar
 // snippet that rewrote the Windows hosts file for the Hyper-V smoke lab. It was
 // lab scaffolding on a page every owner sees, so it is gone; this keeps it gone.
 test('the app catalog does not ship lab host-file tooling to owners', () => {
-  const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
+  const apps = readAppsFeature();
   assert.doesNotMatch(apps, /HYPERV USB SMOKE/u);
   assert.doesNotMatch(apps, /hostsPath/u);
 });
@@ -122,7 +127,7 @@ test('Apps setup fields prefill from the signed-in owner', () => {
 });
 
 test('Apps catalog separates companion apps and hides Homepage controls when absent', () => {
-  const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
+  const apps = readAppsFeature();
 
   assert.match(apps, /function isCompanionApp/u);
   assert.match(apps, /Companion apps/u);

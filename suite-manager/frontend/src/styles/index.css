@@ -67,20 +67,323 @@
   gap: var(--mos-space-4);
 }
 
-/* A settings panel stacks its blocks, and this gap is the only thing that spaces
-   them. The class existed with no rule at all, so spacing came from whatever
-   margins each child happened to carry: a heading block ended in a paragraph and
-   got one, a notice did not, and a button after a notice sat flush against it. */
-.suite-settings-panel {
-  display: grid;
-  gap: var(--mos-space-4);
-  align-content: start;
+.suite-settings-form > p,
+.suite-settings-row p {
+  margin: 0;
 }
 
-/* A grid item's margins no longer collapse out of it, so a heading block's
-   trailing paragraph margin would add to the gap above rather than being it. */
-.suite-settings-panel > div > p:last-child {
-  margin-bottom: 0;
+/* Settings: a sticky sidebar of every setting beside one long grouped page. */
+.suite-settings-layout {
+  display: grid;
+  grid-template-columns: 14.5rem minmax(0, 1fr);
+  gap: var(--mos-space-8);
+  align-items: start;
+  padding-bottom: var(--mos-space-8);
+}
+
+.suite-settings-aside {
+  position: sticky;
+  top: var(--mos-space-5);
+  display: grid;
+  gap: var(--mos-space-5);
+  max-height: calc(100vh - 2.5rem);
+  overflow: auto;
+  padding: 2px 4px var(--mos-space-2) 2px;
+}
+
+.suite-settings-main {
+  display: grid;
+  gap: 3.5rem;
+  min-width: 0;
+  max-width: 48.75rem;
+}
+
+.suite-settings-group {
+  display: grid;
+  gap: var(--mos-space-5);
+}
+
+.suite-settings-group-head {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.suite-settings-group-head > * {
+  margin: 0;
+}
+
+.suite-settings-group,
+.suite-setting {
+  scroll-margin-top: var(--mos-space-5);
+}
+
+.suite-settings-group[hidden],
+.suite-setting[hidden] {
+  display: none;
+}
+
+/* A form opening straight under a card's header needs the rule a band would
+   otherwise have drawn. */
+.suite-setting .mos-panel-head + .mos-panel-body {
+  border-top: var(--mos-border-hairline);
+}
+
+.suite-settings-search {
+  position: relative;
+}
+
+.suite-settings-search > .suite-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.875rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  transform: translateY(-50%);
+  color: var(--mos-color-text-muted);
+  pointer-events: none;
+}
+
+.suite-settings-search > .suite-input {
+  padding-left: 2.625rem;
+  padding-right: 2.5rem;
+}
+
+.suite-settings-search > .suite-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.suite-settings-search > kbd {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  padding: 1px 7px;
+  border: var(--mos-border-strong);
+  border-radius: 6px;
+  color: var(--mos-color-text-muted);
+  font-family: var(--mos-font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+}
+
+.suite-settings-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  display: flex;
+  padding: 0.375rem;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--mos-color-text-muted);
+  cursor: pointer;
+}
+
+.suite-settings-search-clear > .suite-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.suite-settings-found {
+  margin: calc(var(--mos-space-3) * -1) 0 0 0.25rem;
+}
+
+.suite-settings-nav {
+  display: grid;
+  gap: var(--mos-space-5);
+}
+
+.suite-settings-nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+.suite-settings-nav-heading {
+  justify-self: start;
+  padding: 0 0.75rem 0.375rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5625rem 0.75rem;
+  border: 0;
+  border-radius: var(--mos-radius-sm);
+  background: transparent;
+  color: var(--mos-color-text-muted);
+  font: inherit;
+  font-size: var(--mos-text-small);
+  font-weight: var(--mos-weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--mos-transition), color var(--mos-transition);
+}
+
+.suite-settings-nav-item > .suite-icon {
+  flex: 0 0 auto;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.suite-settings-nav-item:hover {
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-text-strong);
+}
+
+/* The setting in view: an accent wash, deliberately without the leading bar a
+   selected list row carries, because this marks where you are, not a choice. */
+.suite-settings-nav-item[aria-current] {
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-text-strong);
+  font-weight: var(--mos-weight-bold);
+}
+
+.suite-settings-aside-help {
+  display: grid;
+  gap: 0.375rem;
+  padding: var(--mos-space-4) 0.75rem 0;
+  border-top: var(--mos-border-subtle);
+  font-size: var(--mos-text-small);
+}
+
+.suite-settings-aside-help > * {
+  margin: 0;
+}
+
+.suite-settings-aside-help > strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mos-space-1);
+}
+
+.suite-settings-link > .suite-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.suite-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--mos-space-4);
+}
+
+.suite-settings-fields-narrow {
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+}
+
+.suite-settings-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.suite-settings-fieldset > legend {
+  margin-bottom: var(--mos-space-3);
+  padding: 0;
+}
+
+.suite-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-3);
+}
+
+.suite-settings-actions-split {
+  justify-content: space-between;
+}
+
+.suite-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3) var(--mos-space-4);
+}
+
+.suite-settings-row > p {
+  flex: 1 1 18rem;
+}
+
+.suite-settings-row-main {
+  display: grid;
+  flex: 1 1 18rem;
+  gap: var(--mos-space-1);
+  min-width: 0;
+}
+
+.suite-settings-row-main > strong {
+  color: var(--mos-color-text-strong);
+}
+
+/* A switch that is already a panel row needs no box of its own around it. */
+.mos-panel-item > .suite-switch {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+@media (max-width: 55rem) {
+  .suite-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--mos-space-6);
+  }
+
+  .suite-settings-aside {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* InputAction: only the input and its button share the row, and stretch keeps
+   them the same height whatever the font or padding does. */
+.suite-input-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--mos-space-3);
+}
+
+.suite-input-action > .suite-input {
+  flex: 1 1 14rem;
+  width: auto;
+}
+
+.suite-input-action > .mos-btn {
+  flex: 0 0 auto;
+  min-height: 2.9rem;
+  white-space: nowrap;
+}
+
+.suite-input-action-attached {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.suite-input-action-attached > .suite-input {
+  border-right: 0;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.suite-input-action-attached > .mos-btn {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  box-shadow: none;
 }
 
 /* One added app source. The panel section owns the inset, so this only decides
@@ -216,13 +519,6 @@
   justify-content: space-between;
   gap: var(--mos-space-4);
   padding: var(--mos-space-5) clamp(1rem, 3vw, 2rem);
-}
-
-.suite-shell-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mos-space-2);
 }
 
 .suite-icon-button {
@@ -549,51 +845,6 @@
   border-radius: var(--mos-radius-sm);
   background: var(--mos-color-surface);
   cursor: pointer;
-}
-
-/* Choice row: the same boxed surface as .suite-confirm, one row per answer,
-   the chosen one outlined in the accent. */
-.suite-choice {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--mos-space-3);
-  padding: var(--mos-space-4);
-  border: var(--mos-border-subtle);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface);
-  cursor: pointer;
-}
-
-.suite-choice + .suite-choice {
-  margin-top: var(--mos-space-2);
-}
-
-.suite-choice:has(.suite-choice-dot:checked) {
-  border-color: var(--mos-color-accent);
-}
-
-.suite-choice-dot {
-  flex: 0 0 auto;
-  margin-top: 0.15rem;
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--mos-color-accent);
-}
-
-.suite-choice-copy {
-  display: grid;
-  gap: var(--mos-space-1);
-}
-
-.suite-choice-label {
-  color: var(--mos-color-text-strong);
-  font-weight: var(--mos-weight-bold);
-}
-
-.suite-choice-help {
-  color: var(--mos-color-text-muted);
-  font-size: var(--mos-text-small);
-  line-height: 1.45;
 }
 
 /* Setting row: copy on the left, the brand switch on the right, the whole row
@@ -1616,6 +1867,12 @@
   color: var(--mos-color-text-strong);
 }
 
+.suite-app-step-elapsed {
+  color: var(--mos-color-text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .suite-app-step-dot {
   width: 0.8rem;
   height: 0.8rem;
@@ -2143,82 +2400,70 @@
 }
 
 
-.suite-updates-layout,
-.suite-updates-panel {
+.suite-updates-layout {
   display: grid;
-  gap: var(--mos-space-4);
+  gap: var(--mos-space-5);
 }
 
-.suite-updates-progress {
-  position: relative;
+.suite-updates-summary {
   display: grid;
-  gap: var(--mos-space-3);
-  padding: var(--mos-space-4);
-  overflow: hidden;
-  border: 1px solid var(--mos-color-info-border);
-  border-radius: var(--mos-radius-md);
-  background: var(--mos-color-info-surface);
+  gap: var(--mos-space-5);
+}
+
+.suite-updates-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--mos-space-4);
+  align-items: center;
+}
+
+.suite-updates-hero-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-accent);
+}
+
+.suite-updates-hero-icon.is-neutral {
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-text);
+}
+
+.suite-updates-hero-icon .suite-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.suite-updates-hero h2 {
+  margin: 0;
   color: var(--mos-color-text-strong);
+  font-size: 1.2rem;
+  line-height: 1.3;
+  text-wrap: pretty;
 }
 
-.suite-updates-progress-bar {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 42%;
-  height: 3px;
-  border-radius: var(--mos-radius-pill);
-  background: var(--mos-color-focus);
-  animation: suite-updates-progress 1.3s ease-in-out infinite;
-}
-
-.suite-updates-progress strong,
-.suite-updates-progress span {
-  display: block;
-}
-
-.suite-updates-progress span {
-  margin-top: var(--mos-space-1);
-  color: var(--mos-color-text-muted);
-}
-
-@keyframes suite-updates-progress {
-  0% { transform: translateX(-105%); }
-  50% { transform: translateX(120%); }
-  100% { transform: translateX(245%); }
-}
-
-.suite-updates-header,
-.suite-updates-track {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--mos-space-4);
-}
-
-.suite-updates-track .suite-control {
-  flex: 1 1 18rem;
-}
-
-/* Keep the switch button on the same row as the select input rather than its label. */
-.suite-updates-track .mos-btn {
-  min-height: 2.9rem;
-  margin-top: calc(var(--mos-text-label) * var(--mos-line-height-body) + var(--mos-space-2));
+.suite-updates-hero p {
+  margin: 0.15rem 0 0;
+  font-size: var(--mos-text-small);
+  text-wrap: pretty;
 }
 
 .suite-updates-facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--mos-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin: 0;
+  border-block: var(--mos-border-hairline);
 }
 
 .suite-updates-facts div {
   display: grid;
+  align-content: start;
   gap: var(--mos-space-1);
-  padding: var(--mos-space-3);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
+  min-width: 0;
+  padding: 0.875rem var(--mos-space-4) 0.875rem 0;
 }
 
 .suite-updates-facts dt {
@@ -2231,16 +2476,157 @@
 
 .suite-updates-facts dd {
   margin: 0;
+  overflow: hidden;
   color: var(--mos-color-text-strong);
-  overflow-wrap: anywhere;
+  font-size: var(--mos-text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.suite-updates-change-list {
+.suite-updates-facts code {
+  font-family: var(--mos-font-mono);
+  font-size: 0.88rem;
+}
+
+.suite-updates-facts .suite-updates-fact-sub {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.suite-updates-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-3) var(--mos-space-5);
+}
+
+.suite-updates-buttons,
+.suite-updates-track {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-updates-buttons .mos-btn,
+.suite-updates-track .mos-btn {
+  white-space: nowrap;
+}
+
+.suite-updates-track {
+  margin-left: auto;
+}
+
+.suite-updates-track > label {
+  font-size: var(--mos-text-small);
+  white-space: nowrap;
+}
+
+.suite-updates-track .suite-control {
+  width: 14rem;
+}
+
+.suite-updates-track-help {
+  margin: calc(-1 * var(--mos-space-3)) 0 0;
+  font-size: var(--mos-text-small);
+  text-align: right;
+  text-wrap: pretty;
+}
+
+.suite-updates-steps {
+  overflow-x: auto;
+}
+
+.suite-updates-steps .suite-stepper {
+  justify-content: flex-start;
+}
+
+.suite-updates-outcome {
   display: grid;
   gap: var(--mos-space-2);
+}
+
+.suite-updates-outcome p {
   margin: 0;
-  padding-left: 1.2rem;
+}
+
+.suite-updates-chevron {
+  display: inline-flex;
   color: var(--mos-color-text-muted);
+  transition: transform var(--mos-transition);
+}
+
+.suite-updates-chevron.is-open,
+.is-open > .suite-updates-change-head .suite-updates-chevron {
+  transform: rotate(90deg);
+}
+
+.suite-updates-change {
+  display: grid;
+  gap: var(--mos-space-1);
+  padding: 0.875rem var(--mos-panel-pad);
+}
+
+.suite-updates-change-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--mos-space-3);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mos-color-text-strong);
+  font: inherit;
+  font-size: var(--mos-text-small);
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  text-wrap: pretty;
+}
+
+button.suite-updates-change-head {
+  cursor: pointer;
+}
+
+.suite-updates-change-body {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.6;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  cursor: pointer;
+}
+
+.is-open > .suite-updates-change-body {
+  display: block;
+  cursor: auto;
+}
+
+.suite-updates-change-more {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  width: 100%;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: none;
+  color: var(--mos-color-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--mos-text-small);
+  font-weight: 700;
+}
+
+.suite-updates-change-more .suite-updates-chevron {
+  color: inherit;
+}
+
+.suite-updates-change-more:hover {
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-link-hover);
 }
 
 .suite-markdown > :first-child { margin-top: 0; }
@@ -2255,38 +2641,6 @@
 .suite-markdown pre code { padding: 0; background: none; }
 .suite-markdown blockquote { padding-left: var(--mos-space-3); border-left: 3px solid var(--mos-color-surface-border); }
 
-.suite-updates-log {
-  display: grid;
-  gap: var(--mos-space-2);
-  padding-left: 0;
-  list-style: none;
-}
-
-.suite-updates-log li {
-  display: grid;
-  gap: var(--mos-space-1);
-  padding: var(--mos-space-2);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-updates-log span {
-  color: var(--mos-color-text-muted);
-  font-size: var(--mos-text-small);
-}
-
-.suite-updates-log code {
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.suite-field {
-  display: grid;
-  gap: var(--mos-space-2);
-}
-
-.suite-field > span,
 .suite-advanced dt {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
@@ -2294,31 +2648,6 @@
   letter-spacing: var(--mos-letter-spacing-label);
   text-transform: uppercase;
 }
-
-.suite-field input,
-.suite-field select,
-.suite-field textarea {
-  width: 100%;
-  min-height: 3rem;
-  padding: 0.8rem 0.95rem;
-  border: var(--mos-border-strong);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface);
-  color: var(--mos-color-text);
-}
-
-.suite-field input:focus,
-.suite-field select:focus,
-.suite-field textarea:focus {
-  border-color: var(--mos-color-accent-border);
-  outline: var(--mos-focus-ring);
-}
-
-.suite-field small {
-  color: var(--mos-color-text-muted);
-}
-
-.suite-field textarea { resize: vertical; }
 
 .suite-customize {
   display: grid;
@@ -2354,8 +2683,7 @@
 .suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
 .suite-form-wide { grid-column: 1 / -1; }
-.suite-route-preview { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); padding: var(--mos-space-4); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); }
-.suite-route-preview code, .suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+.suite-advanced pre { padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--mos-text-small); line-height: 1.5; }
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
 
 .suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); }
@@ -2501,23 +2829,27 @@
     align-items: flex-start;
   }
   .suite-app-facts,
-  .suite-app-tiles,
-  .suite-updates-facts {
+  .suite-app-tiles {
     grid-template-columns: 1fr;
   }
-  .suite-updates-header,
-  .suite-updates-track {
-    flex-direction: column;
-    align-items: stretch;
+  .suite-updates-hero {
+    grid-template-columns: auto minmax(0, 1fr);
   }
-  .suite-updates-track .mos-btn {
-    margin-top: 0;
+  .suite-updates-hero > .mos-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .suite-updates-track {
+    margin-left: 0;
+  }
+  .suite-updates-track-help {
+    text-align: left;
   }
   .suite-advanced dd { margin-bottom: var(--mos-space-2); }
   .suite-customize-header { align-items: stretch; flex-direction: column; }
   .suite-customize-layout { grid-template-columns: 1fr; }
   .suite-file-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .suite-form-grid, .suite-route-preview, .suite-choice-grid { grid-template-columns: 1fr; }
+  .suite-form-grid, .suite-choice-grid { grid-template-columns: 1fr; }
 }
 
 /* Backup & Restore Drive List */
@@ -2765,6 +3097,46 @@
   letter-spacing: var(--mos-letter-spacing-label);
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.suite-privacy-outbound {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-privacy-outbound-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-privacy-outbound-list li {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--mos-space-2) 0;
+  border-bottom: var(--mos-border-hairline);
+  color: var(--mos-color-text);
+  font-size: var(--mos-text-small);
+  line-height: 1.5;
+}
+
+.suite-privacy-outbound-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--mos-space-2);
+}
+
+.suite-privacy-outbound-head code {
+  color: var(--mos-color-text-strong);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.suite-privacy-outbound-from,
+.suite-privacy-outbound-receiver {
+  color: var(--mos-color-text-muted);
 }
 
 .suite-privacy-advisory-flag {

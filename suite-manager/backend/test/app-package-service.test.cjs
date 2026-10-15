@@ -3,12 +3,15 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const YAML = require('yaml');
 
 const {
   AppPackageService,
   digestFor,
+  homepageProjectionApplied,
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
+const { addEntry, reconcileManagedUrls, revisionFor } = require('../../../system-agents/homepage/document.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
@@ -167,7 +170,6 @@ test('an external package installs through the shared snapshot pipeline under it
   assert.equal(installed.sourceRepository, 'https://github.com/community/notes');
   assert.equal(installed.sourceRevision, 'b'.repeat(40));
   assert.equal(installed.sourceTrust, 'unverified');
-  assert.equal(installed.snapshotState, 'installed');
   // MOS has not reviewed it, and the package cannot talk itself into a review.
   // The row records the state of the review bound to this package; that no MOS
   // review of it is coming at all is derived from the source when it is shown.
@@ -629,9 +631,15 @@ test('an external app updates from its own source through the same update transa
     'x-abcdef01-community-notes',
     { confirmationToken: comparison.confirmationToken },
     requestContext().publicUrlFor('notes'),
+    (stage) => calls.push(['stage-reached', stage]),
   );
 
   assert.equal(result.operation.status, 'succeeded');
+  // The owner's progress names each stage before the agent starts on it.
+  assert.deepEqual(
+    calls.filter(([kind]) => ['stage-reached', 'stage', 'activate', 'promote'].includes(kind)).map(([kind, input]) => (kind === 'stage-reached' ? input : kind)),
+    ['build', 'stage', 'switch', 'activate', 'finish', 'promote'],
+  );
   const updated = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
   assert.equal(updated.packageVersion, '1.1.0');
   assert.equal(updated.packageDigest, next.packageDigest);
@@ -672,7 +680,6 @@ test('an external app whose source is gone or compromised keeps running and refu
   const instance = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
   assert.equal(instance.status, 'installed');
   assert.equal(instance.packageVersion, '1.0.0');
-  assert.equal(instance.snapshotState, 'installed');
   store.close();
 });
 
@@ -915,6 +922,39 @@ test('an app cannot run two update transactions at once', async () => {
   store.close();
 });
 
+test('a second start while the first is still building is refused, not run alongside it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const calls = [];
+  let releaseBuild;
+  const building = new Promise((resolve) => { releaseBuild = resolve; });
+  const service = new AppPackageService({
+    agent: {
+      ...externalUpdateAgent(root, calls, installedPackage.packageDir),
+      async apply(input) { calls.push(['apply', input]); await building; return { publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
+      async stop() { calls.push(['stop']); return { status: 'stopped', steps: [] }; },
+      async checkHealth() { return { status: 'healthy' }; },
+      async status() { return agentStatus(); },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+
+  const first = service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes'));
+  await assert.rejects(
+    () => service.startPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
+  );
+  await service.disablePackage('x-abcdef01-community-notes');
+
+  releaseBuild();
+  await first.catch(() => {});
+  assert.equal(calls.filter(([kind]) => kind === 'apply').length, 1);
+  store.close();
+});
+
 test('lifecycle operations are refused while an update transaction holds the app', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -945,7 +985,7 @@ test('lifecycle operations are refused while an update transaction holds the app
   for (const blocked of [
     () => service.restartPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
     () => service.enablePackage('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
-    () => service.disablePackage('x-abcdef01-community-notes', null),
+    () => service.disablePackage('x-abcdef01-community-notes'),
     () => service.uninstallPackage('x-abcdef01-community-notes', null),
   ]) {
     await assert.rejects(blocked, (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409);
@@ -972,7 +1012,7 @@ test('a stopped app refuses updates instead of being started by one', async () =
   await service.installExternalPackage({ candidate: installedPackage });
   registerSource(store);
   const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
-  await service.disablePackage('x-abcdef01-community-notes', null);
+  await service.disablePackage('x-abcdef01-community-notes');
 
   // Activation starts the candidate's containers, so updating a disabled app
   // would end with containers running while the store says disabled.
@@ -1265,11 +1305,6 @@ test('a crash between snapshot promotion and the durable commit is committed by 
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() { return agentStatus(); },
   };
-  const entries = [];
-  const homepageService = {
-    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
-    async read() { return { revision: `revision-${entries.length}` }; },
-  };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent,
@@ -1287,7 +1322,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const realComplete = store.completeAppUpdate.bind(store);
   store.completeAppUpdate = () => { throw new Error('suite manager terminated'); };
   await assert.rejects(
-    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, { ...requestContext().publicUrlFor('stirling-pdf'), homepageService }),
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
     (error) => error.code === 'APP_UPDATE_STAGE_FAILED',
   );
   store.completeAppUpdate = realComplete;
@@ -1295,8 +1330,6 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const wedged = store.getAppInstanceByPackageId('stirling-pdf');
   assert.equal(wedged.updateRecoveryState, 'commit-required');
   assert.equal(wedged.packageVersion, manifest.version);
-  // The promoted candidate keeps its Homepage entry: no rollback re-add ran.
-  assert.equal(entries.length, 1);
   // One wedged app degrades to its own recovery card instead of failing the list.
   const listed = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.equal(listed.instance.updateRecovery.state, 'commit-required');
@@ -1463,9 +1496,8 @@ test('new installs snapshot package contents before persisting configuration and
   assert.equal(installed.sourceRevision, 'ef5027cc1528b516edbd03c6a7e65349adbcc4b4');
   assert.equal(installed.sourceTrust, 'mos-reviewed');
   assert.equal(installed.snapshotPath, path.join(v2AppsDir, 'stirling-pdf'));
-  assert.equal(installed.snapshotState, 'installed');
   assert.equal(installed.privacyStatus, 'reviewed');
-  assert.equal(installed.privacyPosture, 'privacy-configured');
+  assert.equal(installed.privacyPosture, 'external-dependency');
 
   store.close();
 });
@@ -1871,29 +1903,52 @@ test('an official candidate that ships a privacy review updates and keeps its re
   store.close();
 });
 
-test('app updates replace an applied Homepage entry and retain its applied projection state', async () => {
+// Homepage on the agent's own services document, where adding a tile that
+// already exists changes nothing, exactly as on a server.
+function homepageOnRealDocument() {
+  const homepage = {
+    content: '- Office: []\n',
+    outage: null,
+    async read() { return { content: homepage.content, file: 'services.template.yaml', revision: revisionFor(homepage.content) }; },
+    async addManagedApp({ entry, requestId }) { return homepage.write(addEntry(homepage.content, entry, { id: requestId, managed: true })); },
+    async reconcileUrls({ entries }) { return homepage.write(reconcileManagedUrls(homepage.content, entries)); },
+    write(mutation) {
+      if (homepage.outage) throw homepage.outage;
+      homepage.content = mutation.content;
+      return { changed: mutation.changed, file: 'services.template.yaml', revision: revisionFor(mutation.content) };
+    },
+    tiles() {
+      return YAML.parse(homepage.content).flatMap((group) => Object.values(group).flat()).map((service) => {
+        const [name, config] = Object.entries(service)[0];
+        return { name, ...config };
+      });
+    },
+  };
+  return homepage;
+}
+
+// Radicale on Homepage, with a published update that changes only its calendar widget.
+async function radicaleUpdateOnHomepage(homepage) {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
-  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  await fsp.cp(path.join(v2AppsDir, 'radicale'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({
-    ...manifest,
-    homepage: { ...manifest.homepage, name: 'Updated PDF' },
-    name: 'Updated PDF',
-    version: CANDIDATE_VERSION,
-  }, null, 2)}\n`);
+  const candidateWidget = { ...manifest.homepage.widget, maxEvents: manifest.homepage.widget.maxEvents + 1 };
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, homepage: { ...manifest.homepage, widget: candidateWidget }, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
-  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const source = { kind: 'official-git', path: 'apps/radicale', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent: {
       async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+      async apply(input) { return { appHost: input.appHost, publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
       async buildPackageUpdate() { return { status: 'built' }; },
+      async checkHealth() { return { status: 'healthy' }; },
       async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
-      async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
+      async rollbackPackageUpdate() { throw new Error('rollback must not run for a healthy candidate'); },
       async snapshotPackage(input) { return snapshotResult(input); },
       async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
       async status() { return agentStatus(); },
@@ -1902,25 +1957,50 @@ test('app updates replace an applied Homepage entry and retain its applied proje
     catalogService: { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
-  await service.installPackage('stirling-pdf');
-  const installed = store.getAppInstanceByPackageId('stirling-pdf');
-  store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
-  const entries = [];
-  const homepageService = {
-    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
-    async read() { return { revision: `revision-${entries.length}` }; },
+  const urls = { ...requestContext().publicUrlFor('radicale'), homepageService: homepage };
+  await service.installPackage('radicale', { config: { adminPassword: 'calendar passphrase', adminUsername: 'owner', calendarName: 'Family' } });
+  await service.applyPackageRuntime('radicale', urls);
+  await service.addPackageToHomepage('radicale', homepage, urls);
+  const { id } = store.getAppInstanceByPackageId('radicale');
+  const comparison = await service.preparePackageUpdate('radicale');
+  return {
+    candidateWidget,
+    id,
+    store,
+    tiles: () => homepage.tiles().filter((tile) => tile.mos.id === id),
+    update: () => service.stagePackageUpdate('radicale', { confirmationToken: comparison.confirmationToken }, urls),
   };
-  const comparison = await service.preparePackageUpdate('stirling-pdf');
-  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, {
-    ...requestContext().publicUrlFor('stirling-pdf'), homepageService,
-  });
+}
 
-  assert.equal(result.homepage.revision, 'revision-1');
-  assert.equal(entries[0].name, 'Updated PDF');
-  const homepageProjection = store.getAppProjections(installed.id).find((projection) => projection.kind === 'homepage');
-  assert.equal(homepageProjection.status, 'applied');
-  assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
-  store.close();
+test('an app update refreshes its Homepage widget', async (t) => {
+  const radicale = await radicaleUpdateOnHomepage(homepageOnRealDocument());
+  t.after(() => radicale.store.close());
+
+  const result = await radicale.update();
+
+  assert.deepEqual(result.homepage, { status: 'applied' });
+  const [tile, ...duplicates] = radicale.tiles();
+  assert.equal(duplicates.length, 0);
+  assert.equal(tile.widget.maxEvents, radicale.candidateWidget.maxEvents);
+  assert.match(tile.widget.integrations[0].url, /^https:\/\/radicale\.example\.test\/__mos\/ical\/[A-Za-z0-9_-]{40,}$/u);
+  assert.equal(homepageProjectionApplied(radicale.store.getAppProjections(radicale.id)), true);
+});
+
+test('a Homepage outage does not roll back a healthy update', async (t) => {
+  const homepage = homepageOnRealDocument();
+  const radicale = await radicaleUpdateOnHomepage(homepage);
+  t.after(() => radicale.store.close());
+  const tilesBefore = radicale.tiles();
+  homepage.outage = Object.assign(new Error('Homepage system agent is unavailable.'), { code: 'HOMEPAGE_AGENT_UNAVAILABLE', statusCode: 503 });
+
+  const result = await radicale.update();
+
+  assert.equal(result.operation.status, 'succeeded');
+  assert.deepEqual(result.homepage, { errorCode: 'HOMEPAGE_AGENT_UNAVAILABLE', status: 'failed' });
+  const updated = radicale.store.getAppInstanceByPackageId('radicale');
+  assert.equal(updated.packageVersion, CANDIDATE_VERSION);
+  assert.equal(updated.updateRecoveryState, 'none');
+  assert.deepEqual(radicale.tiles(), tilesBefore);
 });
 
 test('startup classifies every interrupted update boundary into an actionable recovery state', async () => {
@@ -1933,7 +2013,6 @@ test('startup classifies every interrupted update boundary into an actionable re
     // retry-safe was only sometimes true.
     ['candidate-built', 'rollback-required'],
     ['candidate-healthy', 'rollback-required'],
-    ['homepage-reconciled', 'rollback-required'],
     ['snapshot-promoted', 'commit-required'],
   ];
   for (const [stage, expectedState] of cases) {
@@ -1960,87 +2039,16 @@ test('startup classifies every interrupted update boundary into an actionable re
   }
 });
 
-test('legacy instances migrate only from an exactly matching validated package', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const matching = readAppPackageManifest(path.join(v2AppsDir, 'stirling-pdf')).manifest;
-  const mismatched = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice')).manifest;
-  const installLegacy = (id, manifest, manifestDigest) => store.installAppInstance({
-    at: '2026-07-14T00:00:00.000Z',
-    config: [],
-    instance: {
-      categorySnapshot: manifest.category,
-      displayNameSnapshot: manifest.name,
-      id,
-      manifestDigest,
-      packageId: manifest.id,
-      packageVersion: manifest.version,
-    },
-    operationId: `${id}-operation`,
-    projections: renderDryRunProjections(manifest, []),
-  });
-  installLegacy('legacy-matching', matching, digestFor(matching));
-  installLegacy('legacy-mismatch', mismatched, 'sha256:not-the-current-manifest');
-  const service = new AppPackageService({
-    agent: {
-      async snapshotPackage(input) {
-        const snapshotPath = path.join(root, 'snapshots', input.instanceId);
-        await fsp.cp(path.join(v2AppsDir, input.packageId), snapshotPath, { recursive: true });
-        return { snapshotPath };
-      },
-      async status() { return agentStatus(); },
-    },
-    appsDir: v2AppsDir,
-    store,
-  });
-
-  const results = await service.migrateLegacyPackages();
-  assert.deepEqual(results.map(({ packageId, status }) => ({ packageId, status })), [
-    { packageId: 'onlyoffice', status: 'needs-package-recovery' },
-    { packageId: 'stirling-pdf', status: 'migrated' },
-  ]);
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'installed');
-  assert.equal(store.getAppInstanceByPackageId('onlyoffice').snapshotState, 'needs-package-recovery');
-
-  store.close();
-});
-
-// Regression: an unguarded privacy-review.json parse in the startup migration
-// aborted migrateLegacyPackages, and start.cjs exits on that â€” one malformed
-// file in one package prevented Suite Manager from booting at all.
-test('a malformed privacy review degrades to recovery at migration and a 409 at install', async (t) => {
+test('a malformed privacy review refuses the install with a 409', async (t) => {
   const root = await tempStateDir();
   const appsDir = path.join(root, 'apps');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), path.join(appsDir, 'stirling-pdf'), { recursive: true });
   await fsp.writeFile(path.join(appsDir, 'stirling-pdf', 'privacy-review.json'), '{ not json');
-  const manifest = readAppPackageManifest(path.join(appsDir, 'stirling-pdf')).manifest;
   const store = new SuiteManagerStore(path.join(root, 'state'));
   t.after(() => store.close());
-  store.installAppInstance({
-    at: '2026-07-14T00:00:00.000Z',
-    config: [],
-    instance: {
-      categorySnapshot: manifest.category,
-      displayNameSnapshot: manifest.name,
-      id: 'legacy-malformed-review',
-      manifestDigest: digestFor(manifest),
-      packageId: manifest.id,
-      packageVersion: manifest.version,
-    },
-    operationId: 'legacy-malformed-review-operation',
-    projections: renderDryRunProjections(manifest, []),
-  });
   const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store });
-
-  const results = await service.migrateLegacyPackages();
-  assert.deepEqual(results, [{ packageId: 'stirling-pdf', status: 'needs-package-recovery' }]);
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'needs-package-recovery');
-
-  const freshStore = new SuiteManagerStore(path.join(root, 'fresh-state'));
-  t.after(() => freshStore.close());
-  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store: freshStore });
   await assert.rejects(
-    () => freshService.installPackage('stirling-pdf'),
+    () => service.installPackage('stirling-pdf'),
     (error) => error.code === 'APP_PACKAGE_INVALID' && error.statusCode === 409,
   );
 });
@@ -2491,5 +2499,66 @@ test('the app list carries each package\'s declared app version', async () => {
 
   assert.equal(immich.appVersion, manifest.appVersion);
   assert.notEqual(immich.appVersion, immich.version);
+  store.close();
+});
+
+test('an HTTPS-only app on the Easy Door says its certificate is on its way, and elsewhere says where HTTPS comes from', () => {
+  const { unmetHostRequirements } = require('../src/apps/host-requirements.cjs');
+  const [pending] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: true });
+  assert.match(pending.reason, /on its way/u);
+  const [elsewhere] = unmetHostRequirements({ architectures: null, https: true }, { https: false, httpsPending: false });
+  assert.match(elsewhere.reason, /Easy Door or your own domain/u);
+});
+
+// A connection resolves what the consumer imports from its provider into config
+// rows at connect time, so a move has to resolve them again or the consumer keeps
+// the provider's old address (seen on the lab: Seafile loading ONLYOFFICE's editor
+// from the pre-move host after DNS-01, blocked as mixed content).
+test('moving the suite re-resolves what a connected app imports from its provider', async () => {
+  const applies = [];
+  let connects = 0;
+  const agent = {
+    async apply(input) { applies.push(input); return { status: 'applied', steps: [] }; },
+    async connectNetwork() { connects += 1; return { status: 'connected' }; },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async status() { return agentStatus(); },
+  };
+  const homepageService = {
+    async read() { return { content: '[]', revision: 'sha256:current' }; },
+    async reconcileUrls(body) { return { changed: false, entries: body.entries }; },
+  };
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+  await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
+  await service.installPackage('onlyoffice');
+  await service.applyPackageRuntime('seafile', requestContext().publicUrlFor('seafile'));
+  await service.applyPackageRuntime('onlyoffice', requestContext().publicUrlFor('onlyoffice'));
+  await service.connectPackages({
+    consumerPackageId: 'seafile',
+    providerCapabilityId: 'documentEditor',
+    providerPackageId: 'onlyoffice',
+    requestContext: requestContext(),
+    slotId: 'documentEditor',
+  });
+  const editorUrl = (input) => input.compose.services.find((item) => item.id === 'seafile').environment.ONLYOFFICE_APIJS_URL;
+  const seafile = store.getAppInstanceByPackageId('seafile');
+  const jwtRow = () => store.getAppConfig(seafile.id).find((row) => row.key === 'integrationDocumentEditorOnlyofficeJwtSecret');
+  const jwtBefore = jwtRow();
+  assert.equal(editorUrl(applies.at(-1)), 'https://onlyoffice.example.test/web-apps/apps/api/documents/api.js');
+
+  const moved = {
+    publicUrlFor: (packageId) => ({ appHost: `${packageId}.moved.test`, baseHost: 'moved.test', publicUrl: `https://${packageId}.moved.test/`, scheme: 'https' }),
+  };
+  const result = await service.reconcilePublicUrls(homepageService, moved);
+
+  assert.equal(result.status, 'applied');
+  const seafileApply = applies.filter((input) => input.packageId === 'seafile').at(-1);
+  assert.equal(seafileApply.publicUrl, 'https://seafile.moved.test/');
+  assert.equal(editorUrl(seafileApply), 'https://onlyoffice.moved.test/web-apps/apps/api/documents/api.js');
+  assert.equal(jwtRow().secretRef, jwtBefore.secretRef);
+  // Re-applying recreated both apps' containers, so the pair is joined again.
+  assert.equal(connects, 2);
+  assert.deepEqual(result.integrations.map((item) => item.status), ['active']);
+  assert.equal(store.getAppIntegrations()[0].status, 'active');
   store.close();
 });

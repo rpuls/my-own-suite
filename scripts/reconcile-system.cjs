@@ -8,16 +8,21 @@ const { ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
 const { applyHostPatching } = require('../infrastructure/host-patching.cjs');
 
 const {
+  CADDY_BUILD_IMAGES,
+  CADDY_REQUIRED_MODULES,
+  CADDY_SERVICE_OVERRIDE_PATH,
   HOMEPAGE_IMAGE,
   JOURNALD_CONFIG_PATH,
-  renderCaddyfile,
+  renderCaddyServiceOverride,
+  renderMachineCaddyfile,
   renderUnavailablePage,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
-  withUnavailableHandler,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
 } = require('../infrastructure/control-plane-runtime.cjs');
+const { detectServerAddress } = require('../shared/easy-door.cjs');
+const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
 
 function parseEnvFile(filePath) {
   try {
@@ -105,6 +110,14 @@ function writeFile(filePath, content, mode) {
   if (mode) fs.chmodSync(filePath, mode);
 }
 
+function removeFile(filePath) {
+  if (dryRun) {
+    log(`would remove ${filePath}`);
+    return;
+  }
+  fs.rmSync(filePath, { force: true });
+}
+
 // Fatal by default: every other step here is something the control plane cannot
 // run without, so a failure has to stop the update rather than let it report
 // success over a half-applied machine. `allowFailure` is for the exceptions
@@ -131,35 +144,38 @@ function canRun(command, args) {
   }
 }
 
-// A machine installed before the status page existed still runs a Caddyfile that
-// never mentions it, and this script deliberately does not re-render that file —
-// applying HTTPS owns it. So the handler is added to the file already on disk,
-// and only after Caddy itself accepts the result.
+// The Caddyfile is rendered from the machine's facts on every managed update, so
+// an update never leaves Caddy on the previous release's rendering; the HTTPS
+// agent renders the same function when those facts change between updates.
 //
 // `adapt` rather than `validate`: validate provisions the Cloudflare DNS module
-// and fails when the token is not in this process's environment, which would
-// skip exactly the machines that have HTTPS applied. Adapt answers the only
-// question being asked here — did this edit stay valid Caddyfile syntax.
-function addStatusHandlerToCaddyfile() {
+// and fails without the token in this process's environment. Adapt answers the
+// question asked here, whether the rendering is valid Caddyfile for this binary.
+function renderInstalledCaddyfile() {
   const target = '/etc/caddy/Caddyfile';
+  const caddyfile = renderMachineCaddyfile({
+    bootstrapHost: homeHost,
+    frontDoor,
+    liveAddress: detectServerAddress(),
+    recorded: new SuiteAddressFile({ dir: suiteAddressDir(stateRoot) }).readOrNull(),
+    suiteManagerPort,
+  });
   if (dryRun) {
-    log(`would add the control-plane status handler to ${target} if missing`);
+    log(`would render ${target} from this machine's facts`);
     return;
   }
-  if (!fs.existsSync(target)) return;
-  const current = fs.readFileSync(target, 'utf8');
-  const upgraded = withUnavailableHandler(current);
-  if (upgraded === current) return;
+  if (fs.existsSync(target) && fs.readFileSync(target, 'utf8') === caddyfile) return;
 
   const candidate = `${target}.mos-next`;
-  fs.writeFileSync(candidate, upgraded, 'utf8');
-  if (!canRun(CADDY_BINARY, ['adapt', '--adapter', 'caddyfile', '--config', candidate])) {
+  fs.writeFileSync(candidate, caddyfile, { encoding: 'utf8', mode: 0o644 });
+  try {
+    execFileSync(CADDY_BINARY, ['adapt', '--adapter', 'caddyfile', '--config', candidate], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
     fs.rmSync(candidate, { force: true });
-    log(`WARNING: ${target} could not take the control-plane status handler; left it unchanged`);
-    return;
+    throw new Error(`Caddy rejected the rendered ${target}: ${String(error.stderr || error.message).trim().split('\n').pop()}`);
   }
   fs.renameSync(candidate, target);
-  log(`added the control-plane status handler to ${target}`);
+  log(`rendered ${target}`);
 }
 
 function installDir(dirPath, mode) {
@@ -302,8 +318,12 @@ function refreshCaddyBinary() {
   installDir('/usr/local/libexec/mos', 0o755);
   run('docker', ['cp', `${container}:/caddy`, `${CADDY_BINARY}.next`]);
   run('docker', ['rm', container]);
+  run('docker', ['image', 'rm', ...CADDY_BUILD_IMAGES], { allowFailure: true, stdio: 'ignore' });
   if (!dryRun) {
     fs.chmodSync(`${CADDY_BINARY}.next`, 0o755);
+    const modules = execFileSync(`${CADDY_BINARY}.next`, ['list-modules'], { encoding: 'utf8' }).split(/\r?\n/u);
+    const missing = CADDY_REQUIRED_MODULES.filter((module) => !modules.includes(module));
+    if (missing.length) throw new Error(`The rebuilt Caddy binary is missing ${missing.join(', ')}; the installed one was kept.`);
     fs.renameSync(`${CADDY_BINARY}.next`, CADDY_BINARY);
   }
 }
@@ -362,7 +382,7 @@ function renderUnits() {
     'mos-https-agent.service': agentUnit({
       after: 'network-online.target caddy.service',
       description: 'MOS narrow HTTPS configuration agent',
-      env: { MOS_HTTPS_AGENT_SOCKET: '/run/mos-https-agent/agent.sock', MOS_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_SUITE_MANAGER_PORT: suiteManagerPort },
+      env: { MOS_FRONT_DOOR: frontDoor, MOS_HOME_HOST: homeHost, MOS_HTTPS_AGENT_SOCKET: '/run/mos-https-agent/agent.sock', MOS_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_STATE_ROOT: stateRoot, MOS_SUITE_MANAGER_PORT: suiteManagerPort },
       name: 'mos-https-agent.service',
       script: 'system-agents/https/agent.cjs',
     }),
@@ -477,13 +497,11 @@ function main() {
   // reflashed machines and no others. It records what it decided instead of
   // throwing — an update must not fail because apt could not reach an archive.
   applyHostPatching({ dryRun, log, repoRoot: mosRoot, stateRoot });
-  writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
-EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
-ExecStart=
-ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
-ExecReload=
-ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
-`, 0o644);
+  writeFile(CADDY_SERVICE_OVERRIDE_PATH, renderCaddyServiceOverride(), 0o644);
+  // The installer takes the caddy package from Ubuntu now. Caddy's own repository,
+  // which it used to add, failed every apt update on the machine while it was down.
+  removeFile('/etc/apt/sources.list.d/caddy-stable.list');
+  removeFile('/usr/share/keyrings/caddy-stable-archive-keyring.gpg');
 
   const homepageSeedMarker = path.join(stateRoot, 'homepage/config/.mos-defaults');
   if (!fs.existsSync(homepageSeedMarker) || dryRun) {
@@ -510,7 +528,6 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
 
   for (const [name, content] of Object.entries(renderUnits())) unit(name, content);
 
-  if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
   // Unconditional, unlike the Caddyfile above: this page is repo-owned content
@@ -518,7 +535,7 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   // release that predates it would otherwise never receive the file its own
   // Caddyfile now points at.
   writeFile(path.join(UNAVAILABLE_PAGE_ROOT, UNAVAILABLE_PAGE_FILENAME), renderUnavailablePage(), 0o644);
-  addStatusHandlerToCaddyfile();
+  renderInstalledCaddyfile();
 
   run('systemctl', ['daemon-reload']);
   run('systemctl', ['enable', 'mos-vault.service']);

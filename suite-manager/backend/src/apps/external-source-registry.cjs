@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   describeRequestedPermissions,
   namespacedPackageId,
@@ -37,10 +38,30 @@ const STATUS_TRANSITIONS = Object.freeze({
   unavailable: new Set(['active', 'compromised', 'removed']),
 });
 
-class ExternalSourceError extends Error {
+// Anything not listed is a validation failure and answers 400.
+const EXTERNAL_SOURCE_STATUS = Object.freeze({
+  CANDIDATE_CONTENTS_INVALID: 422,
+  CANDIDATE_INVALID: 422,
+  CANDIDATE_PATH_INVALID: 422,
+  CANDIDATE_REJECTED: 422,
+  CANDIDATE_SOURCE_INVALID: 422,
+  CANDIDATE_TOO_LARGE: 422,
+  SOURCE_ALREADY_ADDED: 409,
+  SOURCE_FETCH_FAILED: 502,
+  SOURCE_INSTALL_UNAVAILABLE: 503,
+  SOURCE_NOT_FOUND: 404,
+  SOURCE_NOT_INSTALLABLE: 409,
+  SOURCE_REDIRECT_REJECTED: 502,
+  SOURCE_STATUS_TRANSITION_INVALID: 409,
+  SOURCE_TOO_LARGE: 502,
+});
+
+class ExternalSourceError extends CodedError {
   constructor(code, message) {
-    super(message);
-    this.code = code;
+    const statusCode = EXTERNAL_SOURCE_STATUS[code] || 400;
+    // The 5xx codes have always been answered as internal errors; keeping that is
+    // part of moving the status here, not a judgement that it is right.
+    super(code, message, { internal: statusCode >= 500, statusCode });
   }
 }
 
@@ -170,7 +191,6 @@ function validateExternalCandidate({ manifest, officialPackageIds = [], platform
 module.exports = {
   ExternalSourceError,
   INSTALL_BLOCKING_STATUSES,
-  SOURCE_STATUSES,
   buildSourceRecord,
   instanceNamespaceId,
   instanceSourceId,

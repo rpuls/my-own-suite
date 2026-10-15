@@ -1,4 +1,4 @@
-import { redact } from './hyperv-env.mjs';
+import { redact } from './env.mjs';
 
 // Intelligent inspection of the log surface a real run leaves behind.
 //
@@ -88,31 +88,24 @@ function sectionOf(bundle, title) {
   return bundle.slice(contentStart, nextRule === -1 ? undefined : nextRule);
 }
 
-// Secrets this suite typed into MOS or into an app. Worth more than any pattern
-// match: MOS masks by exact value against secrets it holds, and it holds none of
-// these. The owner password is a scrypt hash to MOS, an app's own master
-// password never reaches MOS at all, and the Cloudflare token lives in a
-// root-owned file unprivileged Suite Manager usually cannot read. So these probe
-// the leaks redaction structurally cannot cover, rather than re-testing the
-// redactor against itself.
-function knownSecrets(env) {
-  return [
-    ['owner password', env.owner?.password],
-    ['Cloudflare API token', env.cloudflareApiToken],
-    ['Radicale password', env.radicale?.password],
-    ['Vaultwarden master password', env.vaultwarden?.password],
-    ['Seafile admin password', env.seafile?.adminPassword],
-  ].filter(([, value]) => typeof value === 'string' && value.length >= 8);
+// Secrets this suite typed into MOS or into an app, as [name, value] pairs. Worth
+// more than any pattern match: MOS masks by exact value against secrets it holds,
+// and it holds none of these. The owner password is a scrypt hash to MOS, an
+// app's own master password never reaches MOS at all, and the Cloudflare token
+// lives in a root-owned file unprivileged Suite Manager usually cannot read. So
+// these probe the leaks redaction structurally cannot cover.
+function knownSecrets(secrets) {
+  return (secrets || []).filter(([, value]) => typeof value === 'string' && value.length >= 8);
 }
 
 // Evaluates every rule and returns what it found. Pure on purpose: a leak
 // detector whose regex silently stops matching is worse than no detector, so the
 // rules have to be testable without a browser or a host.
-export function inspectLogSurface(input = '', env = {}) {
+export function inspectLogSurface(input = '', { secrets = [] } = {}) {
   const bundle = typeof input === 'string' ? input : String(input ?? '');
   const failures = [];
 
-  for (const [name, value] of knownSecrets(env)) {
+  for (const [name, value] of knownSecrets(secrets)) {
     // Never the value itself — this message goes into CI output.
     if (bundle.includes(value)) failures.push(`LEAK: the ${name} (${redact(value)}) appears in a file MOS offers owners to send to a stranger.`);
   }

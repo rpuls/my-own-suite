@@ -1,0 +1,72 @@
+import { expect } from '@playwright/test';
+
+import { apiJson, apiPathFor, expectSignedInApi } from './api.mjs';
+import { acceptTermsIfPending, saveHandoverIfPending, settleAfterSignIn } from './gates.mjs';
+
+async function expectHomeDashboard(page) {
+  await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 60000 });
+  await expect(page.locator('body')).toContainText('My Own Suite');
+}
+
+async function gotoHomeDashboard(page, entryUrl) {
+  const homeUrl = /^https?:\/\//iu.test(entryUrl) ? new URL('/', entryUrl).toString() : '/';
+  await page.goto(homeUrl);
+  await expectHomeDashboard(page);
+}
+
+export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/') {
+  await page.goto(entryUrl);
+  const status = await apiJson(page, apiPathFor(entryUrl, '/suite-manager/api/setup/status'));
+
+  if (status.status === 'needs-owner') {
+    if (status.ownerClaimRequired) {
+      if (!env.owner.claimToken) throw new Error('This install asks for its one-time owner setup key: set MOS_E2E_OWNER_CLAIM_TOKEN from /etc/mos/secrets/owner-claim.env on the server.');
+      const claimUrl = new URL(page.url());
+      claimUrl.searchParams.set('claim', env.owner.claimToken);
+      await page.goto(claimUrl.toString());
+    }
+    await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
+    await page.getByLabel(/name/i).fill(env.owner.name);
+    await page.getByLabel(/email/i).fill(env.owner.email);
+    await page.getByLabel(/^Password/i).fill(env.owner.password);
+    await page.getByLabel(/Confirm password/i).fill(env.owner.password);
+    await page.getByRole('button', { name: /Create owner/i }).click();
+    // A brand-new owner always meets the terms gate: nothing has accepted them
+    // yet, and sign-in deliberately holds there instead of redirecting past it.
+    await settleAfterSignIn(page);
+    expect(await acceptTermsIfPending(page)).toBe(true);
+    // A machine that generated its own server login, or holds an encrypted
+    // disk, shows the handover page next; a lab with neither falls through.
+    await saveHandoverIfPending(page);
+    // Both gates deliberately leave the owner in Suite Manager, so navigate to Homepage.
+    await gotoHomeDashboard(page, entryUrl);
+    await expectSignedInApi(page, entryUrl);
+    return;
+  }
+
+  if (status.status === 'signed-out') {
+    await expect(page.getByRole('heading', { name: /Welcome back/i })).toBeVisible();
+    await page.getByLabel(/email/i).fill(env.owner.email);
+    await page.getByLabel(/^Password/i).fill(env.owner.password);
+    await page.getByRole('button', { name: /Sign in/i }).click();
+    // Conditional: only a lab whose owner never accepted, or a terms-version bump, meets the
+    // gates here. Sign-in hands over to Homepage on its own, the gates do not — navigate either way.
+    await settleAfterSignIn(page);
+    await acceptTermsIfPending(page);
+    await saveHandoverIfPending(page);
+    await gotoHomeDashboard(page, entryUrl);
+    await expectSignedInApi(page, entryUrl);
+    return;
+  }
+
+  // Already signed in — a lab whose owner predates the terms, or one carried
+  // across a terms-version bump, still owes an acceptance. Decided from the
+  // status payload rather than the DOM so it never races the first render.
+  if (status.terms?.version && !status.terms.accepted) {
+    await expect(page.getByRole('heading', { name: /Before you start/iu })).toBeVisible({ timeout: 30000 });
+    await acceptTermsIfPending(page);
+  }
+  await saveHandoverIfPending(page);
+  await gotoHomeDashboard(page, entryUrl);
+  await expectSignedInApi(page, entryUrl);
+}

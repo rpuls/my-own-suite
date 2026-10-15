@@ -8,15 +8,15 @@ const {
   assertAppAgentContract,
   createConfigRows,
   digestFor,
-  homepageEntryForHomepage,
+  healthHostFor,
   homepageProjectionApplied,
   isRecord,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
-  publicInstance,
   readSecretValue,
   redactionSecretsFor,
   renderInstanceProjections,
+  runtimeHealthFor,
   setupFields,
 } = require('./app-package-internals.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
@@ -34,14 +34,14 @@ const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnost
 // changes nothing — while calling it retry-safe was a lie half the time. Only
 // `snapshot-promoted` proves the swap finished, and that is a commit, not a
 // rollback.
-const ROLLBACK_REQUIRED_STAGES = Object.freeze(['candidate-built', 'candidate-healthy', 'homepage-reconciled']);
+const ROLLBACK_REQUIRED_STAGES = Object.freeze(['candidate-built', 'candidate-healthy']);
 
 function updateRecoveryStateForStage(stage) {
   if (stage === 'snapshot-promoted') return 'commit-required';
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
+function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, healthHost, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -51,7 +51,7 @@ function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, insta
     caddy: materializeRuntimeCaddy(caddy.content, config),
     compose: materializeRuntimeCompose(compose.content, config, env, { smtp }),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
-    health: health.content,
+    health: { ...health.content, host: healthHost },
     instanceId: instance.id,
     packageDigest,
     packageId: instance.packageId,
@@ -181,7 +181,6 @@ class AppUpdateService {
     // promote returning and the `snapshot-promoted` write, which the
     // stage-based labeling above can only call rollback-required.
     for (const instance of this.store.getAppInstances()) {
-      if (instance.status === 'uninstalled') continue;
       if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) continue;
       const operation = this.store.latestAppUpdateOperation(instance.id);
       if (!operation || operation.status !== 'failed') continue;
@@ -290,7 +289,7 @@ class AppUpdateService {
 
   async performRecoverPackageUpdate(packageId, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') {
+    if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before recovering it.', 409);
     }
     if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) {
@@ -307,14 +306,11 @@ class AppUpdateService {
       const committed = this.commitPromotedPackageUpdate(instance, operation);
       let integrations = [];
       try { integrations = await this.apps.reconcilePackageIntegrations(packageId, requestContext); } catch {}
+      const homepage = await this.apps.refreshHomepageWidget(packageId, requestContext.homepageService, requestContext);
       return {
         action: 'committed',
-        instance: publicInstance(
-          this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-          this.store.getAppProjections(instance.id),
-          this.store.getAppConfig(instance.id),
-          this.store.getAppEnv(instance.id),
-        ),
+        homepage,
+        instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
         integrations,
         operation: committed,
       };
@@ -328,13 +324,8 @@ class AppUpdateService {
     if (!Array.isArray(recovery?.candidateProjections) || !recovery.candidateProjections.length) {
       throw new AppPackageServiceError('APP_UPDATE_RECOVERY_UNAVAILABLE', 'The interrupted app update did not record what a runtime restore needs.', 409);
     }
-    if (!this.agent?.rollbackPackageUpdate) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
     const installedPackage = this.apps.installedPackageFor(instance);
-    const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-    ));
+    const configRows = this.apps.configWithSecrets(instance.id);
     const heldKeys = new Set(configRows.map((row) => row.key));
     // A missing collected secret is tolerated: the rollback only needs the
     // candidate's service identities to tear it down, never its secret values.
@@ -356,6 +347,7 @@ class AppUpdateService {
     const installedRuntime = updateRuntimeRequest({
       config: configRows,
       env: recoveryEnvRows,
+      healthHost: healthHostFor(installedPackage.manifest),
       instance,
       manifest: installedPackage.manifest,
       packageDigest: instance.packageDigest,
@@ -368,6 +360,7 @@ class AppUpdateService {
       config: [...configRows, ...addedConfig],
       env: recoveryEnvRows,
       expectedInstalledDigest: instance.packageDigest,
+      healthHost: recovery.candidateHealthHost,
       instance,
       manifest: { version: operation.request.packageVersion },
       packageDigest: operation.candidateDigest,
@@ -379,38 +372,19 @@ class AppUpdateService {
     await this.agent.rollbackPackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
     this.apps.discardCollectedSecrets(instance.id, addedConfig);
 
-    let homepage = { skipped: true };
-    if (operation.stage?.startsWith('homepage-reconciled') && homepageProjectionApplied(installedProjections) && requestContext.homepageService) {
-      try {
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        homepage = await requestContext.homepageService.addManagedApp({
-          entry: homepageEntryForHomepage(instance, installedProjections, configRows, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        });
-      } catch (error) {
-        homepage = { errorCode: error.code || 'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED', status: 'failed' };
-      }
-    }
     this.store.clearAppUpdateRecovery({ at: this.now().toISOString(), instanceId: instance.id });
     let integrations = [];
     try { integrations = await this.apps.reconcilePackageIntegrations(packageId, requestContext); } catch {}
     return {
       action: 'rolled-back',
-      homepage,
-      instance: publicInstance(
-        this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-        this.store.getAppEnv(instance.id),
-      ),
+      instance: this.apps.publicView(this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId))),
       integrations,
     };
   }
 
   async preparePackageUpdate(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
+    if (!instance) throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
     const installedPackage = this.apps.installedPackageFor(instance);
     let candidate;
     try {
@@ -439,13 +413,14 @@ class AppUpdateService {
   // The whole update transaction is held under the app's key, not just its
   // durable part: the download, build, and runtime swap all happen before the
   // store has a record it could refuse a second update against.
-  async stagePackageUpdate(packageId, input = {}, requestContext = {}) {
-    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext));
+  // `onStage` hears 'build', 'switch' and 'finish' as the saga reaches them.
+  async stagePackageUpdate(packageId, input = {}, requestContext = {}, onStage = () => {}) {
+    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext, onStage));
   }
 
-  async performStageUpdate(packageId, input = {}, requestContext = {}) {
+  async performStageUpdate(packageId, input = {}, requestContext = {}, onStage = () => {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
+    if (!instance) throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
     // Activation starts the candidate's containers, so updating a disabled app
     // would end with containers running while the store says disabled.
     if (instance.status !== 'installed') {
@@ -461,14 +436,10 @@ class AppUpdateService {
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
       throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
     }
-    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate || !this.agent?.activatePackageUpdate || !this.agent?.rollbackPackageUpdate || !this.agent?.promotePackageUpdate) {
-      throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
-    }
     const installedPackage = this.apps.installedPackageFor(instance);
     let candidate;
     let operationId = null;
     let lastDurableStage = null;
-    let homepageRollback = null;
     let activatedRuntimes = null;
     let snapshotPromoted = false;
     let addedConfig = [];
@@ -523,9 +494,7 @@ class AppUpdateService {
       // same way its install was, so an update cannot take over a web address
       // another app already answers on.
       if (candidate.source?.trust !== 'mos-reviewed') this.apps.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
-      const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
-        row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-      ));
+      const installedConfigRows = this.apps.configWithSecrets(instance.id);
       const envRows = this.apps.ownerEnvWithSecrets(instance.id);
       // Setup values the candidate newly requires are collected in the update
       // dialog and become config rows here. Only fields the instance does not
@@ -606,6 +575,7 @@ class AppUpdateService {
                 source: row.source,
                 valueJson: row.valueJson ?? null,
               })),
+              candidateHealthHost: healthHostFor(candidate.manifest),
               candidateProjections: candidateProjections.map((projection) => ({
                 contentJson: projection.contentJson,
                 digest: projection.digest,
@@ -624,6 +594,7 @@ class AppUpdateService {
         throw error;
       }
       operationId = newOperationId;
+      onStage('build');
       const staged = await this.agent.stagePackageUpdate({
         candidateDigest: candidate.packageDigest,
         candidatePath: candidate.packageDir,
@@ -638,7 +609,7 @@ class AppUpdateService {
         caddy: materializeRuntimeCaddy(caddyProjection.content, candidateConfig),
         compose: materializeRuntimeCompose(composeProjection.content, candidateConfig),
         expectedInstalledDigest: instance.packageDigest,
-        health: healthProjection.content,
+        health: runtimeHealthFor(candidate.manifest, healthProjection),
         instanceId: instance.id,
         packageDigest: candidate.packageDigest,
         packageId,
@@ -661,6 +632,7 @@ class AppUpdateService {
         // version, so both sides of the activate carry the same set and a
         // rollback restores the runtime the owner was actually running.
         env: envRows,
+        healthHost: healthHostFor(installedPackage.manifest),
         instance,
         manifest: installedPackage.manifest,
         packageDigest: instance.packageDigest,
@@ -673,6 +645,7 @@ class AppUpdateService {
         config: candidateConfig,
         env: envRows,
         expectedInstalledDigest: instance.packageDigest,
+        healthHost: healthHostFor(candidate.manifest),
         instance,
         manifest: candidate.manifest,
         packageDigest: candidate.packageDigest,
@@ -681,35 +654,13 @@ class AppUpdateService {
         smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: candidate.source.revision,
       });
+      onStage('switch');
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
       activatedRuntimes = { candidate: candidateRuntime, installed: installedRuntime };
       operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-healthy' });
       lastDurableStage = 'candidate-healthy';
+      onStage('finish');
 
-      let homepage = { skipped: true };
-      if (homepageWasApplied) {
-        if (!requestContext.homepageService) {
-          throw new AppPackageServiceError('APP_UPDATE_HOMEPAGE_UNAVAILABLE', 'The candidate is healthy, but its existing Homepage entry cannot be reconciled. Recovery is required.', 503);
-        }
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        const candidateInstance = {
-          ...instance,
-          categorySnapshot: candidate.manifest.category,
-          displayNameSnapshot: candidate.manifest.name,
-          packageVersion: candidate.manifest.version,
-        };
-        homepageRollback = {
-          entry: homepageEntryForHomepage(instance, installedProjections, installedConfig, requestContext),
-          homepageService: requestContext.homepageService,
-        };
-        homepage = await requestContext.homepageService.addManagedApp({
-          entry: homepageEntryForHomepage(candidateInstance, candidateProjections, candidateConfig, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        });
-        operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
-        lastDurableStage = 'homepage-reconciled';
-      }
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
       // The revision names the images the outgoing package was built into, which
       // is the only thing standing between an updated app and a copy of every
@@ -743,7 +694,6 @@ class AppUpdateService {
         snapshotPath: promoted.snapshotPath,
         homepageApplied: homepageWasApplied,
       });
-      homepageRollback = null;
       // Reconciled after the commit on purpose: reapplying a consumer re-applies
       // its stored projections, and only after completeAppUpdate do those
       // describe the runtime that is actually serving. Run before the commit,
@@ -757,6 +707,7 @@ class AppUpdateService {
       } catch (reconcileError) {
         integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
       }
+      const homepage = await this.apps.refreshHomepageWidget(packageId, requestContext.homepageService, requestContext);
       return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
     } catch (caught) {
       // A rollback that fails replaces the error but not the reason: the record
@@ -774,27 +725,6 @@ class AppUpdateService {
           );
           error.cause = rollbackError;
           error.details = [...failedBecause(caught), 'Restoring the previous version then failed too:', ...failedBecause(rollbackError)];
-        }
-      }
-      // Once the snapshot is promoted the candidate is the installed package;
-      // restoring the pre-update Homepage entry would advertise a runtime that
-      // no longer exists. The pending commit keeps the candidate's entry.
-      if (homepageRollback && !snapshotPromoted) {
-        try {
-          const current = await homepageRollback.homepageService.read({ file: 'services.template.yaml' });
-          await homepageRollback.homepageService.add({
-            entry: homepageRollback.entry,
-            expectedRevision: current.revision,
-            requestId: instance.id,
-          }, false);
-        } catch (rollbackError) {
-          error = new AppPackageServiceError(
-            'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED',
-            'The app update failed and its previous Homepage entry could not be restored. Recovery is required.',
-            502,
-          );
-          error.cause = rollbackError;
-          error.details = [...failedBecause(caught), 'Restoring the previous Homepage entry then failed too:', ...failedBecause(rollbackError)];
         }
       }
       let recoveryState = 'none';

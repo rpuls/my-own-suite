@@ -27,7 +27,7 @@ test('Hyper-V USB smoke exposes a guarded three-command lifecycle', () => {
   assert.match(script, /LinkLayerAddress/u);
   assert.match(script, /\$adapter\.MacAddress/u);
   assert.match(script, /# BEGIN MOS HYPERV USB SMOKE/u);
-  assert.match(script, /\$DefaultDns01SmokeDomain = 'hyperv\.diemernet\.uk'/u);
+  assert.match(script, /\$DefaultDns01SmokeDomain = 'hyperv\.lab\.my-demo-domain\.site'/u);
   assert.match(script, /MOS_HYPERV_EXTRA_HOST_DOMAINS/u);
   assert.match(script, /\$env:MOS_STACK_DOMAIN/u);
   assert.match(script, /return 'mos\.hyperv'/u);

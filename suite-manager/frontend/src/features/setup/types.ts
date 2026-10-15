@@ -4,7 +4,7 @@ export type Owner = {
   name: string;
 };
 
-export type SetupStatus = 'needs-owner' | 'signed-out' | 'signed-in';
+type SetupStatus = 'needs-owner' | 'signed-out' | 'signed-in';
 
 export type TermsState = {
   accepted: boolean;

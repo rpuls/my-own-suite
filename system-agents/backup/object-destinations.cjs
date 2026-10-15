@@ -221,7 +221,6 @@ module.exports = {
   MAX_OBJECT_DESTINATIONS,
   normalizeObjectDestination,
   ObjectDestinationRegistry,
-  OBJECT_DESTINATION_PREFIX,
   objectRepositorySpec,
   publicObjectDestination,
   REPOSITORY_DIRNAME,

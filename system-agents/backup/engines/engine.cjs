@@ -83,7 +83,6 @@ function assertRepositoryEngine(destinationId, engineName) {
 module.exports = {
   assertRepositoryEngine,
   BACKUPS_DIRNAME,
-  backupsRoot,
   createEngine,
   ENGINE_MISSING_MESSAGE,
   ENGINE_NAME,

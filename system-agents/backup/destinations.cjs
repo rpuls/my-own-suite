@@ -169,15 +169,11 @@ class DiskRestorePoints {
     }
   }
 
-  async readNote(pointId) { return this.readNoteAt(this.locator(pointId)); }
-
   async writeNote(pointId, note) {
     const notePath = `${this.locator(pointId)}.note.txt`;
     if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
     else fs.rmSync(notePath, { force: true });
   }
-
-  async invalidate() {}
 }
 
 // --- Restore points in a bucket --------------------------------------------
@@ -246,8 +242,6 @@ class ObjectRestorePoints {
     await this.destination.forgetPoint(pointId);
   }
 
-  async readNote(pointId) { return (await this.entries())[pointId]?.note || null; }
-
   // A note is the one mutable thing about a restore point, so it is stored
   // apart from the manifest here too: the new note goes in, the old snapshot
   // goes out, and the manifest that names the backup's data is never rewritten.
@@ -268,8 +262,6 @@ class ObjectRestorePoints {
     }
     await this.destination.rememberPoint(pointId, { ...entry, note: note || null, noteSnapshotId: snapshotId });
   }
-
-  async invalidate() { await this.destination.readIndex({ force: true }).catch(() => null); }
 }
 
 // The list entry for one restore point, from its manifest. Kept here so a
@@ -775,9 +767,7 @@ class DestinationResolver {
 module.exports = {
   DestinationResolver,
   DiskDestination,
-  DiskRestorePoints,
   MANIFEST_FILENAME,
-  NOTE_FILENAME,
   objectLocator,
   ObjectDestination,
   OBJECT_INDEX_TTL_MS,

@@ -21,7 +21,7 @@ const {
   CONSOLE_LOGIN_ISSUE_PATH,
 } = require('../../shared/console-login-contract.cjs');
 
-function renderConsoleLoginInitScript({ fixedPassword, runtimeUser, setupUrl, stateDir, username }) {
+function renderConsoleLoginInitScript({ fixedPassword, runtimeUser, stateDir, username }) {
   const choosePassword = fixedPassword
     ? `# Fixed by the build profile, so this VM's login is predictable for humans
 # and agents that have to reach it. Never used by a released image.
@@ -79,7 +79,7 @@ mv "$handover.next" "$handover"
 
 # Also on the physical console, because an owner who never opens Suite Manager
 # from another machine would otherwise have no way to reach this one.
-${renderConsoleIssueBlockWriter({ setupUrl })}
+${renderConsoleIssueBlockWriter()}
 `;
 }
 
@@ -92,12 +92,12 @@ ${renderConsoleIssueBlockWriter({ setupUrl })}
 // pushed the top ten rows of that banner off the screen - the logo and the whole
 // of the first address - so the one screen that cannot be corrected afterwards
 // showed a password and no way to use it.
-function renderConsoleIssueBlockWriter({ setupUrl }) {
+function renderConsoleIssueBlockWriter() {
   return `install -d -m 0755 /etc/issue.d
 cat > ${CONSOLE_LOGIN_ISSUE_PATH} <<MOS_CONSOLE_ISSUE
 
   Server login (not your My Own Suite account):  $username / $password
-  Save it, then confirm at ${setupUrl} to hide this.
+  Save it, then confirm it in Suite Manager to hide this.
 
 MOS_CONSOLE_ISSUE
 chmod 0644 ${CONSOLE_LOGIN_ISSUE_PATH}`;
@@ -115,6 +115,8 @@ state_dir=${shellQuote(stateDir)}
 
 rm -f ${CONSOLE_LOGIN_ISSUE_PATH}
 rm -f "$state_dir/${CONSOLE_LOGIN_HANDOVER_FILE}"
+# A waiting login prompt keeps showing the issue it drew at boot; this redraws it.
+agetty --reload || true
 
 # One-shot by design: the handover happens once per install, so the watcher has
 # no reason to survive it.

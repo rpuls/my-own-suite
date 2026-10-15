@@ -14,20 +14,14 @@ const net = require('node:net');
 const tls = require('node:tls');
 const os = require('node:os');
 
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 // A single SMTP reply, even a multiline EHLO from a chatty relay, is kilobytes.
 // A relay streaming past this is not one we can talk to, so the read is bounded
 // rather than trusted to end.
 const MAX_REPLY_BYTES = 64 * 1024;
 const CRLF = '\r\n';
-
-class SmtpError extends Error {
-  constructor(code, message, { reply = null } = {}) {
-    super(message);
-    this.code = code;
-    this.reply = reply;
-  }
-}
 
 // The client greeting. A relay may reject an EHLO whose name is empty or an
 // address literal it dislikes, so this is a plain hostname with a safe fallback.
@@ -72,15 +66,15 @@ class SmtpConnection {
     socket.setEncoding('utf8');
     socket.setTimeout(this.timeoutMs);
     socket.on('data', (chunk) => this._onData(chunk));
-    socket.on('timeout', () => this._fail(new SmtpError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
-    socket.on('error', (error) => this._fail(new SmtpError('SMTP_CONNECTION_FAILED', mapSocketError(error))));
-    socket.on('close', () => this._fail(new SmtpError('SMTP_CONNECTION_CLOSED', 'The relay closed the connection.')));
+    socket.on('timeout', () => this._fail(new CodedError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
+    socket.on('error', (error) => this._fail(new CodedError('SMTP_CONNECTION_FAILED', mapSocketError(error))));
+    socket.on('close', () => this._fail(new CodedError('SMTP_CONNECTION_CLOSED', 'The relay closed the connection.')));
   }
 
   _onData(chunk) {
     this.buffer += chunk;
     if (this.buffer.length > MAX_REPLY_BYTES) {
-      this._fail(new SmtpError('SMTP_REPLY_TOO_LARGE', 'The relay sent more than a reply should contain.'));
+      this._fail(new CodedError('SMTP_REPLY_TOO_LARGE', 'The relay sent more than a reply should contain.'));
       return;
     }
     if (!this.pending) return;
@@ -126,7 +120,7 @@ class SmtpConnection {
     this.write(line);
     const reply = await this.readReply();
     if (!expect.includes(reply.code)) {
-      throw new SmtpError('SMTP_COMMAND_REJECTED', `The relay refused ${redacted ? 'the command' : `"${line.split(' ')[0]}"`}: ${reply.code} ${reply.text}`, { reply });
+      throw new CodedError('SMTP_COMMAND_REJECTED', `The relay refused ${redacted ? 'the command' : `"${line.split(' ')[0]}"`}: ${reply.code} ${reply.text}`);
     }
     return reply;
   }
@@ -149,15 +143,15 @@ function mapSocketError(error) {
 
 function connectSocket({ host, port, security, allowInvalidCert, timeoutMs }) {
   return new Promise((resolve, reject) => {
-    const onError = (error) => reject(new SmtpError('SMTP_CONNECTION_FAILED', mapSocketError(error)));
+    const onError = (error) => reject(new CodedError('SMTP_CONNECTION_FAILED', mapSocketError(error)));
     if (security === 'tls') {
       const socket = tls.connect({ host, port, rejectUnauthorized: !allowInvalidCert, servername: host }, () => resolve(socket));
-      socket.setTimeout(timeoutMs, () => socket.destroy(new SmtpError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
+      socket.setTimeout(timeoutMs, () => socket.destroy(new CodedError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
       socket.once('error', onError);
       return;
     }
     const socket = net.connect({ host, port }, () => resolve(socket));
-    socket.setTimeout(timeoutMs, () => socket.destroy(new SmtpError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
+    socket.setTimeout(timeoutMs, () => socket.destroy(new CodedError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
     socket.once('error', onError);
   });
 }
@@ -172,13 +166,13 @@ function startTlsUpgrade(plainSocket, { host, allowInvalidCert, timeoutMs }) {
     plainSocket.removeAllListeners('close');
     plainSocket.removeAllListeners('error');
     const secure = tls.connect({ allowHalfOpen: false, host, rejectUnauthorized: !allowInvalidCert, servername: host, socket: plainSocket }, () => resolve(secure));
-    secure.setTimeout(timeoutMs, () => secure.destroy(new SmtpError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
-    secure.once('error', (error) => reject(new SmtpError('SMTP_TLS_FAILED', tlsErrorMessage(error))));
+    secure.setTimeout(timeoutMs, () => secure.destroy(new CodedError('SMTP_TIMEOUT', 'The relay did not answer in time.')));
+    secure.once('error', (error) => reject(new CodedError('SMTP_TLS_FAILED', tlsErrorMessage(error))));
   });
 }
 
 function tlsErrorMessage(error) {
-  if (error instanceof SmtpError) return error.message;
+  if (error instanceof CodedError) return error.message;
   const code = error?.code || '';
   if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALT_NAME|HOSTNAME/u.test(code)) {
     return 'The relay presented a certificate this server does not trust. Use a relay with a valid certificate, or acknowledge the insecure relay explicitly.';
@@ -211,7 +205,7 @@ async function openAuthenticated(relay, timeoutMs) {
   try {
     const greeting = await connection.readReply();
     if (greeting.code !== 220) {
-      throw new SmtpError('SMTP_GREETING_REJECTED', `The relay declined the connection: ${greeting.code} ${greeting.text}`, { reply: greeting });
+      throw new CodedError('SMTP_GREETING_REJECTED', `The relay declined the connection: ${greeting.code} ${greeting.text}`);
     }
     let ehlo = await connection.command(`EHLO ${name}`, [250]);
     let capabilities = parseEhloCapabilities(ehlo);
@@ -219,7 +213,7 @@ async function openAuthenticated(relay, timeoutMs) {
 
     if (security === 'starttls') {
       if (!capabilities.has('STARTTLS')) {
-        throw new SmtpError('SMTP_STARTTLS_UNAVAILABLE', 'The relay does not offer STARTTLS on this port. Use implicit TLS, a different port, or an unencrypted relay only on a trusted network.');
+        throw new CodedError('SMTP_STARTTLS_UNAVAILABLE', 'The relay does not offer STARTTLS on this port. Use implicit TLS, a different port, or an unencrypted relay only on a trusted network.');
       }
       await connection.command('STARTTLS', [220]);
       const secure = await startTlsUpgrade(socket, { allowInvalidCert, host, timeoutMs });
@@ -253,12 +247,12 @@ async function authenticate(connection, capabilities, { password, username }) {
     await connection.command(b64(password), [235], { redacted: true });
     return;
   }
-  throw new SmtpError('SMTP_AUTH_UNSUPPORTED', `The relay offers no supported login method (it advertised: ${mechanisms.join(', ') || 'none'}).`);
+  throw new CodedError('SMTP_AUTH_UNSUPPORTED', `The relay offers no supported login method (it advertised: ${mechanisms.join(', ') || 'none'}).`);
 }
 
 // Prove a relay will accept our login, without sending anyone a message. The
 // strongest check that leaves no trace: connect, secure, authenticate, RSET,
-// QUIT. Throws SmtpError on any failure; resolves with what the relay is.
+// QUIT. Throws a CodedError on any failure; resolves with what the relay is.
 async function verifyRelay(relay, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const { capabilities, connection, secured } = await openAuthenticated(relay, timeoutMs);
   try {
@@ -320,7 +314,6 @@ function buildMessage({ from, fromName, subject, text, to }) {
 
 module.exports = {
   DEFAULT_TIMEOUT_MS,
-  SmtpError,
   parseReply,
   sendMessage: sendTestMessage,
   sendTestMessage,

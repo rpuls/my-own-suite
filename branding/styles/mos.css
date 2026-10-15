@@ -951,6 +951,18 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   gap: var(--mos-space-3);
 }
 
+/* A body whose only child gated itself away (an AdvancedPanel waiting for
+   technical mode) must not leave a padded gap behind. */
+.mos-panel-body:empty {
+  display: none;
+}
+
+/* Two bodies in a row read as one section, so the second does not repeat the
+   inset between them. */
+.mos-panel-body:not(:empty) + .mos-panel-body {
+  padding-top: 0;
+}
+
 .mos-panel-band {
   display: flex;
   align-items: center;

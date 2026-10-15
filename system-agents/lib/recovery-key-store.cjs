@@ -163,4 +163,4 @@ class RecoveryKeyStore {
   }
 }
 
-module.exports = { ESCROW_PATH, KEY_FILENAME, RECORD_FILENAME, RecoveryKeyStore, STATE_DIR };
+module.exports = { KEY_FILENAME, RECORD_FILENAME, RecoveryKeyStore, STATE_DIR };

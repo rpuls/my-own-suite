@@ -1,11 +1,11 @@
 ---
 title: Back up and restore
-description: Manual whole-suite backups to storage attached to the MOS server, and how restore works.
+description: Whole-suite backups, by hand or on a schedule, to a drive attached to the MOS server or an S3-compatible bucket, and how restore works.
 ---
 
 import { Steps } from '@astrojs/starlight/components'
 
-MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
+MOS backs up the whole suite, by hand or on a schedule, to storage mounted on the server running MOS or to an S3-compatible bucket. The practical destination depends on where that server lives.
 
 If you are deciding how many copies to keep and where, read [Keeping copies](/docs/guides/keeping-copies/) first. This page is the mechanics.
 
@@ -109,7 +109,7 @@ Important boundaries:
 - **Restore goes forward, never backward.** Each backup records the MOS version that wrote it, and restores onto that version or any later one. Install the current release; MOS does not need, and cannot install, an older version of itself. The one direction that fails is restoring a newer backup onto an older MOS, which MOS reports and refuses rather than half-applying.
 - **Backups from MOS 0.19 or earlier cannot be restored here.** Those were unencrypted bundles, a format this version no longer reads. Restore one with MOS 0.19 or earlier, or take a fresh backup on the machine you are running now.
 - **Restore is whole-suite.** Per-app restore is not supported.
-- **The machine must already run MOS.** Install MOS first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
+- **The machine must already run MOS.** Install MOS first, then attach the backup destination and restore.
 - **A replacement machine needs the recovery key as well as the storage.** See below; restoring onto the server that made the backup never asks for it, because that server already holds it.
 - **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
 
@@ -151,6 +151,6 @@ The key becomes this machine's own when you restore another server's backup onto
 
 ## Current limitations
 
-Whole-suite restore only · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one destination per schedule, so a drive copy and a bucket copy are two separate backups · the recovery key cannot be rotated.
+Whole-suite restore only · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one destination per schedule, so a drive copy and a bucket copy are two separate backups.
 
 If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

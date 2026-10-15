@@ -36,6 +36,12 @@ Trust and the catalog path belong to the source, not the package. Every package 
 
 What a source publishes is cached in `external-app-sources.json` in the state directory. MOS probes for a new commit on a per-source interval of hours, downloads the archive again only when the commit moved, and backs off on failure; `Refresh` on the source's row in Settings is the only thing that bypasses both. A source that cannot be reached keeps serving its cached packages, and its recorded failure distinguishes *not visible to an anonymous caller* (401/404 — deleted, renamed or private, indistinguishable by design) from a rate limit.
 
+## The package's own end-to-end tests
+
+Each package carries its own lab journey at `e2e/index.mjs`: how to sign in to the app, what an owner makes in it, and how to tell that it survived a restore or an update. The MOS E2E suite runs it through the app's Homepage tile; the module contract and the commands are in `test/README.md`.
+
+A top-level `e2e/` folder is never package content. It is not collected, digested, copied into an installed snapshot or downloaded with a catalog candidate, and `packageFiles` may not list anything inside it. Editing a test therefore never changes the package digest or version, and owners are never offered an update for one. A package published outside the official catalog may carry the same folder.
+
 ## MOS Privacy Posture
 
 Each reviewed candidate package owns a `privacy-review.json` and a compact manifest summary. Reviews are validated by `npm run apps:privacy:check` against the contracts in `suite-manager/backend/src/apps/package-contracts.cjs`, which enforce the document's shape, its binding to the package it ships with, and the derivation of its posture. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.
@@ -58,6 +64,8 @@ The remaining dimensions — `accountDependency`, `dataProcessing`, `policyExpos
 No dimension may be `unknown`. An unestablished fact is not a posture — it means no review exists, which the catalog records as `privacy.status: review-required`, a process state that never reaches this derivation. A posture describes a finished review and nothing else.
 
 Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence, so `defaultEgress: none` is only credible with an `observed` capture behind it. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
+
+`outbound` lists every host the app contacts in normal use as MOS ships it, before the owner turns anything on. Each entry has a `host`, which is exact, `*.domain` when the hosts vary, or `*` for behaviour that follows stored content. It also says whether the app's `server` or the owner's `browser` makes the request (`from`), the `purpose` in plain words, and the `receiver`. The list is empty exactly when `defaultEgress` is `none`. Suite Manager and the site show it beside the posture, an update's review shows the hosts it adds and drops, and the E2E `network` step fails on any host the list does not name. The publishing check requires it. Installed servers accept reviews written before it existed.
 
 Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots, marketing assets, and `catalog.demoDeployTargets` are optional catalog metadata, not required package scaffolding. Demo deployment targets are public-site previews on third-party providers; they are not MOS installation instructions.
 

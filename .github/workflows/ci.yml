@@ -38,8 +38,10 @@ jobs:
       # also what `npm test`, the release gate and the pre-push hook run. Adding
       # a step here instead would make CI diverge from what a push can be tested
       # against, which is the whole thing this file stopped doing.
+      # Every check runs even after one fails, so a pull request still waiting
+      # for its catalog signature reports everything else too.
       - name: Run workspace checks
-        run: npm run check:workspace
+        run: npm run check:workspace -- --keep-going
 
   site:
     name: MOS Site
@@ -82,7 +84,7 @@ jobs:
       # whatever was published that morning.
       - name: Serve the built site
         run: |
-          nohup npx --yes http-server@14.1.1 site/dist -p 4321 --silent > /tmp/http-server.log 2>&1 &
+          (cd site && nohup npx astro preview --host 127.0.0.1 --port 4321 > /tmp/http-server.log 2>&1 &)
           for attempt in $(seq 1 30); do
             if curl -sf --max-time 5 http://127.0.0.1:4321/ > /dev/null; then
               echo "site is answering after ${attempt} attempts"

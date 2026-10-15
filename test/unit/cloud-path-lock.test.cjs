@@ -86,6 +86,31 @@
 // whose /var/lib/containerd holds Docker 29's image store and container layers,
 // and the Homepage unit re-renders its root page after every start. A drop-in
 // and two unit lines; no `echo` line was added or changed.
+//
+// Moved 2026-10-03, all five, for trusted HTTPS on the Easy Door (roadmap H8):
+// the Caddy build gained the acme-dns module and the installer refuses a binary
+// without it, one more check beside the Cloudflare one, whose `echo` writes to
+// stderr only when the build is wrong; and the HTTPS agent unit gained three
+// `Environment=` lines. No existing `echo` line changed.
+//
+// Moved 2026-10-04, all five: once the Caddy binary is copied out, the installer
+// removes the two build images it came from, about 480 MB left on every machine.
+// One `docker image rm` line with its output sent to /dev/null; no `echo` line
+// was added or changed.
+//
+// Moved 2026-10-06, all five: the installer fetches Node unless /usr/bin/node, the
+// path every MOS unit runs, is 22 or newer, not unless any Node on the PATH is. A
+// fresh machine has neither, so it installs exactly as before; no `echo` line changed.
+//
+// Moved 2026-10-09, all four: the digitalocean-smoke front door is gone with its harness,
+// and with it the droplet-metadata lookup only it ran. No `echo` line changed.
+//
+// Moved again 2026-10-09, all four: the caddy package comes from Ubuntu, held, after
+// Caddy's own apt repository went down for everyone. No `echo` line changed.
+//
+// Moved 2026-10-15, all four: Dependabot repinned the caddy:2.11.6-builder image
+// digest, which the installer's `docker image rm` line names. That one line; no
+// `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -99,27 +124,21 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '4a878f7dd76c791a49ca7ff6e39b40c13e91d7391c0291f22bc4b871c36ec5ed',
+    digest: 'f12676e6717d19b2fd6d006d3ac7959091c93f4f0e4f9d3430b5a324d905c31c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'c7c41850f2849e1f0d43b382a92a3eed624d34b708ea3115431451f2b11ed7a0',
+    digest: '51beeacf7a85e2293232d14a3566d90f15ec79af4b11a60308b5484fd1c06652',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'fc3ba53bafa7cc47c57f861b9373cf4dab4c8aed982bbc51389675d8917d9bc7',
+    digest: 'b50be448e3880d099e240801880e087cc919f381265e67d831ff63ade3a3eeeb',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
-    output: 'cloudInit',
-  },
-  {
-    digest: '80b4174cc660e3966e468abb095c615488f3fe78032d2484f2e2fef05c2d65de',
-    input: { frontDoor: 'digitalocean-smoke' },
-    name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
   },
   {
@@ -127,7 +146,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '36f80d305ba483825d97d932a8d3b24255a27df50fe5faa1614c7a3c1633bff0',
+    digest: 'fb205807191769a0051381f4dbd26bacd4f3538ad9c1749a9c9f54708ec9ba13',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

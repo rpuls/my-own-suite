@@ -286,7 +286,35 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'login-throttle-persistence',
     'known-browsers-and-sign-in-alerts',
     'suite-address-changes',
+    'session-expiry',
   ]);
+  upgraded.close();
+});
+
+test('a session from before expiry existed counts as used at the upgrade, and keeps its age', async () => {
+  const stateDir = await tempStateDir();
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  for (const migration of MIGRATIONS.filter(({ version }) => version < 20)) {
+    database.exec(migration.sql);
+    database.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
+      .run(migration.version, migration.name, '2026-09-01T00:00:00.000Z');
+  }
+  database.prepare("INSERT INTO owners (id, name, email, password_hash, created_at) VALUES (1, 'Suite Owner', 'owner@example.com', 'hash', '2026-06-20T10:00:00.000Z')").run();
+  database.prepare("INSERT INTO sessions (owner_id, token_hash, created_at) VALUES (1, 'old-session-hash', '2026-09-01T10:00:00.000Z')").run();
+  database.close();
+
+  const upgradedAt = new Date(Date.now() - 1000).toISOString();
+  const upgraded = new SuiteManagerStore(stateDir);
+  const live = upgraded.findLiveSession({ createdAfter: '2026-07-01T00:00:00.000Z', seenAfter: upgradedAt, tokenHash: 'old-session-hash' });
+  assert.match(live.lastSeenAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u);
+  assert.equal(upgraded.findLiveSession({ createdAfter: '2026-09-01T10:00:00.000Z', seenAfter: upgradedAt, tokenHash: 'old-session-hash' }), null);
   upgraded.close();
 });
 
@@ -315,7 +343,6 @@ test('existing app rows migrate without inventing package source identity', asyn
 
   const upgraded = new SuiteManagerStore(stateDir);
   const instance = upgraded.getAppInstanceByPackageId('example-app');
-  assert.equal(instance.snapshotState, 'legacy-unmigrated');
   assert.equal(instance.packageDigest, null);
   assert.equal(instance.snapshotPath, null);
   assert.equal(instance.updateRecoveryState, 'none');
@@ -340,7 +367,6 @@ test('app instance state stays package-generic and stores projection digests', a
       packageVersion: '0.1.0',
       privacy: { posture: 'privacy-configured', reviewedAt: '2026-06-26T10:00:00.000Z', status: 'reviewed' },
       snapshotPath: '/var/lib/mos/app-packages/instance-one/installed',
-      snapshotState: 'installed',
       source: {
         kind: 'official-git',
         path: 'apps/example-app',
@@ -371,7 +397,6 @@ test('app instance state stays package-generic and stores projection digests', a
   assert.equal(instance.manifestDigest, 'sha256:manifest');
   assert.equal(instance.packageDigest, `sha256:${'a'.repeat(64)}`);
   assert.equal(instance.packageVersion, '0.1.0');
-  assert.equal(instance.snapshotState, 'installed');
   assert.equal(instance.snapshotPath, '/var/lib/mos/app-packages/instance-one/installed');
   assert.equal(instance.sourceKind, 'official-git');
   assert.equal(instance.sourceTrust, 'mos-reviewed');
@@ -415,7 +440,7 @@ test('app update operations persist digest-bound stages and reject overlap', asy
       categorySnapshot: 'tools', displayNameSnapshot: 'Example', id: 'update-instance',
       manifestDigest: 'sha256:manifest', packageDigest: `sha256:${'a'.repeat(64)}`,
       packageId: 'update-example', packageVersion: '1.0.0', privacy: { posture: 'review-required', reviewedAt: null, status: 'review-required' },
-      snapshotPath: '/var/lib/mos/app-packages/update-instance/installed', snapshotState: 'installed',
+      snapshotPath: '/var/lib/mos/app-packages/update-instance/installed',
       source: { kind: 'official-git', path: 'apps/update-example', repository: 'https://github.com/rpuls/my-own-suite', revision: 'a'.repeat(40), trust: 'mos-reviewed' },
     },
     operationId: 'install-update-instance', projections: [],
@@ -681,7 +706,6 @@ test('external sources persist separately and removing one never uninstalls its 
       packageId: 'community-notes',
       packageVersion: '1.0.0',
       snapshotPath: '/var/lib/mos/app-packages/x-abc123de-community-notes/installed',
-      snapshotState: 'installed',
       source: { kind: 'external-git', path: 'apps/community-notes', repository: 'https://code.example/community/apps', revision: '89abcdef0123456789abcdef0123456789abcdef', trust: 'unverified' },
     },
     operationId: 'operation-external-one',
@@ -698,7 +722,6 @@ test('external sources persist separately and removing one never uninstalls its 
 
   const instance = store.getAppInstanceByPackageId('community-notes');
   assert.equal(instance.status, 'installed');
-  assert.equal(instance.snapshotState, 'installed');
   assert.equal(instance.sourceTrust, 'unverified');
   store.close();
 });
@@ -717,7 +740,6 @@ async function storeWithInstalledApp() {
       packageVersion: '0.1.0',
       privacy: { posture: 'privacy-configured', reviewedAt: '2026-08-30T10:00:00.000Z', status: 'reviewed' },
       snapshotPath: '/var/lib/mos/app-packages/instance-one/installed',
-      snapshotState: 'installed',
       source: {
         kind: 'official-git',
         path: 'apps/example-app',

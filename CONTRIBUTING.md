@@ -38,7 +38,7 @@ The full workflow rules live in [AGENTS.md](./AGENTS.md) — it is written for c
 - Never commit directly to `main`. Branch as `feat/…`, `fix/…`, `docs/…`, or `chore/…`.
 - `staging` is the integration branch; `main` holds released batches.
 - Run `npm run hooks:install` once. The local hooks block accidental commits on `main`, and run the workspace checks before a branch push so CI is not where you find out.
-- Update [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]` when your change affects how MOS behaves for someone updating it. Documentation-only and website-only changes do not need an entry.
+- Update [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]` when your change affects how MOS behaves for someone updating it, in the shape described at the top of that file. Documentation-only and website-only changes do not need an entry.
 - Releases follow [RELEASING.md](./RELEASING.md). Do not invent version numbers.
 
 ### Getting set up

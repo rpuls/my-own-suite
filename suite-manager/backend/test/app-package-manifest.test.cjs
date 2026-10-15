@@ -6,7 +6,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
-  AppPackageManifestError,
   discoverAppPackages,
   publicPackageSummary,
   readAppPackageManifest,
@@ -452,6 +451,12 @@ test('manifest validation requires package screenshots to ship inside the packag
   assert.ok(errors.some((error) => error.startsWith('catalog.screenshots[1].src')));
 });
 
+test('a package cannot declare its e2e tests as files that ship with it', () => {
+  const errors = validateAppPackageManifest(validManifest({ packageFiles: ['e2e/index.mjs', 'e2e'] }));
+  assert.ok(errors.includes("packageFiles[0] is inside e2e/, which holds the package's tests and never ships with it."));
+  assert.ok(errors.includes("packageFiles[1] is inside e2e/, which holds the package's tests and never ships with it."));
+});
+
 test('manifest validation rejects malformed demo deployment targets', () => {
   const manifest = validManifest({
     catalog: {
@@ -717,7 +722,7 @@ test('readAppPackageManifest reports all validation details', async () => {
   assert.throws(
     () => readAppPackageManifest(packageDir),
     (error) => {
-      assert.ok(error instanceof AppPackageManifestError);
+      assert.equal(error.code, 'INVALID_APP_PACKAGE_MANIFEST');
       assert.ok(error.details.some((detail) => detail.startsWith('id ')));
       assert.ok(error.details.includes('routes[0].service must reference a declared service.'));
       return true;

@@ -1,7 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { AppOperationLimitError, AppOperationLimiter } = require('../src/apps/app-operation-limits.cjs');
+const { CodedError } = require('../../../shared/coded-error.cjs');
+const { AppOperationLimiter } = require('../src/apps/app-operation-limits.cjs');
 
 function fixture(policy = {}) {
   let now = 10_000;
@@ -26,7 +27,7 @@ test('a second update for the same app is refused while the first is still runni
   const running = limiter.runExclusive('immich', () => first.promise);
   await assert.rejects(
     limiter.runExclusive('immich', async () => 'second'),
-    (error) => error instanceof AppOperationLimitError && error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
+    (error) => error instanceof CodedError && error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
   );
   first.settle('first');
   assert.equal(await running, 'first');

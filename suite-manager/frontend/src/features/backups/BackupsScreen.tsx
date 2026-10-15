@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
-import { jsonResponse } from '../../lib/api';
+import { jsonResponse, postJson } from '../../lib/api';
 import { DestinationsPanel } from './DestinationsPanel';
 import { ProgressPlan } from './ProgressPlan';
 import { RestorePointsPanel } from './RestorePointsPanel';
@@ -260,12 +260,8 @@ export function BackupsScreen() {
     }
   }
 
-  async function post<T>(path: string, body: unknown, message: string) {
-    return jsonResponse<T>(await fetch(`/suite-manager/api/backups/${path}`, {
-      body: JSON.stringify(body),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    }), message);
+  function post<T>(path: string, body: unknown, message: string) {
+    return postJson<T>(`/suite-manager/api/backups/${path}`, body, message);
   }
 
   // The gate. Anything that would create a backup only this machine can read

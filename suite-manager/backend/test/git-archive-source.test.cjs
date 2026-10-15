@@ -87,14 +87,23 @@ test('resolveCommit resolves the default branch then pins an immutable commit', 
   const fetchImpl = async (url) => {
     calls.push(url);
     if (url === 'https://api.github.com/repos/community/notes') return new Response(JSON.stringify({ default_branch: 'trunk' }));
-    if (url === 'https://api.github.com/repos/community/notes/commits/trunk') return new Response(JSON.stringify({ sha }));
+    if (url === 'https://api.github.com/repos/community/notes/commits/trunk') return new Response(sha);
     throw new Error(`unexpected ${url}`);
   };
   assert.equal(await resolveCommit(fetchImpl, { host: 'github.com', owner: 'community', ref: null, repo: 'notes' }), sha);
   assert.deepEqual(calls, ['https://api.github.com/repos/community/notes', 'https://api.github.com/repos/community/notes/commits/trunk']);
 
-  const pinned = async (url) => (url.endsWith('/commits/v1.0.0') ? new Response(JSON.stringify({ sha })) : (() => { throw new Error('should not fetch repo info'); })());
+  const pinned = async (url) => (url.endsWith('/commits/v1.0.0') ? new Response(sha) : (() => { throw new Error('should not fetch repo info'); })());
   assert.equal(await resolveCommit(pinned, { host: 'github.com', owner: 'community', ref: 'v1.0.0', repo: 'notes' }), sha);
+});
+
+// Reproduced against GitHub on 2026-10-08: the full commit at a large merge was
+// 1,247,962 bytes, over the metadata limit.
+test('resolveCommit pins a source whose tip commit is large', async () => {
+  const fetchImpl = async (url, options) => (options.headers.Accept === 'application/vnd.github.sha'
+    ? new Response(sha)
+    : new Response(JSON.stringify({ files: [{ patch: 'x'.repeat(1_247_962) }], sha })));
+  assert.equal(await resolveCommit(fetchImpl, { host: 'github.com', owner: 'community', ref: 'main', repo: 'notes' }), sha);
 });
 
 test('extractMosPackage materializes only the .mos folder as the package root', async () => {

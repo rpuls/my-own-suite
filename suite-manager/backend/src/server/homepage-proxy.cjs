@@ -163,5 +163,4 @@ function createHomepageProxy({ upstream, upstreamHost }) {
 
 module.exports = {
   createHomepageProxy,
-  upstreamRequestHeaders,
 };

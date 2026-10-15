@@ -82,7 +82,6 @@ function releaseCandidateDir(candidateDir) {
 }
 
 module.exports = {
-  DEFAULT_CANDIDATE_POLICY,
   activeCandidateDirs,
   candidateRoot,
   createCandidateDir,

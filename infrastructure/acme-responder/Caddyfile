@@ -1,0 +1,7 @@
+# TLS in front of the responder. This box is public, so Caddy proves the name
+# with HTTP-01 like any web server. No access log: the responder's commitment
+# is that no source, name or token is recorded anywhere on this box.
+
+acme.myownsuite.org {
+	reverse_proxy 127.0.0.1:8053
+}

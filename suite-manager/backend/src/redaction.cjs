@@ -83,5 +83,4 @@ module.exports = {
   createRedactor,
   redactValues,
   redactValuesWithReport,
-  redactableSecrets,
 };

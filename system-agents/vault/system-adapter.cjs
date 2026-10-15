@@ -712,4 +712,4 @@ class SystemVaultAdapter {
   }
 }
 
-module.exports = { LUKS_PARTITION_TYPE, SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };
+module.exports = { SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };

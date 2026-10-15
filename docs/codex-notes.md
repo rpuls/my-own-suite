@@ -8,7 +8,7 @@ Durable working context for AI agent sessions (Codex, Claude Code, and others). 
 - GitHub Issues are preferred for task state, backlog, and roadmap-like planning.
 - Repo docs should hold context that still matters after an issue is closed.
 - Temporary branch plans are allowed for multi-session work, but must be deleted, converted to issues, or reduced to durable decisions before merge.
-- Keep operator runbooks single-source. Hyper-V and DigitalOcean smoke commands live in `scripts/README.md`; do not duplicate full command runbooks here.
+- Keep operator runbooks single-source. The Hyper-V smoke commands and the cloud-install recipe live in `scripts/README.md`; do not duplicate full command runbooks here.
 
 ## MOS Hyper-V SSH For Codex
 

@@ -142,7 +142,7 @@ test('owner env survives a restart and a stop-then-start, because every runtime 
   assert.equal(applied().PAPERLESS_OUTLOOK_OAUTH_CLIENT_ID, 'client-id-value');
   assert.equal(applied().PAPERLESS_OUTLOOK_OAUTH_CLIENT_SECRET, 'client-secret-value');
 
-  await service.stopPackageRuntime('paperless-ngx');
+  await service.disablePackage('paperless-ngx');
   await service.enablePackage('paperless-ngx', requestContext().publicUrlFor('paperless-ngx'));
   assert.equal(applied().PAPERLESS_OUTLOOK_OAUTH_CLIENT_ID, 'client-id-value');
   assert.equal(applied().PAPERLESS_OUTLOOK_OAUTH_CLIENT_SECRET, 'client-secret-value');

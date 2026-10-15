@@ -6,8 +6,7 @@ const DEFAULT_STATE_ROOT = '/var/lib/mos';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
-const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
-const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
+const FRONT_DOORS = ['cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
 
 const OWNER_KEYS = [
   'ownerEmail',
@@ -147,20 +146,12 @@ function renderBootstrapEnv(config) {
 function renderBootstrapShell(config) {
   const cloudBootstrap = PUBLIC_CLOUD_FRONT_DOORS.includes(config.frontDoor);
   const initialScheme = cloudBootstrap ? 'https' : 'http';
-  const caddyfile = cloudBootstrap ? renderPublicCloudCaddyfile() : renderCaddyfile();
+  const caddyfile = renderCaddyfile({ publicCloud: cloudBootstrap });
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
 export MOS_REPO_URL MOS_REPO_REF MOS_FRONT_DOOR MOS_DOMAIN MOS_INSTALL_ROOT MOS_STATE_ROOT MOS_RUNTIME_USER MOS_SUITE_MANAGER_PORT MOS_HOMEPAGE_PORT MOS_COMPONENTS MOS_DISPOSABLE_LAB MOS_OWNER_SETUP MOS_APP_SELECTION
-
-if [ "$MOS_DOMAIN" = "localhost" ] && [ "$MOS_FRONT_DOOR" = "digitalocean-smoke" ]; then
-  metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
-  if [ -n "$metadata_ip" ]; then
-    MOS_DOMAIN="$metadata_ip.sslip.io"
-    export MOS_DOMAIN
-  fi
-fi
 
 if [ "$MOS_DOMAIN" = "localhost" ]; then
   MOS_HOME_HOST="home.localhost"
@@ -191,12 +182,12 @@ cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'
 ${renderJournaldConfig()}MOS_JOURNALD
 systemctl restart systemd-journald || true
 
-if ! command -v caddy >/dev/null 2>&1; then
-  rm -f /etc/apt/sources.list.d/caddy-stable.list
-fi
-
 apt-get update
-apt-get install -y bzip2 ca-certificates curl cryptsetup-bin docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ufw
+# Ubuntu's caddy package only supplies the caddy user, its unit and /etc/caddy; the
+# binary that runs is the one built below. Held, so unattended upgrades never restart
+# Caddy to update a binary nothing runs.
+apt-mark hold caddy
 # The TPM half is best effort: a machine without these still gets an encrypted
 # vault that its owner unlocks by hand, so failing the whole install over them
 # would be the wrong trade. On Ubuntu 24.04 systemd-cryptenroll and the TPM2
@@ -210,17 +201,10 @@ echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
 homepage_pull_pid="$!"
 
-if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
+# Every MOS unit runs /usr/bin/node, so a Node elsewhere on the PATH does not count.
+if [ ! -x /usr/bin/node ] || [ "$(/usr/bin/node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
-fi
-
-if ! command -v caddy >/dev/null 2>&1; then
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
-  chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  apt-get update
-  apt-get install -y caddy
 fi
 
 if ! id -u "$MOS_RUNTIME_USER" >/dev/null 2>&1; then
@@ -255,12 +239,13 @@ caddy_builder_container="$(docker create mos-caddy-builder)"
 install -d -m 0755 /usr/local/libexec/mos
 docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos/caddy.next
 docker rm "$caddy_builder_container"
+docker image rm ${CADDY_BUILD_IMAGES.join(' ')} >/dev/null 2>&1 || true
 chmod 0755 /usr/local/libexec/mos/caddy.next
 mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
-if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
-  echo '[mos] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
+${CADDY_REQUIRED_MODULES.map((module) => `if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^${module}$'; then
+  echo '[mos] The repo-built Caddy binary is missing ${module}.' >&2
   exit 1
-fi
+fi`).join('\n')}
 
 # The backup agent runs the storage engine binary, which lives beside Caddy and
 # is not a package. reconcile-system.cjs installs it on every managed update; a
@@ -285,7 +270,7 @@ if ! getent group mos-agent >/dev/null; then
 fi
 usermod -a -G mos-agent "$MOS_RUNTIME_USER"
 install -d -m 0750 /etc/mos /etc/mos/secrets /var/lib/mos/https-agent /var/lib/mos/homepage-agent "$MOS_STATE_ROOT/app-packages"
-if [ "$MOS_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_FRONT_DOOR" = 'public-vps' ]; then
+if [ "$MOS_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_FRONT_DOOR" = 'public-vps' ]; then
   MOS_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
   cat > /etc/mos/secrets/owner-claim.env <<MOS_OWNER_CLAIM
 MOS_OWNER_CLAIM_TOKEN=$MOS_OWNER_CLAIM_TOKEN
@@ -307,14 +292,8 @@ install -d -m 0700 /var/lib/mos/backup-agent
 install -d -m 0700 /var/lib/mos/update-agent /var/lib/mos/update-agent/jobs
 
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-cat > /etc/systemd/system/caddy.service.d/mos.conf <<'MOS_CADDY_OVERRIDE'
-[Service]
-EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
-ExecStart=
-ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
-ExecReload=
-ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
-MOS_CADDY_OVERRIDE
+cat > ${CADDY_SERVICE_OVERRIDE_PATH} <<'MOS_CADDY_OVERRIDE'
+${renderCaddyServiceOverride()}MOS_CADDY_OVERRIDE
 
 homepage_seed_marker="$MOS_STATE_ROOT/homepage/config/.mos-defaults"
 for source_file in "$MOS_INSTALL_ROOT/repo/infrastructure/homepage/"*; do
@@ -471,6 +450,9 @@ Environment=NODE_ENV=production
 Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
 Environment=MOS_HTTPS_TRANSACTION_ROOT=$MOS_STATE_ROOT/https-agent/transactions
 Environment=MOS_SUITE_MANAGER_PORT=$MOS_SUITE_MANAGER_PORT
+Environment=MOS_HOME_HOST=$MOS_HOME_HOST
+Environment=MOS_FRONT_DOOR=$MOS_FRONT_DOOR
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/https/agent.cjs
 Restart=always
 RestartSec=3
@@ -832,13 +814,17 @@ module.exports = {
   validateBootstrapInput,
 };
 const {
+  CADDY_BUILD_IMAGES,
+  CADDY_REQUIRED_MODULES,
+  CADDY_SERVICE_OVERRIDE_PATH,
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   JOURNALD_CONFIG_PATH,
+  PUBLIC_CLOUD_FRONT_DOORS,
   renderCaddyfile,
+  renderCaddyServiceOverride,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
-  renderPublicCloudCaddyfile,
   renderUnavailablePage,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,

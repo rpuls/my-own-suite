@@ -6,11 +6,11 @@
 // and which `${smtp.*}` keys exist — so the manifest grammar, the runtime
 // projection, and the settings form can never drift apart on the key names.
 
-class SmtpSettingsError extends Error {
+const { CodedError } = require('./coded-error.cjs');
+
+class SmtpSettingsError extends CodedError {
   constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
+    super(code, message, { statusCode });
   }
 }
 
@@ -168,10 +168,7 @@ function validateSmtpInput(rawInput, { keepExistingPassword = false } = {}) {
 module.exports = {
   DEFAULT_SMTP_PORTS,
   EMAIL_PATTERN,
-  SMTP_SECURITY_MODES,
   SMTP_TEMPLATE_KEYS,
   SmtpSettingsError,
-  inferSecurityFromPort,
-  normalizeSecurity,
   validateSmtpInput,
 };

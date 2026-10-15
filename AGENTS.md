@@ -22,8 +22,10 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Add/update an entry under `## [Unreleased]` in the same branch when the change affects Suite Manager or installed-platform behavior, operations, compatibility, or another outcome relevant to people updating MOS.
    - Touching platform-shipped code or config is necessary but not sufficient: the changelog is reserved for changes an updating operator would genuinely want to read. If a change is real but too small to matter to an updater, omit it entirely rather than writing a small bullet for it.
    - Do not log micro UI adjustments, cosmetic polish, icon/link/copy tweaks, or minor edits to seeded default content (dashboards, bookmarks, templates), even though they ship with the platform.
+   - A dependency update that ships to servers, such as a Dependabot pull request on the root `package.json` or `infrastructure/`, gets one condensed bullet under `### Changed` naming the notable new versions, even when nothing visible changes, so owners can see what their server now runs. Leave test-only tooling such as Playwright out of it.
    - Do not add changelog entries for documentation-only, public-site-only, landing-page-only, repository-maintenance, or contributor-workflow changes. Those are not updater-facing software behavior.
    - If documentation or public-site copy accompanies a software behavior change, describe the behavior once; do not separately log the documentation or site edit.
+   - Write each entry in the shape described at the top of `CHANGELOG.md`: owners read it on Suite Manager's update screen, which parses it, and `npm run release:check` refuses an `[Unreleased]` entry that screen would show wrongly.
    - Keep entries concise, user-relevant, and release-shaped.
    - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
    - Do not add a new changelog bullet for every follow-up fix, test tweak, or implementation step within the same area of work.
@@ -46,7 +48,12 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - If repo-owned host agents need new capabilities, update/restart them as part of the same managed update instead of adding UI around the partially applied state.
    - Treat a partially applied managed update as a regression to fix at the update mechanism level.
    - Installed app runtimes are intentionally outside a platform update's scope: each app runs from the package snapshot it was installed with, and app changes apply only through the per-app update transaction. A platform update must not silently rebuild installed apps, and must not claim to have updated them.
-8. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
+8. **Booting the MOS USB stick always reaches the installer, and the installer never exits.**
+   - This holds on every machine, including one already running MOS or Ubuntu: reinstalling and starting over are first-class.
+   - The stick must never run MOS from itself, never exit gracefully, and never fall through to an existing install on another disk. If anything does not go to plan, it stops with the reason on screen and restarts into the installer.
+   - This covers the whole boot chain, not just `image-builder/payload/mos-self-install`: firmware loader, shim, GRUB and the systemd unit. On 2026-10-03, shim's fallback (`EFI/BOOT/fbx64.efi`) restarted a stick into an existing "Ubuntu" boot entry, so the installer never ran.
+   - `test/unit/usb-installer-never-exits.test.cjs` and `image-builder/check-image-payload.sh` guard this. Never weaken them; a gap here is release-blocking.
+9. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
    - `npm test`, the CI workflow, the release gate and the pre-push hook all run that one file. A check that exists in one of them and not the others is the drift that lets a release tag fail on something no push was ever tested against.
    - Add a check by adding an entry to the `CHECKS` table, not by adding a `run:` step to `.github/workflows/ci.yml`. Workflow steps are for setup (checkout, Node, caches) and for reporters that never gate.
    - Pick the lane by what the check needs: `workspace` for anything that runs against a root `npm ci`, `site` for anything that needs the built site. The pre-push hook runs the `workspace` lane, so keep it around a minute.
@@ -81,7 +88,6 @@ Use these locations:
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
 - `site/`: MOS public/end-user documentation source; the deployed public site. GitHub Actions builds it and deploys to Cloudflare Pages from `main` and `staging` only (`.github/workflows/deploy-site.yml`).
-- `site-mos1-reference/`: preserved MOS1 public site source; no longer built or deployed. Frozen content only; no new product docs.
 - `apps/<app>/README.md`: app-level technical reference.
 - `scripts/README.md`: MOS operator/developer script and smoke-harness guidance.
 - `infrastructure/`: shared MOS runtime and installer substrate.
@@ -270,21 +276,24 @@ For each app page:
 
 The repo includes real black-box Playwright tests for MOS flows without test-only application bypasses.
 
-- Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
-- Do not run `npm run smoke:do:reset` automatically as an agent. It creates or replaces a paid smoke Droplet, destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling, and produces noisy logs. Ask the user to run it and paste only the relevant failure output or final readiness summary.
-- `npm run smoke:do:destroy` may be run by an agent only when explicitly asked or confirmed by the user, because it is a paid-resource cleanup command.
+- Run lab E2E as an agent only when a skill requires it (the `update-mos-app` evidence gate) or the user asks. Read the outcome from `test/e2e/results/<run>/` (`summary.json`, `network/report.md`, `failures/`), never from the streamed Playwright and Docker output, which floods the context window. Otherwise ask the user to run the relevant command and paste only the failure.
+- The `network` step holds every app to the `outbound` list in its `privacy-review.json`, the same list owners read in Suite Manager and on the site. A host the step rejects is a privacy finding: assess it before recording it, and never add one just so the step passes.
+- Create a paid cloud server for testing only when the user asks for one, and delete it when the run is done.
+- Backup and restore drills on lab and cloud test servers use only the disposable lab bucket, never a personal or production bucket. Never print its keys.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
 - Keep E2E tooling isolated under `test/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.
 - When changing onboarding, auth, Homepage routing, or app integration behavior, consider whether `npm run e2e:full` should be rerun before finalizing.
+- **E2E code outside `apps/` names no app.** The lab suite is core steps in `test/e2e/modules/` composed into paths, plus one module per app package at `apps/<id>/e2e/index.mjs` holding everything particular to that app: its sign-in, the data its journey makes, and the check that the data survived. Every catalog app ships one. `test/unit/e2e-app-modules.test.mjs` guards both rules; when an app needs something core does not offer, add a generic capability to core rather than an app branch.
+- A package's `e2e/` folder is not package content (see `docs/decisions.md`), so a test change never needs a package version bump or a catalog re-sign.
 
 Useful commands:
 
 - `npm run e2e:install` installs Playwright browser dependencies.
 - `npm run e2e:local` runs the local MOS browser suite.
 - `npm run e2e:local:headed` runs the local MOS browser suite in a visible browser.
-- `npm run e2e:full` runs the Hyper-V full-platform suite against an already-running VM.
-- `npm run e2e:full:headed` runs the Hyper-V suite in a visible browser.
+- `npm run e2e -- <steps and @paths>` runs a path against an already-running lab: `@full`, `@app-cycle <app>`, `@app-dr <app>`, `@update <app>`, or steps such as `reset owner install:<app> app:<app>`. `--list` shows every step and path, `--dry-run` resolves without a browser, `--each-app` runs a one-app path per catalog app. Results land in `test/e2e/results/<run>/` (see `test/README.md`).
+- `npm run e2e:full` is `npm run e2e -- @full`: the whole platform with every catalog app. `npm run e2e:full:headed` shows the browser.
 
 ## Container and Versioning Rules
 
@@ -355,4 +364,5 @@ When adding/changing an app service, also update:
 
 - `apps/<app>/README.md` technical specs (env vars, volumes, healthchecks, dependencies).
 - package manifest setup fields, resources, routes, and capabilities when relevant.
-- `.github/dependabot.yml` Docker entries for the affected app root directory.
+
+Do not add app directories to `.github/dependabot.yml`. A Dependabot pull request moves an image pin without the package version, privacy review and catalog that must move with it, so app updates are Norn's.

@@ -16,7 +16,15 @@ const { runCommand } = require('../lib/command-output.cjs');
 const FAKE_TOOLS = String.raw`
 const [program, command] = process.argv.slice(2);
 if (program === 'caddy' && command === 'list-modules') {
-  process.stdout.write('dns.providers.cloudflare\nhttp.handlers.reverse_proxy\n');
+  process.stdout.write('dns.providers.acmedns\ndns.providers.cloudflare\nhttp.handlers.reverse_proxy\n');
+} else if (program === 'caddy' && command === 'adapt') {
+  const config = require('node:fs').readFileSync(process.argv[process.argv.indexOf('--config') + 1], 'utf8');
+  if (config.includes('tls_dns')) {
+    process.stderr.write('Error: adapting config using caddyfile: unrecognized directive: tls_dns\n');
+    process.exitCode = 1;
+  }
+} else if (program === 'systemctl' && command === 'reload' && process.env.FAKE_RELOAD !== 'fail') {
+  // reloaded
 } else if (program === 'caddy' && command === 'validate') {
   process.stderr.write('Error: adapting config using caddyfile: /etc/caddy/Caddyfile:14: unrecognized directive: tls_dns\n');
   process.stderr.write('environment: CLOUDFLARE_API_TOKEN=' + process.env.CLOUDFLARE_API_TOKEN + '\n');
@@ -32,14 +40,14 @@ if (program === 'caddy' && command === 'list-modules') {
 
 const token = 'cf_token_value_0123456789abcdef';
 
-async function testAdapter() {
+async function testAdapter({ env = {} } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-https-adapter-'));
   const fakeTools = path.join(root, 'fake-tools.cjs');
   await fsp.writeFile(fakeTools, FAKE_TOOLS);
   const adapter = new SystemHttpsAdapter({
     caddyBinary: '/opt/caddy',
     caddyfilePath: path.join(root, 'etc', 'Caddyfile'),
-    execute: (file, args, options = {}) => runCommand(process.execPath, [fakeTools, path.basename(file), ...args], { ...options, env: { ...process.env, ...(options.env || {}) } }),
+    execute: (file, args, options = {}) => runCommand(process.execPath, [fakeTools, path.basename(file), ...args], { ...options, env: { ...process.env, ...env, ...(options.env || {}) } }),
     secretEnvPath: path.join(root, 'secrets', 'caddy-cloudflare.env'),
     transactionRoot: path.join(root, 'transactions'),
   });
@@ -48,7 +56,42 @@ async function testAdapter() {
 
 test('the module check reads what caddy lists', async () => {
   const { adapter } = await testAdapter();
-  assert.equal(await adapter.hasCloudflareModule(), true);
+  assert.deepEqual(await adapter.caddyModules(), ['dns.providers.acmedns', 'dns.providers.cloudflare', 'http.handlers.reverse_proxy']);
+});
+
+test('ensure writes and reloads only a rendering that differs, and Caddy accepts', async () => {
+  const { adapter, root } = await testAdapter();
+  const live = path.join(root, 'etc', 'Caddyfile');
+  await fsp.mkdir(path.dirname(live), { recursive: true });
+  await fsp.writeFile(live, 'http://old {\n}\n');
+
+  assert.equal(await adapter.ensureCaddyfile('http://new {\n}\n'), true);
+  assert.equal(await fsp.readFile(live, 'utf8'), 'http://new {\n}\n');
+  assert.equal(await adapter.ensureCaddyfile('http://new {\n}\n'), false);
+
+  await assert.rejects(() => adapter.ensureCaddyfile('http://new {\n  tls_dns x\n}\n'), (error) => error.code === 'HTTPS_CADDY_VALIDATION_FAILED');
+  assert.equal(await fsp.readFile(live, 'utf8'), 'http://new {\n}\n');
+  await assert.rejects(() => fsp.access(`${live}.mos-next`));
+});
+
+test('an ensure Caddy will not reload with puts the previous file back and quotes the log', async () => {
+  const { adapter, root } = await testAdapter({ env: { FAKE_RELOAD: 'fail' } });
+  const live = path.join(root, 'etc', 'Caddyfile');
+  await fsp.mkdir(path.dirname(live), { recursive: true });
+  await fsp.writeFile(live, 'http://old {\n}\n');
+
+  await assert.rejects(() => adapter.ensureCaddyfile('http://new {\n}\n'), (error) => {
+    assert.equal(error.code, 'HTTPS_CADDY_RELOAD_FAILED');
+    assert.match(error.details.join('\n'), /address already in use/u);
+    return true;
+  });
+  assert.equal(await fsp.readFile(live, 'utf8'), 'http://old {\n}\n');
+});
+
+test('the certificate log keeps only the newest lines naming that certificate', async () => {
+  const { adapter } = await testAdapter();
+  assert.deepEqual(await adapter.certificateLog('loading initial config'), ['{"level":"error","msg":"loading initial config","error":"listen tcp :443: bind: address already in use"}']);
+  assert.deepEqual(await adapter.certificateLog('*.192-168-1-5.local.myownsuite.org'), []);
 });
 
 test('a validation failure carries what caddy wrote, without the token or the command line', async () => {

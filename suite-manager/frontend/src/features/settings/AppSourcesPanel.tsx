@@ -212,7 +212,9 @@ export function AppSourcesPanel() {
 
   return <>
     <Panel>
-      <PanelHead title="App sources you added" />
+      <PanelHead actions={<a className="mos-btn mos-btn-secondary" href="/suite-manager/apps">Add source</a>} heading="h3" title="App sources">
+        <p>Extra catalogs you added on top of the MOS App Catalog. Their apps appear on the Apps page, where you add a new one.</p>
+      </PanelHead>
       {sources.length ? <PanelList>
         {sources.map((source) => <SourceRow
           busy={busyId === source.id}

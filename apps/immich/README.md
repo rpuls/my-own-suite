@@ -36,8 +36,8 @@ Endpoint: `GET /api/server/ping` (returns `{"res":"pong"}`; the same path the up
 ## Notes
 
 - First admin account is created directly in Immich web UI after first startup
-- The server and machine-learning images are pinned to the amd64 manifests for Immich v3.1.0. The database and Valkey images follow the digests pinned by the official Immich v3.1.0 Docker Compose file rather than their moving tags, so the package runs the combination upstream tests.
-- Immich database migrations are forward-only. Once a v3.1.0 instance has started and migrated, repinning the images to an earlier Immich version is not supported by upstream.
+- The server and machine-learning images are pinned to the amd64 manifests for Immich v3.2.4. The database and Valkey images follow the digests pinned by the official Immich v3.2.4 Docker Compose file rather than their moving tags, so the package runs the combination upstream tests.
+- Immich database migrations are forward-only. Once a v3.2.4 instance has started and migrated, repinning the images to an earlier Immich version is not supported by upstream.
 - Machine learning requires CPU with AVX2 support for optimal performance
 - All services are internal except the main Immich server port
 - Startup may take several minutes on first run while database is initialized

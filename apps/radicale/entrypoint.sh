@@ -9,6 +9,15 @@ if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_PASS" ]; then
   exit 1
 fi
 
+# Radicale 3.8 refuses these logins, so starting would lock the owner out; failing
+# here makes an update to this version roll back instead.
+case "$ADMIN_USER" in
+  @* | *@ | *@*@* | *,* | *:*)
+    echo "ERROR: Radicale 3.8 rejects the username '$ADMIN_USER': it may contain at most one '@', not at its start or end, and no ',' or ':'."
+    exit 1
+    ;;
+esac
+
 /venv/bin/python - <<'PY'
 import configparser
 import datetime

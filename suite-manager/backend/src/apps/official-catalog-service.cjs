@@ -2,7 +2,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
+const { CodedError } = require('../../../../shared/coded-error.cjs');
+const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, PACKAGE_TESTS_DIR, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
@@ -11,12 +12,7 @@ const { readSigningPublicKey, verifyCatalogSignature } = require('./catalog-sign
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 
-class OfficialCatalogError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
+class OfficialCatalogError extends CodedError {}
 
 function githubRepository(repository) {
   let url;
@@ -250,6 +246,7 @@ class OfficialCatalogService {
         const canonical = canonicalPackagePath(relativePath);
         if (!canonical || item.path !== `${entry.path}/${canonical}`) throw new OfficialCatalogError('CANDIDATE_PATH_INVALID', 'Candidate contains a non-canonical path.');
         if (item.type === 'dir') {
+          if (canonical === PACKAGE_TESTS_DIR) continue;
           await visit(item.path);
           continue;
         }
@@ -342,9 +339,10 @@ class OfficialCatalogService {
       // would make a conditional request return 304 for the wrong document.
       if (this.cache && this.cache.ref !== catalogRef) this.cache = null;
       const refUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/commits/${encodeURIComponent(catalogRef)}`;
-      const ref = JSON.parse((await boundedResponse(await this.request(refUrl), this.limits.catalogBytes)).toString('utf8'));
-      if (!COMMIT_PATTERN.test(String(ref.sha || ''))) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
-      const revision = ref.sha;
+      // The commit id alone: the full commit carries its whole diff, and a release
+      // merge on `main` made that 1.2 MB, over the limit for every stable server.
+      const revision = (await boundedResponse(await this.request(refUrl, { Accept: 'application/vnd.github.sha' }), 1024)).toString('utf8').trim();
+      if (!COMMIT_PATTERN.test(revision)) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
       const catalogUrl = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/catalog.json`;
       const response = await this.request(catalogUrl, this.cache?.revision === revision && this.cache?.etag ? { 'If-None-Match': this.cache.etag } : {});
       if (response.status === 304 && this.cache) {

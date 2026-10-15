@@ -6,14 +6,15 @@
 // summary — including the open questions, which are the part a sceptic should
 // read first.
 import type { PrivacyAssessment, PrivacyEvidence } from '../lib/app-catalog'
-import { reviewDateLabel } from '../lib/privacy-posture'
+import { OUTBOUND_FROM_LABEL, outboundHostLabel, reviewDateLabel } from '../lib/privacy-posture'
 
 interface Props {
   appName: string
+  appVersion: string
   assessment: PrivacyAssessment
 }
 
-const { appName, assessment } = Astro.props
+const { appName, appVersion, assessment } = Astro.props
 
 // Ordered strongest-first: what was watched on the wire outranks what the
 // package is configured to do, which outranks what a publisher documents.
@@ -38,15 +39,15 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
 <div class="privacy-report">
   <p class="privacy-report-intro">
     This is the assessment behind {appName}'s posture grade, exactly as it ships inside the package.
-    It describes package version <strong>{assessment.packageVersion}</strong> and nothing else — install
-    a different version and its own assessment travels with it.
+    It describes {appVersion ? <>{appName}{' '}<strong>{appVersion}</strong> as MOS packages it</> : <>this exact package</>} and
+    nothing else — install a different version and its own assessment travels with it.
     {reviewed && <> Reviewed {reviewed}{expires && <>, due for reassessment by {expires}</>}.</>}
   </p>
 
   <h3 id="privacy-assessment-scope">What was reviewed</h3>
   <ul class="privacy-report-scope">
     <li>
-      <strong>Package</strong> — version {assessment.packageVersion}, content digest
+      <strong>Package</strong> — content digest
       <code>{shortDigest(assessment.packageDigest)}</code>
       {assessment.sourceRevision && <> at commit <code>{String(assessment.sourceRevision).slice(0, 12)}</code></>}
     </li>
@@ -66,6 +67,31 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
       <ul class="privacy-report-excluded">
         {assessment.clientsExcluded.map((item) => <li>{item}</li>)}
       </ul>
+    </>
+  )}
+
+  {assessment.outbound && (
+    <>
+      <h3 id="privacy-assessment-outbound">What it connects to</h3>
+      {assessment.outbound.length === 0 ? (
+        <p>Nothing outside your server, in normal use as MOS ships it.</p>
+      ) : (
+        <>
+          <p class="privacy-report-note">
+            Every host {appName} contacts in normal use as MOS ships it, before you turn anything on.
+            The MOS test suite fails this package if it contacts a host this list does not name.
+          </p>
+          <ul class="privacy-report-outbound">
+            {assessment.outbound.map((item) => (
+              <li>
+                <p><code>{outboundHostLabel(item.host)}</code> <span class="privacy-report-source">{OUTBOUND_FROM_LABEL[item.from]}</span></p>
+                <p>{item.purpose}</p>
+                <p class="privacy-report-source">Received by {item.receiver}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   )}
 
@@ -204,5 +230,18 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
   .privacy-report-open > li,
   .privacy-report-excluded > li {
     color: var(--mos-color-text-muted);
+  }
+
+  .privacy-report-outbound > li {
+    margin-bottom: var(--mos-space-3);
+  }
+
+  .privacy-report-outbound p {
+    margin: 0;
+  }
+
+  .privacy-report-outbound code {
+    font-weight: 700;
+    overflow-wrap: anywhere;
   }
 </style>

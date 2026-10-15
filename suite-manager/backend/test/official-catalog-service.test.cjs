@@ -44,7 +44,7 @@ function signedResponse(value, key = publisher.privateKey) {
 // feed, at one revision.
 function serveRepo({ advisories = null, key = publisher.privateKey, value = catalog } = {}) {
   return async (url) => {
-    if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+    if (url.includes('/commits/')) return new Response(revision);
     if (url.endsWith('/apps/catalog.json')) return jsonResponse(value);
     if (url.endsWith('/apps/catalog.json.sig')) return signedResponse(value, key);
     if (url.endsWith('/apps/advisories.json')) return advisories ? jsonResponse(advisories) : new Response('Not Found', { status: 404 });
@@ -94,6 +94,24 @@ test('refresh resolves the branch once and downloads catalog content from that i
   assert.equal(result.status.freshness, 'fresh');
 });
 
+// Measured on a stable droplet on 2026-10-08: the full commit for main's tip,
+// a release merge, was 1,247,962 bytes.
+test('a release merge on main does not stop the catalog from refreshing', async () => {
+  const serve = serveRepo();
+  const service = catalogService({
+    fetchImpl: async (url, options) => {
+      if (!url.includes('/commits/')) return serve(url);
+      return options.headers.Accept === 'application/vnd.github.sha'
+        ? new Response(revision)
+        : jsonResponse({ files: [{ patch: 'x'.repeat(1_247_962) }], sha: revision });
+    },
+    stateDir: tempDir(),
+  });
+  const result = await service.refresh();
+  assert.equal(result.status.error, null);
+  assert.equal(result.status.revision, revision);
+});
+
 test('refresh treats a 304 on the conditional catalog request as unchanged, not a redirect', async () => {
   const stateDir = tempDir();
   // Seed the cache a prior successful refresh leaves behind: signed bytes, the
@@ -110,7 +128,7 @@ test('refresh treats a 304 on the conditional catalog request as unchanged, not 
   let conditional = false;
   const service = catalogService({
     fetchImpl: async (url, options) => {
-      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.includes('/commits/')) return new Response(revision);
       if (url.endsWith('/apps/catalog.json')) {
         // Main is unchanged, so the refresh sends If-None-Match and GitHub answers
         // 304 — a Location-less 3xx that must not be read as a redirect.
@@ -342,7 +360,7 @@ test('a catalog signed by anyone else is refused and never becomes the cache', a
 test('a catalog whose contents no longer match its signature is refused', async () => {
   const service = catalogService({
     fetchImpl: async (url) => {
-      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.includes('/commits/')) return new Response(revision);
       // Signed as one thing, served as another: a single flipped version.
       if (url.endsWith('/apps/catalog.json')) return jsonResponse({ ...catalog, packages: { ...catalog.packages, immich: { ...catalog.packages.immich, packageVersion: '9.9.9' } } });
       return signedResponse(catalog);
@@ -456,6 +474,38 @@ test('candidate download is revision-bound and verifies the complete digest befo
   assert.equal(candidate.source.revision, revision);
 });
 
+test('candidate download never fetches the package e2e folder', async (t) => {
+  const fixture = tempDir();
+  const manifest = { manifestVersion: 1, category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
+  fs.writeFileSync(path.join(fixture, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
+  const candidateDigest = digestAppPackage(fixture);
+  const stateDir = writeVerifiedCache(tempDir(), {
+    packages: { example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
+    schemaVersion: 1,
+  });
+  const raw = Object.fromEntries(['Dockerfile', 'manifest.json'].map((name) => [name, fs.readFileSync(path.join(fixture, name))]));
+  const requested = [];
+  const service = catalogService({
+    fetchImpl: async (url) => {
+      requested.push(url);
+      if (url.includes('/contents/apps/example?')) {
+        return jsonResponse([
+          ...Object.entries(raw).map(([name, bytes]) => ({ download_url: `https://raw.githubusercontent.com/rpuls/my-own-suite/${revision}/apps/example/${name}`, path: `apps/example/${name}`, size: bytes.length, type: 'file' })),
+          { path: 'apps/example/e2e', type: 'dir' },
+        ]);
+      }
+      return new Response(raw[url.split('/').at(-1)]);
+    },
+    platformVersion: '0.11.0',
+    stateDir,
+  });
+  const candidate = await service.downloadCandidate('example');
+  t.after(() => { candidate.cleanup(); fs.rmSync(fixture, { force: true, recursive: true }); });
+  assert.equal(candidate.packageDigest, candidateDigest);
+  assert.equal(requested.filter((url) => url.includes('/e2e')).length, 0);
+});
+
 // The failure that took a month to name: a release that adds a required catalog
 // field reads the catalog already published on `main` until its own lands there,
 // and `CATALOG_INVALID` described that as a broken catalog the owner should do
@@ -515,7 +565,7 @@ test('a refresh failure is logged once per state, not once per attempt', async (
 test('a branch track reads its own branch, and a release tag reads main', async () => {
   const asked = [];
   const serveRef = async (url) => {
-    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return jsonResponse({ sha: revision }); }
+    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return new Response(revision); }
     return serveRepo()(url);
   };
 

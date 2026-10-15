@@ -3,7 +3,7 @@ const path = require('node:path');
 
 // Prose that makes claims to a reader. `CHANGELOG.md` is deliberately absent: it
 // is a historical record, so a claim that was true for 0.14.0 is still correct
-// there. `site-mos1-reference/` is frozen by the same logic.
+// there.
 const SCANNED = [
   { extensions: ['.md', '.mdx'], dir: path.join('site', 'src', 'content') },
   { extensions: ['.astro'], dir: path.join('site', 'src', 'components') },

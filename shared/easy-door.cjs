@@ -12,6 +12,8 @@
 const os = require('node:os');
 
 const EASY_DOOR_ZONE = 'local.myownsuite.org';
+// Holds the DNS-01 token for each box's wildcard; see infrastructure/acme-responder/.
+const EASY_DOOR_ACME_SERVER = 'https://acme.myownsuite.org';
 // The line the Caddyfile renderers write above the Easy Door site block, so a
 // reader of the live file can see the door in it. Every LAN Caddyfile carries
 // the block; only the public-cloud one never did.
@@ -20,11 +22,12 @@ const EASY_DOOR_CADDY_MARKER = '# mos-easy-door';
 const IPV4_OCTET = '(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])';
 const IPV4_PATTERN = new RegExp(`^${IPV4_OCTET}(?:\\.${IPV4_OCTET}){3}$`, 'u');
 // The three RFC1918 ranges the nameserver's Corefile answers for, in the dashed
-// form the name carries, as a Go RE2 source string for Caddy's `header_regexp`.
-// Caddy matches the name by pattern rather than binding one address because the
-// Caddyfile is baked into the published disk image, which cannot know the
-// address the machine it boots on will be given.
-const EASY_DOOR_HOME_HOST_REGEXP = `^home\\.(?:10-${IPV4_OCTET}|172-(?:1[6-9]|2[0-9]|3[01])|192-168)-${IPV4_OCTET}-${IPV4_OCTET}\\.local\\.myownsuite\\.org$`;
+// form the name carries. Also the only label the ACME responder holds tokens for.
+const EASY_DOOR_DASHED_ADDRESS = `(?:10-${IPV4_OCTET}|172-(?:1[6-9]|2[0-9]|3[01])|192-168)-${IPV4_OCTET}-${IPV4_OCTET}`;
+// As a Go RE2 source string for Caddy's `header_regexp`. Caddy matches the name
+// by pattern rather than binding one address because the Caddyfile is baked into
+// the published disk image, which cannot know the address the machine will get.
+const EASY_DOOR_HOME_HOST_REGEXP = `^home\\.${EASY_DOOR_DASHED_ADDRESS}\\.local\\.myownsuite\\.org$`;
 
 function isPrivateIPv4(address) {
   const value = String(address || '');
@@ -61,6 +64,12 @@ function easyDoorHomeHost(address) {
   return base ? `home.${base}` : null;
 }
 
+// The address an Easy Door name encodes, or null for any other name.
+function easyDoorAddressOf(host) {
+  const match = new RegExp(`^(?:[^.]+\\.)?(${EASY_DOOR_DASHED_ADDRESS})\\.${EASY_DOOR_ZONE.replace(/\./gu, '\\.')}$`, 'u').exec(String(host || ''));
+  return match ? match[1].replace(/-/gu, '.') : null;
+}
+
 // The console banner has to print the same address Suite Manager's host gate
 // admits, and shell cannot reproduce the selection rule above — a second
 // implementation of it is exactly what this module exists to prevent. Both
@@ -86,10 +95,13 @@ if (require.main === module) {
 }
 
 module.exports = {
+  EASY_DOOR_ACME_SERVER,
   EASY_DOOR_CADDY_MARKER,
+  EASY_DOOR_DASHED_ADDRESS,
   EASY_DOOR_HOME_HOST_REGEXP,
   EASY_DOOR_ZONE,
   detectServerAddress,
+  easyDoorAddressOf,
   easyDoorBaseDomain,
   easyDoorHomeHost,
   isPrivateIPv4,

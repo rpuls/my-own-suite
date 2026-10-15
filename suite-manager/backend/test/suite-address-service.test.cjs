@@ -26,6 +26,8 @@ function fakeAgent(overrides = {}) {
     apply: record('apply', { rollbackId: 'rollback-one' }),
     commit: record('commit', { status: 'committed' }),
     discardParkedCredential: record('discardParkedCredential', { status: 'discarded' }),
+    easyDoorStatus: record('easyDoorStatus', { easyDoorBase: '192-168-30-104.local.myownsuite.org', log: ['{"msg":"will retry","identifier":"*.192-168-30-104.local.myownsuite.org"}'] }),
+    ensure: record('ensure', { changed: false, easyDoorBase: '192-168-30-104.local.myownsuite.org' }),
     rollback: record('rollback', { status: 'rolled-back' }),
     status: record('status', { capabilities: ['cloudflare-dns01.apply'] }),
     ...overrides,
@@ -135,7 +137,7 @@ test('a domain change runs its stages in order, records the address only after t
   assert.equal(status.lastChange.stage, 'apps');
   assert.deepEqual(status.lastChange.result, { status: 'applied' });
   assert.deepEqual(order.map((entry) => entry[0]), ['apply', 'commit', 'rebake']);
-  assert.deepEqual(order[0][1], { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', bootstrapHost: 'home.mos.home', cloudflareApiToken: 'cloudflare_token_1234567890' });
+  assert.deepEqual(order[0][1], { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'cloudflare_token_1234567890' });
   const recorded = suiteAddress.read();
   assert.deepEqual({ acmeEmail: recorded.acmeEmail, baseDomain: recorded.baseDomain, by: recorded.by, host: recorded.host, kind: recorded.kind, provider: recorded.provider, scheme: recorded.scheme },
     { acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', by: 'change-suite-address', host: 'home.mos.example.com', kind: 'domain', provider: 'cloudflare', scheme: 'https' });
@@ -212,14 +214,16 @@ test('an offered domain is served with the parked credential and the offer is cl
   await service.change({ kind: 'domain', useOffered: true });
   status = await settled(service);
   assert.equal(status.lastChange.status, 'applied');
-  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', bootstrapHost: 'home.mos.home', useParkedCredential: true });
+  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', useParkedCredential: true });
   assert.equal(status.address.baseDomain, 'old.example.com');
   assert.equal(status.offered, null);
 
   // Dismissing removes the offer here and the credential at the agent.
+  const discards = () => agent.calls.filter(([name]) => name === 'discardParkedCredential').length;
+  const discardedBefore = discards();
   suiteAddress.writeOffer({ acmeEmail: null, baseDomain: 'other.example.com', from: 'restore' });
   assert.deepEqual(await service.dismissOffer(), { dismissed: true, offer: { baseDomain: 'other.example.com' } });
-  assert.equal(agent.calls.filter(([name]) => name === 'discardParkedCredential').length, 1);
+  assert.equal(discards(), discardedBefore + 1);
   assert.deepEqual(await service.dismissOffer(), { dismissed: false });
   // An offer with no contact needs one from the owner.
   suiteAddress.writeOffer({ acmeEmail: null, baseDomain: 'other.example.com', from: 'restore' });
@@ -261,12 +265,111 @@ test('address drift is reported and following the Easy Door re-bakes without tou
   await assert.rejects(() => lanName.service.change({ kind: 'easy-door' }), (error) => error.code === 'EASY_DOOR_UNAVAILABLE');
 });
 
-test('a domain change is refused on cloud installs and with anything but the three fields', async () => {
-  const cloud = makeService({ address: addressForHost('home.203.0.113.5.sslip.io', { scheme: 'https' }), detectAddress: () => '203.0.113.5', frontDoor: 'cloud-init' });
-  cloud.service.start();
-  await assert.rejects(() => cloud.service.change(domainInput), (error) => error.code === 'PRIVATE_HTTPS_UNAVAILABLE' && error.statusCode === 409);
-  assert.equal((await cloud.service.status()).privateHttpsAvailable, false);
+function publicServer({ records = {}, ...rest } = {}) {
+  const resolveHost = async (host) => {
+    if (host === 'home.203.0.113.5.sslip.io') return ['203.0.113.5'];
+    const answer = records[host] ?? records[`*.${host.split('.').slice(1).join('.')}`];
+    if (answer instanceof Error) throw answer;
+    if (!answer) throw Object.assign(new Error('nx'), { code: 'ENOTFOUND' });
+    return answer;
+  };
+  const made = makeService({ address: addressForHost('home.203.0.113.5.sslip.io', { scheme: 'https' }), bootstrapHost: 'home.203.0.113.5.sslip.io', bootstrapScheme: 'https', detectAddress: () => '10.0.0.5', frontDoor: 'public-vps', resolveHost, ...rest });
+  made.service.start();
+  return made;
+}
 
+test('every public install is on the public-server track and names its public address', async () => {
+  for (const frontDoor of ['cloud-init', 'public-vps']) {
+    const status = await publicServer({ frontDoor }).service.status();
+    assert.equal(status.track, 'public-server');
+    assert.equal(status.serverAddress, '203.0.113.5');
+  }
+  const home = makeService();
+  home.service.start();
+  assert.equal((await home.service.status()).track, 'home-server');
+});
+
+async function until(predicate) {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('condition never held');
+}
+
+const applied = (agent) => agent.calls.some(([name]) => name === 'apply');
+
+test('a public server waits for its record, says what it sees, and moves once the wildcard points here', async () => {
+  const records = {};
+  const { agent, service } = publicServer({ dnsRecheckMs: 5, records });
+  await assert.rejects(() => service.change(domainInput), (error) => error.code === 'INVALID_HTTPS_REQUEST');
+
+  await service.change({ baseDomain: 'Example.com', kind: 'domain' });
+  await until(() => service.liveProgress().dns);
+  let status = await service.status();
+  assert.equal(status.lastChange.stage, 'dns');
+  assert.match(status.lastChange.live.dns.sentence, /home\.example\.com has no DNS record yet\. Add \*\.example\.com → 203\.0\.113\.5/u);
+  assert.equal(applied(agent), false);
+
+  records['*.example.com'] = ['203.0.113.5'];
+  status = await settled(service);
+  assert.equal(status.lastChange.status, 'applied');
+  assert.deepEqual(agent.calls.find(([name]) => name === 'apply')[1], { baseDomain: 'example.com' });
+  assert.deepEqual({ host: status.address.host, resolvesHere: status.address.resolvesHere, scheme: status.address.scheme }, { host: 'home.example.com', resolvesHere: true, scheme: 'https' });
+});
+
+test('a record that never arrives fails the move with what DNS last said, and nothing changes', async () => {
+  for (const [records, said] of [
+    [{ '*.example.com': ['104.21.5.6'] }, /home\.example\.com points at 104\.21\.5\.6, not this server \(203\.0\.113\.5\)\. If your DNS provider proxies the record, such as Cloudflare's orange cloud, set it to DNS only\./u],
+    [{ 'home.example.com': ['203.0.113.5'] }, /other names under example\.com do not, and every app needs its own\. Make the record \*\.example\.com\./u],
+    [{ '*.example.com': Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }) }, /MOS could not look up example\.com just now\./u],
+  ]) {
+    const { agent, service, suiteAddress } = publicServer({ dnsWaitMs: 0, records });
+    await service.change({ baseDomain: 'example.com', kind: 'domain' });
+    const status = await settled(service);
+    assert.equal(status.lastChange.errorCode, 'DOMAIN_NOT_POINTED_HERE');
+    assert.match(status.lastChange.diagnostics, said);
+    assert.match(status.lastChange.diagnostics, /changed nothing/u);
+    assert.equal(applied(agent), false);
+    assert.equal(suiteAddress.read().host, 'home.203.0.113.5.sslip.io');
+  }
+});
+
+test('a move still waiting for DNS can be cancelled, and nothing else can', async () => {
+  const { agent, service, suiteAddress } = publicServer({ dnsRecheckMs: 60_000 });
+  assert.throws(() => service.cancelChange(), (error) => error.code === 'ADDRESS_CHANGE_NOT_CANCELLABLE');
+  await service.change({ baseDomain: 'example.com', kind: 'domain' });
+  await until(() => service.liveProgress().dns);
+  assert.deepEqual(service.cancelChange(), { cancelling: true });
+  const status = await settled(service);
+  assert.equal(status.lastChange.errorCode, 'ADDRESS_CHANGE_CANCELLED');
+  assert.equal(applied(agent), false);
+  assert.equal(suiteAddress.read().host, 'home.203.0.113.5.sslip.io');
+});
+
+test('the status names the apps a move rebuilds, and a move reports each one with the time left', async () => {
+  const seen = [];
+  let service;
+  const rebake = async (address, { onApp }) => {
+    onApp({ current: 'Immich', done: 0, total: 3 });
+    seen.push(service.liveProgress().apps);
+    onApp({ current: 'Seafile', done: 1, total: 3 });
+    seen.push(service.liveProgress().apps);
+    onApp({ current: null, done: 3, total: 3 });
+    return { status: 'applied' };
+  };
+  ({ service } = makeService({ address: addressForHost('home.mos.home'), installedApps: () => ['Immich', 'Seafile', 'Vaultwarden'], rebake }));
+  service.start();
+  assert.deepEqual((await service.status()).appsToRebuild, ['Immich', 'Seafile', 'Vaultwarden']);
+
+  await service.change(domainInput);
+  await settled(service);
+  assert.deepEqual(seen[0], { current: 'Immich', done: 0, remainingSeconds: null, total: 3 });
+  assert.equal(seen[1].current, 'Seafile');
+  assert.ok(seen[1].remainingSeconds > 0);
+});
+
+test('a home server\'s domain change takes exactly the three fields', async () => {
   const { service } = makeService({ address: addressForHost('home.mos.home') });
   service.start();
   await assert.rejects(() => service.change({ ...domainInput, extra: true }), (error) => error.code === 'INVALID_HTTPS_REQUEST');
@@ -297,4 +400,74 @@ test('status says whether a domain resolves to this machine, and says nothing fo
   const doorStatus = await door.service.status();
   assert.equal(doorStatus.address.resolvesHere, null);
   assert.equal(doorStatus.agentAvailable, false);
+});
+
+const EASY_DOOR = 'home.192-168-30-104.local.myownsuite.org';
+const held = async () => ({ valid_to: 'Dec 31 12:00:00 2026 GMT' });
+const missing = async () => { throw new Error('unable to verify the first certificate'); };
+
+test('once the Easy Door certificate is held, a suite recorded on that door moves to HTTPS by itself', async () => {
+  const { agent, service, suiteAddress } = makeService({ probeCertificate: held });
+  service.start();
+  service.recordDoor(EASY_DOOR, { scheme: 'http' });
+
+  await service.watchTick();
+  await service.running;
+
+  assert.equal(agent.calls[0][0], 'ensure');
+  assert.deepEqual({ host: suiteAddress.read().host, scheme: suiteAddress.read().scheme }, { host: EASY_DOOR, scheme: 'https' });
+  const status = await service.status();
+  assert.equal(status.lastChange.status, 'applied');
+  assert.deepEqual({ notAfter: status.easyDoorCertificate.notAfter, state: status.easyDoorCertificate.state }, { notAfter: '2026-12-31T12:00:00.000Z', state: 'held' });
+  assert.equal(status.easyDoorUrl, `https://${EASY_DOOR}/`);
+  assert.equal(service.httpsRedirectFor(EASY_DOOR), `https://${EASY_DOOR}`);
+
+  await service.watchTick();
+  assert.equal(agent.calls.filter(([name]) => name === 'apply').length, 0);
+  assert.equal(service.running, null, 'a suite already on HTTPS is left alone');
+});
+
+test('while the certificate is pending the suite stays on HTTP and the status carries Caddy\'s reason', async () => {
+  const { service, suiteAddress } = makeService({ probeCertificate: missing });
+  service.start();
+  service.recordDoor(EASY_DOOR, { scheme: 'http' });
+
+  await service.watchTick();
+  assert.equal(service.running, null);
+  assert.equal(suiteAddress.read().scheme, 'http');
+  assert.equal(service.httpsRedirectFor(EASY_DOOR), null);
+  const status = await service.status();
+  assert.equal(status.easyDoorCertificate.state, 'pending');
+  assert.match(status.easyDoorCertificate.log[0], /will retry/u);
+  assert.equal(status.easyDoorUrl, `http://${EASY_DOOR}/`);
+});
+
+test('a moved address, a public cloud install and a running change never switch the suite', async () => {
+  const moved = makeService({ detectAddress: () => '192.168.30.200', probeCertificate: held });
+  moved.service.start();
+  moved.service.recordDoor(EASY_DOOR, { scheme: 'http' });
+  await moved.service.watchTick();
+  assert.equal(moved.service.running, null, 'the certificate follows the live address; moving the suite stays the owner\'s button');
+  assert.equal(moved.suiteAddress.read().scheme, 'http');
+
+  let probed = false;
+  const cloud = makeService({ frontDoor: 'cloud-init', probeCertificate: async () => { probed = true; return held(); } });
+  cloud.service.start();
+  await cloud.service.watchTick();
+  assert.equal(probed, false);
+  assert.equal((await cloud.service.status()).easyDoorCertificate.state, 'not-applicable');
+
+  const busy = makeService({ probeCertificate: held });
+  busy.service.start();
+  busy.service.running = new Promise(() => {});
+  await busy.service.watchTick();
+  assert.equal(busy.agent.calls.some(([name]) => name === 'ensure'), false);
+});
+
+test('moving to the Easy Door lands on HTTPS when its certificate is already held', async () => {
+  const { service, suiteAddress } = makeService({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, probeCertificate: held });
+  await service.refreshCertificate();
+  await service.change({ kind: 'easy-door' });
+  await service.running;
+  assert.deepEqual({ host: suiteAddress.read().host, scheme: suiteAddress.read().scheme }, { host: EASY_DOOR, scheme: 'https' });
 });

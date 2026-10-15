@@ -6,6 +6,7 @@ const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const { resolveSmokeRepoRef } = require('../installers/render-hyperv-usb-seed.cjs');
+const { ensureLabSshKey } = require('./lab-ssh-key.cjs');
 const labRoot = path.join(repoRoot, '.mos-smoke', 'hyperv-usb');
 const outputIso = path.join(labRoot, 'my-own-suite-installer.iso');
 const buildRoot = path.join(labRoot, 'iso-build');
@@ -38,6 +39,7 @@ function verifyIso(isoPath) {
 function main(extraArgs = process.argv.slice(2)) {
   const smokeRepoRef = resolveSmokeRepoRef();
   fs.mkdirSync(labRoot, { recursive: true });
+  const labKey = ensureLabSshKey();
   const seedRenderer = path.join(repoRoot, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs');
   const seedResult = spawnSync(process.execPath, [seedRenderer], {
     cwd: repoRoot,
@@ -50,6 +52,8 @@ function main(extraArgs = process.argv.slice(2)) {
       // an agent debugging a failed run — can SSH in without first finding out
       // what the password is. A released ISO never takes this path.
       MOS_SEED_PROFILE: process.env.MOS_SEED_PROFILE || 'lab',
+      // Root on the lab, for checks that read the machine itself, such as the E2E network capture.
+      MOS_SEED_AUTHORIZED_KEY_FILE: labKey.publicKey,
     },
     stdio: 'inherit',
   });

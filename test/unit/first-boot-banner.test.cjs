@@ -31,6 +31,7 @@ const WIDEST = {
   domain: 'mos.home',
   easy_docs_url: 'https://myownsuite.org/docs/install/easy-address/',
   easy_host: 'home.192-168-255-255.local.myownsuite.org',
+  easy_scheme: 'https',
   home_url: 'http://home.mos.home/',
   lan_ip: '255.255.255.255',
 };
@@ -87,7 +88,6 @@ const SCREENS = ['render_tall', 'render_short', 'render_no_address'];
 function loginBlockLines() {
   const rendered = renderConsoleLoginInitScript({
     runtimeUser: 'mos',
-    setupUrl: 'http://home.mos.home/suite-manager/',
     stateDir: '/var/lib/mos/suite-manager',
     username: 'mos',
   });
@@ -287,6 +287,10 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
 
   // Both screens carry both doors, so both are checked. A rule that held only on
   // the screen the test happened to measure would be no rule at all.
+  assert.match(script, /easy_scheme=http\n/u);
+  assert.match(script, /curl -s -o \/dev\/null --max-time 5 --resolve "\$easy_host:443:127\.0\.0\.1" "https:\/\/\$easy_host\/"/u);
+  assert.doesNotMatch(script, /curl[^\n]*(-k|--insecure)/u, 'an untrusted certificate must not count as HTTPS');
+
   for (const screen of ['render_tall', 'render_short']) {
     const lines = screenLines(screen);
     const text = lines.join('\n');
@@ -295,7 +299,9 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
     // public address or a closed door prints one door and never a dead second one.
     const easyDoorBlock = text.split('if [ -n "$easy_host" ]; then')[2].split('else')[0];
     assert.match(easyDoorBlock, /THE EASY WAY IN/u, screen);
-    assert.match(easyDoorBlock, /http:\/\/%s\//u, screen);
+    // The certificate may never arrive, so the scheme is the one a trusted local
+    // handshake proves rather than a promise of HTTPS.
+    assert.match(easyDoorBlock, /%s:\/\/%s\/\\033\[0m\\n' "\$easy_scheme" "\$easy_host"/u, screen);
     assert.match(easyDoorBlock, /Nothing loads\?/u, screen);
     assert.doesNotMatch(text.split('if [ -n "$easy_host" ]; then')[0], /THE EASY WAY IN/u, screen);
 

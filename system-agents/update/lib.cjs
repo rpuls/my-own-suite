@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process');
 
 const { CommandFailure, describeFailure, runCommand: runCaptured } = require('../lib/command-output.cjs');
 const { explainFetchFailure } = require('./origin-probe.cjs');
+const { changeLead, changelogSections } = require('../../shared/changelog.cjs');
 
 const DEFAULT_REPO = 'rpuls/my-own-suite';
 // No apply step has a reason to run this long; one that does is stuck, and a
@@ -17,6 +18,9 @@ const FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_BRANCH_REF = 'main';
 const SAFE_BRANCH_REF = /^[A-Za-z0-9._/-]+$/u;
 const SAFE_RELEASE_VERSION = /^\d+\.\d+\.\d+$/u;
+// Never reaches an installed machine: the public site, docs, tests, CI and the
+// image build. A branch head that moved only through these is not an update.
+const UNSHIPPED_PATHS = [/^site\//u,/^docs\//u, /^\.github\//u, /^\.claude\//u, /^image-builder\//u, /(^|\/)test\//u, /\.test\.c?js$/u, /\.md$/iu];
 
 function now() {
   return new Date().toISOString();
@@ -299,27 +303,36 @@ function fetchLatestRelease(repo) {
   });
 }
 
-function extractChangelogSection(changelog, headingName) {
-  const heading = new RegExp(`^## \\[${headingName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'iu');
-  const lines = changelog.split(/\r?\n/u);
-  const start = lines.findIndex((line) => heading.test(line.trim()));
-  if (start < 0) return [];
-  const items = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (line.startsWith('## ')) break;
-    if (line.startsWith('- ')) items.push(line.slice(2).trim());
-  }
-  return items.slice(0, 6);
+function changelogAt(repoRoot, revision) {
+  const shown = revision ? safeRunCommand(repoRoot, 'git', ['show', `${revision}:CHANGELOG.md`]) : null;
+  return shown?.ok ? shown.value : null;
 }
 
-function buildChangeSummary(paths, track, latestRelease) {
-  const changelog = readText(paths.changelogPath);
-  if (track === 'branch') {
-    return { items: extractChangelogSection(changelog, 'Unreleased'), source: 'CHANGELOG.md [Unreleased]', title: 'Upcoming MOS changes' };
-  }
+// Read from the changelog of what the update brings: the installed checkout's
+// own changelog lists only what this machine already runs. Of the sections
+// newer than the installed version, it keeps the entries this machine lacks.
+function buildChangeSummary(paths, { installedVersion, latestRelease, latestRevision, track, updateAvailable }) {
+  const installed = readText(paths.changelogPath);
+  const branch = track.type === 'branch';
   const version = latestRelease?.version || '';
-  return { items: version ? extractChangelogSection(changelog, version) : [], source: version ? `CHANGELOG.md [${version}]` : null, title: version ? `Changes in ${version}` : 'Release changes' };
+  const title = branch ? 'Upcoming MOS changes' : version ? `Changes in ${version}` : 'Release changes';
+  if (!updateAvailable) {
+    const heading = branch ? 'Unreleased' : version;
+    const items = heading ? changelogSections(installed).find((section) => section.heading.toLowerCase() === heading.toLowerCase())?.items || [] : [];
+    return { items, source: heading ? `CHANGELOG.md [${heading}]` : null, title };
+  }
+  const target = changelogAt(paths.repoRoot, branch ? latestRevision : `refs/tags/v${version}`);
+  if (!target) return { items: [], source: null, title };
+  const sections = changelogSections(target);
+  const installedAt = sections.findIndex((section) => section.heading === installedVersion);
+  const newer = installedAt < 0
+    ? sections.filter((section) => section.heading === (branch ? 'Unreleased' : version))
+    : sections.slice(0, installedAt).filter((section) => branch || section.heading !== 'Unreleased');
+  const present = new Set(changelogSections(installed).flatMap((section) => section.items.map(changeLead)));
+  const items = newer.flatMap((section) => section.items).filter((item) => !present.has(changeLead(item)));
+  const headings = newer.filter((section) => section.items.length).map((section) => section.heading);
+  const span = headings.length > 1 ? `${headings.at(-1)} – ${headings[0]}` : headings[0];
+  return { items, source: span ? `CHANGELOG.md [${span}]` : null, title };
 }
 
 function ensurePrerequisites(paths) {
@@ -354,6 +367,13 @@ async function ensureCleanWorkingTree(paths) {
 // null for a check that could not be completed, with `checkFailure` saying
 // why; a branch track asks the origin for the branch head, a stable track asks
 // GitHub for the latest release, and neither asks for what it does not show.
+// A diff that cannot be read counts as a change, so a doubt offers the update.
+function changesShippedCode(repoRoot, fromCommit, toCommit) {
+  const diff = safeRunCommand(repoRoot, 'git', ['diff', '--name-only', `${fromCommit}..${toCommit}`]);
+  if (!diff.ok) return true;
+  return diff.value.split('\n').filter(Boolean).some((file) => !UNSHIPPED_PATHS.some((pattern) => pattern.test(file)));
+}
+
 async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatestRelease, retryDelaysMs } = {}) {
   ensurePrerequisites(paths);
   const track = resolveTrack(paths);
@@ -375,21 +395,23 @@ async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatest
     }
   }
 
+  const updateAvailable = checkFailure
+    ? null
+    : track.type === 'branch'
+      ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision && changesShippedCode(paths.repoRoot, track.currentCommit, latestRevision))
+      : Boolean(latestRelease?.version && latestRelease.version !== installedVersion);
+  if (updateAvailable && track.type === 'stable') await fetchReleaseTag(paths, latestRelease.version);
   const status = {
     checkFailure: checkFailure ? { at: now(), ...checkFailure } : null,
     checkedAt: now(),
-    changeSummary: buildChangeSummary(paths, track.type, latestRelease),
+    changeSummary: buildChangeSummary(paths, { installedVersion, latestRelease, latestRevision, track, updateAvailable }),
     githubRepo,
     installedVersion,
     latestRelease,
     latestRevision,
     service: 'mos-update-agent',
     track,
-    updateAvailable: checkFailure
-      ? null
-      : track.type === 'branch'
-        ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
-        : Boolean(latestRelease?.version && latestRelease.version !== installedVersion),
+    updateAvailable,
   };
   writeJson(path.join(paths.updateStateDir, 'state.json'), status);
   return status;
@@ -410,6 +432,14 @@ async function checkoutBranch(paths, ref, log) {
   // checkout is platform-owned and the working tree was verified clean above.
   log(`Checking out ${ref} at origin/${ref}`);
   await runStep(paths.repoRoot, `git checkout -B ${ref} origin/${ref}`, 'git', ['checkout', '-B', ref, `refs/remotes/origin/${ref}`]);
+}
+
+// Only so the check can read the release's changelog; a tag that cannot be fetched
+// costs the summary, never the check.
+async function fetchReleaseTag(paths, version) {
+  if (!SAFE_RELEASE_VERSION.test(String(version || ''))) return;
+  const tag = `refs/tags/v${version}`;
+  await runCaptured('git', [...GIT_TRANSPORT, 'fetch', '--quiet', '--force', 'origin', `${tag}:${tag}`], { cwd: paths.repoRoot, env: commandEnv(), timeoutMs: FETCH_TIMEOUT_MS }).catch(() => {});
 }
 
 async function checkoutReleaseTag(paths, version, log) {
@@ -451,7 +481,6 @@ module.exports = {
   StepFailure,
   buildPaths,
   collectStatus,
-  currentGitState,
   readJson,
   readLastStatus,
   repoRootFrom,

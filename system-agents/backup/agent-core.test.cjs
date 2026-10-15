@@ -261,16 +261,15 @@ class FakeWorld {
   }
 
   core(identity = {}) {
-    const readInstances = () => this.readDb().filter((instance) => instance.status !== 'uninstalled');
     return new BackupAgentCore({
       identity,
       apps: {
-        installedInstances: () => readInstances().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })),
+        installedInstances: () => this.readDb().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })),
         // Mirrors the apps agent on reconcile: enabled instances get their
         // declared volumes ensured (created with labels only when absent).
         reconcile: async (log, progress = () => {}) => {
           this.reconcileRuns.push(new Date().toISOString());
-          const enabled = readInstances().filter((entry) => entry.enabled);
+          const enabled = this.readDb().filter((entry) => entry.enabled);
           for (const [index, instance] of enabled.entries()) {
             progress({ displayName: instance.packageId.toUpperCase(), done: index, packageId: instance.packageId, total: enabled.length, unit: 'apps' });
             log(`Restoring ${instance.packageId}`);
@@ -298,7 +297,7 @@ class FakeWorld {
         update: (file, mutator) => this.updateJob(file, mutator),
       },
       packages: {
-        inventory: () => this.readDb().filter((instance) => instance.status !== 'uninstalled').map((instance) => ({
+        inventory: () => this.readDb().map((instance) => ({
           instanceId: instance.instanceId,
           manifestDigest: 'test-manifest-digest',
           packageDigest: 'test-package-digest',
@@ -357,7 +356,7 @@ function rewriteRestorePoint(manifestPath, mutate) {
 async function writeLegacyBundle(w, { id = 'legacy-0001', schemaVersion = 3 } = {}) {
   const bundle = path.join(w.destination(), 'MOS-backups', `mos-backup-${id}`);
   ensureDir(bundle);
-  const apps = w.readDb().filter((instance) => instance.status !== 'uninstalled').map((instance) => ({
+  const apps = w.readDb().map((instance) => ({
     instanceId: instance.instanceId,
     packageId: instance.packageId,
     packageVersion: '1.0.0',

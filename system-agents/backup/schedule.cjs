@@ -176,15 +176,9 @@ function retentionVictims(points, keepLast) {
 module.exports = {
   DEFAULT_SCHEDULE,
   dueOccurrence,
-  FREQUENCIES,
-  instantOfWallTime,
-  isValidTimeZone,
-  lastOccurrenceAtOrBefore,
   nextOccurrenceAfter,
   normalizeSchedule,
-  RETENTION_CHOICES,
   retentionVictims,
   systemTimeZone,
   timingChanged,
-  wallTimeIn,
 };

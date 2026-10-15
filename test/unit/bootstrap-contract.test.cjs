@@ -11,17 +11,6 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, preflightInstaller, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
-
-function installerResponse({ body, ok = true, status = 200, headers = {} }) {
-  return async () => ({
-    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
-    ok,
-    status,
-    statusText: '',
-    text: async () => body,
-  });
-}
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -86,14 +75,9 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
     plan.cloudInit.indexOf('systemctl restart mos-homepage.service')
       < plan.cloudInit.indexOf('systemctl restart mos-suite-manager.service'),
   );
-  assert.match(plan.cloudInit, /\/usr\/share\/keyrings\/caddy-stable-archive-keyring\.gpg/);
   assert.match(plan.cloudInit, /http:\/\/\$MOS_HOME_HOST/);
   assert.doesNotMatch(plan.cloudInit, /MOS_SUITE_MANAGER_HOSTNAME|suite-manager\.\$MOS_DOMAIN/);
   assert.doesNotMatch(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:3200/);
-  assert.ok(
-    plan.cloudInit.indexOf('rm -f /etc/apt/sources.list.d/caddy-stable.list')
-      < plan.cloudInit.indexOf('apt-get update'),
-  );
   assert.doesNotMatch(plan.cloudInit, /\r/);
   assert.match(plan.shell, /^#!\/usr\/bin\/env bash/);
   assert.doesNotMatch(plan.sshBootstrap, /\r/);
@@ -104,9 +88,18 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.shell, /add a DNS override in your router/);
 });
 
-test('bootstrap contract derives sslip.io domain for cloud smoke installs', () => {
+test('the caddy package comes from Ubuntu, held, and its unit runs the binary MOS builds', () => {
+  const { shell } = renderBootstrapPlan({});
+  assert.doesNotMatch(shell, /cloudsmith|caddy-stable/u);
+  assert.match(shell, /apt-get install -y [^\n]*\bcaddy\b/u);
+  assert.match(shell, /apt-mark hold caddy/u);
+  assert.match(shell, /ExecStart=\/usr\/local\/libexec\/mos\/caddy run/u);
+  assert.match(shell, /LimitNPROC=infinity\nAmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\nMOS_CADDY_OVERRIDE/u);
+});
+
+test('bootstrap contract derives sslip.io domain for cloud installs', () => {
   const config = createBootstrapConfig({
-    frontDoor: 'digitalocean-smoke',
+    frontDoor: 'cloud-init',
     publicIpv4: '203.0.113.42',
     repoRef: 'feature/test-ref',
   });
@@ -131,10 +124,6 @@ test('public VPS installs use the protected HTTPS cloud contract', () => {
   assert.match(plan.shell, /https:\/\/\$MOS_HOME_HOST/);
   // Cloud installs use a public sslip.io domain; a LAN IP hint would mislead.
   assert.doesNotMatch(plan.shell, /mos_lan_ip="\$\(ip -4 route get/);
-});
-
-test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {
-  assert.equal(DEFAULT_READY_TIMEOUT_MS, 30 * 60 * 1000);
 });
 
 test('bootstrap contract rejects owner credentials and app config at installer time', () => {
@@ -213,87 +202,6 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
   assert.match(selectOutput(plan, 'json'), /"suiteManager": "https:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
   assert.match(selectOutput(plan, 'json'), /"setup": "https:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
   assert.match(selectOutput(plan, 'shell'), /^#!\/usr\/bin\/env bash/);
-});
-
-test('DigitalOcean smoke defaults to the public installer without owner inputs', () => {
-  const previous = {
-    MOS_SMOKE_REPO_REF: process.env.MOS_SMOKE_REPO_REF,
-    MOS_SMOKE_REPO_URL: process.env.MOS_SMOKE_REPO_URL,
-    MOS_SMOKE_OWNER_EMAIL: process.env.MOS_SMOKE_OWNER_EMAIL,
-    MOS_SMOKE_OWNER_PASSWORD: process.env.MOS_SMOKE_OWNER_PASSWORD,
-  };
-
-  try {
-    delete process.env.MOS_SMOKE_REPO_REF;
-    delete process.env.MOS_SMOKE_REPO_URL;
-    process.env.MOS_SMOKE_OWNER_EMAIL = 'old-owner@example.com';
-    process.env.MOS_SMOKE_OWNER_PASSWORD = 'old-password';
-
-    const config = smokeConfigFromEnv();
-    const plan = bootstrapPlanFor(config);
-
-    assert.equal(config.installerUrl, 'https://get-dev.myownsuite.org/install.sh');
-    const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
-    assert.match(cloudInit, /curl .*--proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*bash \/root\/mos-install\.sh/);
-    assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
-    assert.match(plan.cloudInit, /MOS_FRONT_DOOR='public-vps'/);
-    assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-  }
-});
-
-test('DigitalOcean cloud-init fails the install and keeps what the endpoint said', () => {
-  const cloudInit = renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh');
-  assert.match(cloudInit, /--fail-with-body/);
-  assert.match(cloudInit, /installer download failed:'; cat \/root\/mos-install\.sh; exit 1/);
-  // Never piped into bash: an empty stream from a failed download exits 0.
-  assert.doesNotMatch(cloudInit, /install\.sh' \| bash/);
-});
-
-test('DigitalOcean smoke refuses to create a Droplet when the installer endpoint is down', async () => {
-  await assert.rejects(
-    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
-      body: 'Installer unavailable: GitHub could not resolve INSTALL_BRANCH (422).\n',
-      ok: false,
-      status: 503,
-    })),
-    /returned 503.*INSTALL_BRANCH.*installer-endpoint\/README\.md/su,
-  );
-});
-
-test('DigitalOcean smoke refuses an installer endpoint that is not serving a script', async () => {
-  await assert.rejects(
-    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({ body: '<html>nope</html>' })),
-    /did not return a shell script/u,
-  );
-});
-
-test('DigitalOcean smoke records the exact commit the installer endpoint is serving', async () => {
-  assert.deepEqual(
-    await preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
-      body: '#!/usr/bin/env bash\nset -euo pipefail\n',
-      headers: { 'x-mos-install-source': 'staging', 'x-mos-install-ref': 'a'.repeat(40) },
-    })),
-    { installSource: 'staging', installRef: 'a'.repeat(40) },
-  );
-});
-
-test('DigitalOcean smoke builds the owner setup URL without persisting token state', () => {
-  assert.equal(
-    ownerClaimUrl('https://home.203.0.113.42.sslip.io/suite-manager/', 'abc123'),
-    'https://home.203.0.113.42.sslip.io/suite-manager/?claim=abc123',
-  );
-});
-
-test('DigitalOcean public installer cloud-init rejects non-HTTPS endpoints', () => {
-  assert.throws(() => renderPublicInstallerCloudInit('http://example.test/install.sh'), /must use HTTPS/);
 });
 
 test('the image bake refuses a machine whose bootstrap stopped before its last line', () => {

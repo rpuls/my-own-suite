@@ -2,13 +2,14 @@
   "manifestVersion": 1,
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "appVersion": "2.10.0",
   "minimumMosVersion": "0.20.0",
   "summary": "Merge, split, sign and redact PDFs without uploading them to a stranger's website.",
   "category": "office",
   "icon": "icon.png",
   "packageFiles": [
+    "patch-web-client.py",
     "screenshots/workspace.png",
     "screenshots/merge.png",
     "screenshots/redact.png",
@@ -83,11 +84,11 @@
       "description": "One service that sits quietly between jobs, but wants a spare gigabyte and a couple of cores while it reads a scan or converts an office document."
     },
     "privacy": {
-      "summary": "MOS configures the self-hosted server to process ordinary PDF tasks locally and disable known optional analytics.",
+      "summary": "The server processes ordinary PDF tasks locally and contacts nothing. MOS keeps the PostHog analytics and Stripe payment library that Stirling PDF's pages start on its own server, so only icons are fetched from Iconify.",
       "notes": [
         "Persistent app data is kept in package-owned volumes.",
         "User-invoked features such as trusted timestamping can contact an external service.",
-        "The assessment is configuration- and documentation-based; it does not prove complete network silence."
+        "Stirling PDF's own analytics setting does not reach PostHog or Stripe in its pages, so MOS patches the pages instead. Buying a Stirling PDF licence inside the app no longer works."
       ]
     },
     "links": {
