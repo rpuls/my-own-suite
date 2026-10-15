@@ -83,7 +83,9 @@ function writeGeneratedCss(sourcePath, destinationPath, { brandBasePath = '/bran
  */
 
 ${targetSource}`;
-  fs.writeFileSync(destinationPath, output);
+  // Follow the source's line endings, so a CRLF checkout does not see the output as changed.
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  fs.writeFileSync(destinationPath, output.replace(/\r?\n/g, eol));
 }
 
 function syncDirectory(sourceDir, destinationDir) {
