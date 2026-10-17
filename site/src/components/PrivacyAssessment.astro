@@ -6,7 +6,7 @@
 // summary — including the open questions, which are the part a sceptic should
 // read first.
 import type { PrivacyAssessment, PrivacyEvidence } from '../lib/app-catalog'
-import { OUTBOUND_FROM_LABEL, outboundHostLabel, reviewDateLabel } from '../lib/privacy-posture'
+import { OUTBOUND_FROM_LABEL, humanReviewSentence, outboundHostLabel, reviewDateLabel } from '../lib/privacy-posture'
 
 interface Props {
   appName: string
@@ -33,7 +33,7 @@ const shortDigest = (value: string) => (value ? `${String(value).replace(/^sha25
 const reviewed = reviewDateLabel(assessment.reviewedAt)
 const expires = reviewDateLabel(assessment.expiresAt)
 const provenance = assessment.provenance
-const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a MOS maintainer') : null
+const lastHumanReview = assessment.lastHumanReview
 ---
 
 <div class="privacy-report">
@@ -164,7 +164,10 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
 
   <h3 id="privacy-assessment-provenance">How this review was produced</h3>
   <ul class="privacy-report-provenance">
-    <li><strong>Method</strong> — {provenance.method === 'human' ? 'human review' : 'AI-assisted review'}{humanReviewer ? `, checked by ${humanReviewer}` : ', not yet checked by a human'}</li>
+    <li><strong>Method</strong> — {provenance.method === 'human' ? 'human review' : 'AI-assisted review'}{lastHumanReview ? `, ${humanReviewSentence(lastHumanReview)}` : ', not yet reviewed by a human'}</li>
+    {assessment.awaitingHumanReview.map((item) => (
+      <li><strong>Waiting for a human review</strong> — {item.finding} Found by the AI review of version {item.appVersion} on {reviewDateLabel(item.date)}.</li>
+    ))}
     {provenance.model && <li><strong>Model</strong> — {provenance.model}{provenance.provider && <> ({provenance.provider})</>}</li>}
     {provenance.skill && (
       <li>

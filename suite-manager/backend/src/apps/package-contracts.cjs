@@ -395,7 +395,6 @@ function checkRecord(value, pointer, { optional = {}, required = {}, sealed = tr
 }
 
 const isString = (value, pointer) => (typeof value === 'string' ? [] : [`${pointer} must be a string.`]);
-const isBoolean = (value, pointer) => (typeof value === 'boolean' ? [] : [`${pointer} must be a boolean.`]);
 const isDateTime = (value, pointer) => (ISO_DATE_TIME(value) ? [] : [`${pointer} must be an ISO date-time.`]);
 const isOneOf = (values) => (value, pointer) => (values.includes(value) ? [] : [`${pointer} must be one of ${values.join(', ')}.`]);
 const matches = (pattern, description) => (value, pointer) => (typeof value === 'string' && pattern.test(value) ? [] : [`${pointer} must be ${description}.`]);
@@ -434,6 +433,18 @@ const isOutbound = (value, pointer) => checkRecord(value, pointer, {
   },
 });
 
+const isCalendarDate = matches(/^\d{4}-\d{2}-\d{2}$/u, 'a date as YYYY-MM-DD');
+
+// A person's review is an event in the past, so later AI reviews never rewrite it.
+const isHumanReview = (value, pointer) => checkRecord(value, pointer, {
+  required: { appVersion: isText, date: isCalendarDate, reviewer: isText },
+});
+
+// What a later AI review found that needs a person. Only a human review clears it.
+const isAwaitingHumanReview = (value, pointer) => checkRecord(value, pointer, {
+  required: { appVersion: isText, date: isCalendarDate, finding: isText },
+});
+
 const isEvidence = (value, pointer) => checkRecord(value, pointer, {
   optional: { retrievedAt: isString, url: isString },
   required: {
@@ -447,7 +458,9 @@ const isEvidence = (value, pointer) => checkRecord(value, pointer, {
 function validatePrivacyAssessmentDocument(review) {
   return checkRecord(review, 'review', {
     optional: {
+      awaitingHumanReview: isListOf(isAwaitingHumanReview),
       expiresAt: isDateTime,
+      lastHumanReview: isHumanReview,
       security: isListOf(isEvidence),
       telemetryControls: isListOf(isEvidence),
     },
@@ -467,9 +480,7 @@ function validatePrivacyAssessmentDocument(review) {
       })),
       posture: isOneOf(PRIVACY_POSTURES),
       provenance: (value, pointer) => checkRecord(value, pointer, {
-        optional: { humanReviewer: isString },
         required: {
-          humanReviewed: isBoolean,
           method: isOneOf(['ai-assisted', 'human']),
           model: isString,
           modelIdentifierSource: isOneOf(['runtime-reported', 'user-supplied', 'unknown']),

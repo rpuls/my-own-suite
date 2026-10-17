@@ -1129,6 +1129,8 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
    .mos-overlay; the anchor is what takes the pointer and focus, because a
    disabled button takes neither. */
 .mos-tooltip {
+  /* Above every dialog and drawer: a tooltip is brief and lets the pointer through. */
+  z-index: 200;
   max-width: min(20rem, calc(100vw - 2 * var(--mos-space-4)));
   padding: var(--mos-space-2) var(--mos-space-3);
   color: var(--mos-color-text-strong);

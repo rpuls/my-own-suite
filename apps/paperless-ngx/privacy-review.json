@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-06T19:10:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.4",
-    "packageDigest": "sha256:e9b60aa01b289ca69475cabcd50acfd9842577f8c1a77cc64887798cee146665",
+    "packageVersion": "0.3.5",
+    "packageDigest": "sha256:5c09d5db572105b2412f16d520a8f42aeeb36d7a4cff63daf8ff0a51651ba638",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -189,9 +189,12 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
-    "humanReviewed": false,
-    "humanReviewer": "Rasmus Puls"
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-08-11",
+    "appVersion": "3.0.5"
   },
   "openQuestions": [
     "TLS payloads were not decrypted, so every conclusion bounds behaviour by destination, resolved name and volume rather than asserting the contents of encrypted requests. In this package that limit binds unusually little, because no external destination was contacted at all outside the injected control.",

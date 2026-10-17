@@ -65,9 +65,11 @@ all of it, and a replacement machine can take over a destination the original wr
 domain, and "what if myownsuite.org disappears" has a published answer.
 
 - **B1 — Sign the rest of the baseline, and make AI the change detector.** The first-entry half is
-  established: `skills/human-privacy-review` is the written procedure, a review records
-  `humanReviewed` and a named reviewer, and the packages that entered the catalog most recently were
-  signed before they shipped. Two things are unfinished. Half the catalog — ONLYOFFICE, Seafile,
+  established: `skills/human-privacy-review` is the written procedure, a review records its
+  `lastHumanReview` (who, when, which app version) apart from the AI work that follows it, an update
+  that changes what happens to owners' data publishes the finding in `awaitingHumanReview` without
+  holding the update back, and the packages that entered the catalog most recently were signed
+  before they shipped. Two things are unfinished. Half the catalog — ONLYOFFICE, Seafile,
   Stirling PDF and Vaultwarden — still publishes assessments no human has signed, which the site
   discloses honestly and which is still a discoverable gotcha on the most differentiated feature in
   the product; two of the four are reruns rather than signatures, because a capture taken since
@@ -75,7 +77,7 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   re-authors the whole assessment from scratch, when it should be reviewed as a **diff against the
   last signed review** — the work AI is genuinely good at, the part that does not scale by hand, and
   the only thing standing between an upstream policy change and a published grade that moves with no
-  human in the loop. Anything the diff surfaces goes back to a human before the grade moves. Needs
+  human in the loop. Needs
   `assess-app-privacy` split into first-entry and update-diff modes, and a provenance field recording
   which one ran. *(Medium)*
 - **B2 — Get the MOS zone onto the Public Suffix List.** `#192`. The zone is operated now and the

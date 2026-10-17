@@ -412,7 +412,7 @@ test('an external package cannot present its own privacy review as a MOS review'
   const candidate = await externalCandidate(root);
   await fsp.writeFile(path.join(candidate.packageDir, 'privacy-review.json'), `${JSON.stringify({
     appId: 'community-notes', posture: 'excellent', reviewedAt: '2026-07-01T00:00:00.000Z',
-    provenance: { humanReviewed: true, method: 'self' }, schemaVersion: 1, scope: { packageVersion: '1.0.0' },
+    provenance: { method: 'self' }, schemaVersion: 1, scope: { packageVersion: '1.0.0' },
   }, null, 2)}\n`);
   const republished = { ...candidate, manifest: readAppPackageManifest(candidate.packageDir).manifest, packageDigest: digestAppPackage(candidate.packageDir) };
   const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
@@ -1590,8 +1590,9 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
     evidence: [],
     openQuestions: [],
     policies: [],
+    lastHumanReview: { appVersion: manifest.version, date: '2026-07-01', reviewer: 'Test Reviewer' },
     posture: 'private-by-default',
-    provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test-commit', skill: 'assess-app-privacy', skillRevision: '1' },
+    provenance: { method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test-commit', skill: 'assess-app-privacy', skillRevision: '1' },
     reviewedAt: '2026-07-01T00:00:00.000Z',
     schemaVersion: 1,
     scope: {
@@ -1629,7 +1630,7 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
   assert.equal(installed.privacy.dimensions.dataProcessing, 'local');
   // Installed assessment provenance travels from the snapshot review.
   assert.equal(installed.privacy.provenance.method, 'human');
-  assert.equal(installed.privacy.provenance.humanReviewed, true);
+  assert.deepEqual(installed.privacy.provenance.lastHumanReview, { appVersion: manifest.version, date: '2026-07-01', reviewer: 'Test Reviewer' });
   assert.equal(installed.privacy.provenance.sourceRevision, 'test-commit');
   // No catalog service wired in this test, so there are no current advisories.
   assert.deepEqual(installed.advisories, []);

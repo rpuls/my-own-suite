@@ -331,7 +331,8 @@ function publicInstance(instance, projections = [], configRows = [], envRows = [
 function reviewProvenance(review) {
   const provenance = review?.provenance || {};
   return {
-    humanReviewed: provenance.humanReviewed === true,
+    awaitingHumanReview: Array.isArray(review?.awaitingHumanReview) ? review.awaitingHumanReview : [],
+    lastHumanReview: review?.lastHumanReview || null,
     method: provenance.method || null,
     model: provenance.model || null,
     sourceRevision: review?.scope?.source?.revision || null,

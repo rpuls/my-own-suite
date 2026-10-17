@@ -483,7 +483,7 @@ export function SecretText({ label, masked = false, value }: { label: string; ma
 }
 
 // Portalled like ActionMenu, so a flush panel's clipping cannot cut it off.
-// Placed below its anchor and kept inside the viewport.
+// Placed below its anchor, or above it when the viewport has no room below.
 export function Tooltip({ children, label }: { children: ReactNode; label: ReactNode }) {
   const id = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -496,7 +496,8 @@ export function Tooltip({ children, label }: { children: ReactNode; label: React
     const edge = 16;
     const left = anchor.left + anchor.width / 2 - tip.offsetWidth / 2;
     tip.style.left = `${Math.min(Math.max(left, edge), window.innerWidth - tip.offsetWidth - edge)}px`;
-    tip.style.top = `${anchor.bottom + 8}px`;
+    const fitsBelow = anchor.bottom + 8 + tip.offsetHeight <= window.innerHeight - edge;
+    tip.style.top = `${fitsBelow ? anchor.bottom + 8 : anchor.top - 8 - tip.offsetHeight}px`;
   }, [open]);
   return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={0}>
     {children}

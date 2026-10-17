@@ -19,6 +19,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ### Changed
 
+- **An app's privacy review says who last reviewed it, and at which version.** The privacy dialog names the person and the app version they reviewed, so updates checked by AI since then no longer clear or borrow that sign-off. An AI review that finds a serious change, such as a new company receiving data, shows it under "Waiting for a human review" until a person has checked it. Actual Budget, Paperless and Radicale get small package updates that restore their human review.
 - **Immich package 0.9.0 sets up its administrator for you and can show photos from your own drive.** A new install asks for the administrator's email and password instead of sending you to Immich's sign-up page, and can take a drive whose Photos folder Immich shows as a library, read where it is and never changed. Updating asks once for your current Immich email and password, and offers the same drive choice.
 
 ## [0.22.0] - 2026-10-15

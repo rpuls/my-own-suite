@@ -43,7 +43,7 @@ function writePrivacyReview(appPkg, posture, dimensions, outbound) {
     ...(outbound ? { outbound } : {}),
     policies: [],
     posture,
-    provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test', skill: 'assess-app-privacy', skillRevision: '1' },
+    provenance: { method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test', skill: 'assess-app-privacy', skillRevision: '1' },
     reviewedAt: '2026-07-01T00:00:00.000Z',
     schemaVersion: 1,
     scope: {

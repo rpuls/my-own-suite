@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-05T18:16:29.734Z",
   "expiresAt": "2027-02-12T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.1",
-    "packageDigest": "sha256:34cb000bcd8c5420242b84a5efe122b964a7fea19d727932ae32b7547ffe8632",
+    "packageVersion": "0.2.2",
+    "packageDigest": "sha256:7029022c5308ac25ff4e6d82a7e3758c4623378de92ee105bb9ad1fb891e231d",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -146,9 +146,12 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
-    "humanReviewed": false,
-    "humanReviewer": "Rasmus Puls"
+    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-08-12",
+    "appVersion": "26.8.1"
   },
   "openQuestions": [
     "The plugin store was never exercised. /cors-proxy is the server’s only non-bank egress path, it is gated behind a session, a rate limit, an SSRF check and a repository allow-list, and nothing in either capture invoked it - but that means its behaviour is read from source rather than observed.",

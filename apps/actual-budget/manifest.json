@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "actual-budget",
   "name": "Actual Budget",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "appVersion": "26.8.1",
   "minimumMosVersion": "0.21.0",
   "requirements": {

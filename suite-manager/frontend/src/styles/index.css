@@ -3134,9 +3134,21 @@ button.suite-updates-change-head {
   overflow-wrap: anywhere;
 }
 
-.suite-privacy-outbound-from,
-.suite-privacy-outbound-receiver {
+.suite-privacy-outbound-from {
   color: var(--mos-color-text-muted);
+}
+
+.suite-privacy-outbound-info {
+  width: 1rem;
+  height: 1rem;
+  align-self: center;
+  color: var(--mos-color-text-muted);
+  cursor: help;
+}
+
+.suite-privacy-outbound-tip {
+  display: grid;
+  gap: var(--mos-space-1);
 }
 
 .suite-privacy-advisory-flag {

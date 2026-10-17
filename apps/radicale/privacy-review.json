@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-06T23:00:00.000Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.5.3",
-    "packageDigest": "sha256:77fe03d3ad632f699e401f2f7a9a0befc4919b26ae9777c61ada9472474bdb01",
+    "packageVersion": "0.5.4",
+    "packageDigest": "sha256:588d70e3093aec64061e5b97295b57f2f2c264393f1c8ea147ee640f2696717d",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -141,9 +141,12 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "b8adb5fb9b664220dc1e0189ca270032d6440ad3",
-    "repositoryCommit": "b8adb5fb9b664220dc1e0189ca270032d6440ad3",
-    "humanReviewed": false,
-    "humanReviewer": "Rasmus Puls"
+    "repositoryCommit": "b8adb5fb9b664220dc1e0189ca270032d6440ad3"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-07-31",
+    "appVersion": "3.7.6"
   },
   "openQuestions": [
     "The 2026-07-31 and 2026-10-06 packet captures covered minutes of provisioning, active use, and restarts; outbound behaviour on longer timers than that window is excluded by the code and build-definition review rather than by observation. The lab E2E network step, which reads DNS inside the container, has not yet run against 3.8.1.",

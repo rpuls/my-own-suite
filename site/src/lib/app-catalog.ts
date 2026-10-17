@@ -4,7 +4,7 @@
 // Manager uses — so adding a new app package to the repo adds it to the
 // site automatically on the next build.
 
-import type { OutboundDestination, PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
+import type { AwaitingHumanReview, HumanReview, OutboundDestination, PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
 
 export type CatalogFeature = { title: string; body: string }
 export type DemoDeployTarget = { provider: string; label: string; url: string }
@@ -99,10 +99,12 @@ export type PrivacyEvidence = {
 }
 
 export type PrivacyAssessment = {
+  awaitingHumanReview: AwaitingHumanReview[]
   components: Array<{ artifact?: string; digest?: string; name: string; version?: string }>
   clientsExcluded: string[]
   evidence: PrivacyEvidence[]
   expiresAt: string | null
+  lastHumanReview: HumanReview | null
   openQuestions: string[]
   outbound: OutboundDestination[] | null
   packageDigest: string
@@ -140,7 +142,8 @@ function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSum
     outbound: Array.isArray(review.outbound) ? review.outbound : null,
     posture: review.posture ? String(review.posture) : null,
     provenance: {
-      humanReviewed: provenance.humanReviewed === true,
+      awaitingHumanReview: Array.isArray(review.awaitingHumanReview) ? review.awaitingHumanReview : [],
+      lastHumanReview: review.lastHumanReview ?? null,
       method: provenance.method ?? null,
       model: provenance.model ?? null,
       sourceRevision: review.scope?.source?.revision ?? null
@@ -163,10 +166,12 @@ function privacyAssessmentFor(manifestPath: string, manifest: any): PrivacyAsses
     return null
   }
   return {
+    awaitingHumanReview: review.awaitingHumanReview ?? [],
     clientsExcluded: review.scope?.clientsExcluded ?? [],
     components: review.scope?.components ?? [],
     evidence: review.evidence ?? [],
     expiresAt: review.expiresAt ?? null,
+    lastHumanReview: review.lastHumanReview ?? null,
     openQuestions: review.openQuestions ?? [],
     outbound: Array.isArray(review.outbound) ? review.outbound : null,
     packageDigest: review.scope?.packageDigest ?? '',

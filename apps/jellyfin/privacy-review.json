@@ -5,7 +5,7 @@
   "expiresAt": "2027-01-17T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.1.0",
-    "packageDigest": "sha256:3ee14abae20ca40a4675ba098dd8f653c7a0f05c45ccf8bbe219fa853bed6f58",
+    "packageDigest": "sha256:6ff337a5ea425b9e14933d408507406531c16fb16bd73395f9e64b8491945327",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -161,9 +161,12 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "008fe9bd8810baf87526c710eddfaf96282e16eb",
-    "repositoryCommit": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0",
-    "humanReviewed": true,
-    "humanReviewer": "Rasmus Puls"
+    "repositoryCommit": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-10-17",
+    "appVersion": "12.2"
   },
   "openQuestions": [
     "Jellyfin's pages load Google's Cast library whether or not the owner has a Chromecast. Patching it out of the web client, as the Stirling PDF package does for its pages, would remove casting; it was not attempted in this package version.",
