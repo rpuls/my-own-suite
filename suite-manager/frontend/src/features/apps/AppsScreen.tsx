@@ -227,7 +227,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
-  async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; showOnHomepage?: boolean } = {}) {
+  async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; drive?: string | null; showOnHomepage?: boolean } = {}) {
     const setupConfig = options.config || {};
     const canInstall = app.validation.valid && !app.packageErrors?.length && !requiredSetupMissing(app, setupConfig);
     if (!canInstall) return;
@@ -244,7 +244,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       if (external) {
         await postJson('/suite-manager/api/apps/sources/install', { config: setupConfig, packageId: app.id, url: external.repository }, `Unable to prepare ${app.name}.`);
       }
-      await postJson(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install-job`, { config: setupConfig, showOnHomepage }, `Unable to install ${app.name}.`);
+      await postJson(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install-job`, { config: setupConfig, drive: options.drive || null, showOnHomepage }, `Unable to install ${app.name}.`);
     } catch (caught) {
       setInstallError(caught instanceof Error ? caught.message : `Unable to install ${app.name}.`);
     } finally {

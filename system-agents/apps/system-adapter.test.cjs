@@ -1370,3 +1370,87 @@ test('the health probe asks for the app by the name its manifest gives it, not b
   }
   assert.deepEqual(hosts, ['paperless:8000']);
 });
+
+async function folderApp(storage) {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'jellyfin', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    appsRoot: root,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push({ args, file }); return { stdout: '' }; },
+    routesPath: path.join(root, 'routes.caddy'),
+    storage,
+    async waitForReady() {},
+  });
+  const runtime = {
+    caddyRoutes: 'http://jellyfin.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthHost: 'jellyfin',
+    healthTarget: 'http://127.0.0.1:18123/health',
+    instanceId,
+    packageDigest: digestAppPackage(packageDir),
+    packageId: 'jellyfin',
+    packageVersion: '0.1.0',
+    services: [{
+      dockerfile: 'Dockerfile',
+      environment: {},
+      folders: [{ drive: '1A2B-3C4D', name: 'Movies', path: '/media/movies' }],
+      id: 'jellyfin',
+      imageTag: 'mos-app-jellyfin:0.1.0',
+      internalPort: 8096,
+      loopbackPort: 18123,
+      public: true,
+      volumes: ['config:/config'],
+    }],
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+  };
+  return { adapter, commands, runtime };
+}
+
+test('folders on a drive reach the container as read-only binds that cannot create their source', async () => {
+  const storage = { prepareFolders: async () => [{ drive: '1A2B-3C4D', source: '/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies', target: '/media/movies' }] };
+  const { adapter, commands, runtime } = await folderApp(storage);
+  await adapter.applyAppServices(runtime);
+
+  const run = commands.find((command) => command.args[0] === 'run').args;
+  assert.ok(run.includes('type=bind,source=/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies,target=/media/movies,readonly'));
+  assert.ok(run.includes('mos.storage-drive.1A2B-3C4D=true'));
+  assert.ok(run.includes('mos-app-jellyfin-config:/config'));
+});
+
+test('a drive that cannot be opened fails the apply before the running app is touched', async () => {
+  const storage = { prepareFolders: async () => { throw new Error("The drive that holds this app's folders is not connected."); } };
+  const { adapter, commands, runtime } = await folderApp(storage);
+  await assert.rejects(adapter.applyAppServices(runtime), (error) => {
+    assert.equal(error.code, 'APP_STORAGE_UNAVAILABLE');
+    assert.deepEqual(error.details, ["The drive that holds this app's folders is not connected."]);
+    return true;
+  });
+  assert.equal(commands.some((command) => command.args[0] === 'rm'), false);
+});
+
+test('a returning drive is remounted and only the containers reading it are restarted', async () => {
+  const attached = [];
+  const storage = { attach: async (driveId) => { attached.push(driveId); }, isClaimed: (driveId) => driveId === '1A2B-3C4D' };
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push([file, ...args]); return { stdout: args[0] === 'ps' ? 'c1\nc2\n' : '' }; },
+    storage,
+  });
+
+  assert.deepEqual(await adapter.reattachDrive('OTHER-DRIVE'), { attached: false, restarted: 0 });
+  assert.deepEqual(await adapter.reattachDrive('1A2B-3C4D'), { attached: true, restarted: 2 });
+  assert.deepEqual(attached, ['1A2B-3C4D']);
+  assert.deepEqual(commands, [
+    ['docker', 'ps', '--all', '--quiet', '--filter', 'label=mos.storage-drive.1A2B-3C4D'],
+    ['docker', 'restart', 'c1', 'c2'],
+  ]);
+});

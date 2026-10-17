@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
+const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
+
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const installRoot = process.env.MOS_INSTALL_ROOT || '/opt/mos';
 const repoRoot = process.env.MOS_REPO_DIR || path.join(installRoot, 'repo');
@@ -139,6 +141,8 @@ function main() {
     tryRun('/usr/bin/systemctl', ['stop', ...stoppedServices], { timeoutMs: 120_000 });
     resetDockerRuntime();
     fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
+    // The apps are gone, so no drive is theirs any more; the files on the drives stay.
+    fs.rmSync(path.join(stateRoot, STORAGE_CLAIMS_FILENAME), { force: true });
     copyDirectory(homepageSource, homepageConfig);
     tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
     fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());

@@ -1,3 +1,4 @@
+const { storageRequired } = require('./app-storage.cjs');
 const { validateArchitectureCompatibility } = require('./package-contracts.cjs');
 
 // What a package needs from the server it runs on, as the Apps list, an install
@@ -6,6 +7,7 @@ function declaredHostRequirements(manifest) {
   return {
     architectures: manifest?.architectures ?? null,
     https: manifest?.requirements?.https === true,
+    storageDrive: storageRequired(manifest),
   };
 }
 
@@ -23,6 +25,9 @@ function unmetHostRequirements(declared, host = {}) {
         ? 'This app only works over HTTPS. Your suite\'s certificate is on its way, and the app becomes available by itself when it arrives.'
         : 'This app only works over HTTPS. Serve your suite from the Easy Door or your own domain in Settings first.',
     });
+  }
+  if (declared.storageDrive && host.storageDrives === 0) {
+    unmet.push({ id: 'storage', reason: 'Requires an extra storage device. Plug in a drive formatted as exFAT, NTFS or FAT32 to install this app.' });
   }
   return unmet;
 }

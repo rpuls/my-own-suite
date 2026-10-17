@@ -47,6 +47,7 @@ const {
   writeSecretFile,
 } = require('./app-package-internals.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
+const { declaredFolders, placeFolders } = require('./app-storage.cjs');
 const { AppUpdateService } = require('./app-update-service.cjs');
 const {
   compareSemver,
@@ -130,8 +131,30 @@ class AppPackageService {
   async hostFacts(agentStatus = null) {
     this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
     const address = this.suiteAddress?.readOrNull();
+    const drives = await this.storageDrives();
     // On the Easy Door over HTTP the certificate is on its way and the switch is automatic.
-    return { architecture: this.hostArchitecture, https: address ? address.scheme === 'https' : null, httpsPending: address?.kind === 'easy-door' && address.scheme === 'http' };
+    return {
+      architecture: this.hostArchitecture,
+      https: address ? address.scheme === 'https' : null,
+      httpsPending: address?.kind === 'easy-door' && address.scheme === 'http',
+      storageDrives: drives ? drives.filter((drive) => drive.usable).length : null,
+    };
+  }
+
+  // Drives that can hold app folders, or null when the agent cannot say.
+  async storageDrives() {
+    const answer = await Promise.resolve(this.agent?.storageDrives?.()).catch(() => null);
+    return Array.isArray(answer?.drives) ? answer.drives : null;
+  }
+
+  // The app folders on the drives MOS has open, each named by its app, including
+  // the folders of apps no longer installed. Null when the agent cannot say.
+  async storageFolders() {
+    const answer = await Promise.resolve(this.agent?.storageFolders?.()).catch(() => null);
+    if (!Array.isArray(answer?.folders)) return null;
+    const installed = new Set(this.store.getAppInstances().map((instance) => instance.packageId));
+    const names = new Map(this.listPackages().map((app) => [app.id, app.name]));
+    return answer.folders.map((folder) => ({ ...folder, appName: names.get(folder.app) || folder.app, installed: installed.has(folder.app) }));
   }
 
   // Refusing up front turns a build that cannot pull its images, or an app that
@@ -339,6 +362,7 @@ class AppPackageService {
     const rowKeys = new Set(rows.map((row) => row.key));
     const nextConfig = [...this.store.getAppConfig(consumer.id).filter((row) => !rowKeys.has(row.key)), ...rows];
     const nextProjections = renderInstanceProjections(consumerPackage.manifest, nextConfig, {
+      folders: this.store.getAppInstanceFolders(consumer.id),
       instanceId: consumer.id,
       integrations: [
         ...this.store.getAppIntegrations(),
@@ -758,6 +782,7 @@ class AppPackageService {
     // projections stay a pure function of manifest + config + relationships +
     // owner env, so an app update re-renders them without losing this change.
     const nextProjections = renderInstanceProjections(manifest, configRows, {
+      folders: this.store.getAppInstanceFolders(instance.id),
       instanceId: instance.id,
       integrations,
       ownerEnv: rows,
@@ -1264,6 +1289,7 @@ class AppPackageService {
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
     await this.assertHostRequirementsMet(manifest, agentStatus);
+    const folders = await this.placeFolders(manifest, input.drive);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1339,11 +1365,17 @@ class AppPackageService {
           volumes: [],
         })
         : null,
+      folders,
       input,
       instance,
       manifestId: manifest.id,
       packageId,
     });
+  }
+
+  async placeFolders(manifest, driveId) {
+    if (!declaredFolders(manifest).length) return [];
+    return placeFolders(manifest, driveId || null, driveId ? await this.storageDrives() : []);
   }
 
   // The tail every install shares once its snapshot exists on disk. Official and
@@ -1357,17 +1389,18 @@ class AppPackageService {
   // `discardSnapshot` is the caller's way to disown a snapshot the store never
   // came to reference: nothing points at it, so the agent that created it is
   // asked to drop it before the failure surfaces.
-  async completeInstall({ at, discardSnapshot = null, input, instance, manifestId, packageId, requestSource = null }) {
+  async completeInstall({ at, discardSnapshot = null, folders = [], input, instance, manifestId, packageId, requestSource = null }) {
     try {
       const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
       if (installedManifest.id !== manifestId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
         throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
       }
       const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
-      const projections = renderDryRunProjections(installedManifest, config, { packageId });
+      const projections = renderDryRunProjections(installedManifest, config, { folders, packageId });
       this.store.installAppInstance({
         at,
         config,
+        folders,
         instance,
         operationId: crypto.randomUUID(),
         projections,
@@ -1480,7 +1513,10 @@ class AppPackageService {
   }
 
   publicView(instance) {
-    return publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id));
+    return {
+      ...publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id)),
+      folders: this.store.getAppInstanceFolders(instance.id),
+    };
   }
 
   setPackageGuideStatus(packageId, status) {

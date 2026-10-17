@@ -118,25 +118,29 @@ const test = require('node:test');
 
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
+// Moved 2026-10-17, all five, for app folders on a storage drive (roadmap S2):
+// the installer writes the storage attach unit and its udev rule. No `echo` line
+// changed, so the walkthrough recording still shows what an install prints.
+
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 const lockedRenderings = [
   {
-    digest: 'f12676e6717d19b2fd6d006d3ac7959091c93f4f0e4f9d3430b5a324d905c31c',
+    digest: '9f33b39f28730fb21219be4d99055b2b7e57c0034ff33da12a9fa10b2de1da18',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '51beeacf7a85e2293232d14a3566d90f15ec79af4b11a60308b5484fd1c06652',
+    digest: '11055d5b83b55a77b423197d073e1975e63abb9354a8708b3d4234a95bed2687',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'b50be448e3880d099e240801880e087cc919f381265e67d831ff63ade3a3eeeb',
+    digest: '37c2e43b00451e309d3c182d7e76247645d52535b59d1c29d23b3aa131e52eff',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -146,7 +150,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'fb205807191769a0051381f4dbd26bacd4f3538ad9c1749a9c9f54708ec9ba13',
+    digest: '5fedd3005c1fcc958633dca0d255c721fc50a448755e28b955288189ae7fda55',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

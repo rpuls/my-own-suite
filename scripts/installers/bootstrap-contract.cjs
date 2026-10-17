@@ -517,6 +517,14 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_APP_AGENT_UNIT
 
+# Rendered from the same definitions reconcile-system.cjs writes on every
+# managed update, which a fresh install never runs.
+cat > /etc/systemd/system/${STORAGE_ATTACH_UNIT} <<MOS_STORAGE_ATTACH_UNIT
+${renderStorageAttachUnit()}MOS_STORAGE_ATTACH_UNIT
+cat > ${STORAGE_UDEV_RULE_PATH} <<'MOS_STORAGE_UDEV_RULE'
+${renderStorageUdevRule()}MOS_STORAGE_UDEV_RULE
+udevadm control --reload-rules || true
+
 cat > /etc/systemd/system/mos-backup-agent.service <<MOS_BACKUP_AGENT_UNIT
 [Unit]
 Description=MOS backup and restore agent
@@ -825,7 +833,11 @@ const {
   renderCaddyServiceOverride,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
   renderUnavailablePage,
+  STORAGE_ATTACH_UNIT,
+  STORAGE_UDEV_RULE_PATH,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
 } = require('../../infrastructure/control-plane-runtime.cjs');

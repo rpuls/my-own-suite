@@ -70,7 +70,20 @@ async function photosFrom(page, stamp) {
   return search.body?.assets?.items || [];
 }
 
+// A photo copied onto the drive picked at install, which Immich shows from its
+// Photos library without uploading it.
+async function drivePhotoFound(page, name) {
+  const search = await api(page, '/api/search/metadata', { body: { originalFileName: name }, method: 'POST' });
+  return (search.body?.assets?.items || []).find((asset) => asset.libraryId) || null;
+}
+
 export default {
+  setupValue({ env, field }) {
+    if (field.id === 'adminPassword' || /password/iu.test(field.label || '')) return adminPassword(env);
+    if (field.id === 'adminEmail' || /email/iu.test(field.label || '')) return adminEmail(env);
+    return null;
+  },
+
   // Storage use moves with every upload anywhere on the server; it says nothing about this app's screens.
   masks(page) {
     return [page.getByRole('meter', { name: 'Storage space' }), page.getByText(/GiB of .* GiB used/u)];
@@ -84,7 +97,7 @@ export default {
     await expect(page.locator('body')).toContainText(/Immich|Welcome|Login|Search your photos/iu, { timeout: 90000 });
   },
 
-  async journey({ env, make, page, shot, state, step, url }) {
+  async journey({ drive, env, make, page, shot, state, step, url }) {
     await step('register the admin and sign in', () => signIn(page, env, { firstVisit: true }));
     const stamp = Date.now().toString(36);
     const files = [];
@@ -109,6 +122,16 @@ export default {
       expect(album.status, 'creating the album').toBe(201);
       state.albumId = album.body.id;
     });
+    if (state.drive) {
+      await step('copy a photo onto the drive and plug it back in', async () => {
+        const name = `drive-${stamp}`;
+        const photo = await make.png(name, `<body style="margin:0;background:#7a3fb0;display:grid;place-items:center;height:100vh;font:48px sans-serif;color:#fff">From the drive ${stamp}</body>`, { height: 600, width: 900 });
+        await drive.put('Photos', photo, `${name}.png`);
+        await drive.replug();
+        await expect.poll(async () => Boolean(await drivePhotoFound(page, name).catch(() => null)), { intervals: [5000], message: 'Immich should show the photo copied onto the drive', timeout: 300000 }).toBe(true);
+        state.drivePhoto = name;
+      });
+    }
     Object.assign(state, { albumName, photos: files.length, stamp });
     await page.goto(new URL('/photos', url).toString());
     await expect(page.getByRole('link', { name: 'Photos' })).toBeVisible({ timeout: 30000 });
@@ -134,6 +157,11 @@ export default {
       expect(album.body?.albumName).toBe(state.albumName);
       expect(album.body?.assets?.length ?? album.body?.assetCount).toBe(state.photos);
     });
+    if (state.drivePhoto) {
+      await step('the photo on the drive is still there', async () => {
+        await expect.poll(async () => Boolean(await drivePhotoFound(page, state.drivePhoto).catch(() => null)), { intervals: [5000], message: 'the photo from the drive should still be listed', timeout: 300000 }).toBe(true);
+      });
+    }
     await page.goto(new URL('/photos', url).toString());
     await expect(page.getByRole('link', { name: 'Photos' })).toBeVisible({ timeout: 30000 });
     await shot('photos');

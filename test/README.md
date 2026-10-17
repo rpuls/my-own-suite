@@ -37,6 +37,7 @@ cmd /c npm run e2e:full                           # the same as `e2e -- @full`
 ```
 
 - Steps that need HTTPS for an app whose manifest declares `requirements.https` get a `dns01` step in front of them automatically; `--dry-run` shows where.
+- The first install of an app that declares `storage` folders gets a `drive` step in front of it, which gives a lab with no usable drive a 2 GiB FAT32 image on a loop device (it needs the root shell below). Installs pick the lab's drive whenever the dialog offers one, so optional folders are tested too, and a journey reaches the drive through `drive.put(folder, file, name)`, which copies onto the drive the way an owner would from another computer, and `drive.replug()`, which starts the same unit udev starts when a drive is plugged back in.
 - `@update` and `@app-dr` also install the catalog apps the app works with: those that export what its manifest's `integrations` accept, and those that accept what it exports. They are connected, used and checked alongside it, providers first, and only the named app is updated.
 - Each run writes `test/e2e/results/<run>/`: `summary.json` (every step, its duration and any error), `state.json` (what the apps' journeys made), app screenshots under `shots/`, the compare report under `compare/`, the network report under `network/`, Playwright's trace, video and `error-context.md` under `playwright/`, and, when an app step fails, the app's own tabs as text under `failures/` (Playwright's error context shows only the suite's tab). The terminal shows one line per step and, on failure, the paths to all of these.
 - `--continue <run>` carries an earlier run's app data and screenshots into a new run, so `verify:<app>` and `compare` work across runs: install and use an app, change the lab, then check it.
@@ -46,10 +47,10 @@ cmd /c npm run e2e:full                           # the same as `e2e -- @full`
 
 Core test code names no app; a unit test enforces it. Everything particular to an app lives in its package at `apps/<id>/e2e/index.mjs`, whose default export is:
 
-- `journey({ page, url, env, state, make, shot, step, freshPage })`: what an owner does in the app on a fresh install: sign in or register, create real data, and remember in `state` what `verify` will look for.
+- `journey({ page, url, env, state, make, shot, step, freshPage, setup, drive })`: what an owner does in the app on a fresh install: sign in or register, create real data, and remember in `state` what `verify` will look for.
 - `verify(...)`: that data is still there, after a restore, an update or a move to another domain.
 - Optional: `network` (the hosts the app may contact, see below), `landed({ page })` (the app's page has loaded), `setupValue({ field, env })` (a value for an install dialog field), `secrets({ env })` (values the diagnostics check must never find), `masks(page)` (regions to hide in screenshots), and `showcase` (which site screenshots the app volunteers for).
-- `shot(name)` takes a named screenshot. The same name taken in a later step pairs with it in `compare`. `make.pdf()`, `make.png()` and `make.text()` draw test files at run time, so nothing binary is committed. `freshPage()` is a browser with nothing stored, as a new device would be. `connected` lists the app's own integration slots (from its manifest) that another installed app currently fills, so a journey can test working together without naming the other app.
+- `shot(name)` takes a named screenshot. The same name taken in a later step pairs with it in `compare`. `make.pdf()`, `make.png()`, `make.video()` (a short WebM recorded from a canvas) and `make.text()` draw test files at run time, so nothing binary is committed. `freshPage()` is a browser with nothing stored, as a new device would be. `connected` lists the app's own integration slots (from its manifest) that another installed app currently fills, so a journey can test working together without naming the other app.
 
 ### Network capture
 

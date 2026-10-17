@@ -130,7 +130,7 @@ test('install and update jobs answer at once with what they were handed', async 
   const updateJobs = { begin: (id, input) => { begun.push(['update', id, input]); return { status: 'running' }; } };
 
   await withRoutes({ installJobs, updateJobs }, async (call) => {
-    const install = await call('POST', '/apps/packages/notes/install-job', { body: { config: { title: 'Notes' }, showOnHomepage: 'yes' } });
+    const install = await call('POST', '/apps/packages/notes/install-job', { body: { config: { title: 'Notes' }, drive: '1A2B-3C4D', showOnHomepage: 'yes' } });
     assert.equal(install.status, 202);
     assert.deepEqual(install.json(), { installJob: { status: 'running' } });
     assert.equal((await call('POST', '/apps/packages/notes/install-job', { body: {} })).status, 202);
@@ -140,8 +140,8 @@ test('install and update jobs answer at once with what they were handed', async 
   });
 
   assert.deepEqual(begun, [
-    ['install', 'notes', { config: { title: 'Notes' }, showOnHomepage: false }],
-    ['install', 'notes', { config: {}, showOnHomepage: false }],
+    ['install', 'notes', { config: { title: 'Notes' }, drive: '1A2B-3C4D', showOnHomepage: false }],
+    ['install', 'notes', { config: {}, drive: null, showOnHomepage: false }],
     ['update', 'notes', { confirmationToken: 'token' }],
   ]);
 });

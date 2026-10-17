@@ -10,6 +10,17 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+### Added
+
+- **Apps can keep their files on a drive you plug in, and Jellyfin is the first.** Installing an app that reads your own files asks which drive to use; MOS makes the app's folders on it, such as `MOS-files/apps/jellyfin/Movies`, and the app finds whatever you copy there from any computer. Plug the drive back in and MOS mounts it again and the app picks up what is new. These files are not part of your backups, and uninstalling the app leaves them on the drive. **Settings → Storage drives** shows each drive, how full it is, and what is on it.
+  - Drives formatted as exFAT, NTFS or FAT32 can hold app files; the drive MOS runs from cannot. An app that needs a drive, like Jellyfin, says "Requires an extra storage device" until one is plugged in.
+  - **Compatibility:** manifest field `storage` (MOS 0.23.0, enforced as the minimum version). App agent contract 13. The platform update installs the `mos-storage-attach@.service` unit and the udev rule `/etc/udev/rules.d/90-mos-storage.rules`; drives are mounted under `/media/mos-storage/<filesystem id>`.
+- **Jellyfin joins the catalog.** Your own films and series, streamed to every screen in the house. Install it with a drive, and it starts with your administrator and its Movies and Series libraries already set up, so there is no setup wizard to click through.
+
+### Changed
+
+- **Immich package 0.9.0 sets up its administrator for you and can show photos from your own drive.** A new install asks for the administrator's email and password instead of sending you to Immich's sign-up page, and can take a drive whose Photos folder Immich shows as a library, read where it is and never changed. Updating asks once for your current Immich email and password, and offers the same drive choice.
+
 ## [0.22.0] - 2026-10-15
 
 **This release is mostly behind the scenes: better infrastructure for app updates, and more automated testing to back it.** There aren't many new platform features this time, but this work matters for everything that comes next.

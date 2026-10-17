@@ -448,6 +448,7 @@ function validatePrivacyAssessmentDocument(review) {
   return checkRecord(review, 'review', {
     optional: {
       expiresAt: isDateTime,
+      security: isListOf(isEvidence),
       telemetryControls: isListOf(isEvidence),
     },
     required: {
@@ -611,7 +612,7 @@ const VOLUME_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,61}$/u;
 const FORBIDDEN_MANIFEST_KEYS = Object.freeze([
   'caddy', 'caddyfile', 'capAdd', 'capabilities', 'compose', 'devices', 'dockerSocket',
   'hostAgent', 'hooks', 'network', 'networkMode', 'privileged', 'rootScript', 'scripts',
-  'securityOpt', 'systemd',
+  'securityOpt', 'storage', 'systemd',
 ]);
 const FORBIDDEN_SERVICE_KEYS = Object.freeze([
   'capAdd', 'capabilities', 'cgroupParent', 'devices', 'deviceCgroupRules', 'deviceRequests',
@@ -777,6 +778,9 @@ function describeRequestedPermissions(manifest, { external = false } = {}) {
     for (const spec of Array.isArray(service?.volumes) ? service.volumes : []) {
       permissions.add(`volume:${volumeSource(spec)}`);
     }
+  }
+  for (const folder of Array.isArray(manifest?.storage?.folders) ? manifest.storage.folders : []) {
+    if (folder?.name) permissions.add(`folder:${folder.name}`);
   }
   if (isPlainRecord(manifest?.integrations)) {
     for (const key of Object.keys(manifest.integrations)) permissions.add(`integration:${key}`);

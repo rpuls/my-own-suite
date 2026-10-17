@@ -371,6 +371,7 @@ export function permissionLabel(permission: string): { detail: string; label: st
   const value = separator === -1 ? '' : permission.slice(separator + 1);
   if (kind === 'route') return { detail: 'Gets its own HTTPS address under your MOS domain.', label: `Web address: ${value}` };
   if (kind === 'volume') return { detail: 'Reads and writes its own private, named storage volume.', label: `Storage: ${value}` };
+  if (kind === 'folder') return { detail: 'Reads its own folder on a drive you pick, which you fill from any computer.', label: `Folder: ${value}` };
   if (kind === 'integration') return { detail: 'Can connect to a compatible app you choose. Nothing connects automatically.', label: `Integration: ${value}` };
   if (permission === 'provides-capability') return { detail: 'Other installed apps can connect to this one.', label: 'Provides a capability to other apps' };
   return { detail: '', label: permission };

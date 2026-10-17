@@ -10,6 +10,8 @@ const core = new AppAgentCore(adapter);
 
 const server = routeTable({
   'GET /v1/status': () => core.status(),
+  'GET /v1/storage/drives': () => core.storageDrives(),
+  'GET /v1/storage/folders': () => core.storageFolders(),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
   'POST /v1/apps/check-health': (body) => core.checkHealth(body),

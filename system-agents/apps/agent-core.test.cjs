@@ -237,6 +237,29 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.match(calls[0].caddyRoutes, /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
 
+test('app apply passes a service its drive folders and refuses any that could name another path', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async applyAppServices(input) { calls.push(input); return { steps: [] }; } });
+  const withFolders = (folders) => ({ ...request, compose: { ...request.compose, services: [{ ...request.compose.services[0], folders }] } });
+  const movies = { drive: '1A2B-3C4D', name: 'Movies', path: '/media/movies' };
+
+  await core.apply(withFolders([movies]));
+  assert.deepEqual(calls[0].services[0].folders, [movies]);
+  await core.apply(request);
+  assert.equal('folders' in calls[1].services[0], false);
+
+  for (const folder of [
+    { ...movies, name: '../../etc' },
+    { ...movies, drive: '../root' },
+    { ...movies, path: 'relative' },
+    { ...movies, path: '/media/movies,readonly=false' },
+    { ...movies, source: '/etc' },
+  ]) {
+    await assert.rejects(() => core.apply(withFolders([folder])), AppRuntimeError);
+  }
+  await assert.rejects(() => core.apply(withFolders([])), AppRuntimeError);
+});
+
 test('app apply renders HTTPS Caddy routes when public URL is HTTPS', async () => {
   const calls = [];
   const core = new AppAgentCore({

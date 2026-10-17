@@ -3,6 +3,8 @@
 // returns: no fetching, no state, no JSX. The page reads as a list of sections;
 // the sentences those sections show are decided here.
 
+import { formatBytes } from '../../lib/bytes';
+
 type BackupDestination = {
   accessKeyId?: string;
   availableBytes: number | null;
@@ -14,6 +16,7 @@ type BackupDestination = {
   // How a drive stays the same drive across being unplugged: where it is
   // mounted is a fact about this boot, the filesystem on it is not.
   fsUuid?: string | null;
+  holdsAppFiles?: boolean;
   id: string;
   kind?: 'disk' | 'object';
   label: string;
@@ -233,14 +236,7 @@ export type BackupStatus = {
 
 type Tone = 'error' | 'muted' | 'ready' | 'warning';
 
-export function formatBytes(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return 'Unknown space';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
+export { formatBytes };
 
 // The way someone says a date out loud: today and yesterday by name, this year
 // without the year, anything older in full.
@@ -438,7 +434,8 @@ function destinationView(destination: BackupDestination, status: BackupStatus | 
     action = 'unlock';
     actionLabel = 'Enter recovery key';
   } else if (ready) {
-    detail = bucket ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}` : '';
+    detail = bucket ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
+      : destination.holdsAppFiles ? "Also holds your apps' files, which these backups do not include." : '';
   } else if (bucket) {
     tone = 'error';
     line = 'MOS could not reach this storage';

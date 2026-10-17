@@ -23,7 +23,9 @@
 import { useState } from 'react';
 
 import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
+import { DriveChoice, useDriveChoice } from './DriveChoice';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
+import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
 
 export type OwnerEnvEntry = {
@@ -202,6 +204,7 @@ export function AppConfigDialog({
   packageId,
   running,
   service,
+  storage,
   webAddress,
   webAddressKind,
 }: {
@@ -219,12 +222,13 @@ export function AppConfigDialog({
   installed: boolean;
   installing: boolean;
   onClose: () => void;
-  onInstall: (options: { config: Record<string, string>; showOnHomepage: boolean }) => void;
+  onInstall: (options: { config: Record<string, string>; drive: string | null; showOnHomepage: boolean }) => void;
   onSaved: () => Promise<void>;
   owner: Owner;
   packageId: string;
   running: boolean;
   service: string;
+  storage: AppStorage | null;
   webAddress: string;
   webAddressKind: 'web' | 'api';
 }) {
@@ -240,13 +244,15 @@ export function AppConfigDialog({
   const [pasteText, setPasteText] = useState('');
   const [pasteError, setPasteError] = useState('');
   const [copied, setCopied] = useState(false);
+  const choosesDrive = Boolean(storage?.folders.length) && !installed;
+  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive);
 
   const busy = saving || installing;
   const ownerFields = fields.filter((field) => !field.generated);
   const generatedFields = fields.filter((field) => field.generated);
   const storedFor = (id: string) => config.find((entry) => entry.key === id);
   // Nothing is collected once the values are stored, so nothing can be missing.
-  const canInstall = installed || !requiredSetupMissing({ setup: { fields } }, setupConfig);
+  const canInstall = installed || (!requiredSetupMissing({ setup: { fields } }, setupConfig) && !driveMissing);
 
   const lede = installed
     ? ownerFields.length ? '' : `Nothing to set. ${appName} looks after its own settings.`
@@ -373,7 +379,7 @@ export function AppConfigDialog({
       </button>
       {running
         ? <button className="mos-btn mos-btn-primary" disabled={busy} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
-        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, drive: choosesDrive && drive ? drive : null, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
     </>}
     onClose={() => { if (!busy) onClose(); }}
     title={running ? `${appName} settings` : `Install ${appName}`}
@@ -428,7 +434,13 @@ export function AppConfigDialog({
       </Rows>
     </div> : null}
 
-    <Rows lead={!ownerFields.length}>
+    {choosesDrive && storage ? <div className="suite-app-config-group">
+      <Rows lead>
+        <DriveChoice appName={appName} busy={busy} drive={drive} drives={drives} onChange={setDrive} storage={storage} />
+      </Rows>
+    </div> : null}
+
+    <Rows lead={!ownerFields.length && !choosesDrive}>
       {webAddress ? <Row label={webAddressKind === 'api' ? 'API address' : 'Web address'}>
         <RowTrailing>
           <RowValue>{webAddress}</RowValue>

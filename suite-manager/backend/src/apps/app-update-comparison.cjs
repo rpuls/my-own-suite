@@ -79,6 +79,15 @@ function unmetRequirements(manifest, peers) {
   return required.map((type) => ({ providers: peers.providersByType?.[type] || [], type }));
 }
 
+// The folders an update brings to an app that had none, which the update dialog
+// offers a drive picker for. A version that keeps or changes folders is not an
+// offer: the instance's folders stay where they were placed.
+function storageOffer(installedManifest, candidateManifest) {
+  const folders = Array.isArray(candidateManifest.storage?.folders) ? candidateManifest.storage.folders : [];
+  if (!folders.length || Array.isArray(installedManifest.storage?.folders)) return null;
+  return { folders: folders.map((folder) => ({ name: folder.name })), required: candidateManifest.storage.required === true };
+}
+
 function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, peers = null }) {
   const changes = [];
   const breakingAreas = new Set();
@@ -99,6 +108,8 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   for (const volume of volumes(installed.manifest)) {
     if (!volumes(candidate.manifest).has(volume)) { breakingAreas.add('volumes'); changes.push({ area: 'volumes', classification: 'migration-required', summary: `Persistent volume ${volume} is no longer declared.` }); }
   }
+  const storage = storageOffer(installed.manifest, candidate.manifest);
+  if (storage) changes.push({ area: 'storage', classification: 'automatically-handled', summary: `${candidate.manifest.name} can now read ${storage.folders.map((folder) => folder.name).join(', ')} from a drive you pick below.` });
   for (const area of ['resources', 'routes', 'health', 'exports', 'integrations', 'usefulness']) {
     if (!equal(installed.manifest[area], candidate.manifest[area]) && !changes.some((change) => change.area === area)) {
       changes.push({ area, classification: 'automatically-handled', summary: `${area[0].toUpperCase()}${area.slice(1)} declarations changed.` });
@@ -178,6 +189,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
     requiredInput,
     requirements,
     schemaVersion: 1,
+    storage,
     updateStatus,
     validation: {
       errors: [

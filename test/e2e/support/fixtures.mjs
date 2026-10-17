@@ -39,6 +39,40 @@ export function fixtureMaker(ctx, appId) {
       await page.close();
       return file;
     },
+    // A short WebM film recorded from a canvas in the browser, so a media app has
+    // something real to identify and play without a video file in the repository.
+    async video(name, { label = name, seconds = 4 } = {}) {
+      const file = target(ctx, appId, `${name}.webm`);
+      const page = await renderPage('<canvas height="240" width="426"></canvas>', { height: 240, width: 426 });
+      const base64 = await page.evaluate(async ({ label: text, seconds: duration }) => {
+        const canvas = document.querySelector('canvas');
+        const draw = canvas.getContext('2d');
+        const recorder = new MediaRecorder(canvas.captureStream(15), { mimeType: 'video/webm;codecs=vp8' });
+        const chunks = [];
+        recorder.ondataavailable = (event) => chunks.push(event.data);
+        const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+        recorder.start();
+        const started = performance.now();
+        while (performance.now() - started < duration * 1000) {
+          const elapsed = (performance.now() - started) / 1000;
+          draw.fillStyle = `hsl(${Math.round(elapsed * 90) % 360} 60% 40%)`;
+          draw.fillRect(0, 0, canvas.width, canvas.height);
+          draw.fillStyle = '#fff';
+          draw.font = '28px sans-serif';
+          draw.fillText(`${text} ${elapsed.toFixed(1)}s`, 20, 130);
+          await new Promise((resolve) => { requestAnimationFrame(resolve); });
+        }
+        recorder.stop();
+        await stopped;
+        const bytes = new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }, { label, seconds });
+      await page.close();
+      fs.writeFileSync(file, Buffer.from(base64, 'base64'));
+      return file;
+    },
     text(name, content) {
       const file = target(ctx, appId, name);
       fs.writeFileSync(file, content);

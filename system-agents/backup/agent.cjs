@@ -37,6 +37,8 @@ const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-age
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
+const { FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
+const { LSBLK_ARGS, directorySize, isMountPoint, isSystemMountpoint, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
@@ -87,25 +89,6 @@ function normalizeDestination(candidate) {
 function isWritable(dir) {
   try { fs.accessSync(dir, fs.constants.W_OK); return true; } catch { return false; }
 }
-// Resolved as POSIX because these are Linux mountpoints reported by lsblk, not
-// paths on whatever machine is running the code. `path.resolve` is
-// platform-dependent and turns "/" into a drive letter off Linux, which would
-// silently stop recognising the system disk anywhere the agent is exercised.
-function isSystemMountpoint(mountpoint) {
-  const resolved = path.posix.resolve('/', String(mountpoint || ''));
-  return resolved === '/' || resolved === '/boot' || resolved === '/boot/efi' || resolved === '/var' || resolved === '/var/lib' || resolved.startsWith('/var/lib/docker/');
-}
-// A drive formatted end to end carries no partition table, so lsblk reports a
-// single `disk` with a filesystem on it and no children. That is an ordinary
-// backup drive and it is also the shape a whole-disk drive comes back as after
-// a restore drill, which is why refusing it made such a drive unre-attachable
-// from the UI. A disk that does have partitions stays a container: its
-// partitions are the candidates, and it is not one itself.
-function isWholeDiskFilesystem(device) {
-  return device.type === 'disk'
-    && Boolean(String(device.fstype || '').trim())
-    && (device.children || []).length === 0;
-}
 function mountBlockReason(device) {
   const fileSystem = String(device.fstype || '').toLowerCase();
   if (device.type !== 'part' && !isWholeDiskFilesystem(device)) return 'Choose a data partition, not the whole device.';
@@ -122,33 +105,6 @@ function mountBlockReason(device) {
 }
 function sanitizeMountName(value) {
   return String(value || 'drive').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'drive';
-}
-// A mounted filesystem has a different device id from the directory it is
-// mounted over, which is the only positive proof available that a path is the
-// drive rather than the mountpoint left behind on the system disk. Anything that
-// cannot be determined answers "mounted", because the one caller deletes what
-// this says is not a drive.
-function isMountPoint(dir) {
-  try {
-    return fs.statSync(dir).dev !== fs.statSync(path.dirname(dir)).dev;
-  } catch {
-    return true;
-  }
-}
-function directorySize(dir) {
-  let total = 0;
-  const pending = [dir];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    let entries;
-    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { continue; }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) pending.push(full);
-      else { try { total += fs.lstatSync(full).size; } catch {} }
-    }
-  }
-  return total;
 }
 // A drive pulled mid-backup leaves its mountpoint behind as an ordinary
 // directory on the system disk, holding whatever was written after the drive
@@ -186,13 +142,17 @@ function driveCandidates(blockdevices = []) {
     const points = Array.isArray(device.mountpoints) ? device.mountpoints : [];
     const devicePath = device.path || (device.name ? `/dev/${device.name}` : null);
     const label = device.label || device.model || driveModel || device.name || devicePath || 'Backup storage';
-    let mounted = false;
-    for (const point of points) {
-      const mountPath = normalizeDestination(point);
-      if (!mountPath) continue;
-      mounted = true;
+    // A drive that also holds app folders is mounted again under the storage
+    // root; it is still one drive, listed once and preferably by the path the
+    // backups already know it by.
+    const mountPaths = points.map(normalizeDestination).filter(Boolean)
+      .sort((left, right) => Number(left.startsWith(`${STORAGE_MOUNT_ROOT}/`)) - Number(right.startsWith(`${STORAGE_MOUNT_ROOT}/`)));
+    const mounted = mountPaths.length > 0;
+    if (mounted) {
+      const mountPath = mountPaths[0];
       const externalMount = external || mountPath.startsWith('/media/');
-      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
+      const holdsAppFiles = mountPaths.some((point) => fs.existsSync(path.join(point, FILES_DIR)));
+      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, holdsAppFiles, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
     if (!mounted && (device.type !== 'disk' || isWholeDiskFilesystem(device))) {
       const blocked = mountBlockReason(device);
@@ -204,7 +164,7 @@ function driveCandidates(blockdevices = []) {
   return [...candidates.values()];
 }
 async function listDestinations() {
-  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
+  const lsblk = await execJson('lsblk', LSBLK_ARGS);
   const candidates = driveCandidates(lsblk?.blockdevices);
   // `ready` is the single question every destination answers, so nothing above
   // this has to know that one kind proves itself by being mounted and another by

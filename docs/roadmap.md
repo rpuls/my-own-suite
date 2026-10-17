@@ -199,6 +199,40 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
+### S. An app's files on the owner's own drive
+
+**Gate:** a non-technical owner installs Jellyfin, picks an attached drive when the installer
+asks, fills the drive from any computer of theirs, and the films play — with no path, mount,
+UID or terminal at any point, apps noticing files without being asked, and uninstalling
+an app never touching the owner's files.
+
+The 0.23.0 sprint. Research and the decided design live in
+`.local-tools/research/2026-10-16-storage-and-your-files.md`: per-app external folders
+(`MOS-files/apps/<app>/<folder>`) on an owner-chosen portable drive, declared by an optional
+additive manifest field, created and mounted by MOS, filled outside MOS. Sequel slices —
+web file management, encrypted drives, SMB, the MOS disk as a home, backup opt-in for external
+folders — stay out of this theme until it ships; slice 1 must not preclude any of them.
+
+- **S1 — Manifest amendment for exposed folders.** The optional additive field naming the
+  folders an app wants mounted; schema, validator, and the manifest reference move together,
+  gated by `minimumMosVersion`. *(Small)*
+- **S2 — Storage drives: adopt, mount persistently, survive absence.** Adopt a portable
+  (exFAT-class) drive by fsUuid, MOS's first persistent mount (obeys the vault gating test),
+  controlled mount options for container readability, offline state when missing at boot,
+  eject, and the backup candidate list and storage claims excluding each other. *(Medium)*
+- **S3 — Install-flow disk picker.** Pick 1 of n eligible drives; none → install blocked with
+  "requires extra storage device"; MOS creates the app's folders and mounts them. *(Medium)*
+- **S4 — Pre-provision the app's libraries and rescans.** MOS drives the app's admin API once
+  at install (Jellyfin library, Immich external library) and triggers rescans when a drive
+  returns. *(Medium)*
+- **S5 — Pilots: Jellyfin package (#215, taken in-house) and the Immich retrofit.** *(Medium)*
+- **S6 — The owner can see their storage.** Drive capacity and per-folder sizes, including
+  folders of uninstalled apps, and the plain sentence that an external drive is not backed up.
+  *(Medium)*
+- **S7 — Drill and E2E coverage for the new states.** App cycle with a storage drive, drive
+  absent at boot, drive unplugged and returned, and backup/storage coexisting on one drive.
+  *(Medium)*
+
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -532,6 +566,14 @@ Owner decisions. Future agents and reviews should not resurface these.
   and buy nothing for the apps that replay their own migration history, which is most of them. **AL9**
   takes the correctness half by refusing a jump the app cannot survive. Reopen only as a published
   waypoint package for a named app that genuinely demands one.
+- **Shared cross-app library folders** — declined (2026-10-17) in favor of per-app external
+  folders: the manifest declares an app's exposed folders, MOS creates
+  `MOS-files/apps/<app>/<folder>` on the owner-chosen drive and mounts them, and moving files
+  between apps is the owner's explicit file move. A folder shared by default invites surprise
+  cross-app effects — a kids' app showing the whole collection, metadata sidecar conflicts —
+  for a deduplication benefit nobody asked for. The one cross-app mechanism is a future
+  connector write-grant (radarr-style, one app writing into another's folder). Do not re-raise
+  shared library instances.
 
 ---
 

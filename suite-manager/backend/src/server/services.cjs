@@ -85,7 +85,7 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
   const installJobs = new AppInstallJobs({
     addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, appUrls.publicUrlOf(packageId)),
     logger,
-    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
+    prepare: (packageId, input) => appPackages.installPackage(packageId, input),
     progressOf: (packageId) => appPackages.installProgressOf(packageId),
     start: (packageId) => appPackages.startPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
     waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: appUrls.publicUrlOf(packageId).publicUrl }),

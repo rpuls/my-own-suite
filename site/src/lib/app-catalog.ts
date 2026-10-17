@@ -110,6 +110,7 @@ export type PrivacyAssessment = {
   policies: Array<{ kind: string; publisher?: string; retrievedAt?: string; url: string }>
   provenance: Record<string, any>
   reviewedAt: string | null
+  security: PrivacyEvidence[]
   sourceRevision: string | null
 }
 
@@ -173,6 +174,7 @@ function privacyAssessmentFor(manifestPath: string, manifest: any): PrivacyAsses
     policies: review.policies ?? [],
     provenance: review.provenance ?? {},
     reviewedAt: review.reviewedAt ?? null,
+    security: review.security ?? [],
     sourceRevision: review.scope?.source?.revision ?? null
   }
 }

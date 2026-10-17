@@ -1502,6 +1502,43 @@ test('new installs snapshot package contents before persisting configuration and
   store.close();
 });
 
+test('an app that needs a drive is refused without one and records its folders on the drive it was given', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  const drives = [{ connected: true, id: '1A2B-3C4D', usable: true }, { connected: true, id: 'e1e1-linux', reason: 'This drive is formatted as ext4.', usable: false }];
+  const agent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async status() { return agentStatus(); },
+    async storageDrives() { return { drives }; },
+  };
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+  const config = { adminName: 'Owner', adminPassword: 'jellyfin-test-password' };
+
+  await assert.rejects(() => service.installPackage('jellyfin', { config }), (error) => error.code === 'APP_STORAGE_DRIVE_REQUIRED');
+  await assert.rejects(() => service.installPackage('jellyfin', { config, drive: 'e1e1-linux' }), (error) => error.code === 'APP_STORAGE_DRIVE_UNAVAILABLE' && /ext4/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('jellyfin'), null);
+
+  const view = await service.installPackage('jellyfin', { config, drive: '1A2B-3C4D' });
+  assert.deepEqual(view.folders, [
+    { driveId: '1A2B-3C4D', locationKind: 'drive', name: 'Movies' },
+    { driveId: '1A2B-3C4D', locationKind: 'drive', name: 'Series' },
+  ]);
+  const compose = store.getAppProjections(view.id).find((projection) => projection.kind === 'compose').content;
+  assert.deepEqual(compose.services[0].folders.map((folder) => folder.path), ['/media/movies', '/media/series']);
+  assert.equal(compose.volumes.some((volume) => /movies|series/u.test(volume)), false);
+  store.close();
+});
+
+test('the Apps list blocks an app that needs a drive on a server without one', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ appsDir: v2AppsDir, store });
+  const unmetFor = (host, id) => service.listPackages(host).find((app) => app.id === id).unmetRequirements.map((unmet) => unmet.id);
+  assert.deepEqual(unmetFor({ storageDrives: 0 }, 'jellyfin'), ['storage']);
+  assert.deepEqual(unmetFor({ storageDrives: 1 }, 'jellyfin'), []);
+  assert.deepEqual(unmetFor({ storageDrives: 0 }, 'immich'), []);
+  store.close();
+});
+
 test('installed package details and icons remain bound to the snapshot when the candidate changes or disappears', async () => {
   const root = await tempStateDir();
   const appsDir = path.join(root, 'apps');

@@ -239,7 +239,8 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   assert.equal(immich.manifest.homepage.icon, 'immich');
   assert.equal(immich.manifest.routes[0].service, 'immich-server');
   assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server/ping');
-  assert.equal(immich.manifest.setup.fields.length, 2);
+  assert.deepEqual(immich.manifest.setup.fields.map((field) => field.id), ['adminEmail', 'adminPassword', 'postgresPassword', 'jwtSecret']);
+  assert.deepEqual(immich.manifest.storage, { folders: [{ name: 'Photos', path: '/media/photos', service: 'immich-server' }], required: false });
   assert.ok(Array.isArray(immich.manifest.onboarding.sections));
   assert.deepEqual(validateAppPackageManifest(immich.manifest, { packageDir: immich.packageDir }), []);
 });
@@ -624,6 +625,33 @@ test('manifest validation requires named package volumes, never host paths', () 
   assert.ok(validateAppPackageManifest(withVolumes(['/host/path:/data'])).length > 0);
   assert.ok(validateAppPackageManifest(withVolumes(['data'])).length > 0);
   assert.ok(validateAppPackageManifest(withVolumes(['../escape:/data'])).length > 0);
+});
+
+test('storage folders are checked against their service and reach the summary without their paths', () => {
+  const withStorage = (storage, overrides = {}) => validManifest({ minimumMosVersion: '0.23.0', storage, ...overrides });
+  const movies = { name: 'Movies', path: '/media/movies', service: 'example-app' };
+  assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [movies], required: true })), []);
+  assert.deepEqual(publicPackageSummary(withStorage({ folders: [movies], required: true })).storage, {
+    folders: [{ name: 'Movies', service: 'example-app' }],
+    required: true,
+  });
+  assert.equal(publicPackageSummary(validManifest()).storage, null);
+
+  assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [movies] }, { minimumMosVersion: '0.22.0' })), [
+    'storage requires minimumMosVersion 0.23.0 or later.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [movies, { ...movies, name: 'movies', path: '/media/other' }] })), [
+    'storage.folders[1].name duplicates another folder; names are compared ignoring case because most drives do.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [{ ...movies, service: 'missing' }] })), [
+    'storage.folders[0].service must name a service in resources.services.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [{ ...movies, path: '/data' }] })), [
+    'storage.folders[0].path is already a volume of service example-app.',
+  ]);
+  assert.ok(validateAppPackageManifest(withStorage({ folders: [{ ...movies, path: '/media/../etc' }] })).length);
+  assert.ok(validateAppPackageManifest(withStorage({ folders: [{ ...movies, name: '../escape' }] })).length);
+  assert.ok(validateAppPackageManifest(withStorage({ folders: [] })).length);
 });
 
 test('manifest validation rejects package paths that escape the app folder', () => {

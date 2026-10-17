@@ -23,6 +23,7 @@ export function catalogApps() {
         id: manifest.id,
         name: manifest.name,
         needsHttps: manifest.requirements?.https === true,
+        keepsFilesOnDrive: Array.isArray(manifest.storage?.folders) && manifest.storage.folders.length > 0,
         provides: Object.values(manifest.exports || {}).map((item) => item.type),
         role: manifest.role || 'standalone',
         routeHosts: (manifest.routes || []).map((route) => route.host).filter(Boolean),

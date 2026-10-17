@@ -7,6 +7,7 @@ export const STEPS = {
   owner: { arg: 'none', budgetMinutes: 4, describe: 'Create the owner, or sign in, and answer the terms and handover gates.' },
   homepage: { arg: 'none', budgetMinutes: 6, describe: 'Add a website and a home-network app to Homepage, to look for after a restore.' },
   'homepage-check': { arg: 'none', budgetMinutes: 4, describe: 'The Homepage entries `homepage` added are still there.' },
+  drive: { arg: 'none', budgetMinutes: 2, describe: 'Give the lab a drive for apps that keep files on one, unless it has one already: a FAT32 disk image on a loop device.' },
   dns01: { arg: 'none', budgetMinutes: 10, describe: 'Move the suite to the DNS-01 domain in test/e2e/.env; later steps use its https address.' },
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },
   app: { arg: 'app', budgetMinutes: 20, describe: "Open the app from its Homepage tile and run the app's own journey." },
@@ -142,6 +143,8 @@ function checkStep(step, catalogIds) {
 
 // Expands named paths, checks every token, and puts `dns01` in front of the first
 // step that needs HTTPS for an app that requires it, since a reset drops the domain.
+// Likewise `drive` goes in front of the first install of an app that keeps files on
+// a drive; a reset leaves the drive attached, so once is enough.
 // A cloud server serves HTTPS from its first address, so `startsSecure` runs need no
 // dns01, and a reset returns them to HTTPS rather than to plain HTTP.
 export function resolvePath(items, catalog, { backupTo = null, eachApp = null, startsSecure = false } = {}) {
@@ -193,6 +196,7 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
 
   const steps = [];
   let secure = startsSecure;
+  let drive = false;
   for (const token of tokens) {
     const step = toLabDestination({ ...parseToken(token), token }, backupTo);
     const problem = checkStep(step, catalogIds);
@@ -202,6 +206,11 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
     }
     if (step.name === 'reset') secure = startsSecure;
     if (step.name === 'dns01') secure = true;
+    if (step.name === 'drive') drive = true;
+    if (!drive && step.name === 'install' && byId.get(step.arg)?.keepsFilesOnDrive) {
+      steps.push({ arg: null, auto: true, name: 'drive', token: 'drive' });
+      drive = true;
+    }
     if (!secure && STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps) {
       steps.push({ arg: null, auto: true, name: 'dns01', token: 'dns01' });
       secure = true;

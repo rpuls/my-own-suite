@@ -20,6 +20,10 @@ const {
   UNAVAILABLE_PAGE_ROOT,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
+  STORAGE_ATTACH_UNIT,
+  STORAGE_UDEV_RULE_PATH,
 } = require('../infrastructure/control-plane-runtime.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
@@ -401,6 +405,7 @@ function renderUnits() {
       script: 'system-agents/apps/agent.cjs',
       wants: 'network-online.target docker.service',
     }),
+    [STORAGE_ATTACH_UNIT]: renderStorageAttachUnit({ mosRoot, stateRoot }),
     'mos-backup-agent.service': agentUnit({
       after: 'network-online.target docker.service',
       description: 'MOS backup and restore agent',
@@ -527,6 +532,8 @@ function main() {
   }
 
   for (const [name, content] of Object.entries(renderUnits())) unit(name, content);
+  writeFile(STORAGE_UDEV_RULE_PATH, renderStorageUdevRule(), 0o644);
+  if (!dryRun) run('udevadm', ['control', '--reload-rules'], { allowFailure: true });
 
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);

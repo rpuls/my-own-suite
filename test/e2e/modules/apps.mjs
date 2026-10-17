@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { apiJson } from '../support/api.mjs';
 import { catalogApps, loadAppModule, requireAppModule } from '../support/catalog.mjs';
+import { appDrive } from '../support/drive.mjs';
 import { fixtureMaker } from '../support/fixtures.mjs';
 import { waitForHomepageAvailable } from '../support/homepage.mjs';
 import {
@@ -62,6 +63,17 @@ async function fillSetupFields(ctx, app, dialog) {
   return values;
 }
 
+// An app that can keep files on a drive gets the lab's, so its folders are
+// exercised whether the package requires them or only offers them.
+async function pickDrive(dialog, appName) {
+  const choice = dialog.getByRole('combobox', { name: `Drive for ${appName}'s files` });
+  if (!await choice.isVisible().catch(() => false)) return null;
+  await expect(choice).toBeEnabled({ timeout: 30000 });
+  const drive = (await choice.locator('option').evaluateAll((options) => options.map((option) => option.value))).find(Boolean);
+  if (drive) await choice.selectOption(drive);
+  return drive || null;
+}
+
 async function installViaUi(ctx, app) {
   const { page } = ctx;
   const details = await openAppDetails(page, app);
@@ -91,6 +103,7 @@ async function installViaUi(ctx, app) {
     const values = await fillSetupFields(ctx, app, dialog);
     ctx.state(app.id).setup = values;
     ctx.state(app.id).passwordFields = app.setup.fields.filter((field) => field.type === 'password' && field.id in values).map((field) => field.id);
+    ctx.state(app.id).drive = await pickDrive(dialog, app.name);
     const shortcut = dialog.getByRole('switch', { name: 'Show on Homepage' });
     if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
     await dialog.getByRole('button', { name: /^Install$/iu }).click();
@@ -172,6 +185,7 @@ function appContext(ctx, id, module, opened, freshContexts) {
   const state = ctx.state(id);
   return {
     connected: opened.connected,
+    drive: appDrive(ctx, id),
     env: ctx.env,
     expect,
     // A browser with nothing stored, as a new device would be: proof that what
@@ -259,6 +273,7 @@ export async function update(ctx, id) {
     if (!value) throw new Error(`The ${id} update asks for "${label}", and apps/${id}/e2e has no value for it.`);
     await input.fill(value);
   }
+  ctx.state(id).drive = await pickDrive(dialog, before.name) || ctx.state(id).drive || null;
   await dialog.getByRole('button', { exact: true, name: 'Update' }).click();
   const said = await updateDialogOutcome(dialog, 25);
   // What the owner was told is checked apart from what happened, so a dialog

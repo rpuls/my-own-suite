@@ -185,12 +185,22 @@ function resolveTemplatesDeep(value, configRows, options = {}) {
   return value;
 }
 
+function serviceFolders(manifest, serviceId, placed) {
+  const driveByName = new Map(placed.map((folder) => [folder.name, folder.driveId]));
+  const folders = (Array.isArray(manifest.storage?.folders) ? manifest.storage.folders : [])
+    .filter((folder) => folder.service === serviceId && driveByName.has(folder.name))
+    .map((folder) => ({ drive: driveByName.get(folder.name), name: folder.name, path: folder.path }));
+  return folders.length ? { folders } : {};
+}
+
 // `packageId` is the identity MOS installed the package under, which is the
 // manifest id for official packages and a source-namespaced id for external
 // ones. Every derived runtime name (build context, loopback ports, and through
 // the agent the container/volume/network names) keys off it, so two packages
 // that ship the same manifest id from different sources stay isolated.
-function renderDryRunProjections(manifest, configRows = [], { packageId = manifest.id } = {}) {
+// `folders` are the instance's placed folders ({ name, driveId }); a folder the
+// manifest declares but the owner gave no drive is simply not mounted.
+function renderDryRunProjections(manifest, configRows = [], { folders = [], packageId = manifest.id } = {}) {
   const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
     build: { context: `apps/${packageId}`, dockerfile: service.dockerfile },
     environment: renderEnvironment(service.env, configRows),
@@ -198,6 +208,7 @@ function renderDryRunProjections(manifest, configRows = [], { packageId = manife
     internalPort: service.internalPort,
     loopbackPort: loopbackPortFor(packageId, id),
     volumes: service.volumes || [],
+    ...serviceFolders(manifest, id, folders),
   }));
   const servicePorts = new Map(services.map((service) => [service.id, service.loopbackPort]));
   const healthService = serviceForHealth(manifest);
@@ -730,8 +741,8 @@ function ownerEnvPatches(manifest, configRows, integrations, instanceId, envRows
   return [...services].map(([service, values]) => ({ service, values }));
 }
 
-function renderInstanceProjections(manifest, configRows = [], { instanceId, integrations = [], ownerEnv = [], packageId = manifest.id } = {}) {
-  let projections = renderDryRunProjections(manifest, configRows, { packageId });
+function renderInstanceProjections(manifest, configRows = [], { folders = [], instanceId, integrations = [], ownerEnv = [], packageId = manifest.id } = {}) {
+  let projections = renderDryRunProjections(manifest, configRows, { folders, packageId });
   // Owner env first, integration env second: a later patch wins the key, so
   // this ordering is the second half of the guarantee that a MOS-managed name
   // is never overridden by an owner-set one.

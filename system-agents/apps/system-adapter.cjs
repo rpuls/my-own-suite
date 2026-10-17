@@ -9,6 +9,8 @@ const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infr
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
+const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
+const { AppStorage, STORAGE_DRIVE_LABEL } = require('./storage.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -75,6 +77,7 @@ const FAILURE_MESSAGES = {
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   snapshot: ['APP_PACKAGE_SNAPSHOT_FAILED', 'The validated app package could not be snapshotted.'],
+  storage: ['APP_STORAGE_UNAVAILABLE', "The drive that holds this app's folders could not be opened."],
   'stale-volume': ['APP_VOLUME_STALE', 'Persistent data from a different installation of this app is still present. Remove or restore it before installing.'],
   stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
@@ -91,6 +94,7 @@ const STAGE_ACTIVITY = {
   remove: 'removing the app runtime',
   run: 'docker run',
   snapshot: 'snapshotting the package',
+  storage: "opening the app's drive",
   stop: 'stopping the app runtime',
   writing: 'writing the app route',
 };
@@ -336,6 +340,7 @@ class SystemAppAdapter {
     pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
     probeAddress: probe = probeAddress,
     routesPath = APP_ROUTES_PATH,
+    storage,
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
@@ -358,7 +363,48 @@ class SystemAppAdapter {
     this.pause = pause;
     this.probeAddress = probe;
     this.routesPath = routesPath;
+    this.storage = storage || new AppStorage({
+      claimsPath: path.join(path.dirname(appPackageRoot), STORAGE_CLAIMS_FILENAME),
+      execute: this.execute,
+      executeCapture: this.executeCapture,
+    });
     this.waitForReady = waitForReady;
+  }
+
+  // A drive that appeared: mounted again if an app keeps folders on it, and the
+  // containers reading it restarted, since a bind made before the drive left
+  // still points at the old mount. Stopped apps have no containers to restart.
+  async reattachDrive(driveId) {
+    if (!this.storage.isClaimed(driveId)) return { attached: false, restarted: 0 };
+    await this.storage.attach(driveId);
+    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--quiet', '--filter', `label=${STORAGE_DRIVE_LABEL}.${driveId}`], { timeoutMs: 30_000 });
+    const containers = String(output || '').split(/\s+/u).filter(Boolean);
+    if (containers.length) await this.execute(this.dockerBinary, ['restart', ...containers], { timeoutMs: 180_000 });
+    return { attached: true, restarted: containers.length };
+  }
+
+  // Volume and folder arguments for each service's `docker run`, prepared before
+  // anything is stopped so a drive that is not there leaves the running app alone.
+  // A bind made with --mount refuses a missing source instead of creating it, so
+  // a folder can never silently land on the system disk.
+  async containerMountArgs(packageId, services) {
+    const byService = new Map();
+    for (const service of services) {
+      const args = [];
+      for (const volume of service.volumes || []) {
+        const separator = String(volume).indexOf(':');
+        if (separator > 0) args.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
+      }
+      if (service.folders?.length) {
+        const binds = await this.storage.prepareFolders(packageId, service.folders).catch((error) => {
+          throw new AppApplyError('storage', [error.message]);
+        });
+        for (const bind of binds) args.push('--mount', `type=bind,source=${bind.source},target=${bind.target},readonly`);
+        for (const drive of new Set(binds.map((bind) => bind.drive))) args.push('--label', `${STORAGE_DRIVE_LABEL}.${drive}=true`);
+      }
+      byService.set(service.id, args);
+    }
+    return byService;
   }
 
   waitUntilHealthy(runtime) {
@@ -602,12 +648,8 @@ class SystemAppAdapter {
     const networkName = this.networkName(packageId);
     await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
     await this.ensureAppVolumes({ instanceId, packageId, services });
+    const mounts = await this.containerMountArgs(packageId, services);
     for (const service of services) {
-      const volumeArgs = [];
-      for (const volume of service.volumes || []) {
-        const separator = String(volume).indexOf(':');
-        if (separator > 0) volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
-      }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
         ...CONTAINER_LOG_ARGS,
@@ -619,7 +661,7 @@ class SystemAppAdapter {
         '--label', `mos.package-digest=${packageDigest}`,
         '--label', `mos.source-revision=${sourceRevision}`,
         ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
-        ...volumeArgs,
+        ...mounts.get(service.id),
         service.imageTag,
       ], { mask: environmentSecrets([service]), timeoutMs: 60000 }).catch((error) => {
         throw error instanceof AppApplyError ? error : new AppApplyError('run', describeFailure(error, `docker run for service "${service.id}"`));
@@ -933,6 +975,10 @@ class SystemAppAdapter {
       }
       buildSeconds = (this.now() - startedAt) / 1000;
 
+      stage = 'storage';
+      activity = STAGE_ACTIVITY.storage;
+      const mounts = await this.containerMountArgs(packageId, services);
+
       stage = 'run';
       activity = STAGE_ACTIVITY.run;
       await this.removePackageContainers({ packageId, serviceIds: services.map((service) => service.id), serviceCount });
@@ -942,13 +988,6 @@ class SystemAppAdapter {
       await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
         activity = `docker run for service "${service.id}"`;
-        const volumeArgs = [];
-        for (const volume of service.volumes || []) {
-          const separator = String(volume).indexOf(':');
-          if (separator > 0) {
-            volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
-          }
-        }
         const containerName = this.containerName(packageId, service.id, serviceCount);
         await this.execute(this.dockerBinary, [
           'run',
@@ -964,7 +1003,7 @@ class SystemAppAdapter {
           '--label', `mos.package-digest=${packageDigest}`,
           '--label', `mos.source-revision=${sourceRevision}`,
           ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
-          ...volumeArgs,
+          ...mounts.get(service.id),
           service.imageTag,
         ], { mask: environmentSecrets([service]), timeoutMs: 60000 });
       }
@@ -1135,6 +1174,7 @@ class SystemAppAdapter {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
       await this.removePackageNetwork(packageId);
+      this.storage.release(packageId);
       for (const volume of volumes) {
         const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);

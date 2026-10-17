@@ -116,6 +116,24 @@ const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a
     </div>
   ))}
 
+  {assessment.security.length > 0 && (
+    <>
+      <h3 id="privacy-assessment-security">Security</h3>
+      <ul class="privacy-report-evidence">
+        {assessment.security.map((entry) => (
+          <li>
+            <p>{entry.claim}</p>
+            <p class="privacy-report-source">
+              <span class={`privacy-report-kind is-${entry.type}`}>{EVIDENCE_KINDS.find((kind) => kind.type === entry.type)?.label}</span>{' '}
+              Source: {entry.url ? <a href={entry.url} rel="noreferrer" target="_blank">{entry.source}</a> : entry.source}
+              {entry.retrievedAt && <> · checked {entry.retrievedAt}</>}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
   {assessment.openQuestions.length > 0 && (
     <>
       <h3 id="privacy-assessment-open-questions">What this review does not settle</h3>

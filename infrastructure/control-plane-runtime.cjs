@@ -536,6 +536,34 @@ MaxRetentionSec=1month
 `;
 }
 
+// A drive holding app folders is mounted again whenever it appears, at boot or
+// plugged back in, and the apps reading it restarted onto the fresh mount. The
+// rule only names the instance; the unit asks the app storage whether the drive
+// is one of its own, so every other drive is left alone.
+const STORAGE_UDEV_RULE_PATH = '/etc/udev/rules.d/90-mos-storage.rules';
+const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
+
+function renderStorageUdevRule() {
+  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="exfat|ntfs|vfat", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
+`;
+}
+
+// The same claims and mounts as the app agent, so the vault holds them both.
+function renderStorageAttachUnit({ mosRoot = '$MOS_INSTALL_ROOT/repo', stateRoot = '$MOS_STATE_ROOT' } = {}) {
+  return `[Unit]
+Description=MOS app storage drive %i
+Requires=mos-vault.service
+After=mos-vault.service docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=${mosRoot}
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=MOS_APP_PACKAGE_ROOT=${stateRoot}/app-packages
+ExecStart=/usr/bin/node ${mosRoot}/system-agents/apps/storage-attach.cjs %i
+`;
+}
+
 // Points Ubuntu's caddy unit at the binary this repo builds. Its unit is Caddy's from
 // 2022, so the last two lines carry what Caddy's own unit has since gained: no thread
 // cap, and CAP_NET_ADMIN, which HTTP/3 needs to size its UDP buffers.
@@ -582,6 +610,10 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  STORAGE_ATTACH_UNIT,
+  STORAGE_UDEV_RULE_PATH,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   CADDY_SERVICE_OVERRIDE_PATH,

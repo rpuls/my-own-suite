@@ -19,6 +19,7 @@ const {
   runtimeHealthFor,
   setupFields,
 } = require('./app-package-internals.cjs');
+const { placeFolders } = require('./app-storage.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
@@ -250,7 +251,10 @@ class AppUpdateService {
         secret: Boolean(row.secretRef),
         value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
       }));
+    const heldFolders = new Set(this.store.getAppInstanceFolders(instance.id).map((folder) => folder.name));
+    const addedFolders = (recovery.addedFolders || []).filter((folder) => !heldFolders.has(folder.name));
     const projections = renderInstanceProjections(manifest, [...this.store.getAppConfig(instance.id), ...addedConfig], {
+      folders: [...this.store.getAppInstanceFolders(instance.id), ...addedFolders],
       instanceId: instance.id,
       integrations: this.store.getAppIntegrations(),
       ownerEnv: this.store.getAppEnv(instance.id),
@@ -260,6 +264,7 @@ class AppUpdateService {
     return this.store.completeAppUpdate({
       at: this.now().toISOString(),
       config: addedConfig,
+      folders: addedFolders,
       fromRecovery: true,
       homepageApplied,
       instance: {
@@ -382,6 +387,13 @@ class AppUpdateService {
     };
   }
 
+  // Folders a candidate declares that the instance has none of yet are placed on
+  // the drive the owner picked in the update dialog, exactly as at install.
+  async foldersAddedBy(manifest, heldFolders, driveId) {
+    if (heldFolders.length) return [];
+    return placeFolders(manifest, driveId || null, driveId ? await this.apps.storageDrives() : []);
+  }
+
   async preparePackageUpdate(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance) throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
@@ -443,6 +455,7 @@ class AppUpdateService {
     let activatedRuntimes = null;
     let snapshotPromoted = false;
     let addedConfig = [];
+    let addedFolders = [];
     let secrets = [];
     try {
       // An update is one transaction through promote, so an agent Suite Manager
@@ -533,7 +546,10 @@ class AppUpdateService {
         if (errors.length) throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The candidate privacy review is invalid: ${errors.join(' ')}`, 409);
         candidatePrivacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
       }
+      const heldFolders = this.store.getAppInstanceFolders(instance.id);
+      addedFolders = await this.foldersAddedBy(candidate.manifest, heldFolders, input.drive);
       const candidateProjections = renderInstanceProjections(candidate.manifest, candidateConfig, {
+        folders: [...heldFolders, ...addedFolders],
         instanceId: instance.id,
         integrations: this.store.getAppIntegrations(),
         // Owner env is an input to the render exactly like config and
@@ -575,6 +591,7 @@ class AppUpdateService {
                 source: row.source,
                 valueJson: row.valueJson ?? null,
               })),
+              addedFolders,
               candidateHealthHost: healthHostFor(candidate.manifest),
               candidateProjections: candidateProjections.map((projection) => ({
                 contentJson: projection.contentJson,
@@ -679,6 +696,7 @@ class AppUpdateService {
       operation = this.store.completeAppUpdate({
         at: this.now().toISOString(),
         config: addedConfig,
+        folders: addedFolders,
         instance: {
           categorySnapshot: candidate.manifest.category,
           displayNameSnapshot: candidate.manifest.name,

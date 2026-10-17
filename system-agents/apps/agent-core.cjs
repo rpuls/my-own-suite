@@ -75,6 +75,28 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
+const FOLDER_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?$/u;
+const FOLDER_DRIVE_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
+const CONTAINER_PATH_PATTERN = /^\/[^:,\u0000]+$/u;
+
+// Folders are the one host path a service can reach, and only one MOS builds
+// itself from a drive id and a folder name, so both are held to what the
+// manifest allows before they get near a mount.
+function assertServiceFolders(folders) {
+  if (folders === undefined) return;
+  if (!Array.isArray(folders) || folders.length < 1 || folders.length > 16) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Service folders must be a list of one to sixteen folders.');
+  }
+  for (const folder of folders) {
+    if (!exactKeys(folder, ['drive', 'name', 'path'])
+        || !FOLDER_DRIVE_PATTERN.test(String(folder.drive))
+        || !FOLDER_NAME_PATTERN.test(String(folder.name))
+        || !CONTAINER_PATH_PATTERN.test(String(folder.path))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service folder is invalid.');
+    }
+  }
+}
+
 function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = {}) {
   const runtimeKeys = ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl', 'sourceRevision'];
   if (!exactKeys(input, allowExpectedInstalledDigest ? [...runtimeKeys, 'expectedInstalledDigest'] : runtimeKeys)) {
@@ -112,6 +134,7 @@ function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = 
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service loopback port is invalid.');
     }
     loopbackPorts.add(service.loopbackPort);
+    assertServiceFolders(service.folders);
     servicesById.set(service.id, service);
   }
 
@@ -311,6 +334,7 @@ function runtimeServices(input, routes) {
     loopbackPort: service.loopbackPort,
     public: routes.some((route) => route.service === service.id),
     volumes: service.volumes,
+    ...(service.folders ? { folders: service.folders } : {}),
   }));
 }
 
@@ -412,6 +436,14 @@ class AppAgentCore {
       hostArchitecture: HOST_ARCHITECTURES[process.arch] || null,
       service: 'mos-app-agent',
     };
+  }
+
+  async storageDrives() {
+    return { drives: await this.adapter.storage.drives() };
+  }
+
+  async storageFolders() {
+    return { folders: await this.adapter.storage.folders() };
   }
 
   async snapshotPackage(input) {

@@ -36,6 +36,8 @@ class AppAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
+  storageDrives() { return this.request('GET', '/v1/storage/drives'); }
+  storageFolders() { return this.request('GET', '/v1/storage/folders'); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   waitForAddress(input) { return this.request('POST', '/v1/apps/address', input, { timeoutMs: APP_AGENT_ADDRESS_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }

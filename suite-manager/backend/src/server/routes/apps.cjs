@@ -30,6 +30,24 @@ function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceSer
       },
     },
     {
+      method: 'GET',
+      path: '/apps/storage/drives',
+      signIn: REVIEW,
+      handler: async ({ response }) => {
+        const drives = await appPackages.storageDrives();
+        jsonResponse(response, drives ? 200 : 503, drives ? { drives } : { code: 'APP_AGENT_UNAVAILABLE', error: 'MOS could not ask the server which drives are plugged in.' });
+      },
+    },
+    {
+      method: 'GET',
+      path: '/apps/storage/folders',
+      signIn: REVIEW,
+      handler: async ({ response }) => {
+        const folders = await appPackages.storageFolders();
+        jsonResponse(response, folders ? 200 : 503, folders ? { folders } : { code: 'APP_AGENT_UNAVAILABLE', error: 'MOS could not read the folders on your drives.' });
+      },
+    },
+    {
       method: 'POST',
       path: '/apps/catalog/refresh',
       signIn: 'Sign in to refresh the app catalog.',
@@ -122,7 +140,7 @@ function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
       bodyLimit: 64 * 1024,
       handler: async ({ body, params: [packageId], response }) => {
         const input = await body();
-        jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: input.config || {}, showOnHomepage: input.showOnHomepage === true }) });
+        jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: input.config || {}, drive: typeof input.drive === 'string' ? input.drive : null, showOnHomepage: input.showOnHomepage === true }) });
       },
     },
     {

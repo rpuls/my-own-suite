@@ -12,7 +12,7 @@ function fakeApp({ addresses = [OPEN], now, start } = {}) {
   const jobs = new AppInstallJobs({
     addToHomepage: async () => { calls.push('homepage'); state.homepageApplied = true; },
     now,
-    prepare: async (_id, config) => { calls.push(['prepare', config]); state.installed = true; },
+    prepare: async (_id, { config }) => { calls.push(['prepare', config]); state.installed = true; },
     progressOf: () => ({ ...state }),
     start: start || (async () => { calls.push('start'); state.runtimeApplied = true; }),
     waitForAddress: async () => { calls.push('address'); return addresses.length > 1 ? addresses.shift() : addresses[0]; },

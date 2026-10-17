@@ -299,6 +299,12 @@ export function RowInput({ code, state, ...props }: InputHTMLAttributes<HTMLInpu
   return <input className={`mos-row-input${code ? ' mos-row-code' : ''}${state ? ` mos-row-input-${state}` : ''}`} {...props} />;
 }
 
+// A choice in a row, boxed exactly like RowInput so it lines up with the typed
+// fields around it.
+export function RowSelect({ children, state, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; state?: 'filled' | 'missing' }) {
+  return <select className={`mos-row-input${state ? ` mos-row-input-${state}` : ''}`} {...props}>{children}</select>;
+}
+
 export function RowAction({ danger, icon, label, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & { danger?: boolean; icon: IconName; label: string }) {
   return <button aria-label={label} className={`mos-row-action${danger ? ' mos-row-action-danger' : ''}`} title={label} type="button" {...props}><Icon name={icon} /></button>;
 }

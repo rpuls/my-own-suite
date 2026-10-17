@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, Tooltip } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
+import { DriveChoice, folderList, useDriveChoice } from './DriveChoice';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps } from './ProgressSteps';
 import { isNotAssessed } from './privacy-posture';
@@ -157,7 +158,7 @@ export function AppDetail({
   installError: string;
   installSteps: InstallStep[];
   onClose: () => void;
-  onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
+  onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; drive?: string | null; showOnHomepage?: boolean }) => void;
   onLifecycle: (app: AppPackageSummary, action: 'enable' | 'restart' | 'stop' | 'uninstall') => void;
   onConnect: (connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) => void;
   onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
@@ -186,6 +187,8 @@ export function AppDetail({
   const [applyError, setApplyError] = useState('');
   const [recovering, setRecovering] = useState(false);
   const [recoverError, setRecoverError] = useState('');
+  const updateStorage = comparison?.storage ?? null;
+  const updateDrive = useDriveChoice(updateStorage, Boolean(updateStorage));
   const ready = runtimeApplied(app);
   const requirements = requirementsFor(app);
   const updateRunning = app.updateJob?.status === 'running';
@@ -209,6 +212,7 @@ export function AppDetail({
     && comparison!.updateStatus === 'update-available'
     && comparison!.compatibility !== 'unsupported'
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
+    && !updateDrive.missing
     && !updating;
   const ownerChanges = comparison ? comparison.changes.filter((change) => change.classification !== 'automatically-handled') : [];
   const handledChanges = comparison ? comparison.changes.filter((change) => change.classification === 'automatically-handled') : [];
@@ -262,7 +266,7 @@ export function AppDetail({
     try {
       const { updateJob } = await postJson<{ updateJob: AppJob<UpdateStep> }>(
         `/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/update-job`,
-        { config: updateInput, confirmationToken: comparison.confirmationToken },
+        { config: updateInput, confirmationToken: comparison.confirmationToken, drive: updateDrive.drive || null },
         `Unable to update ${app.name}.`,
       );
       setUpdateStartedAt(updateJob.startedAt);
@@ -291,7 +295,7 @@ export function AppDetail({
 
   // The dialog hands over what the owner filled in and closes; progress belongs
   // on the detail page behind it, where it stays visible for the whole install.
-  function submitInstall(options: { config: Record<string, string>; showOnHomepage: boolean }) {
+  function submitInstall(options: { config: Record<string, string>; drive: string | null; showOnHomepage: boolean }) {
     setConfigOpen(false);
     onInstall(app, options);
   }
@@ -376,6 +380,7 @@ export function AppDetail({
             title={`Uninstall ${app.name}?`}
           >
             <Notice title="Uninstalling deletes this app's data" variant="warning"><p>MOS removes the app's containers, web address, Homepage shortcut, settings, secrets, and data volumes. Anything stored in {app.name} is deleted with it &mdash; only a backup made beforehand can bring it back.</p></Notice>
+            {app.instance?.folders?.length ? <p className="suite-meta">Your {folderList({ folders: app.instance.folders.map((folder) => ({ name: folder.name, service: '' })), required: false })} folders on your drive are not touched. They stay on the drive with everything in them.</p> : null}
             <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
           </Dialog> : null}
         </div>
@@ -613,6 +618,7 @@ export function AppDetail({
       packageId={app.id}
       running={ready}
       service={app.routes[0]?.service || app.services[0]?.id || app.id}
+      storage={app.storage}
       webAddress={appAddress(app)}
       webAddressKind={app.routes[0]?.kind || 'web'}
     /> : null}
@@ -668,6 +674,9 @@ export function AppDetail({
             <span className="suite-app-service-copy">
               <span className="suite-app-service-role"><strong>{serviceRoleLabel(app, service.id)}</strong><code>{service.id}</code></span>
               <small>{service.volumes.length ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</small>
+              {app.storage?.folders.some((folder) => folder.service === service.id) ? <small>
+                {`Reads your ${folderList({ folders: app.storage.folders.filter((folder) => folder.service === service.id), required: false })} folders on a drive you pick, without changing them. They are not backed up.`}
+              </small> : null}
               {/* Only worth splitting out when there is more than one share to
                   account for; on a single-service app it would just restate
                   the package total printed above. */}
@@ -742,6 +751,9 @@ export function AppDetail({
         </> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={updating} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
+        {updateStorage ? <Rows lead>
+          <DriveChoice appName={app.name} busy={updating} drive={updateDrive.drive} drives={updateDrive.drives} onChange={updateDrive.setDrive} storage={updateStorage} />
+        </Rows> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
         {dialogJob ? <>
           <ProgressSteps error={dialogJob.error?.message || (dialogJob.status === 'failed' ? `Unable to update ${app.name}.` : '')} errorTitle="The update did not finish" steps={updateJobSteps(dialogJob)} />
