@@ -722,9 +722,9 @@ class AppPackageService {
     return validated;
   }
 
-  // Environment variables an owner set on an installed app, for values the
-  // package never asked for and MOS has no reason to know about. The submitted
-  // set replaces the stored one.
+  // What an owner changes in an installed app's settings: environment variables
+  // the package never asked for, where the submitted set replaces the stored one,
+  // and a drive for an app that can keep files on one but was installed without.
   //
   // Holds the same per-app operation key as restart, enable, disable and
   // uninstall: an env save landing inside an update's activate-to-commit window
@@ -749,6 +749,8 @@ class AppPackageService {
     const previousRows = this.store.getAppEnv(instance.id);
     const entries = Array.isArray(input.entries) ? input.entries : [];
     const validated = this.validateOwnerEnvSubmission({ configRows, entries, instance, integrations, manifest, previousRows });
+    const heldFolders = this.store.getAppInstanceFolders(instance.id);
+    const addedFolders = await this.foldersForDrive(manifest, heldFolders, typeof input.drive === 'string' ? input.drive : '');
 
     // Every stored secret is read into memory before any of them is overwritten.
     // A secret file is keyed by its name, so saving a new value for a name that
@@ -782,7 +784,7 @@ class AppPackageService {
     // projections stay a pure function of manifest + config + relationships +
     // owner env, so an app update re-renders them without losing this change.
     const nextProjections = renderInstanceProjections(manifest, configRows, {
-      folders: this.store.getAppInstanceFolders(instance.id),
+      folders: [...heldFolders, ...addedFolders],
       instanceId: instance.id,
       integrations,
       ownerEnv: rows,
@@ -796,6 +798,7 @@ class AppPackageService {
     this.store.transaction(() => {
       this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows });
       this.store.replaceAppProjections({ at, instanceId: instance.id, projections: nextProjections });
+      this.store.insertAppInstanceFolders(instance.id, addedFolders, at);
     });
 
     try {
@@ -803,6 +806,7 @@ class AppPackageService {
       await this.waitForPackageHealth(packageId);
     } catch (error) {
       const rollback = await this.rollbackPackageEnvironment({
+        addedFolders,
         heldSecrets,
         instance,
         packageId,
@@ -850,7 +854,7 @@ class AppPackageService {
   // secret values, and the previous projections, then the runtime built from
   // them. Reports rather than throws, because the caller has to be able to tell
   // "your change was refused" from "and the app is in neither state".
-  async rollbackPackageEnvironment({ heldSecrets, instance, packageId, previousRows, projections, requestContext, rows }) {
+  async rollbackPackageEnvironment({ addedFolders, heldSecrets, instance, packageId, previousRows, projections, requestContext, rows }) {
     try {
       for (const row of rows) {
         if (!row.secret) continue;
@@ -862,6 +866,7 @@ class AppPackageService {
       this.store.transaction(() => {
         this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows: previousRows });
         this.store.replaceAppProjections({ at, instanceId: instance.id, projections });
+        this.store.removeAppInstanceFolders(instance.id, addedFolders.map((folder) => folder.name));
       });
       await this.applyPackageRuntime(packageId, requestContext);
       await this.waitForPackageHealth(packageId);
@@ -1376,6 +1381,15 @@ class AppPackageService {
   async placeFolders(manifest, driveId) {
     if (!declaredFolders(manifest).length) return [];
     return placeFolders(manifest, driveId || null, driveId ? await this.storageDrives() : []);
+  }
+
+  // A drive picked in an installed app's settings. An app keeps the drive it was
+  // given, so a second one is refused rather than moving its folders.
+  async foldersForDrive(manifest, heldFolders, driveId) {
+    if (!driveId) return [];
+    if (!declaredFolders(manifest).length) throw new AppPackageServiceError('APP_STORAGE_NOT_DECLARED', `${manifest.name} does not keep files on a drive.`, 409);
+    if (heldFolders.length) throw new AppPackageServiceError('APP_STORAGE_ALREADY_PLACED', `${manifest.name} already keeps its files on a drive.`, 409);
+    return this.placeFolders(manifest, driveId);
   }
 
   // The tail every install shares once its snapshot exists on disk. Official and

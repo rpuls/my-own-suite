@@ -441,3 +441,54 @@ test('an app package cannot reference the ownerEnv namespace', () => {
     'resources.services.example-app.env.LEAK references unknown template namespace "ownerEnv" in ${ownerEnv.SOME_NAME}. Known namespaces: app, config, export, import, owner, secret, smtp.',
   ]);
 });
+
+const IMMICH_DRIVES = [{ connected: true, id: '1A2B-3C4D', label: 'FILMS', usable: true }];
+
+async function installedImmich(store, agent) {
+  const service = new AppPackageService({ agent: { ...agent, async storageDrives() { return { drives: IMMICH_DRIVES }; } }, appsDir: v2AppsDir, store });
+  await service.installPackage('immich', { config: { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' } });
+  await service.applyPackageRuntime('immich', requestContext().publicUrlFor('immich'));
+  return service;
+}
+
+function photosFolders(store) {
+  const instance = store.getAppInstanceByPackageId('immich');
+  const compose = store.getAppProjections(instance.id).find((projection) => projection.kind === 'compose').content;
+  return compose.services.find((item) => item.id === 'immich-server').folders || [];
+}
+
+test('an optional drive is added from the app settings, once, and its folder reaches the runtime', async (t) => {
+  const store = new SuiteManagerStore(path.join(await tempStateDir(), 'state'));
+  t.after(() => store.close());
+  const service = await installedImmich(store, recordingAgent());
+  assert.deepEqual(store.getAppInstanceFolders(store.getAppInstanceByPackageId('immich').id), []);
+
+  const saved = await service.savePackageEnvironment('immich', { drive: '1A2B-3C4D', entries: [] }, requestContext().publicUrlFor('immich'));
+
+  assert.equal(saved.status, 'applied');
+  assert.deepEqual(saved.instance.folders, [{ driveId: '1A2B-3C4D', locationKind: 'drive', name: 'Photos' }]);
+  assert.deepEqual(photosFolders(store).map((folder) => folder.path), ['/media/photos']);
+  await assert.rejects(
+    () => service.savePackageEnvironment('immich', { drive: '1A2B-3C4D', entries: [] }, requestContext().publicUrlFor('immich')),
+    (error) => error.code === 'APP_STORAGE_ALREADY_PLACED',
+  );
+});
+
+test('a drive added in settings that stops the app is put back with the rest of the change', async (t) => {
+  const store = new SuiteManagerStore(path.join(await tempStateDir(), 'state'));
+  t.after(() => store.close());
+  const agent = recordingAgent();
+  const service = await installedImmich(store, {
+    ...agent,
+    async checkHealth() {
+      if ((agent.state.compose?.services || []).some((item) => item.folders?.length)) throw new Error('container exited');
+      return { status: 'healthy' };
+    },
+  });
+
+  const saved = await service.savePackageEnvironment('immich', { drive: '1A2B-3C4D', entries: [] }, requestContext().publicUrlFor('immich'));
+
+  assert.equal(saved.status, 'rolled-back');
+  assert.deepEqual(store.getAppInstanceFolders(store.getAppInstanceByPackageId('immich').id), []);
+  assert.deepEqual(photosFolders(store), []);
+});

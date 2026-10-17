@@ -240,7 +240,9 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   assert.equal(immich.manifest.routes[0].service, 'immich-server');
   assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server/ping');
   assert.deepEqual(immich.manifest.setup.fields.map((field) => field.id), ['adminEmail', 'adminPassword', 'postgresPassword', 'jwtSecret']);
-  assert.deepEqual(immich.manifest.storage, { folders: [{ name: 'Photos', path: '/media/photos', service: 'immich-server' }], required: false });
+  assert.deepEqual(immich.manifest.storage.folders, [{ name: 'Photos', path: '/media/photos', service: 'immich-server' }]);
+  assert.equal(immich.manifest.storage.required, false);
+  assert.equal(immich.manifest.storage.label, 'External photo library');
   assert.ok(Array.isArray(immich.manifest.onboarding.sections));
   assert.deepEqual(validateAppPackageManifest(immich.manifest, { packageDir: immich.packageDir }), []);
 });
@@ -631,8 +633,10 @@ test('storage folders are checked against their service and reach the summary wi
   const withStorage = (storage, overrides = {}) => validManifest({ minimumMosVersion: '0.23.0', storage, ...overrides });
   const movies = { name: 'Movies', path: '/media/movies', service: 'example-app' };
   assert.deepEqual(validateAppPackageManifest(withStorage({ folders: [movies], required: true })), []);
-  assert.deepEqual(publicPackageSummary(withStorage({ folders: [movies], required: true })).storage, {
+  assert.deepEqual(publicPackageSummary(withStorage({ folders: [movies], label: 'Drive for your films', required: true })).storage, {
+    description: null,
     folders: [{ name: 'Movies', service: 'example-app' }],
+    label: 'Drive for your films',
     required: true,
   });
   assert.equal(publicPackageSummary(validManifest()).storage, null);

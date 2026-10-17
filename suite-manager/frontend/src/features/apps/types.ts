@@ -63,7 +63,7 @@ export type UnmetRequirement = { id: string; reason: string };
 
 // Folders an app reads from a drive the owner picks; `required` apps cannot be
 // installed without one.
-export type AppStorage = { folders: Array<{ name: string; service: string }>; required: boolean };
+export type AppStorage = { description: string | null; folders: Array<{ name: string; service: string }>; label: string | null; required: boolean };
 
 // A drive as the app agent sees it. `id` is its filesystem identity, which is
 // what an install names; `usable` is false for one that is away or formatted

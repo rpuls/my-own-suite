@@ -23,7 +23,7 @@
 import { useState } from 'react';
 
 import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
-import { DriveChoice, useDriveChoice } from './DriveChoice';
+import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
@@ -194,6 +194,7 @@ export function AppConfigDialog({
   config,
   entries,
   fields,
+  folders,
   homepageAvailable,
   installed,
   installing,
@@ -212,6 +213,7 @@ export function AppConfigDialog({
   config: InstanceConfigEntry[];
   entries: OwnerEnvEntry[];
   fields: SetupField[];
+  folders: Array<{ driveId: string; name: string }>;
   homepageAvailable: boolean;
   // Two separate facts, and conflating them strands a half-installed app. An
   // instance row means the package's setup values are already stored, so they
@@ -244,8 +246,11 @@ export function AppConfigDialog({
   const [pasteText, setPasteText] = useState('');
   const [pasteError, setPasteError] = useState('');
   const [copied, setCopied] = useState(false);
-  const choosesDrive = Boolean(storage?.folders.length) && !installed;
-  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive);
+  // A drive the app needs is picked at install. One it can do without stays out
+  // of the way until the owner adds it here, in the running app's settings.
+  const choosesDrive = Boolean(storage?.folders.length) && !folders.length && (installed ? running && !storage?.required : storage?.required === true);
+  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive || folders.length > 0);
+  const keptDrive = folders.length ? drives?.find((item) => item.id === folders[0]!.driveId) : undefined;
 
   const busy = saving || installing;
   const ownerFields = fields.filter((field) => !field.generated);
@@ -336,6 +341,7 @@ export function AppConfigDialog({
             // which the backend reads as "keep the stored secret".
             ...(row.secret && row.stored && !row.value ? {} : { value: row.value }),
           })),
+          ...(choosesDrive && drive ? { drive } : {}),
         }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
@@ -391,7 +397,7 @@ export function AppConfigDialog({
       <p className="suite-meta">{result.errorCode}</p>
     </Notice> : null}
     {result?.status === 'applied' ? <Notice title="Saved" variant="success">
-      <p>{appName} restarted with the new variables and came back healthy.</p>
+      <p>{appName} restarted with your changes and came back healthy.</p>
     </Notice> : null}
 
     {ownerFields.length ? <div className="suite-app-config-group">
@@ -437,6 +443,14 @@ export function AppConfigDialog({
     {choosesDrive && storage ? <div className="suite-app-config-group">
       <Rows lead>
         <DriveChoice appName={appName} busy={busy} drive={drive} drives={drives} onChange={setDrive} storage={storage} />
+      </Rows>
+    </div> : null}
+
+    {folders.length && storage ? <div className="suite-app-config-group">
+      <Rows lead>
+        <Row help="Files on the drive are not backed up." label={driveChoiceLabel(storage)}>
+          {`${folderList(storage.folders)} on ${keptDrive?.label || 'its drive'}`}
+        </Row>
       </Rows>
     </div> : null}
 

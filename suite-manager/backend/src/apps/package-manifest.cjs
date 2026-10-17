@@ -233,7 +233,9 @@ function publicPackageSummary(manifest, validationErrors = []) {
 function publicStorage(storage) {
   if (!isRecord(storage) || !Array.isArray(storage.folders)) return null;
   return {
+    description: hasText(storage.description) ? storage.description : null,
     folders: storage.folders.filter((folder) => hasText(folder?.name)).map((folder) => ({ name: folder.name, service: folder.service || '' })),
+    label: hasText(storage.label) ? storage.label : null,
     required: storage.required === true,
   };
 }

@@ -54,18 +54,22 @@ test('placed folders reach their service in the runtime projection, never as vol
   assert.equal('folders' in unplaced.services[0], false);
 });
 
-test('an update that brings folders to an app offers the drive choice once, and a later one does not', () => {
+test('an update that brings folders an app needs offers the drive choice once; optional ones wait for its settings', () => {
   const versioned = (version, storage) => ({ ...mediaApp(false), name: 'Media', storage, version });
   const compare = (installed, candidate) => compareAppPackages({
     candidate: { manifest: candidate, packageDigest: 'sha256:b', packageDir: '/nowhere', source: { trust: 'unverified' } },
     installed: { manifest: installed, packageDigest: 'sha256:a', packageDir: '/nowhere', source: { trust: 'unverified' } },
     platformVersion: '99.0.0',
   });
-  const withFolders = mediaApp(false).storage;
-  const first = compare(versioned('1.0.0', undefined), versioned('1.1.0', withFolders));
-  assert.deepEqual(first.storage, { folders: [{ name: 'Movies' }, { name: 'Series' }], required: false });
+  const needed = mediaApp(true).storage;
+  const first = compare(versioned('1.0.0', undefined), versioned('1.1.0', needed));
+  assert.deepEqual(first.storage, { folders: [{ name: 'Movies' }, { name: 'Series' }], required: true });
   assert.ok(first.changes.some((change) => change.area === 'storage'));
-  assert.equal(compare(versioned('1.1.0', withFolders), versioned('1.2.0', withFolders)).storage, null);
+  assert.equal(compare(versioned('1.1.0', needed), versioned('1.2.0', needed)).storage, null);
+
+  const optional = compare(versioned('1.0.0', undefined), versioned('1.1.0', mediaApp(false).storage));
+  assert.equal(optional.storage, null);
+  assert.match(optional.changes.find((change) => change.area === 'storage').summary, /in its settings/u);
 });
 
 test('an app that needs a drive is blocked on a server with none, and only then', () => {

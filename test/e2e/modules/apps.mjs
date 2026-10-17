@@ -65,13 +65,32 @@ async function fillSetupFields(ctx, app, dialog) {
 
 // An app that can keep files on a drive gets the lab's, so its folders are
 // exercised whether the package requires them or only offers them.
-async function pickDrive(dialog, appName) {
-  const choice = dialog.getByRole('combobox', { name: `Drive for ${appName}'s files` });
+async function pickDrive(dialog, app) {
+  const choice = dialog.getByRole('combobox', { name: app.storage?.label || 'Drive for its files' });
   if (!await choice.isVisible().catch(() => false)) return null;
   await expect(choice).toBeEnabled({ timeout: 30000 });
   const drive = (await choice.locator('option').evaluateAll((options) => options.map((option) => option.value))).find(Boolean);
   if (drive) await choice.selectOption(drive);
   return drive || null;
+}
+
+// A drive an app can do without is never asked for at install; it is added the
+// way an owner adds it, in the running app's settings.
+async function addDriveInSettings(ctx, app) {
+  const { page } = ctx;
+  const details = await openAppDetails(page, app);
+  await details.getByRole('button', { name: 'More app actions' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: `${app.name} settings` });
+  await expect(dialog).toBeVisible({ timeout: 30000 });
+  const drive = await pickDrive(dialog, app);
+  if (drive) {
+    await dialog.getByRole('button', { name: /^Save$/iu }).click();
+    await expect(dialog.getByText(/came back healthy/iu)).toBeVisible({ timeout: 600000 });
+  }
+  await dialog.getByRole('button', { name: /^(Done|Cancel)$/iu }).click();
+  await closeAppDetails(details);
+  return drive;
 }
 
 async function installViaUi(ctx, app) {
@@ -103,7 +122,7 @@ async function installViaUi(ctx, app) {
     const values = await fillSetupFields(ctx, app, dialog);
     ctx.state(app.id).setup = values;
     ctx.state(app.id).passwordFields = app.setup.fields.filter((field) => field.type === 'password' && field.id in values).map((field) => field.id);
-    ctx.state(app.id).drive = await pickDrive(dialog, app.name);
+    ctx.state(app.id).drive = await pickDrive(dialog, app);
     const shortcut = dialog.getByRole('switch', { name: 'Show on Homepage' });
     if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
     await dialog.getByRole('button', { name: /^Install$/iu }).click();
@@ -131,6 +150,10 @@ export async function install(ctx, id) {
   if (app.homepage && !hasTile(app)) {
     await apiJson(page, `/suite-manager/api/apps/packages/${encodeURIComponent(id)}/add-to-homepage`, { method: 'POST' });
     app = await packageById(page, id);
+  }
+  app = await packageById(page, id);
+  if (app.storage && !app.storage.required && !app.instance?.folders?.length) {
+    ctx.state(id).drive = await addDriveInSettings(ctx, app) || ctx.state(id).drive || null;
   }
   ctx.state(id).installedVersion = app.instance?.packageVersion || null;
 }
@@ -273,7 +296,7 @@ export async function update(ctx, id) {
     if (!value) throw new Error(`The ${id} update asks for "${label}", and apps/${id}/e2e has no value for it.`);
     await input.fill(value);
   }
-  ctx.state(id).drive = await pickDrive(dialog, before.name) || ctx.state(id).drive || null;
+  ctx.state(id).drive = await pickDrive(dialog, before) || ctx.state(id).drive || null;
   await dialog.getByRole('button', { exact: true, name: 'Update' }).click();
   const said = await updateDialogOutcome(dialog, 25);
   // What the owner was told is checked apart from what happened, so a dialog

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
-import { DriveChoice, folderList, useDriveChoice } from './DriveChoice';
+import { DriveChoice, driveFoldersLine, folderList, useDriveChoice } from './DriveChoice';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps } from './ProgressSteps';
 import { isNotAssessed } from './privacy-posture';
@@ -380,7 +380,7 @@ export function AppDetail({
             title={`Uninstall ${app.name}?`}
           >
             <Notice title="Uninstalling deletes this app's data" variant="warning"><p>MOS removes the app's containers, web address, Homepage shortcut, settings, secrets, and data volumes. Anything stored in {app.name} is deleted with it &mdash; only a backup made beforehand can bring it back.</p></Notice>
-            {app.instance?.folders?.length ? <p className="suite-meta">Your {folderList({ folders: app.instance.folders.map((folder) => ({ name: folder.name, service: '' })), required: false })} folders on your drive are not touched. They stay on the drive with everything in them.</p> : null}
+            {app.instance?.folders?.length ? <p className="suite-meta">Your {folderList(app.instance.folders)} folders on your drive are not touched. They stay on the drive with everything in them.</p> : null}
             <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
           </Dialog> : null}
         </div>
@@ -608,6 +608,7 @@ export function AppDetail({
       config={app.instance?.config || []}
       entries={ownerEnv}
       fields={app.setup.fields}
+      folders={app.instance?.folders || []}
       homepageAvailable={homepageAvailable}
       installed={Boolean(app.instance)}
       installing={installing}
@@ -675,7 +676,7 @@ export function AppDetail({
               <span className="suite-app-service-role"><strong>{serviceRoleLabel(app, service.id)}</strong><code>{service.id}</code></span>
               <small>{service.volumes.length ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</small>
               {app.storage?.folders.some((folder) => folder.service === service.id) ? <small>
-                {`Reads your ${folderList({ folders: app.storage.folders.filter((folder) => folder.service === service.id), required: false })} folders on a drive you pick, without changing them. They are not backed up.`}
+                {driveFoldersLine(app.storage, service.id)}
               </small> : null}
               {/* Only worth splitting out when there is more than one share to
                   account for; on a single-service app it would just restate
