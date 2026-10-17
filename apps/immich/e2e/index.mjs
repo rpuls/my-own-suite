@@ -70,7 +70,7 @@ async function photosFrom(page, stamp) {
   return search.body?.assets?.items || [];
 }
 
-// A photo copied onto the drive picked at install, which Immich shows from its
+// A photo copied onto the drive added in its settings, which Immich shows from its
 // Photos library without uploading it.
 async function drivePhotoFound(page, name) {
   const search = await api(page, '/api/search/metadata', { body: { originalFileName: name }, method: 'POST' });

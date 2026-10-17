@@ -23,7 +23,7 @@
 import { useState } from 'react';
 
 import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
-import { DriveChoice, useDriveChoice } from './DriveChoice';
+import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
@@ -135,6 +135,12 @@ function nextKey() {
   return `row-${rowSequence}`;
 }
 
+// The part of the rows a save submits, so Save can tell an unsaved change from
+// a form that already matches what the app runs with.
+function submittedRows(rows: EditorRow[]) {
+  return JSON.stringify(rows.map((row) => [row.name.trim(), row.secret, row.service, row.value]));
+}
+
 function rowsFrom(entries: OwnerEnvEntry[]): EditorRow[] {
   return entries.map((entry) => ({
     key: nextKey(),
@@ -194,6 +200,7 @@ export function AppConfigDialog({
   config,
   entries,
   fields,
+  folders,
   homepageAvailable,
   installed,
   installing,
@@ -212,6 +219,7 @@ export function AppConfigDialog({
   config: InstanceConfigEntry[];
   entries: OwnerEnvEntry[];
   fields: SetupField[];
+  folders: Array<{ driveId: string; name: string }>;
   homepageAvailable: boolean;
   // Two separate facts, and conflating them strands a half-installed app. An
   // instance row means the package's setup values are already stored, so they
@@ -233,6 +241,7 @@ export function AppConfigDialog({
   webAddressKind: 'web' | 'api';
 }) {
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFrom(entries));
+  const [savedRows, setSavedRows] = useState(() => submittedRows(rowsFrom(entries)));
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig({ setup: { fields } }, owner));
   const [showOnHomepage, setShowOnHomepage] = useState(homepageAvailable);
@@ -244,10 +253,15 @@ export function AppConfigDialog({
   const [pasteText, setPasteText] = useState('');
   const [pasteError, setPasteError] = useState('');
   const [copied, setCopied] = useState(false);
-  const choosesDrive = Boolean(storage?.folders.length) && !installed;
-  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive);
+  // A drive the app needs is picked at install. One it can do without stays out
+  // of the way until the owner adds it here, in the running app's settings.
+  const choosesDrive = Boolean(storage?.folders.length) && !folders.length && (installed ? running && !storage?.required : storage?.required === true);
+  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive || folders.length > 0);
+  const keptDrive = folders.length ? drives?.find((item) => item.id === folders[0]!.driveId) : undefined;
 
   const busy = saving || installing;
+  // A Save that stays lit after a successful save reads as "not saved yet".
+  const unsaved = submittedRows(rows) !== savedRows || (choosesDrive && Boolean(drive));
   const ownerFields = fields.filter((field) => !field.generated);
   const generatedFields = fields.filter((field) => field.generated);
   const storedFor = (id: string) => config.find((entry) => entry.key === id);
@@ -336,6 +350,7 @@ export function AppConfigDialog({
             // which the backend reads as "keep the stored secret".
             ...(row.secret && row.stored && !row.value ? {} : { value: row.value }),
           })),
+          ...(choosesDrive && drive ? { drive } : {}),
         }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
@@ -356,11 +371,17 @@ export function AppConfigDialog({
       } else {
         setSteps((current) => setStep(current, 'health', 'complete'));
         setResult({ status: 'applied' });
+        // The drive is the app's now; the refreshed app shows it as a fact.
+        setDrive('');
       }
       // Re-seeded from what the server now holds, so a value just saved as
       // hidden flips to its stored, masked presentation rather than sitting
       // there as typed text.
-      if (body.instance?.env) setRows(rowsFrom(body.instance.env));
+      if (body.instance?.env) {
+        const saved = rowsFrom(body.instance.env);
+        setRows(saved);
+        setSavedRows(submittedRows(saved));
+      }
       await onSaved();
     } catch (caught) {
       setSteps(failRunning);
@@ -378,7 +399,7 @@ export function AppConfigDialog({
         {result?.status === 'applied' ? 'Done' : 'Cancel'}
       </button>
       {running
-        ? <button className="mos-btn mos-btn-primary" disabled={busy} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
+        ? <button className="mos-btn mos-btn-primary" disabled={busy || !unsaved} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
         : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, drive: choosesDrive && drive ? drive : null, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
     </>}
     onClose={() => { if (!busy) onClose(); }}
@@ -391,7 +412,7 @@ export function AppConfigDialog({
       <p className="suite-meta">{result.errorCode}</p>
     </Notice> : null}
     {result?.status === 'applied' ? <Notice title="Saved" variant="success">
-      <p>{appName} restarted with the new variables and came back healthy.</p>
+      <p>{appName} restarted with your changes and came back healthy.</p>
     </Notice> : null}
 
     {ownerFields.length ? <div className="suite-app-config-group">
@@ -437,6 +458,14 @@ export function AppConfigDialog({
     {choosesDrive && storage ? <div className="suite-app-config-group">
       <Rows lead>
         <DriveChoice appName={appName} busy={busy} drive={drive} drives={drives} onChange={setDrive} storage={storage} />
+      </Rows>
+    </div> : null}
+
+    {folders.length && storage ? <div className="suite-app-config-group">
+      <Rows lead>
+        <Row help="Files on the drive are not backed up." label={driveChoiceLabel(storage)}>
+          {`${folderList(storage.folders)} on ${keptDrive?.label || 'its drive'}`}
+        </Row>
       </Rows>
     </div> : null}
 

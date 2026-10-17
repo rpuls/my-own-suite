@@ -5,7 +5,7 @@
   "expiresAt": "2027-01-17T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.1.0",
-    "packageDigest": "sha256:6ff337a5ea425b9e14933d408507406531c16fb16bd73395f9e64b8491945327",
+    "packageDigest": "sha256:6a7e4394d7c87110ec66e1a82a138f625a73905702fc28b5f2c8c7d14c1e2087",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",

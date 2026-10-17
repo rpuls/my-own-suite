@@ -97,6 +97,29 @@ test('a drive that is not there creates nothing, and a pulled drive is remounted
   assert.deepEqual(stale.calls.map((call) => call[0]), ['umount', 'mount']);
 });
 
+test('an NTFS drive Windows left dirty is refused with the way to fix it', async () => {
+  const ntfs = { fstype: 'ntfs', label: 'Ext HDD', mountpoints: [null], name: 'sdc1', path: '/dev/sdc1', size: 1_000_000_000_000, type: 'part', uuid: '20C2CDDCC2CDB676' };
+  const host = fakeHost([ntfs]);
+  const kernelLog = '[1914.66] ntfs3: sdc1: Mark volume as dirty due to NTFS errors\n[1917.77] ntfs3: sdc1: volume is dirty and "force" flag is not set!\n';
+  const failingHost = {
+    ...host,
+    execute: async (file) => { if (file === 'mount') throw new Error('COMMAND_FAILED'); return { stdout: '' }; },
+    executeCapture: async (file, args) => (file === 'dmesg' ? kernelLog : host.executeCapture(file, args)),
+  };
+  const { storage } = await storageFor(failingHost);
+  await assert.rejects(storage.attach('20C2CDDCC2CDB676'), (error) => error.code === 'APP_STORAGE_UNAVAILABLE' && /Windows did not finish with this drive/u.test(error.message));
+});
+
+test('a mount failure the kernel log does not explain stays the command failure', async () => {
+  const host = fakeHost([USB_DRIVE]);
+  const { storage } = await storageFor({
+    ...host,
+    execute: async (file) => { if (file === 'mount') throw new Error('COMMAND_FAILED'); return { stdout: '' }; },
+    executeCapture: async (file, args) => (file === 'dmesg' ? 'ntfs3: sdz1: volume is dirty\n' : host.executeCapture(file, args)),
+  });
+  await assert.rejects(storage.attach('1A2B-3C4D'), /COMMAND_FAILED/u);
+});
+
 test('a Linux-formatted drive is refused in plain words', async () => {
   const { storage } = await storageFor(fakeHost([LINUX_DRIVE]));
   await assert.rejects(storage.attach('e1e1e1e1-0000'), /exFAT, NTFS or FAT32/u);

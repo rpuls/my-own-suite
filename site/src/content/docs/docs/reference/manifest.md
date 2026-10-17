@@ -28,7 +28,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`appVersion`](#required-fields) | 0.20.0 | The app's own version, which owners see instead of the package version. |
 | [`routes[].kind`](#routes) | 0.21.0 | `api` marks an address only programs call: no Open button, no Homepage tile. |
 | [`requirements`](#server-requirements-requirements) | 0.21.0 | What the app needs from the server, starting with `https`; Suite Manager disables Install and says why on a server that lacks it. |
-| [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks at install, created and mounted by MOS. |
+| [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks, created and mounted by MOS. |
 
 ## A complete minimal manifest
 
@@ -182,7 +182,7 @@ What the app needs from the server it is installed on. Suite Manager checks each
 
 ## Folders on the owner's drive (`storage`)
 
-Folders an app reads from a drive the owner picks when installing it, such as a media server's films. MOS creates each one as `MOS-files/apps/<id>/<name>` on that drive and mounts it **read-only** at `path` in the named service. The owner fills the folders from any computer: the drive is the way in. The app never learns where a folder lives, only its own path.
+Folders an app reads from a drive the owner picks, such as a media server's films. A `required` drive is picked in the install dialog; an optional one stays out of install and is added later in the app's settings. MOS creates each one as `MOS-files/apps/<id>/<name>` on that drive and mounts it **read-only** at `path` in the named service. The owner fills the folders from any computer: the drive is the way in. The app never learns where a folder lives, only its own path.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
@@ -190,10 +190,13 @@ Folders an app reads from a drive the owner picks when installing it, such as a 
 | `folders[].service` | yes | The service the folder is mounted into. |
 | `folders[].path` | yes | Absolute path inside that service's container, without `:` or `,`. Must not be one of its volume paths. |
 | `required` | no | `true` when the app is no use without the folders. Suite Manager then disables **Install** with "Requires an extra storage device" until a drive formatted as exFAT, NTFS or FAT32 is plugged in. Omitted or `false` lets the owner install without a drive, and the folders are simply not mounted. |
+| `label` | no | What the drive choice is called where the owner picks it, such as `External photo library`. Defaults to "Drive for its files". |
+| `description` | no | One or two sentences under that choice while no drive is picked, saying what a drive adds in the owner's terms. Worth writing for an optional drive: the owner meets it in the app's settings with nothing else to explain it. |
 
 ```json
 "storage": {
   "required": true,
+  "label": "Drive for your films",
   "folders": [
     { "name": "Movies", "service": "media", "path": "/media/movies" }
   ]

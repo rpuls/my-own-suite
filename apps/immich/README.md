@@ -32,7 +32,7 @@ High performance self-hosted photo and video backup solution.
 
 ## Photos Folder On The Owner's Drive
 
-The manifest declares one optional folder under `storage`. When the owner picks a drive at install (or in the update that brings the folder), MOS creates `MOS-files/apps/immich/Photos` on it and mounts it read-only at `/media/photos` in `immich-server`. It is not an app volume: the suite backup does not include it and uninstall leaves it on the drive. Without a drive Immich runs as before and the folder is simply not mounted.
+The manifest declares one optional folder under `storage`. Install never asks for it: the owner picks a drive later in the app's settings in Suite Manager, and MOS creates `MOS-files/apps/immich/Photos` on it and mounts it read-only at `/media/photos` in `immich-server`. It is not an app volume: the suite backup does not include it and uninstall leaves it on the drive. Without a drive Immich runs as before and the folder is simply not mounted.
 
 Read-only means Immich can neither delete those photos nor write XMP sidecars beside them. Assets whose files go missing while the drive is away are shown offline, not removed, and return when the drive does.
 

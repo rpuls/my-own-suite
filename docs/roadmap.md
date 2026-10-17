@@ -221,7 +221,7 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
 - **S2 — Storage drives: adopt, mount persistently, survive absence.** Adopt a portable
   (exFAT-class) drive by fsUuid, MOS's first persistent mount (obeys the vault gating test),
   controlled mount options for container readability, offline state when missing at boot,
-  eject, and the backup candidate list and storage claims excluding each other. *(Medium)*
+  and the backup candidate list and storage claims excluding each other. *(Medium)*
 - **S3 — Install-flow disk picker.** Pick 1 of n eligible drives; none → install blocked with
   "requires extra storage device"; MOS creates the app's folders and mounts them. *(Medium)*
 - **S4 — Pre-provision the app's libraries and rescans.** MOS drives the app's admin API once
@@ -232,8 +232,27 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
   folders of uninstalled apps, and the plain sentence that an external drive is not backed up.
   *(Medium)*
 - **S7 — Drill and E2E coverage for the new states.** App cycle with a storage drive, drive
-  absent at boot, drive unplugged and returned, and backup/storage coexisting on one drive.
+  absent at boot, drive unplugged and returned, a dirty NTFS drive (pulled cable, and a power
+  cut simulated by a hard reset), and backup/storage coexisting on one drive; the lab gains an
+  NTFS VHDX beside the exFAT one, which is the gap that let the dirty-volume case through.
   *(Medium)*
+- **S8 — Recover automatically from a dirty drive.**
+  `.local-tools/handoffs/storage-dirty-drive-recovery.md` is the brief. A read-write mount
+  refused as dirty falls back to read-only so reader apps keep working, the drive carries a
+  needs-check state, a Check drive action (`ntfsfix`, packaged on the image) returns it to
+  read-write from Suite Manager, writer apps are held with the reason shown — which needs the
+  manifest to say which folders an app writes — and ntfs3 `force` is never used. A power cut is
+  the same path as a pulled cable. *(Medium)*
+- **S9 — Eject.** Stop the drive's containers, unmount cleanly, say "safe to unplug"; replug
+  returns through the existing attach path. Reverses slice 1's no-eject decision, now that a
+  pulled NTFS cable is known to strand the files until a Windows machine checks the disk.
+  *(Small)*
+- **S10 — Drive state the owner can actually see.** The five real states — read-write,
+  read-only pending a check, could not open with the reason, not connected, ejected — on the
+  Storage drives panel, a **drives widget on the Suite Manager start page**, a plain line on an
+  affected app's page (today an app reading an empty mount looks healthy), and the attach
+  journals plus ntfs3/exfat kernel lines in the diagnostics file. Look and wording belong to
+  the design pass. *(Medium)*
 
 ---
 

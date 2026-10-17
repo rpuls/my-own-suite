@@ -119,7 +119,7 @@ function appUpdateRoutes({ appPackages, appUrls, homepageConfig, updateJobs }) {
   ];
 }
 
-function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
+function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs, updateJobs }) {
   const runtimeUrls = (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() });
 
   return [
@@ -214,7 +214,10 @@ function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
       pattern: packageRoute('uninstall'),
       signIn: 'Sign in to uninstall app packages.',
       handler: async ({ params: [packageId], response }) => {
-        jsonResponse(response, 200, await appPackages.uninstallPackage(packageId, homepageConfig));
+        const uninstalled = await appPackages.uninstallPackage(packageId, homepageConfig);
+        installJobs.forget(packageId);
+        updateJobs.forget(packageId);
+        jsonResponse(response, 200, uninstalled);
       },
     },
     {

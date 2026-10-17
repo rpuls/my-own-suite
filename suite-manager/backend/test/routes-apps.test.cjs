@@ -99,8 +99,11 @@ test('App package icon and screenshot APIs serve the files the package service n
 test('each package action reaches the package service with the app URLs it needs', async () => {
   const calls = [];
   const appPackages = recordingPackages(calls);
+  const forgotten = [];
+  const installJobs = { forget: (id) => forgotten.push(['install', id]) };
+  const updateJobs = { forget: (id) => forgotten.push(['update', id]) };
 
-  await withRoutes({ appPackages, appUrls, homepageConfig }, async (call) => {
+  await withRoutes({ appPackages, appUrls, homepageConfig, installJobs, updateJobs }, async (call) => {
     for (const action of ['prepare-update', 'recover-update', 'add-to-homepage', 'apply-runtime', 'stop', 'enable', 'restart', 'uninstall', 'refresh-runtime-status']) {
       assert.equal((await call('POST', `/apps/packages/notes/${action}`)).status, 200, action);
     }
@@ -122,6 +125,7 @@ test('each package action reaches the package service with the app URLs it needs
     ['installPackage', 'notes', { config: { title: 'Notes' } }],
     ['savePackageEnvironment', 'notes', { variables: [] }, runtime],
   ]);
+  assert.deepEqual(forgotten, [['install', 'notes'], ['update', 'notes']], 'an uninstall drops the jobs that described the app');
 });
 
 test('install and update jobs answer at once with what they were handed', async () => {

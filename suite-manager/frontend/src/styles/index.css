@@ -2678,9 +2678,7 @@ button.suite-updates-change-head {
 .suite-input { width: 100%; min-width: 0; min-height: 2.9rem; padding: 0.72rem 0.8rem; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-strong); color: var(--mos-color-text); font: inherit; }
 .suite-input::placeholder { color: var(--mos-color-text-muted); }
 .suite-input:focus { border-color: var(--mos-color-accent-border); outline: var(--mos-focus-ring); }
-.suite-select { appearance: none; padding-right: 2.2rem; background: linear-gradient(45deg, transparent 50%, var(--mos-color-text) 50%) right 0.95rem center / 0.42rem 0.42rem no-repeat, linear-gradient(135deg, var(--mos-color-text) 50%, transparent 50%) right 0.68rem center / 0.42rem 0.42rem no-repeat, var(--mos-color-surface-strong); }
-.suite-select option { background: var(--mos-color-surface-elevated); color: var(--mos-color-text); }
-.suite-textarea { min-height: 6rem; resize: vertical; }
+.suite-select { appearance: none; padding-right: 2.2rem; background: linear-gradient(45deg, transparent 50%, var(--mos-color-text) 50%) right 0.95rem center / 0.42rem 0.42rem no-repeat, linear-gradient(135deg, var(--mos-color-text) 50%, transparent 50%) right 0.68rem center / 0.42rem 0.42rem no-repeat, var(--mos-color-surface-strong); }.suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
 .suite-form-wide { grid-column: 1 / -1; }
 .suite-advanced pre { padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--mos-text-small); line-height: 1.5; }

@@ -118,6 +118,8 @@
   },
   "storage": {
     "required": true,
+    "label": "Drive for your films and series",
+    "description": "Jellyfin plays the films and series you copy onto this drive from any computer.",
     "folders": [
       {
         "name": "Movies",

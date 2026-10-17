@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { StorageError } = require('./storage.cjs');
 
 const { ADDRESS_TIMEOUT_MS, CRASH_LOOP_RESTARTS, DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, HEALTH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock, waitForHttp } = require('./system-adapter.cjs');
 
@@ -1426,11 +1427,11 @@ test('folders on a drive reach the container as read-only binds that cannot crea
 });
 
 test('a drive that cannot be opened fails the apply before the running app is touched', async () => {
-  const storage = { prepareFolders: async () => { throw new Error("The drive that holds this app's folders is not connected."); } };
+  const storage = { prepareFolders: async () => { throw new StorageError("The drive that holds this app's folders is not connected."); } };
   const { adapter, commands, runtime } = await folderApp(storage);
   await assert.rejects(adapter.applyAppServices(runtime), (error) => {
     assert.equal(error.code, 'APP_STORAGE_UNAVAILABLE');
-    assert.deepEqual(error.details, ["The drive that holds this app's folders is not connected."]);
+    assert.equal(error.message, "The drive that holds this app's folders is not connected.");
     return true;
   });
   assert.equal(commands.some((command) => command.args[0] === 'rm'), false);

@@ -82,7 +82,9 @@ function unmetRequirements(manifest, peers) {
 // The folders an update brings to an app that had none, which the update dialog
 // offers a drive picker for. A version that keeps or changes folders is not an
 // offer: the instance's folders stay where they were placed.
-function storageOffer(installedManifest, candidateManifest) {
+// Folders a new version brings. A drive it needs is picked in the update dialog;
+// one it can do without is added later in the app's settings, like at install.
+function newStorage(installedManifest, candidateManifest) {
   const folders = Array.isArray(candidateManifest.storage?.folders) ? candidateManifest.storage.folders : [];
   if (!folders.length || Array.isArray(installedManifest.storage?.folders)) return null;
   return { folders: folders.map((folder) => ({ name: folder.name })), required: candidateManifest.storage.required === true };
@@ -108,8 +110,18 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   for (const volume of volumes(installed.manifest)) {
     if (!volumes(candidate.manifest).has(volume)) { breakingAreas.add('volumes'); changes.push({ area: 'volumes', classification: 'migration-required', summary: `Persistent volume ${volume} is no longer declared.` }); }
   }
-  const storage = storageOffer(installed.manifest, candidate.manifest);
-  if (storage) changes.push({ area: 'storage', classification: 'automatically-handled', summary: `${candidate.manifest.name} can now read ${storage.folders.map((folder) => folder.name).join(', ')} from a drive you pick below.` });
+  const added = newStorage(installed.manifest, candidate.manifest);
+  const storage = added?.required ? added : null;
+  if (added) {
+    const names = added.folders.map((folder) => folder.name).join(', ');
+    changes.push({
+      area: 'storage',
+      classification: 'automatically-handled',
+      summary: added.required
+        ? `${candidate.manifest.name} now keeps ${names} on a drive you pick below.`
+        : `${candidate.manifest.name} can now also show ${names} from a drive. Add one in its settings after updating.`,
+    });
+  }
   for (const area of ['resources', 'routes', 'health', 'exports', 'integrations', 'usefulness']) {
     if (!equal(installed.manifest[area], candidate.manifest[area]) && !changes.some((change) => change.area === area)) {
       changes.push({ area, classification: 'automatically-handled', summary: `${area[0].toUpperCase()}${area.slice(1)} declarations changed.` });

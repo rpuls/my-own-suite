@@ -48,6 +48,8 @@ $IsoPath = Join-Path $WorkRoot 'bake-installer.iso'
 $BakeDiskPath = Join-Path $WorkRoot 'bake.vhdx'
 $VerifyDiskPath = Join-Path $WorkRoot 'verify.vhdx'
 $OutputDir = Join-Path $WorkRoot 'out'
+# A branch ref such as lab/x would otherwise put a folder in the file name.
+$ImageName = "my-own-suite-$($RepoRef -replace '/', '-').img"
 $VmName = 'mos-image-bake'
 $VerifyVmName = 'mos-image-verify'
 $ToolingImage = 'mos-image-tools:local'
@@ -274,8 +276,7 @@ done
 
 function Invoke-Verify {
   Assert-HyperV
-  $imageName = "my-own-suite-$RepoRef.img"
-  if (-not (Test-Path (Join-Path $OutputDir $imageName))) { Fail 'No image found. Run the convert stage first.' }
+  if (-not (Test-Path (Join-Path $OutputDir $ImageName))) { Fail 'No image found. Run the convert stage first.' }
   $homeHost = Get-HomeHost
 
   Remove-BakeVm $VerifyVmName
@@ -290,7 +291,7 @@ function Invoke-Verify {
   }
   Invoke-Native 'Could not convert the image for verification.' {
     & docker run --rm -v "${WorkRoot}:/work" $ToolingImage `
-      qemu-img convert -f raw -O vhdx "/work/out/$imageName" /work/verify.vhdx
+      qemu-img convert -f raw -O vhdx "/work/out/$ImageName" /work/verify.vhdx
   }
   Resize-VHD -Path $VerifyDiskPath -SizeBytes ($VerifyDiskGB * 1GB)
   Say "Booting it on a ${VerifyDiskGB} GB disk."
@@ -385,37 +386,35 @@ function Invoke-Convert {
     & docker build -t $ToolingImage $PSScriptRoot
   }
 
-  $imageName = "my-own-suite-$RepoRef.img"
   Say 'Converting the baked disk to a raw image.'
   Invoke-Native 'Image conversion failed.' {
     & docker run --rm -v "${WorkRoot}:/work" $ToolingImage `
-      extract-image.sh /work/bake.vhdx "/work/out/$imageName"
+      extract-image.sh /work/bake.vhdx "/work/out/$ImageName"
   }
 
   # Privileged only to attach a loop device for resize2fs.
   Say 'Shrinking to the actual contents and compressing.'
   Invoke-Native 'Image shrink failed.' {
     & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
-      shrink-image.sh "/work/out/$imageName" $SlackMB
+      shrink-image.sh "/work/out/$ImageName" $SlackMB
   }
 
   # An image built before an edit landed looks exactly like one built after it,
   # so the finished file is asked what it carries rather than the checkout.
   Invoke-Native 'The image does not carry what this checkout says it should.' {
     & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
-      check-image-payload.sh "/work/out/$imageName"
+      check-image-payload.sh "/work/out/$ImageName"
   }
 
   Say ''
-  Say "Image ready: $(Join-Path $OutputDir $imageName)"
+  Say "Image ready: $(Join-Path $OutputDir $ImageName)"
   Say ''
   Say 'Write the .img.xz to a USB stick with balenaEtcher or Rufus (both read it as it is),'
   Say 'boot the target machine from it, pick the disk by number and type ERASE when it asks.'
 }
 
 function Invoke-Inspect {
-  $imageName = "my-own-suite-$RepoRef.img"
-  if (-not (Test-Path (Join-Path $OutputDir $imageName))) { Fail 'No image found. Run the convert stage first.' }
+  if (-not (Test-Path (Join-Path $OutputDir $ImageName))) { Fail 'No image found. Run the convert stage first.' }
 
   Invoke-Native 'Could not build the image tooling container.' {
     & docker build -t $ToolingImage $PSScriptRoot
@@ -423,7 +422,7 @@ function Invoke-Inspect {
   # Privileged only to attach a loop device; the mount itself is read-only.
   Invoke-Native 'Inspection failed.' {
     & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
-      inspect-image.sh "/work/out/$imageName"
+      inspect-image.sh "/work/out/$ImageName"
   }
 }
 

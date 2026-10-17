@@ -719,6 +719,29 @@ label.mos-row {
   background: var(--mos-color-accent-soft);
 }
 
+/* Dropdown: the shared native select (`Dropdown` in Suite Manager).
+   INTERIM LOOK. Claude Design will specify the final dropdown, closed field
+   and open list, for the MOS design system; replace this block with it.
+   Until then this only keeps the open list readable. The browser draws that
+   list itself and paints transparent colours over white, so options need
+   opaque theme colours, and color-scheme asks for a matching popup. */
+.mos-dropdown {
+  color-scheme: dark;
+}
+
+[data-theme='light'] .mos-dropdown {
+  color-scheme: light;
+}
+
+.mos-dropdown option {
+  background-color: var(--mos-color-bg-soft);
+  color: var(--mos-color-text);
+}
+
+.mos-dropdown option:disabled {
+  color: var(--mos-color-text-muted);
+}
+
 /* A row the owner types into puts its label on its own line and gives the whole
    width to the box. Beside the label instead, the field is sized by whatever
    the label happens to be — a long one leaves a stub to type in, a short one a

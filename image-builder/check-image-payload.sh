@@ -19,7 +19,7 @@ profile="$(printf '%s' "$image_json" | grep -o '"profile":"[a-z]*"' | cut -d'"' 
 repo_ref="$(printf '%s' "$image_json" | grep -o '"repoRef":"[^"]*"' | cut -d'"' -f4)"
 built_at="$(printf '%s' "$image_json" | grep -o '"builtAt":"[^"]*"' | cut -d'"' -f4)"
 
-root_start_sector="$(sfdisk -J "$image" | tr -d ' "' | grep -A4 'node:.*2' | grep '^start:' | head -n1 | grep -o '[0-9]*')"
+root_start_sector="$(sfdisk -J "$image" | grep -o '"start": *[0-9]*' | sed -n 2p | grep -o '[0-9]*')"
 [ -n "$root_start_sector" ] || { echo "Could not locate the root partition."; exit 1; }
 mkdir -p /mnt/root
 mount -o ro,loop,offset=$((root_start_sector * 512)) "$image" /mnt/root

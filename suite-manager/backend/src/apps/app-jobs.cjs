@@ -25,6 +25,11 @@ class AppJobs {
     return copy;
   }
 
+  // A finished job describes an app that is no longer there once it is uninstalled.
+  forget(packageId) {
+    if (this.jobs.get(packageId)?.status !== 'running') this.jobs.delete(packageId);
+  }
+
   begin(packageId, input) {
     if (this.jobs.get(packageId)?.status === 'running') {
       throw new CodedError('APP_OPERATION_IN_PROGRESS', this.busyMessage, { statusCode: 409 });

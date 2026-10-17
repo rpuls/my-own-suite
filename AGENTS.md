@@ -142,7 +142,7 @@ Current shared-branding sync targets include:
 
 Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI primitives as part of the design framework, not as optional convenience helpers.
 
-- Reuse existing shared components before creating new local controls. Current shared primitives live in `suite-manager/frontend/src/components/` and include dialog frames, drawers, action menus, notices/alerts, text inputs, text areas, selects, confirmation checkboxes, setting switches, and the advanced panel.
+- Reuse existing shared components before creating new local controls. Current shared primitives live in `suite-manager/frontend/src/components/` and include dialog frames, drawers, action menus, notices/alerts, text inputs, text areas, dropdowns (`Dropdown`, which `Select` and `RowSelect` build on), confirmation checkboxes, setting switches, and the advanced panel.
 - Checkbox and switch are two controls, not one with two skins. A checkbox is a deliberate acknowledgement that gates something else and is submitted with it; a switch is a setting that takes effect the moment it is flipped. Pick the one that matches, and do not add a third control the next time neither quite fits — extend one of these.
 - A control's own look — track, knob, gradient, focus ring — is shared MOS branding and belongs in `branding/styles/mos.css` under a `mos-` class, so it stays identical wherever it is used and matches the design-system project. The product stylesheet owns only where that control sits: row layout, spacing, and surrounding copy.
 - Do not create one-off or near-duplicate dialogs, dropdowns, alert banners, text inputs, expand/collapse controls, or choice cards with slightly different styling or behavior.

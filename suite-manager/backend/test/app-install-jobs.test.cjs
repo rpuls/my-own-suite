@@ -65,6 +65,23 @@ test('a failed step is named and keeps its reason for the page to show', async (
   assert.deepEqual(statuses(job), { address: 'pending', homepage: 'pending', prepare: 'complete', ready: 'pending', runtime: 'failed' });
 });
 
+test('a finished job is forgotten when the app is uninstalled, a running one is not', async () => {
+  let release;
+  const failing = fakeApp({ start: async () => { throw new Error('The app container could not be started.'); } });
+  failing.jobs.begin('jellyfin');
+  await failing.jobs.lastRun;
+  failing.jobs.forget('jellyfin');
+  assert.equal(failing.jobs.get('jellyfin'), null);
+
+  const { jobs } = fakeApp({ start: () => new Promise((resolve) => { release = resolve; }) });
+  jobs.begin('jellyfin');
+  jobs.forget('jellyfin');
+  assert.equal(jobs.get('jellyfin').status, 'running');
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  await jobs.lastRun;
+});
+
 test('an address still waiting for its certificate finishes the install with a notice, cleared once it opens', async () => {
   const { calls, jobs } = fakeApp({ addresses: [NO_CERTIFICATE, NO_CERTIFICATE, OPEN] });
   jobs.begin('immich', { showOnHomepage: true });

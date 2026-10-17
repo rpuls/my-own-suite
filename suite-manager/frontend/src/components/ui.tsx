@@ -127,8 +127,16 @@ export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes
   return <label className="suite-control"><span className="suite-field-label">{label}</span><textarea className="suite-input suite-textarea" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
+// The shared dropdown: the one native <select> under every choice in Suite
+// Manager, so the open list reads the same everywhere. Its look is
+// `.mos-dropdown` in branding/styles/mos.css. That look is interim: Claude
+// Design will specify the final dropdown for the MOS design system.
+export function Dropdown({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`mos-dropdown${className ? ` ${className}` : ''}`} {...props} />;
+}
+
 export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label?: string }) {
-  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<Dropdown className="suite-input suite-select" {...props}>{children}</Dropdown>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
 // The shared confirmation checkbox: a boxed, full-width row whose whole surface
@@ -302,7 +310,7 @@ export function RowInput({ code, state, ...props }: InputHTMLAttributes<HTMLInpu
 // A choice in a row, boxed exactly like RowInput so it lines up with the typed
 // fields around it.
 export function RowSelect({ children, state, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; state?: 'filled' | 'missing' }) {
-  return <select className={`mos-row-input${state ? ` mos-row-input-${state}` : ''}`} {...props}>{children}</select>;
+  return <Dropdown className={`mos-row-input${state ? ` mos-row-input-${state}` : ''}`} {...props}>{children}</Dropdown>;
 }
 
 export function RowAction({ danger, icon, label, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & { danger?: boolean; icon: IconName; label: string }) {

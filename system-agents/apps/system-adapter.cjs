@@ -10,7 +10,7 @@ const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifyS
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
 const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
-const { AppStorage, STORAGE_DRIVE_LABEL } = require('./storage.cjs');
+const { AppStorage, STORAGE_DRIVE_LABEL, StorageError } = require('./storage.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -397,7 +397,10 @@ class SystemAppAdapter {
       }
       if (service.folders?.length) {
         const binds = await this.storage.prepareFolders(packageId, service.folders).catch((error) => {
-          throw new AppApplyError('storage', [error.message]);
+          const failure = new AppApplyError('storage', [error.message]);
+          // A StorageError is a fixed sentence written for the owner, so it may replace the stage's.
+          if (error instanceof StorageError) failure.message = error.message;
+          throw failure;
         });
         for (const bind of binds) args.push('--mount', `type=bind,source=${bind.source},target=${bind.target},readonly`);
         for (const drive of new Set(binds.map((bind) => bind.drive))) args.push('--label', `${STORAGE_DRIVE_LABEL}.${drive}=true`);

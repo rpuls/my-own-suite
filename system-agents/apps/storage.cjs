@@ -14,6 +14,7 @@ const STORAGE_FILESYSTEMS = new Map([['exfat', 'exfat'], ['ntfs', 'ntfs3'], ['vf
 // written only by MOS. A later writer app gets a group here, not a chmod.
 const MOUNT_OPTIONS = 'uid=0,gid=0,fmask=0133,dmask=0022,noatime,nodev,nosuid,noexec';
 const UUID_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
+const DIRTY_VOLUME_REASON = 'Windows did not finish with this drive: it was unplugged without ejecting, or it needs a check. Plug it into a Windows computer, open the drive\'s Properties, choose Tools and then Check, and eject it before plugging it back in here.';
 const ONE_GIB = 1024 * 1024 * 1024;
 
 class StorageError extends Error {
@@ -159,9 +160,20 @@ class AppStorage {
     if (current === drive.devicePath) return { drive, target };
     if (current) await this.execute('umount', ['--lazy', target], { timeoutMs: 30_000 });
     fs.mkdirSync(target, { recursive: true });
-    await this.execute('mount', ['-t', STORAGE_FILESYSTEMS.get(drive.fileSystem), '-o', MOUNT_OPTIONS, drive.devicePath, target], { timeoutMs: 60_000 });
+    await this.execute('mount', ['-t', STORAGE_FILESYSTEMS.get(drive.fileSystem), '-o', MOUNT_OPTIONS, drive.devicePath, target], { timeoutMs: 60_000 }).catch(async (error) => {
+      if (await this.refusedAsDirty(drive)) throw new StorageError(DIRTY_VOLUME_REASON);
+      throw error;
+    });
     if (await this.mountedSource(target) !== drive.devicePath) throw new StorageError('The drive could not be opened.');
     return { drive, target };
+  }
+
+  // ntfs3 gives its reason only in the kernel log; `mount` itself just says "wrong fs type".
+  async refusedAsDirty(drive) {
+    const log = await this.executeCapture('dmesg', [], { timeoutMs: 10_000 }).catch(() => '');
+    const prefix = `ntfs3: ${path.posix.basename(drive.devicePath)}:`;
+    const lastWord = String(log).split('\n').filter((line) => line.includes(prefix)).pop() || '';
+    return lastWord.includes('volume is dirty');
   }
 
   async prepareFolders(packageId, folders) {

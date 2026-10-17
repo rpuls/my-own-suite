@@ -242,6 +242,8 @@
   },
   "storage": {
     "required": false,
+    "label": "External photo library",
+    "description": "Also show photos you keep in your own folders on a drive. Immich only reads them, and never puts thumbnails or other files beside them.",
     "folders": [
       {
         "name": "Photos",
@@ -292,7 +294,7 @@
         "id": "photos-drive",
         "type": "note",
         "title": "Photos from your own drive",
-        "body": "If you picked a drive when installing, Immich shows everything in its MOS-files, apps, immich, Photos folder as the Photos library. Fill that folder from any computer and plug the drive back in. Those photos are read where they are: Immich never changes or deletes them, and the suite backup does not include them."
+        "body": "Got photos on a drive? Plug it in and pick it under External photo library in Immich's settings in Suite Manager. Immich then shows everything in the drive's MOS-files, apps, immich, Photos folder as the Photos library, read where it is: Immich never changes or deletes those photos, and the suite backup does not include them."
       },
       {
         "id": "mobile-app",

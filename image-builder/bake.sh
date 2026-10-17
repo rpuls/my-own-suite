@@ -27,7 +27,7 @@ slack_mb="${MOS_IMAGE_SLACK_MB:-1024}"
 verify_disk_gb="${MOS_IMAGE_VERIFY_DISK_GB:-40}"
 verify_http_port="${MOS_IMAGE_VERIFY_HTTP_PORT:-18080}"
 verify_monitor_port="${MOS_IMAGE_VERIFY_MONITOR_PORT:-18081}"
-image_name="my-own-suite-${repo_ref}.img"
+image_name="my-own-suite-${repo_ref////-}.img"
 
 say() { printf '[mos-image] %s\n' "$*"; }
 fail() { printf '[mos-image] %s\n' "$*" >&2; exit 1; }

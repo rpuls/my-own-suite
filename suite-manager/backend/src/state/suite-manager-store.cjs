@@ -1793,6 +1793,12 @@ class SuiteManagerStore {
     }
   }
 
+  removeAppInstanceFolders(instanceId, names) {
+    for (const name of names) {
+      this.database.prepare('DELETE FROM app_instance_folders WHERE instance_id = ? AND name = ?').run(instanceId, name);
+    }
+  }
+
   installAppInstance({ at, config = [], folders = [], instance, operationId, projections, request = {} }) {
     this.transaction(() => {
       this.database.prepare(`
