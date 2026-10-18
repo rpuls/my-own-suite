@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { compareCatalogs } = require('../../scripts/app-version-guard.cjs');
+const { compareCatalogs, compareStorageFolders } = require('../../scripts/app-version-guard.cjs');
 
 const digest = (value) => `sha256:${String(value).repeat(64).slice(0, 64)}`;
 const entry = (packageVersion, seed) => ({
@@ -62,4 +62,18 @@ test('a package removed from the catalog is not treated as a version fault', () 
     { packages: { seafile: entry('0.1.0', '1') } },
     { packages: {} },
   ), []);
+});
+
+const withFolders = (...names) => ({ storage: { folders: names.map((name) => ({ name, path: `/media/${name.toLowerCase()}`, service: 'jellyfin' })) } });
+
+test('a storage folder the published version declared cannot be dropped or renamed', () => {
+  const errors = compareStorageFolders({ jellyfin: withFolders('Movies', 'Series') }, { jellyfin: withFolders('Movies', 'Shows') });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /jellyfin: no longer declares the storage folder Series/u);
+});
+
+test('storage folders may be added, and a folder may move inside the container', () => {
+  const moved = withFolders('Movies', 'Series', 'Shows');
+  moved.storage.folders[0].path = '/data/movies';
+  assert.deepEqual(compareStorageFolders({ jellyfin: withFolders('Movies', 'Series') }, { jellyfin: moved }), []);
 });

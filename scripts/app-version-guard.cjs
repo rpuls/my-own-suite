@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Refuses a catalog that changes what a package contains without changing the
-// version number that package is published under.
+// version number that package is published under, or that drops a storage folder
+// its published version declared.
 //
 // A MOS box installs an official app from its own checkout and afterwards only
 // ever learns about newer packages by version: the catalog's job is to say "there
@@ -64,13 +65,33 @@ function main(args = process.argv.slice(2)) {
 
   const current = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
   const errors = compareCatalogs(baseline, current);
+  const folderErrors = compareStorageFolders(readPublishedManifests(ref, baseline), readCurrentManifests(current));
 
   if (errors.length) {
     process.stderr.write(`App packages changed without a version bump (compared against ${ref}):\n${errors.join('\n')}\n\nAfter bumping, run npm run apps:catalog and re-stamp each privacy review's scope.packageVersion.\n`);
+  }
+  if (folderErrors.length) {
+    process.stderr.write(`App packages drop storage folders their published version declared (compared against ${ref}):\n${folderErrors.join('\n')}\n`);
+  }
+  if (errors.length || folderErrors.length) {
     process.exitCode = 1;
     return;
   }
-  process.stdout.write(`App package versions are consistent with ${ref}.\n`);
+  process.stdout.write(`App package versions and storage folders are consistent with ${ref}.\n`);
+}
+
+function readPublishedManifests(ref, catalog) {
+  return Object.fromEntries(Object.entries(catalog.packages || {}).map(([packageId, entry]) => [
+    packageId,
+    JSON.parse(execFileSync('git', ['show', `${ref}:${entry.path}/manifest.json`], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })),
+  ]));
+}
+
+function readCurrentManifests(catalog) {
+  return Object.fromEntries(Object.entries(catalog.packages || {}).map(([packageId, entry]) => [
+    packageId,
+    JSON.parse(fs.readFileSync(path.join(repoRoot, entry.path, 'manifest.json'), 'utf8')),
+  ]));
 }
 
 // A package absent from the baseline is new and has nothing to be compared
@@ -91,6 +112,27 @@ function compareCatalogs(baseline, current) {
   return errors;
 }
 
+// A storage folder holds the owner's library on their drive, and a version that stops
+// declaring it stops mounting it, so the library looks lost after the update. Folders
+// are therefore additive: a rename adds the new folder and keeps the old one.
+function compareStorageFolders(publishedManifests, currentManifests) {
+  const errors = [];
+  for (const [packageId, published] of Object.entries(publishedManifests)) {
+    const candidate = currentManifests[packageId];
+    if (!candidate) continue;
+    const kept = new Set(storageFolderNames(candidate));
+    const dropped = storageFolderNames(published).filter((name) => !kept.has(name));
+    if (dropped.length) {
+      errors.push(`${packageId}: no longer declares the storage folder ${dropped.join(', ')}. Installed apps keep files there, so keep it; a rename adds the new folder beside it, and the release note tells owners to move their files.`);
+    }
+  }
+  return errors;
+}
+
+function storageFolderNames(manifest) {
+  return Array.isArray(manifest?.storage?.folders) ? manifest.storage.folders.map((folder) => folder.name) : [];
+}
+
 // Local, deliberately minimal: catalog versions are plain X.Y.Z, which
 // validateCatalog already enforces before this runs.
 function compare(left, right) {
@@ -105,4 +147,4 @@ function compare(left, right) {
 
 if (require.main === module) main();
 
-module.exports = { baselineRefs, compareCatalogs, main, readBaselineCatalog };
+module.exports = { baselineRefs, compareCatalogs, compareStorageFolders, main, readBaselineCatalog };

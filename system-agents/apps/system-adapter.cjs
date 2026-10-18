@@ -430,9 +430,11 @@ class SystemAppAdapter {
   // Volume and folder arguments for each service's `docker run`, prepared before
   // anything is stopped so a drive that is not there leaves the running app alone.
   // A bind made with --mount refuses a missing source instead of creating it, so
-  // a folder can never silently land on the system disk.
+  // a folder can never silently land on the system disk. The drive claims follow
+  // what this apply mounts, so a rolled-back drive change lets go of its drive.
   async containerMountArgs(packageId, services) {
     const byService = new Map();
+    const mountedDrives = new Set();
     for (const service of services) {
       const args = [];
       for (const volume of service.volumes || []) {
@@ -447,10 +449,15 @@ class SystemAppAdapter {
           throw failure;
         });
         for (const bind of binds) args.push('--mount', `type=bind,source=${bind.source},target=${bind.target},readonly`);
-        for (const drive of new Set(binds.map((bind) => bind.drive))) args.push('--label', `${STORAGE_DRIVE_LABEL}.${drive}=true`);
+        const drives = new Set(binds.map((bind) => bind.drive));
+        for (const drive of drives) {
+          args.push('--label', `${STORAGE_DRIVE_LABEL}.${drive}=true`);
+          mountedDrives.add(drive);
+        }
       }
       byService.set(service.id, args);
     }
+    this.storage.release(packageId, [...mountedDrives]);
     return byService;
   }
 

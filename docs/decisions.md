@@ -31,6 +31,7 @@ Consequences:
 - **Location is a per-folder fact**, so a folder can later move to the MOS disk, to another drive, or onto an encrypted filesystem of its own without reshaping the data model; nothing assumes the drive is exFAT except the slice-1 rule of which drives may be picked.
 - **The backup agent recognises the claim.** A drive that holds both backups and app folders is one destination, listed under the backup agent's own mount path and marked as also holding app files; the drive picker says when a drive also holds backups.
 - **Packages from added sources may not declare `storage`** in this slice; the constrained-capability list refuses it.
+- **Storage folders are additive across package versions** (decided 2026-10-18). A version may add folders but never drop or rename one its published predecessor declared, because a folder no longer declared is no longer mounted and the owner's library looks lost. A rename adds the new folder, keeps the old one, and tells owners in the release note to move their files. `apps:version:check` enforces it against the published catalog. Mounting a dropped folder until the owner releases it was rejected: more machinery, for a path the app no longer configures.
 
 ## 2026-10-08: Two Hosting Tracks, Told Apart In One Place
 

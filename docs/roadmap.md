@@ -154,6 +154,11 @@ act on.
   HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
   server error" and a reference they cannot act on. A fetch failure is the owner's to fix and should
   be answered in its own words; the reference stays for faults that really are MOS's. *(Small)*
+- **C10 — A stopped app answers honestly at its own address.** Any stopped or crashed app on the
+  Easy Door serves Suite Manager's "busy right now" page today, because app routes have no error
+  handler of their own. When MOS itself stopped the app — an ejected drive, a failed update — it
+  knows the reason and can say it with the action that fixes it; a crash gets a plain "this app
+  is stopped". Surfaced by storage Eject, but general to every down app. *(Medium)*
 
 ### H. Install media people can just flash
 
@@ -253,6 +258,10 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
   affected app's page (today an app reading an empty mount looks healthy), and the attach
   journals plus ntfs3/exfat kernel lines in the diagnostics file. Look and wording belong to
   the design pass. *(Medium)*
+- **S11 — The storage story, told.** A docs page for drives and app folders that states the two
+  protective schemes plainly — app data lives in MOS backups; media libraries live on the
+  owner's drive and reattach on any new server — with the drill that proves it (fresh install,
+  restore the backup, plug in the drive, everything is back) run as part of S7. *(Small)*
 
 ---
 

@@ -57,7 +57,7 @@ function fakeHost(blockdevices, { busy = [], fsck = true, refuse = () => null } 
       const options = args[args.indexOf('-o') + 1];
       const refusal = refuse(options);
       if (refusal) {
-        kernelLog += `[12.3] ntfs3: ${path.posix.basename(args.at(-2))}: ${refusal}\n`;
+        kernelLog += `[${(calls.length / 10).toFixed(1)}] ntfs3: ${path.posix.basename(args.at(-2))}: ${refusal}\n`;
         throw new Error('COMMAND_FAILED');
       }
       mounts.set(args.at(-1), { readOnly: options.split(',').includes('ro'), source: args.at(-2) });
@@ -227,6 +227,16 @@ test('a mount failure the kernel log does not explain stays the command failure'
   await assert.rejects(storage.attach('1A2B-3C4D'), /COMMAND_FAILED/u);
 });
 
+test('a dirty line the kernel logged before this mount attempt is not read as its refusal', async () => {
+  const host = fakeHost([NTFS]);
+  const { storage } = await storageFor({
+    ...host,
+    execute: async (file, args) => { if (file === 'mount') throw new Error('COMMAND_FAILED'); return host.execute(file, args); },
+    executeCapture: async (file, args) => (file === 'dmesg' ? '[3.1] ntfs3: sdc1: volume is dirty and "force" flag is not set!\n' : host.executeCapture(file, args)),
+  });
+  await assert.rejects(storage.attach(NTFS.uuid), /COMMAND_FAILED/u);
+});
+
 test('a Linux-formatted drive is refused in plain words', async () => {
   const { storage } = await storageFor(fakeHost([LINUX_DRIVE]));
   await assert.rejects(storage.attach('e1e1e1e1-0000'), /exFAT, NTFS or FAT32/u);
@@ -241,6 +251,8 @@ test('drives lists remembered drives that are away, and release forgets an unins
   const away = new AppStorage({ claimsPath: storage.claimsPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
   assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.connected, drive.apps]), [['1A2B-3C4D', false, ['immich', 'jellyfin']]]);
 
+  storage.release('jellyfin', ['1A2B-3C4D']);
+  assert.deepEqual(storage.readClaims().drives['1A2B-3C4D'].apps, ['immich', 'jellyfin'], 'a drive the app still mounts stays claimed');
   storage.release('jellyfin');
   assert.deepEqual(storage.readClaims().drives['1A2B-3C4D'].apps, ['immich']);
   storage.release('immich');

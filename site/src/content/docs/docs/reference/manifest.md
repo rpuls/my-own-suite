@@ -205,6 +205,8 @@ Folders an app reads from a drive the owner picks, such as a media server's film
 
 These folders are not app volumes: the suite backup does not include them, and uninstalling the app leaves them on the drive. A drive that is not plugged in keeps the app from starting rather than letting it start against an empty folder. The manifest only says where the folders appear; making the app *use* them, for example by creating a library through its own API at first start, is the package's job, typically in `entrypoint.sh`. Packages from added sources may not declare `storage`.
 
+Folders only grow across package versions. A version may add folders, but never drop or rename one a published version declared: the owner's files stay in the old folder, and a version that stops declaring it stops mounting it, so the library looks empty after the update. To rename a folder, add the new one, keep the old one, and tell owners in the release note that they can move their files across. The official catalog refuses a version that drops a folder.
+
 `storage` was added in MOS 0.23.0, and unlike other additions the minimum is enforced: a package using it must declare `minimumMosVersion` 0.23.0 or later, because an older MOS would run the app without its folders.
 
 ## Other top-level fields

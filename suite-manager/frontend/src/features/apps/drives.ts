@@ -63,7 +63,8 @@ export function appDriveNotice(appName: string, drive: StorageDrive | undefined,
   }
 }
 
-// Read again every two seconds while a check or eject runs, which is how it reports back.
+// Read again every minute, as the Apps screen is, so a plug or unplug shows without a
+// refresh, and every two seconds while a check or eject runs, which is how it reports back.
 export function useStorageDrives(enabled = true) {
   const [drives, setDrives] = useState<StorageDrive[] | null>(null);
   const [error, setError] = useState('');
@@ -79,7 +80,14 @@ export function useStorageDrives(enabled = true) {
     }
   }, []);
 
-  useEffect(() => { if (enabled) void reload(); }, [enabled, reload]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    void reload();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void reload();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [enabled, reload]);
 
   const working = Boolean(drives?.some((drive) => drive.job?.status === 'running'));
   useEffect(() => {

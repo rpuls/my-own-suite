@@ -1111,10 +1111,6 @@ class AppPackageService {
             version: instance.packageVersion,
           }, ['The installed package snapshot is unavailable.'])
           : candidatesByPackage.get(packageId));
-      const projections = instance ? this.store.getAppProjections(instance.id) : [];
-      const config = instance ? this.store.getAppConfig(instance.id) : [];
-      const env = instance ? this.store.getAppEnv(instance.id) : [];
-      const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
@@ -1126,8 +1122,8 @@ class AppPackageService {
         id: packageId,
         installStatus: instance?.status || 'not-installed',
         instance: instance
-          ? { ...publicInstance({ ...instance, guideState, lastFailure: this.store.latestFailedAppOperation(instance.id) }, projections, config, env), folders: this.store.getAppInstanceFolders(instance.id) }
-          : publicInstance(null, projections, config, env),
+          ? this.publicView({ ...instance, guideState: this.store.getAppGuideState(instance.id), lastFailure: this.store.latestFailedAppOperation(instance.id) })
+          : null,
         // Trust comes from the recorded source, never from package metadata, so
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',

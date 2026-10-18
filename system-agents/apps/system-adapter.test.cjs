@@ -1416,7 +1416,11 @@ async function folderApp(storage) {
 }
 
 test('folders on a drive reach the container as read-only binds that cannot create their source', async () => {
-  const storage = { prepareFolders: async () => [{ drive: '1A2B-3C4D', source: '/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies', target: '/media/movies' }] };
+  const released = [];
+  const storage = {
+    prepareFolders: async () => [{ drive: '1A2B-3C4D', source: '/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies', target: '/media/movies' }],
+    release: (packageId, keptDrives) => released.push([packageId, keptDrives]),
+  };
   const { adapter, commands, runtime } = await folderApp(storage);
   await adapter.applyAppServices(runtime);
 
@@ -1424,6 +1428,16 @@ test('folders on a drive reach the container as read-only binds that cannot crea
   assert.ok(run.includes('type=bind,source=/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies,target=/media/movies,readonly'));
   assert.ok(run.includes('mos.storage-drive.1A2B-3C4D=true'));
   assert.ok(run.includes('mos-app-jellyfin-config:/config'));
+  assert.deepEqual(released, [['jellyfin', ['1A2B-3C4D']]]);
+});
+
+test('an apply without the folders a rolled-back drive change added lets go of that drive', async () => {
+  const released = [];
+  const storage = { prepareFolders: async () => assert.fail('no folders to prepare'), release: (packageId, keptDrives) => released.push([packageId, keptDrives]) };
+  const { adapter, runtime } = await folderApp(storage);
+  await adapter.applyAppServices({ ...runtime, services: runtime.services.map(({ folders, ...service }) => service) });
+
+  assert.deepEqual(released, [['jellyfin', []]]);
 });
 
 test('a drive that cannot be opened fails the apply before the running app is touched', async () => {

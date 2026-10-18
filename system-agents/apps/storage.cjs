@@ -225,12 +225,13 @@ class AppStorage {
     if (current?.source === drive.devicePath) return { drive, readOnly: current.readOnly, target };
     if (current) await this.execute('umount', ['--lazy', target], { timeoutMs: 30_000 });
     fs.mkdirSync(target, { recursive: true });
+    const logBefore = drive.fileSystem === 'ntfs' ? await this.kernelLog() : '';
     const mount = (options) => this.execute('mount', ['-t', STORAGE_FILESYSTEMS.get(drive.fileSystem), '-o', options, drive.devicePath, target], { timeoutMs: 60_000 });
     let refusal = null;
     try {
       await mount(MOUNT_OPTIONS);
     } catch (error) {
-      refusal = drive.fileSystem === 'ntfs' ? await this.kernelRefusal(drive) : null;
+      refusal = drive.fileSystem === 'ntfs' ? await this.kernelRefusal(drive, logBefore) : null;
       if (!refusal) {
         this.recordDrive(driveId, { ejected: undefined, problem: { detail: error.message, reason: NOT_OPENED_REASON } });
         throw error;
@@ -246,11 +247,19 @@ class AppStorage {
     return { drive, readOnly: mounted.readOnly, target };
   }
 
-  // Why ntfs3 refused to write, which `mount` itself reports as "wrong fs type".
-  async kernelRefusal(drive) {
-    const log = await this.executeCapture('dmesg', [], { timeoutMs: 10_000 }).catch(() => '');
+  kernelLog() {
+    return this.executeCapture('dmesg', [], { timeoutMs: 10_000 }).then(String, () => '');
+  }
+
+  // Why ntfs3 refused to write, which `mount` itself reports as "wrong fs type". Only
+  // lines logged after `logBefore` count, because the next drive reuses a device name.
+  async kernelRefusal(drive, logBefore) {
+    const log = await this.kernelLog();
+    const marker = logBefore.trimEnd().split('\n').pop();
+    const markerAt = marker ? log.lastIndexOf(marker) : -1;
+    const sinceMount = markerAt < 0 ? log : log.slice(markerAt + marker.length);
     const prefix = `ntfs3: ${path.posix.basename(drive.devicePath)}:`;
-    const lastWord = String(log).split('\n').filter((line) => line.includes(prefix)).pop() || '';
+    const lastWord = sinceMount.split('\n').filter((line) => line.includes(prefix)).pop() || '';
     return NTFS_NEEDS_CHECK.test(lastWord) ? lastWord.trim() : null;
   }
 
@@ -318,12 +327,15 @@ class AppStorage {
     });
   }
 
-  // An app that is removed lets go of its drive; its folders stay on it, and the
-  // drive stays remembered so they are still there to see after a restart.
-  release(packageId) {
-    if (!Object.values(this.readClaims().drives).some((claim) => claim.apps?.includes(packageId))) return;
+  // An app lets go of every drive it no longer mounts; its folders stay on them, and
+  // each drive stays remembered so they are still there to see after a restart.
+  release(packageId, keptDrives = []) {
+    const letGo = (driveId, claim) => !keptDrives.includes(driveId) && claim.apps?.includes(packageId);
+    if (!Object.entries(this.readClaims().drives).some(([driveId, claim]) => letGo(driveId, claim))) return;
     this.updateClaims((drives) => {
-      for (const claim of Object.values(drives)) claim.apps = (claim.apps || []).filter((app) => app !== packageId);
+      for (const [driveId, claim] of Object.entries(drives)) {
+        if (letGo(driveId, claim)) claim.apps = claim.apps.filter((app) => app !== packageId);
+      }
     });
   }
 
