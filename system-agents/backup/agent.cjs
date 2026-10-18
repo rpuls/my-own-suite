@@ -37,7 +37,7 @@ const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-age
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
-const { FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
+const { BACKUPS_DIR, FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const { LSBLK_ARGS, directorySize, isMountPoint, isSystemMountpoint, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
@@ -505,7 +505,7 @@ async function listBackups(destinations) {
 }
 function legacyBundlesOn(destination) {
   const found = [];
-  const root = path.join(destination.mountPath, 'MOS-backups');
+  const root = path.join(destination.mountPath, BACKUPS_DIR);
   if (!fs.existsSync(root)) return found;
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;

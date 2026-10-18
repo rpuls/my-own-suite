@@ -24,6 +24,7 @@ import { useState } from 'react';
 
 import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
 import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
+import { driveStateLabel, driveStateLine } from './drives';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
@@ -463,7 +464,10 @@ export function AppConfigDialog({
 
     {folders.length && storage ? <div className="suite-app-config-group">
       <Rows lead>
-        <Row help="Files on the drive are not backed up." label={driveChoiceLabel(storage)}>
+        <Row
+          help={keptDrive && keptDrive.state !== 'ready' ? `${driveStateLabel(keptDrive)}. ${driveStateLine(keptDrive)}` : 'Files on the drive are not backed up.'}
+          label={driveChoiceLabel(storage)}
+        >
           {`${folderList(storage.folders)} on ${keptDrive?.label || 'its drive'}`}
         </Row>
       </Rows>

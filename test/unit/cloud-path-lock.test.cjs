@@ -121,6 +121,10 @@ const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-cont
 // Moved 2026-10-17, all five, for app folders on a storage drive (roadmap S2):
 // the installer writes the storage attach unit and its udev rule. No `echo` line
 // changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved 2026-10-18, all four: the installer's apt line gained ntfs-3g, for Check
+// drive's ntfsfix (roadmap S8), and the storage attach unit a SyslogIdentifier so the
+// diagnostics file can read every drive's runs. No `echo` line changed.
 
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -128,19 +132,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '9f33b39f28730fb21219be4d99055b2b7e57c0034ff33da12a9fa10b2de1da18',
+    digest: 'ebd4e803a2683766dc29d8dd1cb4156ffc5444cf5dd64a260daba3877df8ee73',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '11055d5b83b55a77b423197d073e1975e63abb9354a8708b3d4234a95bed2687',
+    digest: 'ce3a37187c073a92f36af852aa1d82a14474bdf62469b34f5f2e11a80121a9fe',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '37c2e43b00451e309d3c182d7e76247645d52535b59d1c29d23b3aa131e52eff',
+    digest: '7b69e5e6a199c819d58d8007d906ef6390618fb2a59cb81b1778340b7463a92f',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -150,7 +154,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '5fedd3005c1fcc958633dca0d255c721fc50a448755e28b955288189ae7fda55',
+    digest: '77f3e01e5268444b297448d82b78e1616cb3a2de4d305352cbd73e5ad854ca4d',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

@@ -79,15 +79,32 @@ function unmetRequirements(manifest, peers) {
   return required.map((type) => ({ providers: peers.providersByType?.[type] || [], type }));
 }
 
-// The folders an update brings to an app that had none, which the update dialog
-// offers a drive picker for. A version that keeps or changes folders is not an
-// offer: the instance's folders stay where they were placed.
-// Folders a new version brings. A drive it needs is picked in the update dialog;
-// one it can do without is added later in the app's settings, like at install.
-function newStorage(installedManifest, candidateManifest) {
+function declaredFolderNames(manifest) {
+  return (Array.isArray(manifest.storage?.folders) ? manifest.storage.folders : []).map((folder) => folder.name);
+}
+
+// Folders a new version brings to an app with none on a drive yet. A drive it needs
+// is picked in the update dialog; an optional one is added in its settings later.
+function newStorage(installed, candidateManifest) {
   const folders = Array.isArray(candidateManifest.storage?.folders) ? candidateManifest.storage.folders : [];
-  if (!folders.length || Array.isArray(installedManifest.storage?.folders)) return null;
-  return { folders: folders.map((folder) => ({ name: folder.name })), required: candidateManifest.storage.required === true };
+  const required = candidateManifest.storage?.required === true;
+  if (!folders.length || installed.folders?.length || (declaredFolderNames(installed.manifest).length && !required)) return null;
+  const { description = null, label = null } = candidateManifest.storage;
+  return { description, folders: folders.map((folder) => ({ name: folder.name, service: folder.service })), label, required };
+}
+
+// An app that already keeps folders on a drive gets a new version's added folders
+// on that same drive, and a folder the new version drops keeps everything in it.
+function folderChanges(installed, candidateManifest) {
+  if (!installed.folders?.length) return [];
+  const before = declaredFolderNames(installed.manifest);
+  const after = declaredFolderNames(candidateManifest);
+  const added = after.filter((name) => !before.includes(name));
+  const dropped = before.filter((name) => !after.includes(name));
+  return [
+    ...(added.length ? [`${candidateManifest.name} now also keeps ${added.join(', ')} on the drive it already uses.`] : []),
+    ...(dropped.length ? [`${candidateManifest.name} no longer uses ${dropped.join(', ')}. Everything in ${dropped.length > 1 ? 'those folders' : 'that folder'} stays on the drive.`] : []),
+  ].map((summary) => ({ area: 'storage', classification: 'automatically-handled', summary }));
 }
 
 function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, peers = null }) {
@@ -110,8 +127,9 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   for (const volume of volumes(installed.manifest)) {
     if (!volumes(candidate.manifest).has(volume)) { breakingAreas.add('volumes'); changes.push({ area: 'volumes', classification: 'migration-required', summary: `Persistent volume ${volume} is no longer declared.` }); }
   }
-  const added = newStorage(installed.manifest, candidate.manifest);
+  const added = newStorage(installed, candidate.manifest);
   const storage = added?.required ? added : null;
+  changes.push(...folderChanges(installed, candidate.manifest));
   if (added) {
     const names = added.folders.map((folder) => folder.name).join(', ');
     changes.push({

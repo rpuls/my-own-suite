@@ -7,6 +7,7 @@ const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
+const { DriveJobs } = require('../apps/drive-jobs.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
 const { AppPackageService } = require('../apps/app-package-service.cjs');
 const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
@@ -98,7 +99,8 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
       publicUrlFor: appUrls.publicUrls(),
     }, onStage),
   });
-  return { installJobs, updateJobs };
+  const driveJobs = new DriveJobs({ logger, perform: (driveId, action) => appPackages.driveAction(driveId, action) });
+  return { driveJobs, installJobs, updateJobs };
 }
 
 function createServices({
@@ -189,7 +191,7 @@ function createServices({
     suiteAddress,
   });
   addressService.start();
-  const { installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger });
+  const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -216,6 +218,7 @@ function createServices({
     consoleLogin,
     diagnosticsAgent,
     disposableLab,
+    driveJobs,
     externalSourceService,
     frontDoor,
     frontendDistDir,

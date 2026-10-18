@@ -415,6 +415,19 @@
 
 /* The explanation for a source that could not be checked, inset to line up with
    the row above it rather than running edge to edge on its own. */
+.suite-drive-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-drive-working {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
 .suite-source-problem {
   padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
 }

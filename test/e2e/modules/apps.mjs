@@ -64,12 +64,14 @@ async function fillSetupFields(ctx, app, dialog) {
 }
 
 // An app that can keep files on a drive gets the lab's, so its folders are
-// exercised whether the package requires them or only offers them.
-async function pickDrive(dialog, app) {
+// exercised whether the package requires them or only offers them. A `drive:<fs>`
+// step earlier in the run names the one to take.
+async function pickDrive(ctx, dialog, app) {
   const choice = dialog.getByRole('combobox', { name: app.storage?.label || 'Drive for its files' });
   if (!await choice.isVisible().catch(() => false)) return null;
   await expect(choice).toBeEnabled({ timeout: 30000 });
-  const drive = (await choice.locator('option').evaluateAll((options) => options.map((option) => option.value))).find(Boolean);
+  const offered = await choice.locator('option:not([disabled])').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+  const drive = offered.includes(ctx.labDrive) ? ctx.labDrive : offered[0];
   if (drive) await choice.selectOption(drive);
   return drive || null;
 }
@@ -83,7 +85,7 @@ async function addDriveInSettings(ctx, app) {
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   const dialog = page.getByRole('dialog', { name: `${app.name} settings` });
   await expect(dialog).toBeVisible({ timeout: 30000 });
-  const drive = await pickDrive(dialog, app);
+  const drive = await pickDrive(ctx, dialog, app);
   if (drive) {
     await dialog.getByRole('button', { name: /^Save$/iu }).click();
     await expect(dialog.getByText(/came back healthy/iu)).toBeVisible({ timeout: 600000 });
@@ -122,7 +124,7 @@ async function installViaUi(ctx, app) {
     const values = await fillSetupFields(ctx, app, dialog);
     ctx.state(app.id).setup = values;
     ctx.state(app.id).passwordFields = app.setup.fields.filter((field) => field.type === 'password' && field.id in values).map((field) => field.id);
-    ctx.state(app.id).drive = await pickDrive(dialog, app);
+    ctx.state(app.id).drive = await pickDrive(ctx, dialog, app);
     const shortcut = dialog.getByRole('switch', { name: 'Show on Homepage' });
     if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
     await dialog.getByRole('button', { name: /^Install$/iu }).click();
@@ -296,7 +298,7 @@ export async function update(ctx, id) {
     if (!value) throw new Error(`The ${id} update asks for "${label}", and apps/${id}/e2e has no value for it.`);
     await input.fill(value);
   }
-  ctx.state(id).drive = await pickDrive(dialog, before) || ctx.state(id).drive || null;
+  ctx.state(id).drive = await pickDrive(ctx, dialog, before) || ctx.state(id).drive || null;
   await dialog.getByRole('button', { exact: true, name: 'Update' }).click();
   const said = await updateDialogOutcome(dialog, 25);
   // What the owner was told is checked apart from what happened, so a dialog

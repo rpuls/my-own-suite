@@ -332,26 +332,30 @@ function refreshCaddyBinary() {
   }
 }
 
+// Here as well as in the installer, which an updated machine never runs again:
+// bzip2 unpacks restic's only Linux build, and ntfs-3g's ntfsfix is Check drive.
+// Without a network, the feature that needs one reports the real failure.
+const HOST_TOOLS = [['bzip2', 'bzip2'], ['ntfsfix', 'ntfs-3g']];
+
+function ensureHostTools() {
+  const missing = HOST_TOOLS.filter(([tool]) => {
+    try { execFileSync('which', [tool], { stdio: 'ignore' }); return false; } catch { return true; }
+  }).map(([, name]) => name);
+  if (!missing.length) return;
+  log(`installing ${missing.join(' ')}`);
+  // Stale package lists are the usual reason the first attempt fails.
+  if (!canRun('apt-get', ['install', '-y', ...missing])) {
+    run('apt-get', ['update'], { allowFailure: true });
+    run('apt-get', ['install', '-y', ...missing], { allowFailure: true });
+  }
+}
+
 // The backup agent runs from repo source, so a machine that updates rather
 // than reinstalls never runs the installer again. Installing the storage
 // engine here is what keeps an updated machine's agent able to write backups
 // at all, per the rule in infrastructure/control-plane-runtime.cjs.
-//
-// restic ships its Linux builds bzip2-compressed and nothing else, so
-// unpacking the pinned download needs bzip2 on the host. Without a network,
-// the engine install below reports the real failure.
-function ensureBzip2() {
-  try {
-    execFileSync('which', ['bzip2'], { stdio: 'ignore' });
-    return;
-  } catch {}
-  log('installing bzip2 (needed to unpack the pinned restic download)');
-  run('apt-get', ['install', '-y', 'bzip2'], { allowFailure: true });
-}
-
 function refreshBackupEngine() {
   installDir('/usr/local/libexec/mos', 0o755);
-  if (!dryRun) ensureBzip2();
   if (dryRun) { log(`would install backup storage engine ${ENGINE_NAME}`); return; }
   try {
     installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name: ENGINE_NAME });
@@ -495,6 +499,7 @@ function main() {
   if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
+  if (!dryRun) ensureHostTools();
   refreshBackupEngine();
   // Applied on every managed update rather than only at install, for the reason
   // the journald config is: the installer is the one path a machine that already

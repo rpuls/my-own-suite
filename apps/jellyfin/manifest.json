@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "jellyfin",
   "name": "Jellyfin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "appVersion": "12.2",
   "minimumMosVersion": "0.23.0",
   "architectures": [

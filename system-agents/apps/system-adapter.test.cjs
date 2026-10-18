@@ -1439,7 +1439,7 @@ test('a drive that cannot be opened fails the apply before the running app is to
 
 test('a returning drive is remounted and only the containers reading it are restarted', async () => {
   const attached = [];
-  const storage = { attach: async (driveId) => { attached.push(driveId); }, isClaimed: (driveId) => driveId === '1A2B-3C4D' };
+  const storage = { attach: async (driveId) => { attached.push(driveId); }, isRemembered: (driveId) => driveId === '1A2B-3C4D' };
   const commands = [];
   const adapter = new SystemAppAdapter({
     dockerBinary: 'docker',
@@ -1454,4 +1454,45 @@ test('a returning drive is remounted and only the containers reading it are rest
     ['docker', 'ps', '--all', '--quiet', '--filter', 'label=mos.storage-drive.1A2B-3C4D'],
     ['docker', 'restart', 'c1', 'c2'],
   ]);
+});
+
+function driveAdapter(storage) {
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push([file, ...args]); return { stdout: args[0] === 'ps' ? 'c1\n' : '' }; },
+    storage: { attach: async () => {}, isRemembered: () => true, ...storage },
+  });
+  return {
+    adapter,
+    commands: () => commands.filter((command) => command[0] === 'docker' && command[1] !== 'ps').map((command) => command.slice(1).join(' ')),
+    logged: () => commands.filter((command) => command[0] === 'logger').map((command) => `${command[2]} ${command.at(-1)}`),
+  };
+}
+
+test('eject stops the containers reading the drive before it is closed', async () => {
+  const order = [];
+  const { adapter, commands, logged } = driveAdapter({ eject: async () => { order.push(commands().join('|')); } });
+  assert.deepEqual(await adapter.ejectDrive('1A2B-3C4D'), { stopped: 1 });
+  assert.deepEqual(order, ['stop c1']);
+  assert.deepEqual(logged(), ['mos-storage-attach [mos-storage] drive 1A2B-3C4D ejected; stopped 1 container(s)']);
+});
+
+test('an eject that cannot close the drive puts its apps back as they were', async () => {
+  const { adapter, commands, logged } = driveAdapter({ eject: async () => { throw new StorageError('Something on the server is still using this drive.'); } });
+  await assert.rejects(adapter.ejectDrive('1A2B-3C4D'), /still using this drive/u);
+  assert.deepEqual(commands(), ['stop c1', 'restart c1']);
+  assert.match(logged()[0], /eject refused, apps put back: Something on the server is still using this drive\./u);
+});
+
+test('Check drive starts the stopped containers again whether or not the check repaired it', async () => {
+  const repaired = driveAdapter({ check: async () => {} });
+  assert.deepEqual(await repaired.adapter.checkDrive('1A2B-3C4D'), { restarted: 1 });
+  assert.deepEqual(repaired.commands(), ['stop c1', 'start c1']);
+  assert.match(repaired.logged()[0], /drive 1A2B-3C4D checked; open read-write again/u);
+
+  const refused = driveAdapter({ check: async () => { throw new StorageError('The quick check could not repair this drive.'); } });
+  await assert.rejects(refused.adapter.checkDrive('1A2B-3C4D'), /could not repair/u);
+  assert.deepEqual(refused.commands(), ['stop c1', 'start c1']);
+  assert.match(refused.logged()[0], /check did not help: The quick check could not repair this drive\./u);
 });

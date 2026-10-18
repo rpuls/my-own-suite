@@ -11,6 +11,8 @@ const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 45 * 60_000;
 const APP_AGENT_APPLY_TIMEOUT_MS = 65 * 60_000;
 // Two of the agent's 15-minute health waits: the new version's, then the old one's if it never answers.
 const APP_AGENT_ACTIVATE_TIMEOUT_MS = 35 * 60_000;
+// Stopping a drive's apps, ntfsfix on a large drive, and starting them again.
+const APP_AGENT_DRIVE_TIMEOUT_MS = 20 * 60_000;
 // The agent gives an app's address five minutes before it reports it still waiting.
 const APP_AGENT_ADDRESS_TIMEOUT_MS = 6 * 60_000;
 
@@ -38,6 +40,8 @@ class AppAgentClient {
   status() { return this.request('GET', '/v1/status'); }
   storageDrives() { return this.request('GET', '/v1/storage/drives'); }
   storageFolders() { return this.request('GET', '/v1/storage/folders'); }
+  checkDrive(input) { return this.request('POST', '/v1/storage/check', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  ejectDrive(input) { return this.request('POST', '/v1/storage/eject', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   waitForAddress(input) { return this.request('POST', '/v1/apps/address', input, { timeoutMs: APP_AGENT_ADDRESS_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }

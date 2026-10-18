@@ -293,7 +293,7 @@ export function reviewDateLabel(reviewedAt: string | null | undefined): string |
   if (!reviewedAt) return null;
   const date = new Date(reviewedAt);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC', year: 'numeric' });
 }
 
 // A review authored by an AI without a human sign-off must say so everywhere

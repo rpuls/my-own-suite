@@ -23,6 +23,8 @@ function adapter(overrides = {}) {
     hostPatches: async () => ({ available: true, managedBy: 'mos', rebootRequired: false, security: [] }),
     journal: async (unit, lines) => `journal for ${unit} (${lines} lines)`,
     networks: async () => [{ containers: ['mos-app-vaultwarden'], driver: 'bridge', name: 'mos-app-vaultwarden' }],
+    storageAttachJournal: async (lines) => `attach runs (${lines} lines)`,
+    storageKernelLines: async () => 'ntfs3: sdc1: volume is dirty and "force" flag is not set!',
     unitState: async () => ({ active: 'active', enabled: 'enabled', sub: 'running' }),
     webServerConfig: async () => [{ content: 'home.example.com {\n  reverse_proxy 127.0.0.1:3100\n}', path: '/etc/caddy/Caddyfile' }],
     ...overrides,
@@ -238,4 +240,9 @@ test('the web server configuration is collected, and a collector that fails says
   })).collect();
   assert.deepEqual(failed.webServer, []);
   assert.ok(failed.incomplete.includes('web-server'), 'a bundle says what it could not look at');
+});
+
+test('the drive attach runs and the kernel lines about drives are collected', async () => {
+  const collected = await new DiagnosticsAgentCore(adapter()).collect();
+  assert.deepEqual(collected.storage, { attach: `attach runs (${LIMITS.troubledLines} lines)`, kernel: 'ntfs3: sdc1: volume is dirty and "force" flag is not set!' });
 });

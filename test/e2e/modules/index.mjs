@@ -2,7 +2,7 @@ import { absent, app, connect, install, installed, lifecycle, routes, tiles, upd
 import { backup, cleanup, restore } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
-import { drive } from './drive.mjs';
+import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall } from './drive.mjs';
 import { homepage, homepageCheck } from './homepage.mjs';
 import { dns01 } from './https.mjs';
 import { reset } from './lab.mjs';
@@ -22,6 +22,9 @@ export const MODULES = {
   diagnostics,
   dns01,
   drive,
+  'drive-check': driveCheck,
+  'drive-eject': driveEject,
+  'drive-pull': drivePull,
   homepage,
   'homepage-check': homepageCheck,
   install,
@@ -31,10 +34,13 @@ export const MODULES = {
   network,
   owner,
   'platform-update': platformUpdate,
+  'power-cut': powerCut,
+  reboot,
   reset,
   restore,
   routes,
   tiles,
+  uninstall,
   update,
   verify,
 };

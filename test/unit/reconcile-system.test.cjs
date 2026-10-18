@@ -135,7 +135,17 @@ test('a fresh install installs the backup storage engine, not just a managed upd
   // restic publishes its Linux builds bzip2-compressed and nothing else, and an
   // Ubuntu server image does not carry bzip2.
   assert.match(installer, /^apt-get install -y bzip2 /mu);
-  assert.ok(reconciler.includes("run('apt-get', ['install', '-y', 'bzip2']"));
+  assert.ok(reconciler.includes("['bzip2', 'bzip2']"));
+});
+
+// Check drive runs ntfsfix, which ships in ntfs-3g and not in an Ubuntu server
+// image. A machine that updated into Check drive must have it as much as a new one.
+test('both install paths give the host ntfsfix for Check drive', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.match(installer, /^apt-get install -y [^\n]*\bntfs-3g\b/mu);
+  assert.ok(reconciler.includes("['ntfsfix', 'ntfs-3g']"));
+  assert.ok(reconciler.includes('ensureHostTools();'));
 });
 
 // The Caddyfile every path writes points its error handler at a page under

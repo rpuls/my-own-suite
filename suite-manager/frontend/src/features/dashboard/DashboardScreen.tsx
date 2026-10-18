@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 
 import { BetaNotice } from '../../components/disclaimers';
-import { Icon } from '../../components/ui';
+import { Icon, Panel, PanelHead, PanelItem, PanelList } from '../../components/ui';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
+import { driveNeedsAttention, driveStateLabel, driveStateLine, keptDrives, useStorageDrives } from '../apps/drives';
 import type { Owner } from '../setup/types';
 
 type DashboardScreenProps = {
-  onNavigate: (route: 'apps' | 'backups' | 'customize', path: string) => void;
+  onNavigate: (route: 'apps' | 'backups' | 'customize' | 'settings', path: string) => void;
   owner: Owner;
 };
 
@@ -51,6 +52,25 @@ function CommunityCard() {
       </a>
     </div>
   </section>;
+}
+
+// So a drive that came back read-only or is unplugged is seen without looking for it.
+function DrivesCard({ onManage }: { onManage: () => void }) {
+  const { drives } = useStorageDrives();
+  const shown = drives ? keptDrives(drives) : [];
+  if (!shown.length) return null;
+  return <Panel>
+    <PanelHead actions={<button className="mos-btn mos-btn-ghost" onClick={onManage} type="button">Manage drives<Icon name="arrow-right" /></button>} heading="h2" title="Drives" />
+    <PanelList>
+      {shown.map((drive) => <PanelItem key={drive.id} quiet={!drive.connected}>
+        <div className="suite-drive-head">
+          <strong>{drive.label}</strong>
+          <span className={`mos-pill${driveNeedsAttention(drive) ? ' mos-pill-warning' : ''}`}>{driveStateLabel(drive)}</span>
+        </div>
+        <p className="suite-meta">{driveStateLine(drive)}</p>
+      </PanelItem>)}
+    </PanelList>
+  </Panel>;
 }
 
 export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
@@ -107,6 +127,8 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
           </div>
         </section>
       </div>
+
+      <DrivesCard onManage={() => onNavigate('settings', '/suite-manager/settings#set-drives')} />
 
       {/* Below what the owner came here to do. It is a caveat about the software,
           not a task, so it should not sit between them and their next step. */}

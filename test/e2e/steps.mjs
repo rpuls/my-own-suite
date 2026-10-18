@@ -7,7 +7,12 @@ export const STEPS = {
   owner: { arg: 'none', budgetMinutes: 4, describe: 'Create the owner, or sign in, and answer the terms and handover gates.' },
   homepage: { arg: 'none', budgetMinutes: 6, describe: 'Add a website and a home-network app to Homepage, to look for after a restore.' },
   'homepage-check': { arg: 'none', budgetMinutes: 4, describe: 'The Homepage entries `homepage` added are still there.' },
-  drive: { arg: 'none', budgetMinutes: 2, describe: 'Give the lab a drive for apps that keep files on one, unless it has one already: a FAT32 disk image on a loop device.' },
+  drive: { arg: 'filesystem', budgetMinutes: 2, describe: 'Give the lab a drive for apps that keep files on one, unless it has one already: a FAT32 disk image on a loop device, or NTFS for `drive:ntfs`.' },
+  'drive-pull': { arg: 'none', budgetMinutes: 8, describe: "Pull the apps' drive out without ejecting it and plug it back in; an NTFS drive must come back read-only with its apps running on it." },
+  'drive-check': { arg: 'none', budgetMinutes: 15, describe: 'Check the read-only drive from Settings, and wait until it works read-write with its apps running.' },
+  'drive-eject': { arg: 'none', budgetMinutes: 10, describe: 'Eject the drive from Settings, unplug it and plug it back in; it must come back working with no check.' },
+  'power-cut': { arg: 'none', budgetMinutes: 15, describe: 'Reset the lab on the spot with the drive mounted, as a power cut would; an NTFS drive must come back read-only with its apps running.' },
+  reboot: { arg: 'none', budgetMinutes: 15, describe: "Restart the lab; every drive open before is open again, with the same app folders, uninstalled apps' included." },
   dns01: { arg: 'none', budgetMinutes: 10, describe: 'Move the suite to the DNS-01 domain in test/e2e/.env; later steps use its https address.' },
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },
   app: { arg: 'app', budgetMinutes: 20, describe: "Open the app from its Homepage tile and run the app's own journey." },
@@ -19,6 +24,7 @@ export const STEPS = {
   connect: { arg: 'none', budgetMinutes: 5, describe: 'Connect every installed app to the installed providers it can use.' },
   installed: { arg: 'apps', budgetMinutes: 1, describe: 'Exactly these apps are installed (comma-separated; `installed:` alone means none).' },
   absent: { arg: 'app', budgetMinutes: 1, describe: 'The app is not installed.' },
+  uninstall: { arg: 'app', budgetMinutes: 3, describe: 'Uninstall the app; folders it kept on a drive stay there.' },
   backup: { arg: 'destination', budgetMinutes: 25, describe: 'Back up now, to the backup disk (`backup`) or to a new folder in the lab bucket (`backup:bucket`).' },
   restore: { arg: 'destination', budgetMinutes: 30, describe: "Restore this run's latest backup. `restore:bucket` first disconnects and reconnects the bucket, and opens it with the saved recovery key if it is locked." },
   'platform-update': { arg: 'wait', budgetMinutes: 50, describe: 'Apply the platform update the lab track offers. `platform-update:wait` waits up to 40 minutes for the track to move first.' },
@@ -30,6 +36,7 @@ export const STEPS = {
 };
 
 const DESTINATIONS = new Set(['local', 'bucket']);
+const FILESYSTEMS = new Set(['ntfs']);
 
 const feeds = (provider, consumer) => (provider.provides || []).some((type) => (consumer.accepts || []).includes(type));
 
@@ -66,6 +73,17 @@ export const NAMED_PATHS = {
       const group = appGroup(app, catalog);
       return ['reset', 'owner', ...installTogether(group), 'backup:bucket', 'reset', 'owner', 'restore:bucket', ...each('verify', group), 'routes', 'network', 'cleanup'];
     },
+  },
+  'drive-drills': {
+    app: true,
+    describe: "The app on an NTFS drive through what real life does to one: pulled without ejecting, checked, ejected, a power cut, and a restart after it is uninstalled, its files still there after each.",
+    build: (app) => [
+      'reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`,
+      'drive-pull', `verify:${app}`, 'drive-check', `verify:${app}`,
+      'drive-eject', `verify:${app}`,
+      'power-cut', `verify:${app}`, 'drive-check',
+      `uninstall:${app}`, 'reboot',
+    ],
   },
   update: {
     app: true,
@@ -136,6 +154,8 @@ function checkStep(step, catalogIds) {
       return arg === null || DESTINATIONS.has(arg) ? null : `${step.name}:${arg} is not a destination (local or bucket).`;
     case 'wait':
       return arg === null || arg === 'wait' ? null : `${step.name} takes only :wait.`;
+    case 'filesystem':
+      return arg === null || FILESYSTEMS.has(arg) ? null : `${step.name} takes only :ntfs.`;
     default:
       return null;
   }

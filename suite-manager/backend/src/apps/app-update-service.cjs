@@ -19,7 +19,7 @@ const {
   runtimeHealthFor,
   setupFields,
 } = require('./app-package-internals.cjs');
-const { placeFolders } = require('./app-storage.cjs');
+const { declaredFolders, placeFolders } = require('./app-storage.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
@@ -387,11 +387,13 @@ class AppUpdateService {
     };
   }
 
-  // Folders a candidate declares that the instance has none of yet are placed on
-  // the drive the owner picked in the update dialog, exactly as at install.
-  async foldersAddedBy(manifest, heldFolders, driveId) {
-    if (heldFolders.length) return [];
-    return placeFolders(manifest, driveId || null, driveId ? await this.apps.storageDrives() : []);
+  // New folders go on the drive the app already uses, or for an app with none on
+  // the drive picked in the update dialog, exactly as at install.
+  async foldersAddedBy(manifest, heldFolders, pickedDrive) {
+    const held = new Set(heldFolders.map((folder) => folder.name));
+    const driveId = heldFolders[0]?.driveId || pickedDrive || null;
+    if (heldFolders.length && declaredFolders(manifest).every((folder) => held.has(folder.name))) return [];
+    return placeFolders(manifest, driveId, driveId ? await this.apps.storageDrives() : [], held);
   }
 
   async preparePackageUpdate(packageId) {
@@ -406,7 +408,7 @@ class AppUpdateService {
         agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
         host: await this.apps.hostFacts(agentStatus),
-        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
+        installed: { ...installedPackage, folders: this.store.getAppInstanceFolders(instance.id), packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,
           repository: instance.sourceRepository,
@@ -470,7 +472,7 @@ class AppUpdateService {
         agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
         host: await this.apps.hostFacts(agentStatus),
-        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
+        installed: { ...installedPackage, folders: this.store.getAppInstanceFolders(instance.id), packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,
           repository: instance.sourceRepository,

@@ -301,3 +301,21 @@ test('the bundle carries the web server configuration, including the files that 
   // A missing routes file is a fact about the machine, not a failed read.
   assert.match(text, /mos-homepage-routes\.caddy\n {2}\(not present/u);
 });
+
+// An app reading an empty folder looks healthy everywhere else, so a drive that
+// would not open has to be named here, with the kernel line that says why.
+test('a drive its apps cannot use leads the summary, with the attach runs and kernel lines under STORAGE DRIVES', () => {
+  const collection = { ...healthyCollection(), storage: { attach: '[mos-storage] drive 20C2CDDCC2CDB676 mounted; restarted 2 container(s)', kernel: 'ntfs3: sdc1: volume is dirty and "force" flag is not set!' } };
+  const drives = [
+    { apps: ['immich', 'jellyfin'], detail: 'ntfs3: sdc1: volume is dirty and "force" flag is not set!', fileSystem: 'ntfs', id: '20C2CDDCC2CDB676', label: 'Ext HDD', reason: 'Your apps can read this drive, but nothing can be saved to it until it is checked.', state: 'read-only' },
+    { apps: [], fileSystem: 'exfat', id: '1A2B-3C4D', label: 'Spare', state: 'available' },
+  ];
+  const { text } = buildSupportBundle({ collection, drives, now, secrets: [] });
+
+  assert.match(text, /• Drive Ext HDD \(used by immich, jellyfin\) was opened read-only/u);
+  assert.match(text, /^STORAGE DRIVES$/mu);
+  assert.match(text, /^Ext HDD {2}· {2}read-only {2}· {2}ntfs {2}· {2}20C2CDDCC2CDB676$/mu);
+  assert.doesNotMatch(text, /^Spare/mu);
+  assert.match(text, /Drive events \(plug-ins, Eject, Check drive\):\n {2}\[mos-storage\] drive 20C2CDDCC2CDB676 mounted/u);
+  assert.match(text, /Kernel lines about drives:\n {2}ntfs3: sdc1: volume is dirty/u);
+});

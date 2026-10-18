@@ -109,4 +109,12 @@ provision() {
 
 trust_caddy
 provision &
-exec /jellyfin/jellyfin "$@"
+# Bash stays PID 1 instead of exec'ing Jellyfin, which reaps nothing, so the
+# finished setup job does not linger as a zombie. A stop is passed on to Jellyfin.
+/jellyfin/jellyfin "$@" &
+server=$!
+trap 'kill -TERM "$server" 2>/dev/null' TERM INT
+wait "$server"
+status=$?
+while kill -0 "$server" 2>/dev/null; do wait "$server"; status=$?; done
+exit "$status"

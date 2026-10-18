@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Row, RowSelect } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { formatBytes } from '../../lib/bytes';
+import { driveStateLabel } from './drives';
 import type { AppStorage, StorageDrive } from './types';
 
 function driveOption(drive: StorageDrive) {
@@ -62,15 +63,20 @@ export function DriveChoice({ appName, busy, drive, drives, onChange, storage }:
   storage: AppStorage;
 }) {
   const usable = (drives || []).filter((item) => item.usable);
+  // Shown but not choosable, so a drive that is plugged in yet needs a check is not
+  // simply missing from the list.
+  const held = (drives || []).filter((item) => !item.usable && item.connected && item.state !== 'available');
   const folders = folderList(storage.folders);
   const several = storage.folders.length > 1;
-  return <Row
-    help={drive
-      ? `MOS makes ${several ? `${folders} folders` : `a ${folders} folder`} for ${appName} on this drive. Fill ${several ? 'them' : 'it'} from any computer. Files on the drive are not backed up.`
-      : storage.description || `${appName} works without a drive. Pick one to also show what is in a ${folders} folder on it.`}
-    label={driveChoiceLabel(storage)}
-    layout="stacked"
-  >
+  const none = drives !== null && !usable.length;
+  const help = drive
+    ? `MOS makes ${several ? `${folders} folders` : `a ${folders} folder`} for ${appName} on this drive. Fill ${several ? 'them' : 'it'} from any computer. Files on the drive are not backed up.`
+    : storage.required
+      ? none
+        ? `${appName} keeps its files on an extra drive. Plug in one formatted as exFAT, NTFS or FAT32 to install it.`
+        : storage.description || `Pick the drive ${appName} keeps its ${folders} on.`
+      : storage.description || `${appName} works without a drive. Pick one to also show what is in a ${folders} folder on it.`;
+  return <Row help={help} label={driveChoiceLabel(storage)} layout="stacked">
     <RowSelect
       aria-label={driveChoiceLabel(storage)}
       disabled={busy || drives === null}
@@ -80,7 +86,9 @@ export function DriveChoice({ appName, busy, drive, drives, onChange, storage }:
     >
       {drives === null ? <option value="">Looking for drives...</option> : null}
       {!storage.required && drives !== null ? <option value="">No drive</option> : null}
+      {storage.required && none ? <option value="">No drive plugged in</option> : null}
       {usable.map((item) => <option key={item.id} value={item.id}>{driveOption(item)}</option>)}
+      {held.map((item) => <option disabled key={item.id} value={item.id}>{`${item.label} · ${driveStateLabel(item)}`}</option>)}
     </RowSelect>
   </Row>;
 }

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
 import { DriveChoice, driveFoldersLine, folderList, useDriveChoice } from './DriveChoice';
+import { appDriveNotice, useStorageDrives } from './drives';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps } from './ProgressSteps';
 import { isNotAssessed } from './privacy-posture';
@@ -189,6 +190,10 @@ export function AppDetail({
   const [recoverError, setRecoverError] = useState('');
   const updateStorage = comparison?.storage ?? null;
   const updateDrive = useDriveChoice(updateStorage, Boolean(updateStorage));
+  // An app reading a drive that did not open looks healthy everywhere else.
+  const placedFolders = app.instance?.folders || [];
+  const { drives: serverDrives } = useStorageDrives(placedFolders.length > 0);
+  const driveNotice = placedFolders.length ? appDriveNotice(app.name, serverDrives?.find((item) => item.id === placedFolders[0]!.driveId), folderList(placedFolders)) : null;
   const ready = runtimeApplied(app);
   const requirements = requirementsFor(app);
   const updateRunning = app.updateJob?.status === 'running';
@@ -431,6 +436,8 @@ export function AppDetail({
             reveal="on-failure"
           />
         </Notice> : null}
+
+        {driveNotice ? <Notice title={driveNotice.title} variant={driveNotice.variant}><p>{driveNotice.body}</p></Notice> : null}
 
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
         {app.installJob?.status === 'succeeded' && app.installJob.notice ? <Notice title="Its web address is not open yet" variant="warning">

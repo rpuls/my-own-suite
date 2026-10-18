@@ -183,7 +183,7 @@ ${renderJournaldConfig()}MOS_JOURNALD
 systemctl restart systemd-journald || true
 
 apt-get update
-apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ntfs-3g ufw
 # Ubuntu's caddy package only supplies the caddy user, its unit and /etc/caddy; the
 # binary that runs is the one built below. Held, so unattended upgrades never restart
 # Caddy to update a binary nothing runs.

@@ -65,21 +65,26 @@ export type UnmetRequirement = { id: string; reason: string };
 // installed without one.
 export type AppStorage = { description: string | null; folders: Array<{ name: string; service: string }>; label: string | null; required: boolean };
 
-// A drive as the app agent sees it. `id` is its filesystem identity, which is
-// what an install names; `usable` is false for one that is away or formatted
-// for Linux, with `reason` saying which.
+// A drive as the app agent sees it, by filesystem identity. `usable` is false for one
+// that cannot take a new app's folders now, with `reason` saying why.
 export type StorageDrive = {
   apps: string[];
   availableBytes: number | null;
   connected: boolean;
+  // The kernel's or the command's own words when the drive is not working.
+  detail: string | null;
   fileSystem: string | null;
   holdsBackups: boolean;
   id: string;
+  job?: AppJob<DriveStep> | null;
   label: string;
   reason: string | null;
   sizeBytes: number | null;
+  state: 'available' | 'away' | 'ejected' | 'failed' | 'read-only' | 'ready';
   usable: boolean;
 };
+
+export type DriveStep = ProgressStep & { id: 'check' | 'eject' };
 
 export type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the

@@ -9,6 +9,7 @@ const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infr
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
+const { STORAGE_ATTACH_IDENTIFIER } = require('../../infrastructure/control-plane-runtime.cjs');
 const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
 const { AppStorage, STORAGE_DRIVE_LABEL, StorageError } = require('./storage.cjs');
 
@@ -375,12 +376,55 @@ class SystemAppAdapter {
   // containers reading it restarted, since a bind made before the drive left
   // still points at the old mount. Stopped apps have no containers to restart.
   async reattachDrive(driveId) {
-    if (!this.storage.isClaimed(driveId)) return { attached: false, restarted: 0 };
+    if (!this.storage.isRemembered(driveId)) return { attached: false, restarted: 0 };
     await this.storage.attach(driveId);
-    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--quiet', '--filter', `label=${STORAGE_DRIVE_LABEL}.${driveId}`], { timeoutMs: 30_000 });
-    const containers = String(output || '').split(/\s+/u).filter(Boolean);
+    const containers = await this.driveContainers(driveId);
     if (containers.length) await this.execute(this.dockerBinary, ['restart', ...containers], { timeoutMs: 180_000 });
     return { attached: true, restarted: containers.length };
+  }
+
+  // Only the services given folders carry the drive's label, so an app's other
+  // containers keep running while its drive is away.
+  async driveContainers(driveId) {
+    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--quiet', '--filter', `label=${STORAGE_DRIVE_LABEL}.${driveId}`], { timeoutMs: 30_000 });
+    return String(output || '').split(/\s+/u).filter(Boolean);
+  }
+
+  // `unless-stopped` keeps them stopped across a restart until the drive returns.
+  async ejectDrive(driveId) {
+    const containers = await this.driveContainers(driveId);
+    if (containers.length) await this.execute(this.dockerBinary, ['stop', ...containers], { timeoutMs: 180_000 });
+    try {
+      await this.storage.eject(driveId);
+    } catch (error) {
+      await this.reattachDrive(driveId).catch(() => {});
+      await this.logDriveEvent(`drive ${driveId}: eject refused, apps put back: ${error.message}`);
+      throw error;
+    }
+    await this.logDriveEvent(`drive ${driveId} ejected; stopped ${containers.length} container(s)`);
+    return { stopped: containers.length };
+  }
+
+  async checkDrive(driveId) {
+    const containers = await this.driveContainers(driveId);
+    if (containers.length) await this.execute(this.dockerBinary, ['stop', ...containers], { timeoutMs: 180_000 });
+    try {
+      await this.storage.check(driveId);
+      await this.logDriveEvent(`drive ${driveId} checked; open read-write again`);
+    } catch (error) {
+      await this.logDriveEvent(`drive ${driveId}: check did not help: ${error.message}`);
+      throw error;
+    } finally {
+      // Without a mounted drive their binds have no source and they refuse to start.
+      if (containers.length) await this.execute(this.dockerBinary, ['start', ...containers], { timeoutMs: 180_000 }).catch(() => {});
+    }
+    return { restarted: containers.length };
+  }
+
+  // Into the plug-in unit's journal, so diagnostics show what the owner pressed
+  // in the same timeline as what the drive did.
+  async logDriveEvent(message) {
+    await this.execute('logger', ['--tag', STORAGE_ATTACH_IDENTIFIER, '--', `[mos-storage] ${message}`], { timeoutMs: 10_000 }).catch(() => {});
   }
 
   // Volume and folder arguments for each service's `docker run`, prepared before

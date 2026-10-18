@@ -15,7 +15,7 @@ const path = require('node:path');
 const { ENGINE_MISSING_MESSAGE, ResticEngine } = require('./engine-restic.cjs');
 
 const ENGINE_NAME = 'restic';
-const BACKUPS_DIRNAME = 'MOS-backups';
+const { BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../../shared/storage-contract.cjs');
 const REPOSITORY_DIRNAME = 'repository';
 const RESTORE_POINTS_DIRNAME = 'restore-points';
 const REPOSITORY_SIDECAR_FILENAME = 'MOS-REPOSITORY.json';

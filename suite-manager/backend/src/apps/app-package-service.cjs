@@ -74,6 +74,7 @@ const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.
 // the verification can never be stricter than the apply it verifies.
 const OWNER_ENV_HEALTH_TIMEOUT_MS = 90_000;
 const OWNER_ENV_HEALTH_BACKOFF_MS = [2_000, 4_000, 8_000, 10_000];
+const DRIVE_FACTS_TTL_MS = 15_000;
 
 class AppPackageService {
   constructor({
@@ -131,7 +132,9 @@ class AppPackageService {
   async hostFacts(agentStatus = null) {
     this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
     const address = this.suiteAddress?.readOrNull();
-    const drives = await this.storageDrives();
+    // Every poll of the Apps page lands here, and a drive count only changes when
+    // a drive is plugged in, so an answer this fresh is good enough.
+    const drives = this.lastDrives && this.now().getTime() - this.lastDrives.at < DRIVE_FACTS_TTL_MS ? this.lastDrives.drives : await this.storageDrives();
     // On the Easy Door over HTTP the certificate is on its way and the switch is automatic.
     return {
       architecture: this.hostArchitecture,
@@ -144,7 +147,18 @@ class AppPackageService {
   // Drives that can hold app folders, or null when the agent cannot say.
   async storageDrives() {
     const answer = await Promise.resolve(this.agent?.storageDrives?.()).catch(() => null);
-    return Array.isArray(answer?.drives) ? answer.drives : null;
+    const drives = Array.isArray(answer?.drives) ? answer.drives : null;
+    this.lastDrives = { at: this.now().getTime(), drives };
+    return drives;
+  }
+
+  // Check drive or Eject. The agent stops and starts the apps reading the drive itself.
+  async driveAction(driveId, action) {
+    try {
+      await (action === 'check' ? this.agent.checkDrive({ drive: driveId }) : this.agent.ejectDrive({ drive: driveId }));
+    } finally {
+      this.lastDrives = null;
+    }
   }
 
   // The app folders on the drives MOS has open, each named by its app, including

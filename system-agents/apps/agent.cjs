@@ -3,6 +3,7 @@
 const { routeTable, serveOnSocket } = require('../lib/agent-server.cjs');
 const { AppAgentCore, AppRuntimeError } = require('./agent-core.cjs');
 const { AppApplyError, SystemAppAdapter } = require('./system-adapter.cjs');
+const { StorageError } = require('./storage.cjs');
 
 const socketPath = process.env.MOS_APP_AGENT_SOCKET || '/run/mos-app-agent/agent.sock';
 const adapter = new SystemAppAdapter();
@@ -12,6 +13,8 @@ const server = routeTable({
   'GET /v1/status': () => core.status(),
   'GET /v1/storage/drives': () => core.storageDrives(),
   'GET /v1/storage/folders': () => core.storageFolders(),
+  'POST /v1/storage/check': (body) => core.checkDrive(body),
+  'POST /v1/storage/eject': (body) => core.ejectDrive(body),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
   'POST /v1/apps/check-health': (body) => core.checkHealth(body),
@@ -28,7 +31,7 @@ const server = routeTable({
 }, {
   bodyLimit: 64 * 1024,
   failure(error) {
-    const known = error instanceof AppRuntimeError || error instanceof AppApplyError;
+    const known = error instanceof AppRuntimeError || error instanceof AppApplyError || error instanceof StorageError;
     return {
       payload: {
         code: known ? error.code : 'APP_RUNTIME_APPLY_FAILED',

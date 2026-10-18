@@ -21,7 +21,7 @@ const path = require('node:path');
 const OBJECT_DESTINATION_PREFIX = 'object:';
 const CONFIG_FILENAME = 'object-destinations.json';
 const CONFIG_VERSION = 1;
-const BACKUPS_DIRNAME = 'MOS-backups';
+const { BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../shared/storage-contract.cjs');
 const REPOSITORY_DIRNAME = 'repository';
 const MAX_OBJECT_DESTINATIONS = 8;
 

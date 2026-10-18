@@ -79,6 +79,13 @@ const FOLDER_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?$/u
 const FOLDER_DRIVE_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
 const CONTAINER_PATH_PATTERN = /^\/[^:,\u0000]+$/u;
 
+function driveOf(input) {
+  if (!exactKeys(input, ['drive']) || !FOLDER_DRIVE_PATTERN.test(String(input.drive))) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A drive request names one drive by its id.');
+  }
+  return input.drive;
+}
+
 // Folders are the one host path a service can reach, and only one MOS builds
 // itself from a drive id and a folder name, so both are held to what the
 // manifest allows before they get near a mount.
@@ -444,6 +451,14 @@ class AppAgentCore {
 
   async storageFolders() {
     return { folders: await this.adapter.storage.folders() };
+  }
+
+  async ejectDrive(input) {
+    return { ...await this.adapter.ejectDrive(driveOf(input)), status: 'ejected' };
+  }
+
+  async checkDrive(input) {
+    return { ...await this.adapter.checkDrive(driveOf(input)), status: 'checked' };
   }
 
   async snapshotPackage(input) {

@@ -19,8 +19,25 @@ async function api(page, setup, path, { method = 'GET' } = {}) {
   }, { client: CLIENT, method, name: setup.adminName, password: setup.adminPassword, path });
 }
 
+// The package finishes Jellyfin's setup a few seconds after it first answers, and a
+// page opened in between keeps showing the first-run wizard until it is reloaded.
+// The same for a page opened while Jellyfin restarts onto a returning drive, which
+// says "Server Unavailable" until reloaded.
+async function reloadUntil(page, pattern, message) {
+  await expect.poll(async () => {
+    if (pattern.test(await page.locator('body').innerText().catch(() => ''))) return true;
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(3000);
+    return false;
+  }, { intervals: [2000], message, timeout: 120000 }).toBe(true);
+}
+
+const SIGNED_IN = /Favorites/u;
+
+// A tab that already signed in, as after a drive drill, stays signed in.
 async function signIn(page, setup) {
-  await expect(page.locator('body')).toContainText(/Sign In|Please sign in|Manual Login/iu, { timeout: 120000 });
+  await reloadUntil(page, /Sign In|Please sign in|Manual Login|Favorites/iu, 'Jellyfin should offer its sign-in page');
+  if (SIGNED_IN.test(await page.locator('body').innerText())) return;
   const manual = page.getByRole('button', { name: /Manual Login/iu });
   if (await manual.isVisible().catch(() => false)) await manual.click();
   await page.locator('#txtManualName').fill(setup.adminName);
@@ -51,7 +68,7 @@ export default {
   },
 
   async landed({ page }) {
-    await expect(page.locator('body')).toContainText(/Jellyfin|Sign In/iu, { timeout: 120000 });
+    await reloadUntil(page, /Jellyfin|Sign In|Favorites/iu, 'Jellyfin should answer');
   },
 
   async journey({ drive, make, page, setup, shot, state, step, url }) {

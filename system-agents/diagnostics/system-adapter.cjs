@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
+const { STORAGE_ATTACH_IDENTIFIER } = require('../../infrastructure/control-plane-runtime.cjs');
 const { REBOOT_REQUIRED_PATH, healthStatePath, readEnablementState } = require('../../infrastructure/host-patching.cjs');
 const { parseAptConfigDump, parseRebootPackages, parseUnattendedLog, parseUpgradableSimulation } = require('./host-patches.cjs');
 
@@ -29,6 +30,7 @@ const CADDY_FILES = Object.freeze([
   '/etc/caddy/mos-homepage-routes.caddy',
 ]);
 const COMMAND_TIMEOUT_MS = 20_000;
+const KERNEL_STORAGE_LINE = /ntfs3|exfat|FAT-fs|I\/O error|device offline|USB disconnect|Attached SCSI/u;
 // Docker caps a container's logs at 30 MB and journald at its own retention, so
 // a single `docker logs --tail 400` can legitimately return tens of megabytes if
 // the lines are large. Collecting several of those into memory at once, on a
@@ -281,6 +283,18 @@ class SystemDiagnosticsAdapter {
   // low enough that the line budget buys log rather than prefix.
   journal(unit, lines) {
     return serializeJournal(() => capture(JOURNALCTL_BINARY, ['-u', unit, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']).catch(keepPartialLog));
+  }
+
+  // A template unit per drive, which is where a drive that would not open says why.
+  storageAttachJournal(lines) {
+    return serializeJournal(() => capture(JOURNALCTL_BINARY, ['-t', STORAGE_ATTACH_IDENTIFIER, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']).catch(keepPartialLog));
+  }
+
+  // Plugged in, pulled out, and why a filesystem driver refused it. A week across
+  // restarts, because a power cut puts the cause in the boot before this one.
+  async storageKernelLines(lines) {
+    const log = await serializeJournal(() => capture(JOURNALCTL_BINARY, ['-k', '--since', '-7d', '--no-pager', '--no-hostname', '-o', 'short-iso']).catch(keepPartialLog));
+    return String(log).split('\n').filter((line) => KERNEL_STORAGE_LINE.test(line)).slice(-lines).join('\n');
   }
 
   async containers() {

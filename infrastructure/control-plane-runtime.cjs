@@ -542,6 +542,9 @@ MaxRetentionSec=1month
 // is one of its own, so every other drive is left alone.
 const STORAGE_UDEV_RULE_PATH = '/etc/udev/rules.d/90-mos-storage.rules';
 const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
+// One name for every drive's runs: a finished instance is unloaded, so a
+// `journalctl -u 'mos-storage-attach@*'` glob finds nothing to read.
+const STORAGE_ATTACH_IDENTIFIER = 'mos-storage-attach';
 
 function renderStorageUdevRule() {
   return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="exfat|ntfs|vfat", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
@@ -561,6 +564,7 @@ WorkingDirectory=${mosRoot}
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=MOS_APP_PACKAGE_ROOT=${stateRoot}/app-packages
 ExecStart=/usr/bin/node ${mosRoot}/system-agents/apps/storage-attach.cjs %i
+SyslogIdentifier=${STORAGE_ATTACH_IDENTIFIER}
 `;
 }
 
@@ -610,6 +614,7 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  STORAGE_ATTACH_IDENTIFIER,
   STORAGE_ATTACH_UNIT,
   STORAGE_UDEV_RULE_PATH,
   renderStorageAttachUnit,

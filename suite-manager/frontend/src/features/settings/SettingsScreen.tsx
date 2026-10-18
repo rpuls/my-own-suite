@@ -163,6 +163,12 @@ export function SettingsScreen() {
     window.requestAnimationFrame(() => scrollToAnchor(`set-${id}`));
   }
 
+  // A link from another screen names its card, as the start page's drives do.
+  useEffect(() => {
+    const linked = SETTINGS.find((setting) => window.location.hash === `#set-${setting.id}`);
+    if (linked) jump(linked.id);
+  }, []);
+
   return <section className="mos-shell mos-page mos-page-wider">
     <div className="suite-settings-layout">
       <SettingsSidebar

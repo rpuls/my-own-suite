@@ -12,9 +12,10 @@ function storageRequired(manifest) {
 }
 
 // The folder rows an install records, or [] when the app declares none or the
-// owner chose to install an optional-folder app without a drive.
-function placeFolders(manifest, driveId, drives) {
-  const folders = declaredFolders(manifest);
+// owner chose to install an optional-folder app without a drive. `held` names
+// folders the app already has, which an update leaves where they are.
+function placeFolders(manifest, driveId, drives, held = new Set()) {
+  const folders = declaredFolders(manifest).filter((folder) => !held.has(folder.name));
   if (!folders.length) return [];
   if (!driveId) {
     if (storageRequired(manifest)) throw new AppPackageServiceError('APP_STORAGE_DRIVE_REQUIRED', `${manifest.name} keeps its files on an extra storage device. Plug one in and choose it to install.`, 409);
