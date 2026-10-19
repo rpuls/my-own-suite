@@ -1,8 +1,8 @@
 const { AppJobs } = require('./app-jobs.cjs');
 
 // One at a time per drive. Stopping and starting a drive's apps can outlast Caddy's
-// 60 s cut, so the panel reads the job back with the drive list.
-const DRIVE_ACTIONS = Object.freeze(['check', 'eject']);
+// 60 s cut, so the page reads the job back with the storage list.
+const DRIVE_ACTIONS = Object.freeze(['check', 'eject', 'use']);
 
 class DriveJobs extends AppJobs {
   constructor({ logger = null, perform }) {

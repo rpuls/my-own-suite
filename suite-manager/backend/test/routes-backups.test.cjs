@@ -60,15 +60,15 @@ test('backup actions reach the agent field by field', async () => {
       body: { enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 },
     })).status, 200);
     assert.equal((await call('POST', '/backups/primary', { body: { destinationId: '/media/backup', initiator: 'smuggled' } })).status, 200);
-    assert.equal((await call('POST', '/backups/destinations/object', {
+    assert.equal((await call('POST', '/storage/buckets', {
       body: { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', initiator: 'smuggled', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' },
     })).status, 200);
-    const tested = await call('POST', '/backups/destinations/object/test', {
+    const tested = await call('POST', '/storage/buckets/test', {
       body: { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', secretAccessKey: 'super-secret-value' },
     });
     assert.equal(tested.status, 200);
     assert.equal(tested.json().result.ok, true);
-    assert.equal((await call('POST', '/backups/destinations/object/remove', { body: { destinationId: 'object:abc123' } })).status, 200);
+    assert.equal((await call('POST', '/storage/buckets/remove', { body: { id: 'object:abc123' } })).status, 200);
 
     // Downloading and uploading a backup went with the tar formats.
     assert.equal((await call('GET', `/backups/download?path=${encodeURIComponent(backupPath)}`)).status, 404);

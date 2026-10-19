@@ -761,7 +761,8 @@ class DestinationResolver {
     throw new Error('Choose a backup destination and try again.');
   }
 
-  objectDestinations() { return this.objectRecords().map((record) => this.objectDestination(record)); }
+  // Only the buckets the owner made a backup destination; the rest are storage only.
+  objectDestinations() { return this.objectRecords().filter((record) => record.backups === true).map((record) => this.objectDestination(record)); }
 }
 
 module.exports = {

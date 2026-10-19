@@ -24,7 +24,7 @@ import { useState } from 'react';
 
 import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
 import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
-import { driveStateLabel, driveStateLine } from './drives';
+import { rowLine, stateLabel } from '../storage/model';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
@@ -257,8 +257,8 @@ export function AppConfigDialog({
   // A drive the app needs is picked at install. One it can do without stays out
   // of the way until the owner adds it here, in the running app's settings.
   const choosesDrive = Boolean(storage?.folders.length) && !folders.length && (installed ? running && !storage?.required : storage?.required === true);
-  const { drive, drives, missing: driveMissing, setDrive } = useDriveChoice(storage, choosesDrive || folders.length > 0);
-  const keptDrive = folders.length ? drives?.find((item) => item.id === folders[0]!.driveId) : undefined;
+  const { drive, entries: storageEntries, missing: driveMissing, names, reload: reloadStorage, setDrive } = useDriveChoice(storage, choosesDrive || folders.length > 0);
+  const keptDrive = folders.length ? storageEntries?.find((item) => item.id === folders[0]!.driveId) : undefined;
 
   const busy = saving || installing;
   // A Save that stays lit after a successful save reads as "not saved yet".
@@ -457,18 +457,16 @@ export function AppConfigDialog({
     </div> : null}
 
     {choosesDrive && storage ? <div className="suite-app-config-group">
-      <Rows lead>
-        <DriveChoice appName={appName} busy={busy} drive={drive} drives={drives} onChange={setDrive} storage={storage} />
-      </Rows>
+      <DriveChoice appName={appName} busy={busy} drive={drive} entries={storageEntries} names={names} onChange={setDrive} onReload={reloadStorage} storage={storage} />
     </div> : null}
 
     {folders.length && storage ? <div className="suite-app-config-group">
       <Rows lead>
         <Row
-          help={keptDrive && keptDrive.state !== 'ready' ? `${driveStateLabel(keptDrive)}. ${driveStateLine(keptDrive)}` : 'Files on the drive are not backed up.'}
+          help={keptDrive && keptDrive.state !== 'ready' ? `${stateLabel(keptDrive)}. ${rowLine(keptDrive, names)}` : 'Files on the drive are not part of MOS backups. Its drive is managed in Settings, under Storage.'}
           label={driveChoiceLabel(storage)}
         >
-          {`${folderList(storage.folders)} on ${keptDrive?.label || 'its drive'}`}
+          {`${folderList(storage.folders)} on ${keptDrive?.name || 'its drive'}`}
         </Row>
       </Rows>
     </div> : null}

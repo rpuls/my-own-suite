@@ -9,7 +9,6 @@ type BackupDestination = {
   accessKeyId?: string;
   availableBytes: number | null;
   bucket?: string;
-  canMount?: boolean;
   checkedAt?: string | null;
   endpoint?: string;
   folder?: string;
@@ -30,7 +29,7 @@ type BackupDestination = {
   mountPath: string | null;
   // `away` is the only state describing something MOS cannot see: a drive it
   // has backed up to before and that is not plugged in now.
-  mountState?: 'away' | 'mounted' | 'unmounted' | 'unsupported-mount';
+  mountState?: 'away' | 'mounted';
   notReadyReason?: string | null;
   ready?: boolean;
   region?: string;
@@ -39,22 +38,6 @@ type BackupDestination = {
   storageKind?: 'external' | 'local' | 'network' | 'object' | null;
   writable: boolean;
 };
-
-// What the connect dialog holds while it is open. The secret is write-only: it
-// is sent when the owner types one and never comes back from the server, so an
-// edit that leaves it blank keeps the key already stored.
-export type ObjectDraft = {
-  accessKeyId: string;
-  bucket: string;
-  endpoint: string;
-  folder: string;
-  id?: string;
-  label: string;
-  region: string;
-  secretAccessKey: string;
-};
-
-export const EMPTY_OBJECT_DRAFT: ObjectDraft = { accessKeyId: '', bucket: '', endpoint: '', folder: '', label: '', region: '', secretAccessKey: '' };
 
 type BackupValidation = {
   apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
@@ -303,7 +286,7 @@ export const RETENTION_OPTIONS = [
 ];
 
 export function destinationIconName(destination: BackupDestination) {
-  if (destination.kind === 'object') return 'cloud-storage';
+  if (destination.kind === 'object') return 'cloud-bucket';
   if (destination.storageKind === 'external') return 'usb-drive';
   if (destination.storageKind === 'network') return 'network-drive';
   return 'hard-drive';
@@ -382,7 +365,7 @@ function bytesLine(destination: BackupDestination) {
   return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }
 
-type DestinationAction = '' | 'mount' | 'retest' | 'unlock';
+type DestinationAction = '' | 'retest' | 'unlock';
 
 export type DestinationView = {
   action: DestinationAction;
@@ -419,7 +402,7 @@ function destinationView(destination: BackupDestination, status: BackupStatus | 
   const bucket = destination.kind === 'object';
   const foreign = foreignServer(destination, status);
   const borrowed = destination.borrowedKey === true;
-  const present = ready || destination.locked === true || bucket || destination.mountState === 'unmounted' || destination.mountState === 'unsupported-mount';
+  const present = ready || destination.locked === true || bucket;
 
   let tone: Tone = 'ready';
   let line = bytesLine(destination);
@@ -442,12 +425,6 @@ function destinationView(destination: BackupDestination, status: BackupStatus | 
     detail = 'Check the internet connection, then try again.';
     action = 'retest';
     actionLabel = 'Try again';
-  } else if (destination.canMount) {
-    tone = 'warning';
-    line = 'Plugged in, but MOS has not opened it yet';
-    detail = 'Opening it lets MOS read and write the backups on it.';
-    action = 'mount';
-    actionLabel = 'Open this drive';
   } else if (destination.mountState === 'mounted' && !destination.writable) {
     tone = 'warning';
     line = 'MOS can read this drive but cannot write to it';

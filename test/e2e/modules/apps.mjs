@@ -67,12 +67,12 @@ async function fillSetupFields(ctx, app, dialog) {
 // exercised whether the package requires them or only offers them. A `drive:<fs>`
 // step earlier in the run names the one to take.
 async function pickDrive(ctx, dialog, storage) {
-  const choice = dialog.getByRole('combobox', { name: storage?.label || 'Drive for its files' });
+  const choice = dialog.getByRole('radiogroup', { name: storage?.label || 'Drive for its files' });
   if (!await choice.isVisible().catch(() => false)) return null;
-  await expect(choice).toBeEnabled({ timeout: 30000 });
-  const offered = await choice.locator('option:not([disabled])').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+  await expect(choice.getByRole('radio').first()).toBeVisible({ timeout: 30000 });
+  const offered = await choice.locator('input[type=radio]:not([disabled])').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
   const drive = offered.includes(ctx.labDrive) ? ctx.labDrive : offered[0];
-  if (drive) await choice.selectOption(drive);
+  if (drive) await choice.locator(`input[type=radio][value="${drive}"]`).check();
   return drive || null;
 }
 

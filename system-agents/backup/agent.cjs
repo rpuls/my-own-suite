@@ -37,8 +37,9 @@ const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-age
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
-const { BACKUPS_DIR, FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
-const { LSBLK_ARGS, directorySize, isMountPoint, isSystemMountpoint, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
+const { BACKUPS_DIR, FILES_DIR, STORAGE_MOUNT_ROOT, STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
+const { StorageRegistry } = require('../lib/storage-registry.cjs');
+const { LSBLK_ARGS } = require('../lib/block-devices.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
@@ -61,9 +62,7 @@ const statusDir = process.env.MOS_STATUS_DIR || UNAVAILABLE_PAGE_ROOT;
 // Build times the app agent recorded on this machine, for what a rebuild of
 // each app is going to cost.
 const buildTimingsPath = path.join(stateRoot, BUILD_TIMINGS_FILENAME);
-const managedMountRoot = '/media/mos-backup';
 const destinationRoots = ['/media', '/mnt', '/run/media'];
-const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -89,48 +88,6 @@ function normalizeDestination(candidate) {
 function isWritable(dir) {
   try { fs.accessSync(dir, fs.constants.W_OK); return true; } catch { return false; }
 }
-function mountBlockReason(device) {
-  const fileSystem = String(device.fstype || '').toLowerCase();
-  if (device.type !== 'part' && !isWholeDiskFilesystem(device)) return 'Choose a data partition, not the whole device.';
-  if (!device.path) return 'The device path was not reported by Linux.';
-  if (!fileSystem) return 'The partition has no detected filesystem.';
-  if (!mountableFileSystems.has(fileSystem)) return `The ${fileSystem} filesystem is not mounted automatically yet.`;
-  const label = String(device.label || '').toLowerCase();
-  const sizeBytes = Number(device.size) || 0;
-  const points = Array.isArray(device.mountpoints) ? device.mountpoints.filter(Boolean) : [];
-  if (label === 'efi' || (fileSystem === 'vfat' && sizeBytes > 0 && sizeBytes < 1024 * 1024 * 1024) || points.some(isSystemMountpoint)) {
-    return 'This looks like a system partition, not a backup drive.';
-  }
-  return null;
-}
-function sanitizeMountName(value) {
-  return String(value || 'drive').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'drive';
-}
-// A drive pulled mid-backup leaves its mountpoint behind as an ordinary
-// directory on the system disk, holding whatever was written after the drive
-// went away — measured at 34 MB in the drills. It is invisible the moment the
-// drive is plugged back in, because the mount covers it, so nothing ever
-// reclaimed it. Only directories MOS itself created under its own mount root are
-// considered, and only ones proved not to be a mount right now.
-function reclaimUnmountedDestinations(root = managedMountRoot) {
-  const reclaimed = [];
-  let entries;
-  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return reclaimed; }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(root, entry.name);
-    if (isMountPoint(dir)) continue;
-    const bytes = directorySize(dir);
-    try {
-      fs.rmSync(dir, { force: true, recursive: true });
-      if (bytes > 0) reclaimed.push({ bytes, path: dir });
-    } catch {}
-  }
-  return reclaimed;
-}
-function logReclaimed(reclaimed) {
-  for (const entry of reclaimed) process.stdout.write(`[mos-backup-agent] reclaimed ${entry.bytes} bytes an interrupted backup left under ${entry.path}\n`);
-}
 // Every drive and partition lsblk reports, as a destination candidate.
 function driveCandidates(blockdevices = []) {
   const candidates = new Map();
@@ -152,16 +109,32 @@ function driveCandidates(blockdevices = []) {
       const mountPath = mountPaths[0];
       const externalMount = external || mountPath.startsWith('/media/');
       const holdsAppFiles = mountPaths.some((point) => fs.existsSync(path.join(point, FILES_DIR)));
-      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, holdsAppFiles, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
-    }
-    if (!mounted && (device.type !== 'disk' || isWholeDiskFilesystem(device))) {
-      const blocked = mountBlockReason(device);
-      add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
+      add({ availableBytes: availableBytes(mountPath), devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, holdsAppFiles, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
     for (const child of device.children || []) visit(child, external, device.model || driveModel);
   }
   for (const device of blockdevices) visit(device);
   return [...candidates.values()];
+}
+// A drive is a destination once the owner made it one in the storage picker, or
+// when it already carries backups; the storage module opens it, never this agent.
+function heldForBackups(item) {
+  if (item.mountState !== 'mounted') return false;
+  return storageRegistry.drive(item.fsUuid)?.backups === true || fs.existsSync(path.join(item.mountPath, BACKUPS_DIR));
+}
+async function connectedFilesystems() {
+  const uuids = [];
+  const visit = (device) => { if (device.uuid) uuids.push(device.uuid); (device.children || []).forEach(visit); };
+  ((await execJson('lsblk', LSBLK_ARGS))?.blockdevices || []).forEach(visit);
+  return uuids;
+}
+// The storage module remembers a drive backups are written to, so it opens it again
+// whenever it is plugged in.
+function rememberBackupDrive(destination) {
+  if (destination?.kind !== 'disk' || !destination.fsUuid || storageRegistry.drive(destination.fsUuid)?.backups === true) return;
+  storageRegistry.update(({ drives }) => {
+    drives[destination.fsUuid] = { ...drives[destination.fsUuid], backups: true, fileSystem: destination.fileSystem, label: destination.label };
+  });
 }
 async function listDestinations() {
   const lsblk = await execJson('lsblk', LSBLK_ARGS);
@@ -170,16 +143,16 @@ async function listDestinations() {
   // this has to know that one kind proves itself by being mounted and another by
   // answering a request. A drive holding another server's backups is neither
   // ready nor a failure: it is one recovery key away from both.
-  const disks = await Promise.all(candidates.filter((item) => item.mountState === 'mounted' || item.canMount === true)
+  const disks = await Promise.all(candidates.filter(heldForBackups)
     .map(async (item) => {
-      const notReadyReason = item.mountState !== 'mounted'
-        ? item.mountBlockedReason || 'This drive is not mounted.'
-        : item.writable ? null : 'This drive is not writable.';
+      const notReadyReason = item.writable ? null : 'This drive is not writable.';
       const health = notReadyReason ? { locked: false } : await destinationResolver.resolve(item.id).health().catch(() => ({ locked: false }));
       return {
         ...item,
         borrowedKey: Boolean(guestKeys.keyFor(item.id)),
         kind: 'disk',
+        // The owner's name for the drive, from Settings → Storage, wins over its own label.
+        label: storageRegistry.drive(item.fsUuid)?.name || item.label,
         locked: health.locked === true,
         notReadyReason: notReadyReason || (health.locked ? health.reason : null),
         ready: !notReadyReason && !health.locked,
@@ -203,7 +176,6 @@ async function listObjectDestinations() {
       ...publicObjectDestination(destination.record),
       availableBytes: null,
       borrowedKey: Boolean(guestKeys.keyFor(destination.id)),
-      canMount: false,
       checkedAt: health.checkedAt || null,
       kind: 'object',
       locked: health.locked === true,
@@ -245,22 +217,6 @@ async function testObjectDestination(input) {
 }
 function availableBytes(dir) {
   try { const stat = fs.statfsSync(dir); return stat.bavail * stat.bsize; } catch { return null; }
-}
-async function mountDestination(destinationId) {
-  const destinations = await listDestinations();
-  const destination = destinations.find((item) => item.id === destinationId);
-  if (!destination) throw new Error('Selected drive is no longer available.');
-  if (destination.mountState === 'mounted') return destination;
-  if (!destination.canMount || !destination.devicePath) throw new Error(destination.mountBlockedReason || 'Selected drive cannot be mounted automatically.');
-  const mountPath = path.join(managedMountRoot, sanitizeMountName(`${destination.label}-${path.basename(destination.devicePath)}`));
-  // Whatever a previous run wrote here after the drive was pulled is on the
-  // system disk, and mounting over it would hide it again.
-  logReclaimed(reclaimUnmountedDestinations());
-  ensureDir(mountPath);
-  command('mount', [destination.devicePath, mountPath]);
-  const mounted = (await listDestinations()).find((item) => item.devicePath === destination.devicePath && item.mountState === 'mounted');
-  if (!mounted) throw new Error('The drive was mounted, but the backup agent could not verify it.');
-  return mounted;
 }
 // A destination id names either a mount path or a configured bucket, and
 // nothing else. A path that is not a mount path is refused because the
@@ -784,7 +740,7 @@ function homeAddress() {
 async function recoveryKit(key) {
   const destinations = [
     ...(await listDestinations()).filter((entry) => entry.kind === 'disk' && entry.mountState === 'mounted').map((entry) => ({ kind: 'drive', label: entry.label })),
-    ...objectRegistry.list().map((record) => ({ bucket: record.bucket, endpoint: record.endpoint, folder: record.folder || '', kind: 'bucket', label: record.label, region: record.region || '' })),
+    ...objectRegistry.list().filter((record) => record.backups === true).map((record) => ({ bucket: record.bucket, endpoint: record.endpoint, folder: record.folder || '', kind: 'bucket', label: record.label, region: record.region || '' })),
   ];
   const hostname = os.hostname();
   const now = new Date();
@@ -944,7 +900,8 @@ const keyStore = new RecoveryKeyStore({ stateDir: agentStateDir });
 const knownDrives = new KnownDrives({ agentStateDir });
 const progressPublisher = new ProgressPublisher({ dir: statusDir, filename: PROGRESS_FILENAME });
 const engine = createEngine({ agentStateDir, keys: keyStore, onKeyUsed: () => keyStore.noteFirstUse() });
-const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
+const storageRegistry = new StorageRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) });
+const objectRegistry = new ObjectDestinationRegistry({ registryPath: storageRegistry.registryPath });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const guestKeys = new GuestKeyStore({ agentStateDir });
 // Only ever asked to rekey the disk at the end of a takeover restore. A machine
@@ -1047,6 +1004,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         // entry in this list that describes something MOS cannot currently see.
         const away = knownDrives.reconcile({
           attached: attached.filter((destination) => destination.kind === 'disk'),
+          connected: await connectedFilesystems(),
           lastBackupAt: (id) => backups.find((backup) => backup.destinationId === id)?.createdAt || null,
         }).map((drive) => ({
           availableBytes: null,
@@ -1068,7 +1026,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         const destinations = [...attached, ...away];
         respond(response, 200, {
           backups,
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'forget-drive', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'rotate', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'forget-drive', 'list', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'rotate', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           // Named so the screen can say which machine wrote a restore point, and
@@ -1116,10 +1074,10 @@ if (require.main === module && process.argv[2] === '--worker') {
         const destinationId = normalizeDestinationId(body.destinationId);
         if (!destinationId) throw new Error('Choose a connected drive or a storage connection for automatic backups.');
         const known = (await listDestinations()).find((destination) => destination.id === destinationId);
+        rememberBackupDrive(known);
         respond(response, 200, { primaryDestination: primary.save({ destinationId, label: known?.label || null }) });
         return;
       }
-      if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
       // Reaching the bucket before anything is stored is the whole point of the
       // test: an owner who mistyped a key finds out here, from the provider's
       // own answer, rather than from a backup that fails at three in the
@@ -1186,6 +1144,17 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, { destination: publicObjectDestination(record) });
         return;
       }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/object/backups') {
+        const body = await readBody(request);
+        const held = body.held === true;
+        if (!held && primary.read()?.destinationId === body.destinationId) {
+          throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
+        }
+        const record = objectRegistry.holdBackups(String(body.destinationId || ''), held);
+        destinationResolver.forget(record.id);
+        respond(response, 200, { destination: publicObjectDestination(record) });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/remove') {
         const body = await readBody(request);
         // Disconnecting forgets how to reach the bucket. It never deletes what
@@ -1205,6 +1174,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         const requested = body.destinationId === PRIMARY_DESTINATION ? await primaryBackupDestinationId() : body.destinationId;
         const destinationId = normalizeDestinationId(requested);
         if (destinationId) await destinationResolver.resolve(destinationId).assertAvailable();
+        rememberBackupDrive((await listDestinations()).find((destination) => destination.id === destinationId));
         respond(response, 202, { job: createJob('backup', { ...body, destinationId: requested }) });
         return;
       }
@@ -1259,8 +1229,6 @@ if (require.main === module && process.argv[2] === '--worker') {
       respond(response, 409, { code: error?.code || 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
-  // Before the socket opens, so nothing can mount over a leftover first.
-  logReclaimed(reclaimUnmountedDestinations());
   serveOnSocket(server, {
     name: 'mos-backup-agent',
     // A machine that was off through its backup window owes a run; the early
@@ -1274,4 +1242,4 @@ if (require.main === module && process.argv[2] === '--worker') {
   });
 }
 
-module.exports = { driveCandidates, isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };
+module.exports = { driveCandidates, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, packageBackupInventory, sha256, validatePackagePayloads };

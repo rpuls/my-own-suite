@@ -405,7 +405,7 @@ async function assembleSupportBundle({
     try { return store.getAddressChange() || {}; } catch { return {}; }
   })();
   const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
-  const drives = await Promise.resolve(appAgent?.storageDrives?.()).then((answer) => answer?.drives || null, () => null);
+  const drives = await Promise.resolve(appAgent?.storageInventory?.()).then((answer) => answer?.drives || null, () => null);
   const apps = store.getAppInstances().map((instance) => ({
     displayName: instance.displayNameSnapshot || instance.packageId,
     installedAt: instance.installedAt,

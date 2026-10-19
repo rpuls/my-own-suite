@@ -285,7 +285,7 @@ class FakeWorld {
       destinations: new DestinationResolver({
         agentStateDir: this.paths.agentStateDir,
         engine: this.engine,
-        objectRegistry: new ObjectDestinationRegistry({ agentStateDir: this.paths.agentStateDir }),
+        objectRegistry: new ObjectDestinationRegistry({ registryPath: path.join(this.paths.agentStateDir, 'storage.json') }),
         system: this.system,
       }),
       engine: this.engine,

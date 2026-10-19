@@ -88,3 +88,10 @@ test('a damaged record reads as a machine that knows of no drives', async () => 
   fs.writeFileSync(drives.recordPath, 'not json at all', 'utf8');
   assert.deepEqual(drives.list(), []);
 });
+
+test('a drive that is plugged in is never called away, even while it is not a destination', async () => {
+  const drives = new KnownDrives({ agentStateDir: await scratch() });
+  drives.reconcile({ attached: [drive()], lastBackupAt: () => '2026-09-18T09:00:00.000Z' });
+  assert.deepEqual(drives.reconcile({ attached: [], connected: ['aaaa-bbbb'] }), []);
+  assert.equal(drives.reconcile({ attached: [] }).length, 1);
+});

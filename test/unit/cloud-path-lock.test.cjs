@@ -125,6 +125,14 @@ const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-cont
 // Moved 2026-10-18, all four: the installer's apt line gained ntfs-3g, for Check
 // drive's ntfsfix (roadmap S8), and the storage attach unit a SyslogIdentifier so the
 // diagnostics file can read every drive's runs. No `echo` line changed.
+//
+// Moved 2026-10-19, all four: the storage udev rule also names ext4, because a Linux
+// drive kept for backups is opened by the storage module when it is plugged back in.
+// One word in one rule; no `echo` line changed.
+//
+// Moved again the same day, all four: every site's error handler first serves the
+// page the app agent writes for an app it paused, so an app whose drive was ejected
+// says so at its own address. Caddyfile only; no `echo` line changed.
 
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -132,19 +140,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'ebd4e803a2683766dc29d8dd1cb4156ffc5444cf5dd64a260daba3877df8ee73',
+    digest: 'bb53b8fb09dd29ca4ac62ac0353e028eea77e4bc110a7622bfd0ace1142ffae1',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'ce3a37187c073a92f36af852aa1d82a14474bdf62469b34f5f2e11a80121a9fe',
+    digest: 'a758a61ff55dd870ed2ae711a751ef7c322c4a15893df485e6adc6b9e714194e',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '7b69e5e6a199c819d58d8007d906ef6390618fb2a59cb81b1778340b7463a92f',
+    digest: '9976d91a8af6e755b2e8195c310746401a475c083de0a65cfe570273a11e360f',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -154,7 +162,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '77f3e01e5268444b297448d82b78e1616cb3a2de4d305352cbd73e5ad854ca4d',
+    digest: '9ad6ac9ae2ea52ab6597502a81e1f63a774922ea4c35dacda28bb7044fd8db0c',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

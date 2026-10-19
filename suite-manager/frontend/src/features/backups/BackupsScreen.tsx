@@ -2,24 +2,21 @@ import { useEffect, useState } from 'react';
 
 import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
 import { jsonResponse, postJson } from '../../lib/api';
+import { AddDestinationDialog } from './AddDestinationDialog';
 import { DestinationsPanel } from './DestinationsPanel';
 import { ProgressPlan } from './ProgressPlan';
 import { RestorePointsPanel } from './RestorePointsPanel';
 import {
-  AddDestinationWizard,
   ArchiveKeysDialog,
   BackupDialog,
   DeleteDialog,
-  DisconnectDialog,
   NoteDialog,
   RecoveryKeyDialog,
   RestoreDialog,
   ScheduleDialog,
   UnlockDialog,
-  type ConnectionTest,
 } from './dialogs';
 import {
-  EMPTY_OBJECT_DRAFT,
   activityLine,
   backupBlockReason,
   bannerState,
@@ -41,7 +38,6 @@ import {
   type BackupStatus,
   type DestinationView,
   type JobProgress,
-  type ObjectDraft,
   type ArchiveKey,
   type RotationResult,
 } from './model';
@@ -51,14 +47,13 @@ import { readVaultView, startupOf, type VaultView } from '../../lib/vault';
 type Dialog =
   | { kind: 'backup' }
   | { kind: 'delete'; backup: BackupEntry }
-  | { kind: 'disconnect'; view: DestinationView }
   | { kind: 'key'; mode: 'reveal' | 'rotate' | 'save'; then?: () => Promise<void> }
   | { kind: 'note'; backup: BackupEntry; value: string }
   | { kind: 'restore'; backup: BackupEntry }
   | { kind: 'schedule' }
   | { kind: 'keys'; view: DestinationView }
   | { kind: 'unlock'; view: DestinationView }
-  | { kind: 'wizard'; start: '' | 'drive' | 'online' }
+  | { kind: 'add'; online: boolean }
   | null;
 
 // `at` is when MOS last answered, kept across failures so the screen can say
@@ -101,8 +96,6 @@ export function BackupsScreen() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const [objectDraft, setObjectDraft] = useState<ObjectDraft>({ ...EMPTY_OBJECT_DRAFT });
-  const [objectTest, setObjectTest] = useState<ConnectionTest>(null);
   const [revealedKey, setRevealedKey] = useState<RevealedRecoveryKey | null>(null);
   const [rotation, setRotation] = useState<RotationResult | null>(null);
   const [keyError, setKeyError] = useState('');
@@ -399,14 +392,6 @@ export function BackupsScreen() {
     });
   }
 
-  async function mount(view: DestinationView) {
-    await runAction(`mount:${view.id}`, async () => {
-      const result = await post<{ destination: { id: string } }>('mount', { destinationId: view.id }, 'Unable to open this drive.');
-      if (!selected) await choosePrimaryQuietly(result.destination.id);
-      setDialog(null);
-    });
-  }
-
   // Selecting a place is the one choice on this screen: it is where the
   // schedule and the backup before a MOS update write, and the default for a
   // backup taken by hand.
@@ -449,39 +434,10 @@ export function BackupsScreen() {
     });
   }
 
-  // The test reports into the dialog rather than the page banner, because it is
-  // an answer about what is on screen and the owner is about to act on it.
-  async function testObjectStorage(): Promise<ConnectionTest> {
-    setBusy('object-test');
-    setObjectTest(null);
-    try {
-      const response = await post<{ result: ConnectionTest }>('destinations/object/test', objectDraft, 'Unable to reach this storage.');
-      setObjectTest(response.result);
-      return response.result;
-    } catch (caught) {
-      const failed = { message: caught instanceof Error ? caught.message : 'Unable to reach this storage.', ok: false };
-      setObjectTest(failed);
-      return failed;
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function saveObjectStorage(useForAutomatic: boolean) {
-    const draft = objectDraft;
-    await runAction('object-save', async () => {
-      const saved = await post<{ destination: { id: string } }>('destinations/object', draft, 'Unable to save this storage connection.');
-      if (useForAutomatic && saved?.destination?.id) await choosePrimaryQuietly(saved.destination.id);
-      setObjectDraft({ ...EMPTY_OBJECT_DRAFT });
-      setObjectTest(null);
-      setDialog(null);
-    });
-  }
-
-  async function disconnectObjectStorage(view: DestinationView) {
-    setDialog(null);
-    await runAction(`disconnect:${view.id}`, async () => {
-      await post('destinations/object/remove', { destinationId: view.id }, 'Unable to disconnect this storage.');
+  // The storage stays set up in Settings → Storage; only the backups claim on it goes.
+  async function stopUsing(view: DestinationView) {
+    await runAction(`release:${view.id}`, async () => {
+      await post('destinations/release', { storageId: view.destination.kind === 'object' ? view.id : view.destination.fsUuid || '' }, 'Unable to stop using this for backups.');
       if (backupTargetId === view.id) setBackupTargetId('');
     });
   }
@@ -543,7 +499,6 @@ export function BackupsScreen() {
 
   function destinationAction(view: DestinationView) {
     if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', view }); return; }
-    if (view.action === 'mount') { void mount(view); return; }
     if (view.action === 'retest') void runAction(`retest:${view.id}`, async () => undefined);
   }
 
@@ -709,11 +664,11 @@ export function BackupsScreen() {
           <h2 className="mos-card-title">You have no backups yet.</h2>
           <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage you rent online. You can add the other one later.</p>
           <div className="suite-bk-kinds">
-            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'drive' })} type="button">
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'add', online: false })} type="button">
               <span><Icon name="usb-drive" /><strong>Use a drive</strong></span>
               <span>Plug a USB drive into this server. Fastest to restore from.</span>
             </button>
-            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'online' })} type="button">
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'add', online: true })} type="button">
               <span><Icon name="cloud-storage" /><strong>Connect storage online</strong></span>
               <span>Storage you rent from a provider. Survives a fire or a theft at home.</span>
             </button>
@@ -724,27 +679,12 @@ export function BackupsScreen() {
         {views.length ? <DestinationsPanel
           busy={busy}
           onAction={destinationAction}
-          onAdd={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); setDialog({ kind: 'wizard', start: '' }); }}
-          onDisconnect={(view) => setDialog({ kind: 'disconnect', view })}
+          onAdd={() => setDialog({ kind: 'add', online: false })}
           onForgetDrive={(view) => void forgetDrive(view)}
           onForgetKey={(view) => void forgetDestinationKey(view)}
           onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
-          onEdit={(view) => {
-            const destination = view.destination;
-            setObjectDraft({
-              accessKeyId: destination.accessKeyId || '',
-              bucket: destination.bucket || '',
-              endpoint: destination.endpoint || '',
-              folder: destination.folder || '',
-              id: destination.id,
-              label: destination.label,
-              region: destination.region || '',
-              secretAccessKey: '',
-            });
-            setObjectTest(null);
-            setDialog({ kind: 'wizard', start: 'online' });
-          }}
           onSelect={(view) => void choosePrimary(view)}
+          onStopUsing={(view) => void stopUsing(view)}
           onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
           running={running}
           views={views}
@@ -885,24 +825,11 @@ export function BackupsScreen() {
         value={dialog.value}
       /> : null}
 
-      {dialog?.kind === 'disconnect' ? <DisconnectDialog
-        busy={busy}
-        onCancel={closeDialog}
-        onDisconnect={() => void disconnectObjectStorage(dialog.view)}
-        view={dialog.view}
-      /> : null}
-
-      {dialog?.kind === 'wizard' ? <AddDestinationWizard
-        busy={busy}
-        draft={objectDraft}
-        drives={views.filter((view) => view.action === 'mount')}
-        initialKind={dialog.start}
-        onCancel={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); closeDialog(); }}
-        onChange={setObjectDraft}
-        onFinish={(useForAutomatic) => void saveObjectStorage(useForAutomatic)}
-        onMount={(view) => void mount(view)}
-        onTest={() => testObjectStorage()}
-        testResult={objectTest}
+      {dialog?.kind === 'add' ? <AddDestinationDialog
+        firstDestination={!selected}
+        onAdded={() => { closeDialog(); void load(); }}
+        onClose={closeDialog}
+        startOnline={dialog.online}
       /> : null}
     </div>
   </section>;

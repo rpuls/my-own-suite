@@ -8,6 +8,7 @@ const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
 const { DriveJobs } = require('../apps/drive-jobs.cjs');
+const { StorageService } = require('../storage/storage-service.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
 const { AppPackageService } = require('../apps/app-package-service.cjs');
 const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
@@ -82,7 +83,7 @@ function createOfficialCatalog({ limiter, logger, recordSecurityEvent, stateDir,
 }
 
 // Installs and updates that build for minutes run as jobs the page reads back.
-function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger }) {
+function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage }) {
   const installJobs = new AppInstallJobs({
     addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, appUrls.publicUrlOf(packageId)),
     logger,
@@ -99,7 +100,8 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
       publicUrlFor: appUrls.publicUrls(),
     }, onStage),
   });
-  const driveJobs = new DriveJobs({ logger, perform: (driveId, action) => appPackages.driveAction(driveId, action) });
+  const driveJobs = new DriveJobs({ logger, perform: (driveId, action) => storage.driveAction(driveId, action).finally(() => appPackages.forgetDriveFacts()) });
+  storage.driveJobs = driveJobs;
   return { driveJobs, installJobs, updateJobs };
 }
 
@@ -191,7 +193,8 @@ function createServices({
     suiteAddress,
   });
   addressService.start();
-  const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger });
+  const storage = new StorageService({ appAgent, backupAgent, names: () => appPackages.appNames() });
+  const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -233,6 +236,7 @@ function createServices({
     setup,
     signIn,
     smtpSettings,
+    storage,
     suiteAddress,
     updateJobs,
     updates,

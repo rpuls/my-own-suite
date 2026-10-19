@@ -164,12 +164,14 @@ export function guideStatusLabel(app: AppPackageSummary) {
   return 'Setup guide';
 }
 
-export function statusFor(app: AppPackageSummary) {
+// `paused` is MOS's own doing, such as an ejected drive, which the instance record does not see.
+export function statusFor(app: AppPackageSummary, { paused = false } = {}) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
   if (app.instance?.status === 'disabled') return { className: 'is-progress', label: 'Stopped', tone: 'info' };
   if (healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (app.installJob?.status === 'running') return { className: 'is-progress', label: 'Installing', tone: 'info' };
   if (app.updateJob?.status === 'running') return { className: 'is-progress', label: 'Updating', tone: 'info' };
+  if (runtimeApplied(app) && paused) return { className: 'is-progress', label: 'Paused', tone: 'info' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };

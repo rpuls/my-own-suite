@@ -173,21 +173,3 @@ test('connecting two apps passes the slot field by field, and a guide takes only
   ]);
 });
 
-test('a drive action starts a job, and the drive list carries it back', async () => {
-  const begun = [];
-  const services = {
-    appPackages: { storageDrives: async () => [{ id: '20C2CDDCC2CDB676', state: 'read-only' }] },
-    driveJobs: {
-      begin: (driveId, input) => { begun.push([driveId, input]); return { status: 'running' }; },
-      get: (driveId) => (driveId === '20C2CDDCC2CDB676' ? { status: 'running' } : null),
-    },
-  };
-
-  await withRoutes(services, async (call) => {
-    const started = await call('POST', '/apps/storage/drives/20C2CDDCC2CDB676/check');
-    assert.equal(started.status, 202);
-    assert.deepEqual(begun, [['20C2CDDCC2CDB676', { action: 'check' }]]);
-    assert.deepEqual((await call('GET', '/apps/storage/drives')).json(), { drives: [{ id: '20C2CDDCC2CDB676', job: { status: 'running' }, state: 'read-only' }] });
-    assert.equal((await call('POST', '/apps/storage/drives/20C2CDDCC2CDB676/format')).status, 404);
-  });
-});

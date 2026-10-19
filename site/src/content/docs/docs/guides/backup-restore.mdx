@@ -39,7 +39,7 @@ Restore requires a working MOS installation. A backup is not a bare-metal instal
 
 ### Own hardware
 
-Connect a writable USB disk or other external drive directly to the MOS machine. An encrypted drive is strongly recommended. MOS can detect supported local devices and offer to mount them from Suite Manager.
+Connect a writable USB disk or other external drive directly to the MOS machine. MOS lists every drive you plug in under **Settings → Storage**, and opens the one you pick for backups by itself, now and whenever it is plugged back in. A drive formatted as exFAT, NTFS or FAT32 can hold backups and app files; one formatted for Linux (ext4) can hold backups only.
 
 Do not save the only backup on the server's internal system disk: a disk failure could take out both the suite and its backup.
 
@@ -53,9 +53,9 @@ Provider snapshots are outside MOS either way: they may be useful as an addition
 
 <Steps>
 
-1. Attach and mount the destination described above.
+1. Plug in the drive, or connect your bucket under **Settings → Storage → Add storage**.
 
-2. Open **Suite Manager → Backup & Restore**. The destination appears under **Where backups go**; if MOS has not opened it yet, choose **Open this drive**. Select it — that is what makes it the place your backups go.
+2. Open **Suite Manager → Backup & Restore**, choose **Add destination**, pick the drive or bucket, and keep **Send automatic backups here from now on** ticked. It appears under **Where backups go**; the selected one is where your backups go.
 
 3. Click **Back up now**. The first time, MOS shows your recovery key and asks you to confirm you have saved it before it will start. Apps pause while their data is captured and start again when the job finishes.
 
@@ -69,9 +69,9 @@ One drive holds one store. Bundles from MOS 0.19 or earlier, in the older unencr
 
 ## Backing up somewhere else
 
-A drive in the same room as the server survives a failed disk. It does not survive a fire, a flood, or someone walking off with both. Under **Where backups go**, **Add destination** points MOS at a bucket at a storage provider — anything S3-compatible, such as Backblaze B2, Wasabi, Cloudflare R2, Tigris, or a MinIO server of your own.
+A drive in the same room as the server survives a failed disk. It does not survive a fire, a flood, or someone walking off with both. **Settings → Storage → Add storage → Connect storage online** connects MOS to a bucket at a storage provider — anything S3-compatible, such as Backblaze B2, Wasabi, Cloudflare R2, Tigris, or a MinIO server of your own — and **Add destination** on the Backup screen then makes it a place backups go.
 
-You need four things from your provider: the endpoint address, a bucket that already exists, and an access key with its secret. A folder is optional and lets one bucket hold the backups of more than one server. **Check it works** tells you whether MOS can reach it *before* you save, and says which of a wrong key, a missing bucket or an unreachable address it ran into.
+You need four things from your provider: the endpoint address, a bucket that already exists, and an access key with its secret. A folder is optional and lets one bucket hold the backups of more than one server. **Test connection** tells you whether MOS can reach it *before* it connects, and says which of a wrong key, a missing bucket or an unreachable address it ran into.
 
 - **Your backups are encrypted before they leave the server.** The provider stores what it cannot read. restic encrypts every chunk and its metadata with your recovery key, so nothing MOS uploads is readable without it.
 - **A bucket behaves like a drive from there on.** Back up to it by hand or on a schedule, check it, note it, restore from it, delete from it.
@@ -121,7 +121,7 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 1. Install MOS on the replacement machine — the current release, whatever the backup was written by — and create an owner account on it so you can sign in. It can be a throwaway account; the restore replaces it with the one from the backup.
 
-2. Open **Suite Manager → Backup & Restore** and connect the same storage: attach the drive and open it under **Where backups go**, or **Add destination** with the same endpoint, bucket and folder. Your provider's console holds your access key, and a new key for the same bucket works too.
+2. Open **Suite Manager → Backup & Restore**, choose **Add destination**, and pick the drive you plugged in. For a bucket, choose **Add storage…** at the end of that list and connect it with the same endpoint, bucket and folder, then pick it. Your provider's console holds your access key, and a new key for the same bucket works too.
 
 3. The place appears under **Brought in from other servers**, saying its backups were written by another server. Choose **Enter recovery key** and type the key from your kit. Capitals, spaces and dashes do not matter, and a slip is reported as a typo rather than as a wrong key.
 

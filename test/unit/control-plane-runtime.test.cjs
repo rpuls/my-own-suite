@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  APP_STATUS_ROOT,
   CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   PROGRESS_FILENAME,
@@ -211,8 +212,11 @@ test('Homepage ships useful defaults and an editable source template without ove
 // drills found that an owner refreshing the page then met Caddy's bare 502 —
 // the one screen in recovery that explained nothing.
 test('every Suite Manager entrance answers a control-plane outage with the status page', () => {
+  // An app MOS paused gets its own page first, by the host asked for; anything else the status page.
   const expected = new RegExp(
-    String.raw`handle_errors \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*`
+    String.raw`handle_errors \{\s*@mos-app-paused file \{\s*root ${APP_STATUS_ROOT}\s*try_files /\{http\.request\.host\}\.html\s*\}\s*`
+    + String.raw`handle @mos-app-paused \{\s*root \* ${APP_STATUS_ROOT}\s*rewrite \* /\{http\.request\.host\}\.html[\s\S]*?\}\s*\}\s*`
+    + String.raw`handle \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*`
     + String.raw`rewrite \* /${UNAVAILABLE_PAGE_FILENAME}\s*`
     + String.raw`header Retry-After 15\s*`
     + String.raw`file_server \{\s*status 503`,

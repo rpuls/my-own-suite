@@ -413,21 +413,244 @@
   flex-shrink: 0;
 }
 
-/* The explanation for a source that could not be checked, inset to line up with
-   the row above it rather than running edge to edge on its own. */
-.suite-drive-head {
+/* Settings → Storage: one row per place, collapsed until opened. The item is
+   flush, so the head and the details carry the inset and the selected tint runs
+   the full width of an opened row. */
+.suite-storage-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+}
+
+.suite-storage-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.suite-storage-row.is-attention .suite-storage-icon,
+.suite-storage-row.is-attention .suite-storage-name strong {
+  color: var(--mos-color-warning);
+}
+
+.mos-panel-item-quiet .suite-storage-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-storage-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.suite-storage-title {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-storage-name {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--mos-space-2);
 }
 
-.suite-drive-working {
+.suite-storage-name strong {
+  font-size: var(--mos-text-body-lg);
+  color: var(--mos-color-text-strong);
+}
+
+.suite-storage-name .mos-pill .suite-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.suite-storage-trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+}
+
+.suite-storage-glance {
+  display: inline-grid;
+  grid-template-columns: 9rem auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.suite-storage-chevron {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-color: transparent;
+  background: transparent;
+}
+
+.suite-storage-chevron[aria-expanded='true'] .suite-icon {
+  transform: rotate(90deg);
+}
+
+.suite-storage-details {
+  display: grid;
+  gap: var(--mos-space-3);
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad) calc(var(--mos-panel-pad) + 1.3rem + var(--mos-space-3));
+}
+
+.suite-storage-details .mos-usage {
+  max-width: 48rem;
+}
+
+.suite-storage-used {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--mos-space-2);
+  margin: 0;
+}
+
+.suite-storage-contents {
+  color: var(--mos-color-text);
+}
+
+.suite-storage-note {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.suite-storage-unusable p {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  margin: 0;
+}
+
+.suite-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.suite-storage-flow-working {
   display: flex;
   align-items: center;
   gap: var(--mos-space-2);
 }
 
+.suite-storage-flow-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+/* The picker: a radio row per place, the reason it cannot be picked in place of
+   its facts, and adding storage as the last row. */
+.suite-storage-picker {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-storage-option {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mos-space-3);
+  width: 100%;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-storage-option.is-disabled {
+  cursor: default;
+}
+
+.suite-storage-option.is-add {
+  grid-template-columns: auto minmax(0, 1fr);
+  color: var(--mos-color-accent);
+}
+
+.suite-storage-option input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--mos-color-accent);
+}
+
+.suite-storage-option-body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.suite-storage-warning {
+  color: var(--mos-color-warning);
+  font-size: var(--mos-text-label);
+}
+
+.suite-storage-empty {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-storage-empty p {
+  margin: 0;
+}
+
+/* The start page: each place at a glance, one button only where one is needed. */
+.suite-storage-widget-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.suite-storage-widget-body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.suite-storage-widget-body .mos-usage {
+  max-width: 14rem;
+}
+
+@media (max-width: 34rem) {
+  .suite-storage-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .suite-storage-trailing {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .suite-storage-glance {
+    grid-template-columns: 6rem auto;
+  }
+
+  .suite-storage-details {
+    padding-left: var(--mos-panel-pad);
+  }
+}
+
+/* The explanation for a source that could not be checked, inset to line up with
+   the row above it rather than running edge to edge on its own. */
 .suite-source-problem {
   padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
 }

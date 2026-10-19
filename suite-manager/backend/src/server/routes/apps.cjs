@@ -1,4 +1,3 @@
-const { DRIVE_ACTIONS } = require('../../apps/drive-jobs.cjs');
 const { OfficialCatalogError } = require('../../apps/official-catalog-service.cjs');
 const { fileResponse, jsonResponse } = require('../responses.cjs');
 
@@ -10,7 +9,7 @@ function packageRoute(action) {
   return new RegExp(`^/apps/packages/([^/]+)/${action}$`, 'u');
 }
 
-function catalogRoutes({ appPackages, appUrls, catalogService, driveJobs, externalSourceService, installJobs, updateJobs }) {
+function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceService, installJobs, updateJobs }) {
   // The UI follows this URL rather than rebuilding it from a manifest host, which
   // for an external app would drop the `ext-` prefix it is really served under.
   const withPublicUrl = (app) => ({ ...app, publicUrl: appUrls.hostFor(app.id) ? appUrls.publicUrlOf(app.id).publicUrl : '' });
@@ -28,34 +27,6 @@ function catalogRoutes({ appPackages, appUrls, catalogService, driveJobs, extern
         // After the answer, on purpose: the Apps page never waits on a git host,
         // and a source found to have moved shows up on the next load.
         externalSourceService.sweep();
-      },
-    },
-    {
-      method: 'GET',
-      path: '/apps/storage/drives',
-      signIn: REVIEW,
-      handler: async ({ response }) => {
-        const drives = await appPackages.storageDrives();
-        jsonResponse(response, drives ? 200 : 503, drives
-          ? { drives: drives.map((drive) => ({ ...drive, job: driveJobs.get(drive.id) })) }
-          : { code: 'APP_AGENT_UNAVAILABLE', error: 'MOS could not ask the server which drives are plugged in.' });
-      },
-    },
-    ...DRIVE_ACTIONS.map((action) => ({
-      method: 'POST',
-      pattern: new RegExp(`^/apps/storage/drives/([^/]+)/${action}$`, 'u'),
-      signIn: 'Sign in to check or eject a drive.',
-      handler: async ({ params: [driveId], response }) => {
-        jsonResponse(response, 202, { job: driveJobs.begin(driveId, { action }) });
-      },
-    })),
-    {
-      method: 'GET',
-      path: '/apps/storage/folders',
-      signIn: REVIEW,
-      handler: async ({ response }) => {
-        const folders = await appPackages.storageFolders();
-        jsonResponse(response, folders ? 200 : 503, folders ? { folders } : { code: 'APP_AGENT_UNAVAILABLE', error: 'MOS could not read the folders on your drives.' });
       },
     },
     {

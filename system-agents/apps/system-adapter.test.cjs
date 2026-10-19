@@ -1475,7 +1475,8 @@ function driveAdapter(storage) {
   const adapter = new SystemAppAdapter({
     dockerBinary: 'docker',
     async execute(file, args) { commands.push([file, ...args]); return { stdout: args[0] === 'ps' ? 'c1\n' : '' }; },
-    storage: { attach: async () => {}, isRemembered: () => true, ...storage },
+    pausedPages: { sync: () => commands.push(['paused-pages']) },
+    storage: { attach: async () => {}, drives: async () => [], isRemembered: () => true, ...storage },
   });
   return {
     adapter,

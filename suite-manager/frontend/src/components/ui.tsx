@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -10,6 +10,7 @@ export function Icon({ name }: { name: IconName }) {
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
+    'cloud-bucket': <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6l1.8 12.2c.3 1.6 3 2.8 6.2 2.8s5.9-1.2 6.2-2.8L20 6" /><path d="M5.2 11c1.4 1.1 3.9 1.8 6.8 1.8s5.4-.7 6.8-1.8" /></>,
     'cloud-storage': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="M12 12v5" /><path d="m9.5 14.5 2.5-2.5 2.5 2.5" /></>,
     copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
@@ -19,14 +20,14 @@ export function Icon({ name }: { name: IconName }) {
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
-    'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
+    'hard-drive': <><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z" /><path d="M2 12h20" /><path d="M6 16h.01M10 16h.01" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     lock: <><rect height="11" rx="2" width="16" x="4" y="11" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
     mail: <><rect height="14" rx="2" width="18" x="3" y="5" /><path d="m3 7 9 6 9-6" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
-    'network-drive': <><circle cx="12" cy="12" r="3" /><path d="M12 1v4" /><path d="M12 19v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" /><path d="M1 12h4" /><path d="M19 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" /></>,
+    'network-drive': <><path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H9l2 2h8.5A1.5 1.5 0 0 1 21 7.5v6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 13.5Z" /><path d="M12 15v3.5" /><circle cx="12" cy="20" r="1.5" /><path d="M3 20h7.5M13.5 20H21" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     screens: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
     search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
@@ -35,7 +36,8 @@ export function Icon({ name }: { name: IconName }) {
     'sign-out': <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
     update: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>,
     upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" /></>,
-    'usb-drive': <><rect width="16" height="10" x="4" y="12" rx="2" /><path d="M2 8h20" /><path d="M6 8V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3" /></>,
+    'usb-drive': <><rect height="17" rx="2" width="12" x="2.5" y="3.5" /><path d="M5.5 7.5h6" /><path d="M7 17h.01" /><path d="M14.5 10h3a2.5 2.5 0 0 1 2.5 2.5V17" /><rect height="4" rx="1" width="3" x="18.5" y="17" /></>,
+    'usb-stick': <><rect height="12" rx="2" width="9" x="7.5" y="10" /><path d="M9.5 10V3.5h5V10" /><path d="M11 6h.01M13 6h.01" /></>,
     x: <path d="m6 6 12 12M18 6 6 18" />,
   };
   return <svg aria-hidden="true" className="suite-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">{paths[name]}</svg>;
@@ -223,20 +225,23 @@ export function PanelHead({ actions, children, heading, title }: {
 // One centred line: the fact, then the qualification, then at most one quiet
 // action. It is deliberately not a Notice — a notice interrupts, a band
 // annotates, and this one is read every visit.
-export function PanelBand({ busy = false, children, icon, note, title, tone = 'neutral' }: {
+export function PanelBand({ busy = false, children, icon, layout = 'centred', note, title, tone = 'neutral' }: {
   busy?: boolean;
   // A trailing action. Keep it ghost-quiet: the band is not what the owner
   // came to the page to do.
   children?: ReactNode;
   icon?: IconName;
+  // "row" reads as one sentence with its action at the end, for a band long
+  // enough that centring would stack it into three lines.
+  layout?: 'centred' | 'row';
   note?: ReactNode;
   title: ReactNode;
   tone?: 'accent' | 'info' | 'neutral' | 'warning';
 }) {
-  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`} aria-busy={busy || undefined}>
+  const text = <><span className="mos-panel-band-title">{title}</span>{note ? <> <span className="mos-panel-band-note">{note}</span></> : null}</>;
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}${layout === 'row' ? ' mos-panel-band-row' : ''}`} aria-busy={busy || undefined}>
     {busy ? <span className="mos-panel-band-icon"><Spinner /></span> : icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
-    <span className="mos-panel-band-title">{title}</span>
-    {note ? <span className="mos-panel-band-note">{note}</span> : null}
+    {layout === 'row' ? <span className="mos-panel-band-text">{text}</span> : text}
     {children}
   </div>;
 }
