@@ -43,7 +43,7 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
     <PanelHead
       actions={<button
         className="mos-btn mos-btn-secondary mos-btn-sm"
-        onClick={() => setOpen(anyOpen ? {} : Object.fromEntries(views.filter((view) => view.selectable).map((view) => [view.id, true])))}
+        onClick={() => setOpen(anyOpen ? {} : Object.fromEntries(views.filter((view) => view.readable).map((view) => [view.id, true])))}
         type="button"
       >{anyOpen ? 'Collapse all' : 'Open all'}</button>}
       title="Restore points"
@@ -56,12 +56,12 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
         const points = status.backups.filter((backup) => backup.destinationId === view.id);
         const limit = shown[view.id] || PAGE;
         const visible = points.slice(0, limit);
-        const isOpen = view.selectable && Boolean(open[view.id]);
-        return <PanelItem flush key={view.id} quiet={!view.selectable}>
+        const isOpen = view.readable && Boolean(open[view.id]);
+        return <PanelItem flush key={view.id} quiet={!view.readable}>
           <button
             aria-expanded={isOpen}
             className="suite-bk-group-head"
-            disabled={!view.selectable}
+            disabled={!view.readable}
             onClick={() => setOpen((current) => ({ ...current, [view.id]: !current[view.id] }))}
             type="button"
           >
@@ -74,7 +74,7 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
               </span>
               <span className="suite-bk-detail">{groupSummary(view, points)}</span>
             </span>
-            {view.selectable ? <span className="suite-bk-group-key">{view.destination.borrowedKey ? `Opens with ${view.foreign || 'another server'}'s key, kept here` : 'Opens with your key'}</span> : null}
+            {view.readable ? <span className="suite-bk-group-key">{view.destination.borrowedKey ? `Opens with ${view.foreign || 'another server'}'s key, kept here` : 'Opens with your key'}</span> : null}
           </button>
 
           {isOpen ? <div className="suite-bk-points">
@@ -106,8 +106,7 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
 
 function groupSummary(view: DestinationView, points: BackupEntry[]) {
   if (view.destination.locked) return 'Locked — enter the other server’s recovery key to see what is kept here.';
-  if (!view.selectable && view.destination.canMount) return 'Plugged in, but not opened yet. Open it above to see what is kept here.';
-  if (!view.selectable) return 'Not connected. Plug it in to see what is kept here.';
+  if (!view.readable) return view.away || !view.present ? 'Not connected. Plug it in to see what is kept here.' : view.status;
   if (!points.length) return 'Nothing here yet. Your next backup lands here.';
   const stored = view.destination.repository?.storedBytes;
   const size = stored ? ` · ${formatBytes(stored)} in all` : '';

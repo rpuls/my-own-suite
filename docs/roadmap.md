@@ -154,11 +154,10 @@ act on.
   HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
   server error" and a reference they cannot act on. A fetch failure is the owner's to fix and should
   be answered in its own words; the reference stays for faults that really are MOS's. *(Small)*
-- **C10 — A stopped app answers honestly at its own address.** Any stopped or crashed app on the
-  Easy Door serves Suite Manager's "busy right now" page today, because app routes have no error
-  handler of their own. When MOS itself stopped the app — an ejected drive, a failed update — it
-  knows the reason and can say it with the action that fixes it; a crash gets a plain "this app
-  is stopped". Surfaced by storage Eject, but general to every down app. *(Medium)*
+- **C10 — A stopped app answers honestly at its own address.** An app paused by its drive already
+  says so (the per-address page in `/etc/caddy/mos-status/apps/`). Every other down app still gets
+  Suite Manager's "busy right now" page: a failed update should say so with the action that fixes
+  it, and a crash a plain "this app is stopped", through the same page mechanism. *(Small)*
 
 ### H. Install media people can just flash
 
@@ -233,9 +232,6 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
   at install (Jellyfin library, Immich external library) and triggers rescans when a drive
   returns. *(Medium)*
 - **S5 — Pilots: Jellyfin package (#215, taken in-house) and the Immich retrofit.** *(Medium)*
-- **S6 — The owner can see their storage.** Drive capacity and per-folder sizes, including
-  folders of uninstalled apps, and the plain sentence that an external drive is not backed up.
-  *(Medium)*
 - **S7 — Drill and E2E coverage for the new states.** App cycle with a storage drive, drive
   absent at boot, drive unplugged and returned, a dirty NTFS drive (pulled cable, and a power
   cut simulated by a hard reset), and backup/storage coexisting on one drive; the lab gains an
@@ -252,12 +248,6 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
   returns through the existing attach path. Reverses slice 1's no-eject decision, now that a
   pulled NTFS cable is known to strand the files until a Windows machine checks the disk.
   *(Small)*
-- **S10 — Drive state the owner can actually see.** The five real states — read-write,
-  read-only pending a check, could not open with the reason, not connected, ejected — on the
-  Storage drives panel, a **drives widget on the Suite Manager start page**, a plain line on an
-  affected app's page (today an app reading an empty mount looks healthy), and the attach
-  journals plus ntfs3/exfat kernel lines in the diagnostics file. Look and wording belong to
-  the design pass. *(Medium)*
 - **S11 — The storage story, told.** A docs page for drives and app folders that states the two
   protective schemes plainly — app data lives in MOS backups; media libraries live on the
   owner's drive and reattach on any new server — with the drill that proves it (fresh install,

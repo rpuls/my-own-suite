@@ -3,9 +3,9 @@ import { useId } from 'react';
 import { appIconSrc, categoryLabel, initialsFor, primaryCategory, statusFor, summaryFor } from './model';
 import type { AppPackageSummary } from './types';
 
-export function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummary; ledVariant?: boolean }) {
+export function AppHealthIndicator({ app, ledVariant = false, paused = false }: { app: AppPackageSummary; ledVariant?: boolean; paused?: boolean }) {
   const tooltipId = useId();
-  const status = statusFor(app);
+  const status = statusFor(app, { paused });
   const label = `${app.name}: ${status.label}`;
   if (ledVariant) {
     return <span aria-describedby={tooltipId} aria-label={label} className="suite-app-health-led-wrap" role="img" tabIndex={0}>

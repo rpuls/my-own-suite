@@ -448,7 +448,7 @@ const IMMICH_DRIVES = [
 ];
 
 async function installedImmich(store, agent) {
-  const service = new AppPackageService({ agent: { ...agent, async storageDrives() { return { drives: IMMICH_DRIVES }; } }, appsDir: v2AppsDir, store });
+  const service = new AppPackageService({ agent: { ...agent, async storageInventory() { return { drives: IMMICH_DRIVES }; } }, appsDir: v2AppsDir, store });
   await service.installPackage('immich', { config: { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' } });
   await service.applyPackageRuntime('immich', requestContext().publicUrlFor('immich'));
   return service;

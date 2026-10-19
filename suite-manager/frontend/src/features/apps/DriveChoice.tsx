@@ -1,18 +1,13 @@
-// An app that needs a drive opens on the first one plugged in; one that can do
-// without opens on "no drive", so a backup drive never becomes a photo folder by accident.
+// An app that needs a drive opens on the first one that can take its folders; one
+// that can do without opens on "no drive", so a backup drive never becomes a photo
+// folder by accident.
 
 import { useEffect, useState } from 'react';
 
-import { Row, RowSelect } from '../../components/ui';
-import { jsonResponse } from '../../lib/api';
-import { formatBytes } from '../../lib/bytes';
-import { driveStateLabel } from './drives';
-import type { AppStorage, StorageDrive } from './types';
-
-function driveOption(drive: StorageDrive) {
-  const space = drive.availableBytes !== null ? `${formatBytes(drive.availableBytes)} free` : drive.sizeBytes !== null ? formatBytes(drive.sizeBytes) : '';
-  return [drive.label, space, drive.holdsBackups ? 'also holds your backups' : ''].filter(Boolean).join(' · ');
-}
+import { AddStorageDialog } from '../storage/AddStorageDialog';
+import { pickerOffers, useAppNames, useStorage, type StorageEntry } from '../storage/model';
+import { StoragePicker } from '../storage/StoragePicker';
+import type { AppStorage } from './types';
 
 export function driveChoiceLabel(storage: AppStorage) {
   return storage.label || 'Drive for its files';
@@ -31,64 +26,62 @@ export function folderList(folders: Array<{ name: string }>) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] || '';
 }
 
-// The drives the server has, and the one picked. Null drives means still asking.
+// The storage the server has, and the drive picked. Null storage means still asking.
 export function useDriveChoice(storage: AppStorage | null, enabled: boolean) {
-  const [drives, setDrives] = useState<StorageDrive[] | null>(null);
+  const { reload, storage: entries } = useStorage(enabled);
+  const names = useAppNames();
   const [drive, setDrive] = useState('');
+  const [chosen, setChosen] = useState(false);
   const required = storage?.required === true;
 
   useEffect(() => {
-    if (!enabled) return;
-    let current = true;
-    void fetch('/suite-manager/api/apps/storage/drives')
-      .then((response) => jsonResponse<{ drives: StorageDrive[] }>(response, 'Unable to list drives.'))
-      .then(({ drives: listed }) => {
-        if (!current) return;
-        setDrives(listed);
-        if (required) setDrive(listed.find((item) => item.usable)?.id || '');
-      })
-      .catch(() => { if (current) setDrives([]); });
-    return () => { current = false; };
-  }, [enabled, required]);
+    if (!entries || chosen || !required) return;
+    setDrive(pickerOffers(entries, 'apps', names).find((offer) => offer.selectable)?.entry.id || '');
+  }, [chosen, entries, names, required]);
 
-  return { drive, drives, missing: enabled && required && !drive, setDrive };
+  return {
+    drive,
+    entries,
+    missing: enabled && required && !drive,
+    names,
+    reload,
+    setDrive: (next: string) => { setChosen(true); setDrive(next); },
+  };
 }
 
-export function DriveChoice({ appName, busy, drive, drives, onChange, storage }: {
+export function DriveChoice({ appName, busy, drive, entries, names, onChange, onReload, storage }: {
   appName: string;
   busy: boolean;
   drive: string;
-  drives: StorageDrive[] | null;
+  entries: StorageEntry[] | null;
+  names: Map<string, string>;
   onChange: (drive: string) => void;
+  onReload: () => Promise<unknown>;
   storage: AppStorage;
 }) {
-  const usable = (drives || []).filter((item) => item.usable);
-  // Shown but not choosable, so a drive that is plugged in yet needs a check is not
-  // simply missing from the list.
-  const held = (drives || []).filter((item) => !item.usable && item.connected && item.state !== 'available');
+  const [adding, setAdding] = useState(false);
   const folders = folderList(storage.folders);
   const several = storage.folders.length > 1;
-  const none = drives !== null && !usable.length;
-  const help = drive
-    ? `MOS makes ${several ? `${folders} folders` : `a ${folders} folder`} for ${appName} on this drive. Fill ${several ? 'them' : 'it'} from any computer. Files on the drive are not backed up.`
-    : storage.required
-      ? none
-        ? `${appName} keeps its files on an extra drive. Plug in one formatted as exFAT, NTFS or FAT32 to install it.`
-        : storage.description || `Pick the drive ${appName} keeps its ${folders} on.`
-      : storage.description || `${appName} works without a drive. Pick one to also show what is in a ${folders} folder on it.`;
-  return <Row help={help} label={driveChoiceLabel(storage)} layout="stacked">
-    <RowSelect
-      aria-label={driveChoiceLabel(storage)}
-      disabled={busy || drives === null}
-      onChange={(event) => onChange(event.currentTarget.value)}
-      state={storage.required ? (drive ? 'filled' : 'missing') : undefined}
+  return <>
+    <StoragePicker
+      addHint="Plug in a drive, or connect cloud storage"
+      busy={busy}
+      context="apps"
+      empty={storage.required ? <>
+        <strong>No storage yet</strong>
+        <p className="suite-meta">{appName} needs a drive for its files. Plug one into the server and it appears here.</p>
+      </> : null}
+      label={driveChoiceLabel(storage)}
+      names={names}
+      none={storage.required ? null : { facts: storage.description || `${appName} works without a drive. Pick one to also show what is in a ${folders} folder on it.`, label: 'No drive' }}
+      onAdd={() => setAdding(true)}
+      onChange={onChange}
+      question={`Where should ${appName} keep its files?`}
+      storage={entries}
       value={drive}
     >
-      {drives === null ? <option value="">Looking for drives...</option> : null}
-      {!storage.required && drives !== null ? <option value="">No drive</option> : null}
-      {storage.required && none ? <option value="">No drive plugged in</option> : null}
-      {usable.map((item) => <option key={item.id} value={item.id}>{driveOption(item)}</option>)}
-      {held.map((item) => <option disabled key={item.id} value={item.id}>{`${item.label} · ${driveStateLabel(item)}`}</option>)}
-    </RowSelect>
-  </Row>;
+      <p className="suite-meta">{appName} makes {several ? `a ${storage.folders.map((folder) => folder.name).join(' and a ')} folder` : `a ${folders} folder`} there. You fill {several ? 'them' : 'it'} from any computer. Files on the drive are not part of MOS backups.</p>
+    </StoragePicker>
+    {adding ? <AddStorageDialog onClose={() => { setAdding(false); void onReload(); }} onConnected={() => { setAdding(false); void onReload(); }} /> : null}
+  </>;
 }

@@ -28,10 +28,10 @@ class BackupAgentClient {
   // "is a backup running" needs.
   summary() { return this.request('GET', '/v1/summary'); }
   job(id) { return this.request('GET', `/v1/jobs/${encodeURIComponent(id)}`); }
-  mount(destinationId) { return this.request('POST', '/v1/destinations/mount', { destinationId }); }
   connectObjectDestination(input) { return this.request('POST', '/v1/destinations/object', input); }
   disconnectObjectDestination(input) { return this.request('POST', '/v1/destinations/object/remove', input); }
   testObjectDestination(input) { return this.request('POST', '/v1/destinations/object/test', input); }
+  holdObjectBackups(input) { return this.request('POST', '/v1/destinations/object/backups', input); }
   startBackup(input) { return this.request('POST', '/v1/backups', input); }
   validateBackup(input) { return this.request('POST', '/v1/backups/validate', input); }
   deleteBackup(input) { return this.request('POST', '/v1/backups/delete', input); }
@@ -52,6 +52,7 @@ class BackupAgentClient {
   // Stops MOS remembering a drive it is not holding. Nothing on the drive is
   // touched: it is not here.
   forgetDrive(fsUuid) { return this.request('POST', '/v1/destinations/forget-drive', { fsUuid }); }
+  eraseForeignBackups(input) { return this.request('POST', '/v1/destinations/erase', input); }
   archiveKeys(input) { return this.request('POST', '/v1/destinations/keys', input); }
   removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
 }

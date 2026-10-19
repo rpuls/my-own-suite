@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // What every drive-facing agent asks lsblk, so they all read the same tree.
-const LSBLK_ARGS = Object.freeze(['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
+const LSBLK_ARGS = Object.freeze(['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,PARTTYPE,SIZE,MOUNTPOINTS']);
 
 // Resolved as POSIX because these are Linux mountpoints reported by lsblk, not
 // paths on whatever machine is running the code. `path.resolve` is
@@ -23,19 +23,6 @@ function isWholeDiskFilesystem(device) {
   return device.type === 'disk'
     && Boolean(String(device.fstype || '').trim())
     && (device.children || []).length === 0;
-}
-
-// A mounted filesystem has a different device id from the directory it is
-// mounted over, which is the only positive proof available that a path is the
-// drive rather than the mountpoint left behind on the system disk. Anything that
-// cannot be determined answers "mounted", because the one caller deletes what
-// this says is not a drive.
-function isMountPoint(dir) {
-  try {
-    return fs.statSync(dir).dev !== fs.statSync(path.dirname(dir)).dev;
-  } catch {
-    return true;
-  }
 }
 
 function directorySize(dir) {
@@ -65,7 +52,6 @@ module.exports = {
   LSBLK_ARGS,
   directorySize,
   holdsSystem,
-  isMountPoint,
   isSystemMountpoint,
   isWholeDiskFilesystem,
 };

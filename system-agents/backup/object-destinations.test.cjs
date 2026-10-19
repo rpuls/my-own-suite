@@ -31,7 +31,7 @@ const VALID = Object.freeze({
 
 async function registry() {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-object-dest-'));
-  return { registry: new ObjectDestinationRegistry({ agentStateDir: root }), root };
+  return { registry: new ObjectDestinationRegistry({ registryPath: path.join(root, 'storage.json') }), root };
 }
 
 test('an endpoint that carries a bucket, a path or credentials is refused rather than reinterpreted', () => {
@@ -102,7 +102,7 @@ test('a stored connection is root-only, survives a reread, and cannot be added t
   assert.deepEqual(store.list().map((entry) => entry.id), [saved.id]);
   assert.equal(store.get(saved.id).secretAccessKey, VALID.secretAccessKey);
   if (process.platform !== 'win32') {
-    assert.equal(fs.statSync(path.join(root, 'object-destinations.json')).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(root, 'storage.json')).mode & 0o777, 0o600);
   }
   assert.throws(() => store.save({ ...VALID, label: 'Second try' }), /already connected/iu);
   // The same bucket with a different folder is a different destination.
@@ -111,6 +111,15 @@ test('a stored connection is root-only, survives a reread, and cannot be added t
   store.remove(other.id);
   assert.deepEqual(store.list().map((entry) => entry.id), [saved.id]);
   assert.throws(() => store.remove(other.id), /no longer exists/iu);
+});
+
+test('a connected bucket holds no backups until the owner makes it a destination, and an edit keeps that', async () => {
+  const { registry: store } = await registry();
+  const saved = store.save(VALID);
+  assert.equal(saved.backups, undefined);
+  assert.equal(store.holdBackups(saved.id, true).backups, true);
+  assert.equal(store.save({ ...VALID, id: saved.id, label: 'Offsite', secretAccessKey: '' }).backups, true);
+  assert.equal(store.holdBackups(saved.id, false).backups, undefined);
 });
 
 test('the number of connections is capped so the destination list stays a choice', async () => {

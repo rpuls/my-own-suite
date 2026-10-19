@@ -10,7 +10,8 @@ const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifyS
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
 const { STORAGE_ATTACH_IDENTIFIER } = require('../../infrastructure/control-plane-runtime.cjs');
-const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
+const { STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
+const { PausedPages, pausedByDrives } = require('./paused-pages.cjs');
 const { AppStorage, STORAGE_DRIVE_LABEL, StorageError } = require('./storage.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
@@ -339,6 +340,7 @@ class SystemAppAdapter {
     executeCapture = undefined,
     now = () => Date.now(),
     pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+    pausedPages,
     probeAddress: probe = probeAddress,
     routesPath = APP_ROUTES_PATH,
     storage,
@@ -364,8 +366,9 @@ class SystemAppAdapter {
     this.pause = pause;
     this.probeAddress = probe;
     this.routesPath = routesPath;
+    this.pausedPages = pausedPages || new PausedPages({ appNameOf: (packageId) => this.installedAppName(packageId), routesPath });
     this.storage = storage || new AppStorage({
-      claimsPath: path.join(path.dirname(appPackageRoot), STORAGE_CLAIMS_FILENAME),
+      registryPath: path.join(path.dirname(appPackageRoot), STORAGE_REGISTRY_FILENAME),
       execute: this.execute,
       executeCapture: this.executeCapture,
     });
@@ -380,7 +383,29 @@ class SystemAppAdapter {
     await this.storage.attach(driveId);
     const containers = await this.driveContainers(driveId);
     if (containers.length) await this.execute(this.dockerBinary, ['restart', ...containers], { timeoutMs: 180_000 });
+    await this.syncPausedPages();
     return { attached: true, restarted: containers.length };
+  }
+
+  // What each paused app's own address says. Never fatal: the page is a courtesy,
+  // and the drive action it follows has already happened.
+  async syncPausedPages(drives = null) {
+    try {
+      this.pausedPages.sync(pausedByDrives(drives || await this.storage.drives()));
+    } catch (error) {
+      process.stderr.write(`[mos-app-agent] paused pages not updated: ${error.message}
+`);
+    }
+  }
+
+  installedAppName(packageId) {
+    for (const instance of fs.readdirSync(this.appPackageRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(this.appPackageRoot, instance.name, 'installed', 'manifest.json'), 'utf8'));
+        if (manifest.id === packageId || instance.name === packageId) return manifest.name;
+      } catch {}
+    }
+    return null;
   }
 
   // Only the services given folders carry the drive's label, so an app's other
@@ -402,7 +427,20 @@ class SystemAppAdapter {
       throw error;
     }
     await this.logDriveEvent(`drive ${driveId} ejected; stopped ${containers.length} container(s)`);
+    await this.syncPausedPages();
     return { stopped: containers.length };
+  }
+
+  // "Use it again" after Eject, for a drive still plugged in.
+  async useDrive(driveId) {
+    const { restarted } = await this.reattachDrive(driveId);
+    await this.logDriveEvent(`drive ${driveId} opened again from Suite Manager; restarted ${restarted} container(s)`);
+    return { restarted };
+  }
+
+  async formatInstallerStick(devicePath) {
+    await this.storage.formatInstallerStick(devicePath);
+    await this.logDriveEvent(`install stick ${devicePath} formatted for storage`);
   }
 
   async checkDrive(driveId) {
@@ -417,6 +455,7 @@ class SystemAppAdapter {
     } finally {
       // Without a mounted drive their binds have no source and they refuse to start.
       if (containers.length) await this.execute(this.dockerBinary, ['start', ...containers], { timeoutMs: 180_000 }).catch(() => {});
+      await this.syncPausedPages();
     }
     return { restarted: containers.length };
   }

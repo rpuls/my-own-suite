@@ -1,3 +1,4 @@
+const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
 const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
 const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
@@ -77,6 +78,7 @@ function escapeRegExp(value) {
 
 const FOLDER_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?$/u;
 const FOLDER_DRIVE_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
+const STORAGE_ID_PATTERN = /^(?:[A-Za-z0-9-]{4,64}|object:[0-9a-f]{12})$/u;
 const CONTAINER_PATH_PATTERN = /^\/[^:,\u0000]+$/u;
 
 function driveOf(input) {
@@ -406,8 +408,11 @@ function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy, 
   handle {
     reverse_proxy http://${reverseProxy}
   }` : `  reverse_proxy http://${reverseProxy}`;
+  // Its own copy of the outage handler: on an owned domain no other site covers
+  // this host, so an app MOS paused could not say so at its address otherwise.
   return `${scheme}://${appHost} {
 ${bridge}
+${unavailableHandler()}
 }
 `;
 }
@@ -445,12 +450,46 @@ class AppAgentCore {
     };
   }
 
-  async storageDrives() {
-    return { drives: await this.adapter.storage.drives() };
+  // Every read also refreshes what paused apps' addresses say, so a drive pulled
+  // while nobody acted is told there as soon as anything looks.
+  async storageInventory() {
+    const inventory = await this.adapter.storage.inventory();
+    await this.adapter.syncPausedPages?.(inventory.drives);
+    return inventory;
   }
 
-  async storageFolders() {
-    return { folders: await this.adapter.storage.folders() };
+  async storageUsage() {
+    return this.adapter.storage.usage();
+  }
+
+  async useDrive(input) {
+    return { ...await this.adapter.useDrive(driveOf(input)), status: 'attached' };
+  }
+
+  async renameStorage(input) {
+    if (!exactKeys(input, ['id', 'name']) || !STORAGE_ID_PATTERN.test(String(input.id)) || typeof input.name !== 'string') {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A rename names one drive or bucket and its new name.');
+    }
+    return this.adapter.storage.rename(input.id, input.name);
+  }
+
+  // Held names a drive kept for backups, or one let go; buckets are recorded by the
+  // backup agent, which connects them.
+  async holdBackups(input) {
+    if (!exactKeys(input, ['drive', 'held']) || !FOLDER_DRIVE_PATTERN.test(String(input.drive)) || typeof input.held !== 'boolean') {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A backups request names one drive and whether it holds backups.');
+    }
+    if (input.held) await this.adapter.storage.holdBackups(input.drive);
+    else this.adapter.storage.releaseBackups(input.drive);
+    return { held: input.held, status: 'recorded' };
+  }
+
+  async formatInstallerStick(input) {
+    if (!exactKeys(input, ['devicePath']) || !/^\/dev\/[a-z0-9]+$/u.test(String(input.devicePath))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A format request names the install stick by its device.');
+    }
+    await this.adapter.formatInstallerStick(input.devicePath);
+    return { status: 'formatted' };
   }
 
   async ejectDrive(input) {

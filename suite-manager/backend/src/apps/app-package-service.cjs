@@ -140,35 +140,28 @@ class AppPackageService {
       architecture: this.hostArchitecture,
       https: address ? address.scheme === 'https' : null,
       httpsPending: address?.kind === 'easy-door' && address.scheme === 'http',
-      storageDrives: drives ? drives.filter((drive) => drive.usable).length : null,
+      // A drive that needs a check still opens the install, where the picker says why it waits.
+      storageDrives: drives ? drives.filter((drive) => drive.connected && drive.holdsAppFoldersFormat).length : null,
     };
   }
 
-  // Drives that can hold app folders, or null when the agent cannot say.
+  // The drives the storage module knows, or null when the agent cannot say.
   async storageDrives() {
-    const answer = await Promise.resolve(this.agent?.storageDrives?.()).catch(() => null);
+    const answer = await Promise.resolve(this.agent?.storageInventory?.()).catch(() => null);
     const drives = Array.isArray(answer?.drives) ? answer.drives : null;
     this.lastDrives = { at: this.now().getTime(), drives };
     return drives;
   }
 
-  // Check drive or Eject. The agent stops and starts the apps reading the drive itself.
-  async driveAction(driveId, action) {
-    try {
-      await (action === 'check' ? this.agent.checkDrive({ drive: driveId }) : this.agent.ejectDrive({ drive: driveId }));
-    } finally {
-      this.lastDrives = null;
-    }
+  forgetDriveFacts() {
+    this.lastDrives = null;
   }
 
-  // The app folders on the drives MOS has open, each named by its app, including
-  // the folders of apps no longer installed. Null when the agent cannot say.
-  async storageFolders() {
-    const answer = await Promise.resolve(this.agent?.storageFolders?.()).catch(() => null);
-    if (!Array.isArray(answer?.folders)) return null;
+  // Each package's name and whether it is installed, for naming folders on a drive,
+  // including the folders of apps no longer installed.
+  appNames() {
     const installed = new Set(this.store.getAppInstances().map((instance) => instance.packageId));
-    const names = new Map(this.listPackages().map((app) => [app.id, app.name]));
-    return answer.folders.map((folder) => ({ ...folder, appName: names.get(folder.app) || folder.app, installed: installed.has(folder.app) }));
+    return new Map(this.listPackages().map((app) => [app.id, { installed: installed.has(app.id), name: app.name }]));
   }
 
   // Refusing up front turns a build that cannot pull its images, or an app that

@@ -58,6 +58,19 @@ function assertRepositoryUnlocked(repository) {
   throw Object.assign(new Error(repository.lockedMessage), { repositoryLocked: true });
 }
 
+// Backups are only ever written under this server's own key. A store another
+// server made stays that server's, whatever key MOS holds to read it, or the
+// owner's one recovery key would no longer open everything this server made.
+function foreignStoreMessage(noun) {
+  return noun === 'drive'
+    ? 'This drive holds backups another server made, so this server cannot back up to it. Erase them in Backups to use the drive, or choose another place.'
+    : 'This bucket holds backups another server made, so this server cannot back up to it. Choose another place.';
+}
+
+function foreignStoreRefusal(noun) {
+  return Object.assign(new Error(foreignStoreMessage(noun)), { code: 'DESTINATION_FOREIGN' });
+}
+
 // Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
 // one into a single Buffer exhausts RAM or trips ERR_FS_FILE_TOO_LARGE.
 function sha256(file) {
@@ -354,8 +367,7 @@ class DiskDestination {
   async assertAvailable(message) {
     if (this.system?.destinationMounted && !(await this.system.destinationMounted(this.mountPath))) throw new Error(message || DRIVE_DISCONNECTED);
     if (!this.writable()) throw new Error('The selected backup drive is not writable.');
-    const health = await this.health();
-    if (health.locked) throw new Error(health.reason);
+    if (this.guestKey() || (await this.health()).locked) throw foreignStoreRefusal(this.noun);
   }
 
   writable() {
@@ -455,9 +467,10 @@ class ObjectDestination {
   // is exactly what an owner needs to fix and what a sentence written here
   // could only blur.
   async assertAvailable() {
+    if (this.guestKey()) throw foreignStoreRefusal(this.noun);
     const probe = await this.engine.probe(this.repositorySpec());
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineOutput: probe.output || null });
-    if (probe.state === 'locked') throw Object.assign(new Error(probe.message), { repositoryLocked: true });
+    if (probe.state === 'locked') throw foreignStoreRefusal(this.noun);
   }
 
   // Deliberately nothing. A drive needs proving still mounted before the
@@ -761,12 +774,14 @@ class DestinationResolver {
     throw new Error('Choose a backup destination and try again.');
   }
 
-  objectDestinations() { return this.objectRecords().map((record) => this.objectDestination(record)); }
+  // Only the buckets the owner made a backup destination; the rest are storage only.
+  objectDestinations() { return this.objectRecords().filter((record) => record.backups === true).map((record) => this.objectDestination(record)); }
 }
 
 module.exports = {
   DestinationResolver,
   DiskDestination,
+  foreignStoreMessage,
   MANIFEST_FILENAME,
   objectLocator,
   ObjectDestination,

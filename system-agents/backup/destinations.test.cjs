@@ -320,7 +320,7 @@ test('a bucket written by another server is reported locked, not unreachable', a
   // write with it: a backup aimed here is refused with the same sentence, not
   // with whatever the engine says about a wrong password.
   await assert.rejects(() => reopened.repository({ create: false }), /written by another server/u);
-  await assert.rejects(() => reopened.assertAvailable(), /written by another server/u);
+  await assert.rejects(() => reopened.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server made/u });
 
   // And the moment the key is entered it is a normal bucket again — the locked
   // repository is never held on to.
@@ -361,5 +361,18 @@ test('a drive written by another server is reported locked, at most once per int
   // A drive whose restore points are readable as files but whose repository is
   // not must refuse a backup, rather than starting one that fails on its first
   // write with the engine own words.
-  await assert.rejects(() => destination.assertAvailable(), /written by another server/u);
+  await assert.rejects(() => destination.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server made/u });
+});
+
+test('a store opened with another server\'s key is read from but never backed up into', async () => {
+  const mountPath = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-drive-'));
+  writeRepositoryDescriptor(mountPath, { engineName: 'restic', repositoryId: 'r1' });
+  const engine = { name: 'restic', async probe() { return { state: 'open' }; } };
+  const drive = new DiskDestination({ engine, guestKey: () => 'MOS-BORROWED', label: 'Backup USB', mountPath });
+  assert.deepEqual(await drive.health(), { locked: false });
+  await assert.rejects(() => drive.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /Erase them in Backups/u });
+
+  const world = await bucket();
+  const borrowed = new ObjectDestination({ agentStateDir: world.agentStateDir, engine: world.engine, guestKey: () => 'MOS-BORROWED', record: world.record });
+  await assert.rejects(() => borrowed.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /Choose another place/u });
 });

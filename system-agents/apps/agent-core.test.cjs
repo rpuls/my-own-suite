@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
 const { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
 
@@ -159,12 +160,16 @@ test('app route rendering uses structured host and loopback upstream only', () =
   assert.equal(renderAppRoutes({
     appHost: 'example-tool.mos.home',
     reverseProxy: '127.0.0.1:18123',
-  }), 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
+  }), `http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n${unavailableHandler()}\n}\n`);
   assert.equal(renderAppRoutes({
     appHost: 'example-tool.mos.example.com',
     reverseProxy: '127.0.0.1:18123',
     scheme: 'https',
-  }), 'https://example-tool.mos.example.com {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
+  }), `https://example-tool.mos.example.com {\n  reverse_proxy http://127.0.0.1:18123\n${unavailableHandler()}\n}\n`);
+});
+
+test('an app address that cannot reach its app answers with the page MOS wrote for it, if MOS paused it', () => {
+  assert.match(renderAppRoutes({ appHost: 'films.mos.home', reverseProxy: '127.0.0.1:18125' }), /handle_errors \{\s*@mos-app-paused file/u);
 });
 
 test('app route rendering supports a structured tokenized iCal bridge', () => {

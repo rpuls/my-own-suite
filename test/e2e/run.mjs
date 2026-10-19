@@ -45,7 +45,7 @@ function parseArgs(argv) {
 function printList(catalog) {
   console.log('Steps (name or name:arg):');
   for (const [name, step] of Object.entries(STEPS)) {
-    const shape = { app: `${name}:<app>`, apps: `${name}:<a,b>`, destination: `${name}[:bucket]`, none: name, wait: `${name}[:wait]` }[step.arg];
+    const shape = { app: `${name}:<app>`, apps: `${name}:<a,b>`, destination: `${name}[:bucket]`, filesystem: `${name}[:ntfs]`, none: name, wait: `${name}[:wait]` }[step.arg];
     console.log(`  ${shape.padEnd(22)} ${step.describe} (≤${step.budgetMinutes} min)`);
   }
   console.log('\nNamed paths:');

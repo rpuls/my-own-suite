@@ -1505,11 +1505,11 @@ test('new installs snapshot package contents before persisting configuration and
 test('an app that needs a drive is refused without one and records its folders on the drive it was given', async () => {
   const stateDir = await tempStateDir();
   const store = new SuiteManagerStore(stateDir);
-  const drives = [{ connected: true, id: '1A2B-3C4D', usable: true }, { connected: true, id: 'e1e1-linux', reason: 'This drive is formatted as ext4.', usable: false }];
+  const drives = [{ connected: true, holdsAppFoldersFormat: true, id: '1A2B-3C4D', usable: true }, { connected: true, holdsAppFoldersFormat: false, id: 'e1e1-linux', reason: 'This drive is formatted as ext4.', usable: false }];
   const agent = {
     async snapshotPackage(input) { return snapshotResult(input); },
     async status() { return agentStatus(); },
-    async storageDrives() { return { drives }; },
+    async storageInventory() { return { drives }; },
   };
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
   const config = { adminName: 'Owner', adminPassword: 'jellyfin-test-password' };
@@ -1526,6 +1526,15 @@ test('an app that needs a drive is refused without one and records its folders o
   const compose = store.getAppProjections(view.id).find((projection) => projection.kind === 'compose').content;
   assert.deepEqual(compose.services[0].folders.map((folder) => folder.path), ['/media/movies', '/media/series']);
   assert.equal(compose.volumes.some((volume) => /movies|series/u.test(volume)), false);
+  store.close();
+});
+
+test('a plugged-in drive that needs a check opens the install, where the picker says why it waits', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const drives = [{ connected: true, holdsAppFoldersFormat: true, id: '1A2B-3C4D', state: 'read-only', usable: false }];
+  const service = new AppPackageService({ agent: { async status() { return agentStatus(); }, async storageInventory() { return { drives }; } }, appsDir: v2AppsDir, store });
+  assert.equal((await service.hostFacts()).storageDrives, 1);
+  await assert.rejects(() => service.installPackage('jellyfin', { config: { adminName: 'Owner', adminPassword: 'jellyfin-test-password' }, drive: '1A2B-3C4D' }), (error) => error.code === 'APP_STORAGE_DRIVE_UNAVAILABLE');
   store.close();
 });
 

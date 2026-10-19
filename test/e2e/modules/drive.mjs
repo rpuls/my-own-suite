@@ -21,15 +21,19 @@ losetup -j "$image" | grep -q . && exit 0
 losetup --find --show "$image"`,
 };
 
-const DRIVES = '/suite-manager/api/apps/storage/drives';
+const STORAGE = '/suite-manager/api/storage';
 
 async function listDrives(page) {
-  return (await apiJson(page, DRIVES).catch(() => ({ drives: [] }))).drives || [];
+  return ((await apiJson(page, STORAGE).catch(() => ({ storage: [] }))).storage || []).filter((item) => item.kind === 'drive');
+}
+
+function holdsAppFiles(item) {
+  return item.capabilities.holdsAppFolders && ['available', 'ready'].includes(item.state);
 }
 
 export async function drive(ctx, fileSystem) {
   const wanted = fileSystem || null;
-  const offered = async () => (await listDrives(ctx.page)).filter((item) => item.usable && (!wanted || item.fileSystem === wanted));
+  const offered = async () => (await listDrives(ctx.page)).filter((item) => holdsAppFiles(item) && (!wanted || item.fileSystem === wanted));
   if (!(await offered()).length) {
     await runOnLab(ctx.env.labShell, ATTACH_IMAGE[wanted || 'vfat']);
     await expect.poll(async () => (await offered()).length, { message: `the lab's ${wanted || ''} drive should be offered for app files`, timeout: 60000 }).toBeGreaterThan(0);
@@ -76,18 +80,22 @@ export async function drivePull(ctx) {
   await appsRunAgain(ctx, apps);
 }
 
-// The owner's own path: the button in Settings, then the drive working read-write.
+// The owner's own path: the row in Settings → Storage, then the flow dialog it opens.
 async function driveAction(ctx, driveId, button) {
   const { page } = ctx;
-  const label = (await listDrives(page)).find((item) => item.id === driveId)?.label;
-  const settings = ctx.url('/suite-manager/settings#set-drives');
+  const name = (await listDrives(page)).find((item) => item.id === driveId)?.name;
+  const settings = ctx.url('/suite-manager/settings#set-storage');
   await page.goto(settings, { waitUntil: 'domcontentloaded' });
   // A restart can put the lab's handover gate back in front of Suite Manager.
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 30000 });
   if (await saveHandoverIfPending(page)) await page.goto(settings, { waitUntil: 'domcontentloaded' });
-  const panel = page.locator('#set-drives');
-  const item = panel.locator('.mos-panel-item').filter({ hasText: label });
-  await item.getByRole('button', { exact: true, name: button }).click();
+  const item = page.locator('#set-storage .mos-panel-item').filter({ hasText: name });
+  const action = item.getByRole('button', { exact: true, name: button });
+  if (!await action.isVisible().catch(() => false)) await item.getByRole('button', { name: `Show details for ${name}` }).click();
+  await action.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { exact: true, name: button }).click();
+  return dialog;
 }
 
 export async function driveCheck(ctx) {
@@ -103,9 +111,10 @@ export async function driveCheck(ctx) {
 export async function driveEject(ctx) {
   const { apps, driveId } = await appDriveOf(ctx);
   await driveReaches(ctx, driveId, ['ready']);
-  await driveAction(ctx, driveId, 'Eject');
+  const dialog = await driveAction(ctx, driveId, 'Eject');
   await driveReaches(ctx, driveId, ['ejected'], { minutes: 6 });
-  await expect(ctx.page.locator('#set-drives')).toContainText('Safe to unplug');
+  await expect(dialog).toContainText('Safe to unplug', { timeout: 30000 });
+  await dialog.getByRole('button', { exact: true, name: 'Done' }).click();
   expect(await mountOptions(ctx, driveId)).toEqual([]);
   await pullDrive(ctx, driveId);
   await plugDrive(ctx, driveId);
@@ -151,7 +160,7 @@ export async function powerCut(ctx) {
 export async function reboot(ctx) {
   const { page } = ctx;
   const open = (await listDrives(page)).filter((item) => ['ready', 'read-only'].includes(item.state)).map((item) => item.id).sort();
-  const folders = async () => ((await apiJson(page, '/suite-manager/api/apps/storage/folders')).folders || []).map((folder) => `${folder.driveId}/${folder.app}/${folder.name}`).sort();
+  const folders = async () => ((await apiJson(page, '/suite-manager/api/storage/usage')).folders || []).map((folder) => `${folder.driveId}/${folder.app}/${folder.name}`).sort();
   const before = await folders();
   await restartLab(ctx, 'systemctl reboot');
   await expect.poll(async () => (await listDrives(page)).filter((item) => ['ready', 'read-only'].includes(item.state)).map((item) => item.id).sort(), { intervals: [3000], message: 'every drive open before the restart should be open again', timeout: 240000 }).toEqual(open);

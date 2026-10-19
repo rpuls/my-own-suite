@@ -78,6 +78,7 @@ Copy-Item test\e2e\.env.example test\e2e\.env
 - `MOS_E2E_OWNER_EMAIL` and `MOS_E2E_OWNER_PASSWORD`: used to create the owner on a fresh install or sign in on an existing one.
 - `MOS_E2E_OWNER_CLAIM_TOKEN`: the one-time owner setup key a cloud install asks for, from `/etc/mos/secrets/owner-claim.env` on the server.
 - `MOS_E2E_DNS01_BASE_DOMAIN` and `CLOUDFLARE_API_TOKEN` (never commit it): the Cloudflare-managed domain the `dns01` step moves the suite to.
+- `MOS_E2E_HOST_RESOLVER_RULES`: Chromium host-resolver rules for the test browser, such as `MAP *.hyperv.lab.example.site 172.25.191.202`, for a Hyper-V lab whose address moved when the hosts file cannot be rewritten without an elevated shell.
 - `MOS_E2E_SECRETS_COMMAND`: a command that prints `KEY=value` lines, whose output joins the environment below anything set in `.env`. It keeps lab keys out of files.
 - App credentials have defaults in each app module and can be overridden with that module's own variables, such as `MOS_E2E_RADICALE_PASSWORD`.
 - `MOS_E2E_LAB_SSH` (`user@host`, or `local` when the tests run on the lab itself) and `MOS_E2E_LAB_SSH_KEY`: a root shell on the lab for the network capture (`sudo -n` must work). The Hyper-V lab needs neither: `smoke:hyperv:reset` bakes in the key it makes at `.mos-smoke/lab-ssh/id_ed25519`, which also gives the lab user passwordless `sudo`, and runs use `mos@` the Home host with that key.

@@ -37,6 +37,9 @@ function caddyBuilderBaseImage() {
 
 const UNAVAILABLE_PAGE_ROOT = '/etc/caddy/mos-status';
 const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
+// One page per app address while MOS has paused that app, written by the app agent:
+// an app whose drive was ejected says so at its own address instead of the page above.
+const APP_STATUS_ROOT = `${UNAVAILABLE_PAGE_ROOT}/apps`;
 // Written by the backup agent while a job runs, removed when it ends, and
 // polled by the status page below. The agent decides the words; both surfaces
 // only render what it wrote.
@@ -106,15 +109,30 @@ function statusRoutes(indent = '  ') {
 // `handle_errors` catches only errors Caddy raises itself, which in a block that
 // nothing but reverse-proxies means an upstream it could not reach. A real 404
 // or 500 from Suite Manager is a response, not an error, and still reaches the
-// browser unchanged.
+// browser unchanged. The wildcard's handler also catches app addresses, so an app
+// MOS paused answers with the page the app agent wrote for it.
 function unavailableHandler(indent = '  ') {
   return [
     'handle_errors {',
-    `  root * ${UNAVAILABLE_PAGE_ROOT}`,
-    `  rewrite * /${UNAVAILABLE_PAGE_FILENAME}`,
-    '  header Retry-After 15',
-    '  file_server {',
-    '    status 503',
+    '  @mos-app-paused file {',
+    `    root ${APP_STATUS_ROOT}`,
+    '    try_files /{http.request.host}.html',
+    '  }',
+    '  handle @mos-app-paused {',
+    `    root * ${APP_STATUS_ROOT}`,
+    '    rewrite * /{http.request.host}.html',
+    '    header Retry-After 15',
+    '    file_server {',
+    '      status 503',
+    '    }',
+    '  }',
+    '  handle {',
+    `    root * ${UNAVAILABLE_PAGE_ROOT}`,
+    `    rewrite * /${UNAVAILABLE_PAGE_FILENAME}`,
+    '    header Retry-After 15',
+    '    file_server {',
+    '      status 503',
+    '    }',
     '  }',
     '}',
   ].map((line) => `${indent}${line}`).join('\n');
@@ -536,10 +554,10 @@ MaxRetentionSec=1month
 `;
 }
 
-// A drive holding app folders is mounted again whenever it appears, at boot or
-// plugged back in, and the apps reading it restarted onto the fresh mount. The
-// rule only names the instance; the unit asks the app storage whether the drive
-// is one of its own, so every other drive is left alone.
+// A drive holding app folders or backups is mounted again whenever it appears, at
+// boot or plugged back in, and the apps reading it restarted onto the fresh mount.
+// The rule only names the instance; the unit asks the storage module whether the
+// drive is one it remembers, so every other drive is left alone.
 const STORAGE_UDEV_RULE_PATH = '/etc/udev/rules.d/90-mos-storage.rules';
 const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
 // One name for every drive's runs: a finished instance is unloaded, so a
@@ -547,7 +565,7 @@ const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
 const STORAGE_ATTACH_IDENTIFIER = 'mos-storage-attach';
 
 function renderStorageUdevRule() {
-  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="exfat|ntfs|vfat", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
+  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="exfat|ntfs|vfat|ext4", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
 `;
 }
 
@@ -614,6 +632,7 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  APP_STATUS_ROOT,
   STORAGE_ATTACH_IDENTIFIER,
   STORAGE_ATTACH_UNIT,
   STORAGE_UDEV_RULE_PATH,
@@ -636,6 +655,7 @@ module.exports = {
   renderCaddyfile,
   renderCaddyServiceOverride,
   renderUnavailablePage,
+  unavailableHandler,
   renderUnavailablePageScript,
   renderJournaldConfig,
   renderMachineCaddyfile,

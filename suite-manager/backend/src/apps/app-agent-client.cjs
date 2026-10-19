@@ -38,10 +38,14 @@ class AppAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
-  storageDrives() { return this.request('GET', '/v1/storage/drives'); }
-  storageFolders() { return this.request('GET', '/v1/storage/folders'); }
+  storageInventory() { return this.request('GET', '/v1/storage/inventory'); }
+  storageUsage() { return this.request('GET', '/v1/storage/usage'); }
   checkDrive(input) { return this.request('POST', '/v1/storage/check', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   ejectDrive(input) { return this.request('POST', '/v1/storage/eject', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  useDrive(input) { return this.request('POST', '/v1/storage/use', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  renameStorage(input) { return this.request('POST', '/v1/storage/rename', input); }
+  holdBackups(input) { return this.request('POST', '/v1/storage/backups', input); }
+  formatInstallerStick(input) { return this.request('POST', '/v1/storage/format-installer', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   waitForAddress(input) { return this.request('POST', '/v1/apps/address', input, { timeoutMs: APP_AGENT_ADDRESS_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }

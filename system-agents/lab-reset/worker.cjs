@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
-const { STORAGE_CLAIMS_FILENAME } = require('../../shared/storage-contract.cjs');
+const { STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
+const { StorageRegistry } = require('../lib/storage-registry.cjs');
 
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const installRoot = process.env.MOS_INSTALL_ROOT || '/opt/mos';
@@ -141,8 +142,12 @@ function main() {
     tryRun('/usr/bin/systemctl', ['stop', ...stoppedServices], { timeoutMs: 120_000 });
     resetDockerRuntime();
     fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
-    // The apps are gone, so no drive is theirs any more; the files on the drives stay.
-    fs.rmSync(path.join(stateRoot, STORAGE_CLAIMS_FILENAME), { force: true });
+    // The apps are gone, so no drive is theirs any more; the files on the drives stay,
+    // and so do the backup drives and buckets, as the backup agent's own state does.
+    new StorageRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) }).update((record) => {
+      record.drives = Object.fromEntries(Object.entries(record.drives).filter(([, drive]) => drive.backups === true)
+        .map(([id, drive]) => [id, { backups: true, fileSystem: drive.fileSystem, label: drive.label }]));
+    });
     copyDirectory(homepageSource, homepageConfig);
     tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
     fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());

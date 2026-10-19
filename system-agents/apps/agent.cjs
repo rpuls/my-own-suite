@@ -11,10 +11,14 @@ const core = new AppAgentCore(adapter);
 
 const server = routeTable({
   'GET /v1/status': () => core.status(),
-  'GET /v1/storage/drives': () => core.storageDrives(),
-  'GET /v1/storage/folders': () => core.storageFolders(),
+  'GET /v1/storage/inventory': () => core.storageInventory(),
+  'GET /v1/storage/usage': () => core.storageUsage(),
   'POST /v1/storage/check': (body) => core.checkDrive(body),
   'POST /v1/storage/eject': (body) => core.ejectDrive(body),
+  'POST /v1/storage/use': (body) => core.useDrive(body),
+  'POST /v1/storage/rename': (body) => core.renameStorage(body),
+  'POST /v1/storage/backups': (body) => core.holdBackups(body),
+  'POST /v1/storage/format-installer': (body) => core.formatInstallerStick(body),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
   'POST /v1/apps/check-health': (body) => core.checkHealth(body),
@@ -48,4 +52,5 @@ const server = routeTable({
 adapter.sweepInterruptedPromotions()
   .then((repaired) => { if (repaired) process.stdout.write(`[mos-app-agent] repaired ${repaired} interrupted snapshot promotion(s)\n`); })
   .catch(() => {})
+  .then(() => adapter.syncPausedPages())
   .then(() => serveOnSocket(server, { name: 'mos-app-agent', socketPath }));

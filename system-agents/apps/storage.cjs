@@ -1,18 +1,22 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { BACKUPS_DIR, FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
+const { APP_FOLDER_FILESYSTEMS, BACKUPS_DIR, BACKUP_FILESYSTEMS, FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const { LSBLK_ARGS, directorySize, holdsSystem, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
+const { StorageRegistry, isRememberedDrive, publicBucket } = require('../lib/storage-registry.cjs');
 
-// Drives that hold app folders, found by filesystem UUID and mounted under MOS's
-// own root. The app sees only its folder; where that lives is known here alone.
+// The drives side of the storage module: every drive plugged in, found by its
+// filesystem UUID and mounted under MOS's own root when something is kept on it.
+// An app sees only its folder; where that lives is known here alone.
 
 const STORAGE_DRIVE_LABEL = 'mos.storage-drive';
-// lsblk's filesystem name, and the kernel driver that mounts it. These carry no
-// Unix permissions, so MOS sets them at mount and every container can read.
-const STORAGE_FILESYSTEMS = new Map([['exfat', 'exfat'], ['ntfs', 'ntfs3'], ['vfat', 'vfat']]);
+// lsblk's filesystem name, and the kernel driver that mounts it.
+const KERNEL_DRIVERS = new Map([['exfat', 'exfat'], ['ntfs', 'ntfs3'], ['vfat', 'vfat'], ['ext4', 'ext4']]);
 // Files 0644 and folders 0755 owned by root: readable by any container user,
 // written only by MOS. A later writer app gets a group here, not a chmod.
 const MOUNT_OPTIONS = 'uid=0,gid=0,fmask=0133,dmask=0022,noatime,nodev,nosuid,noexec';
+// ext4 keeps its own owners and modes, so it takes only the safety options.
+const LINUX_MOUNT_OPTIONS = 'noatime,nodev,nosuid,noexec';
 const UUID_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
 // ntfs3 refuses read-write on a volume Windows would check first, and says why only
 // in the kernel log. Never answered with its `force` option: that writes to a volume
@@ -25,10 +29,11 @@ const UNREADABLE_REASON = `This drive could not be opened, even to read it. ${WI
 const BUSY_REASON = 'Something on the server is still using this drive, so it was not ejected. Try again in a minute.';
 const NOT_OPENED_REASON = 'MOS could not open this drive. Unplug it and plug it back in.';
 const ONE_GIB = 1024 * 1024 * 1024;
-// A process holds the claims lock for one synchronous read and write, so a lock this
-// old belongs to one that died holding it.
-const STALE_LOCK_MS = 5_000;
-const LOCK_WAIT = new Int32Array(new SharedArrayBuffer(4));
+const EFI_PARTITION_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b';
+// The file the image builder writes on the stick's EFI partition, which is how the
+// stick knows itself. A disk this does not prove is never offered for formatting.
+const INSTALLER_IMAGE_ID = 'mos-image.json';
+const FORMATTED_LABEL = 'MOS STORAGE';
 
 class StorageError extends Error {
   constructor(message) {
@@ -47,36 +52,64 @@ function appFolderPath(driveId, packageId, name, root = STORAGE_MOUNT_ROOT) {
   return path.posix.join(driveMountPath(driveId, root), FILES_DIR, 'apps', packageId, name);
 }
 
-function unusableReason(fileSystem) {
-  return `This drive is formatted as ${fileSystem}. App files go on drives formatted as exFAT, NTFS or FAT32, which open on any computer.`;
+function formatReason(fileSystem) {
+  if (APP_FOLDER_FILESYSTEMS.includes(fileSystem)) return null;
+  if (BACKUP_FILESYSTEMS.includes(fileSystem)) return `This drive is formatted as ${fileSystem}, so it can hold backups but not app files. App files go on drives formatted as exFAT, NTFS or FAT32, which open on any computer.`;
+  return `This drive is formatted as ${fileSystem}, which MOS cannot use for app files or backups. Drives formatted as exFAT, NTFS or FAT32 work for both.`;
 }
 
-// Every filesystem lsblk reports off the system disk, as a drive an owner could
-// pick. Partitions too small or shaped like a boot partition are not drives.
-function storageCandidates(blockdevices = []) {
+function isRemovable(device, disk) {
+  return [device.rm, disk?.rm].some((value) => value === true || value === 1 || value === '1');
+}
+
+function transportOf(device, disk) {
+  const tran = String(device.tran || disk?.tran || '').toLowerCase();
+  const removable = isRemovable(device, disk);
+  if (tran === 'usb') return 'usb';
+  if (device.type === 'loop') return 'image';
+  return removable ? 'removable' : tran || 'internal';
+}
+
+// Shaped like the image the installer writes: an EFI partition and a Linux system
+// partition on a disk that boots from a port. Proven by reading the stick itself.
+function looksLikeInstallerStick(disk) {
+  if (disk.type !== 'disk' || holdsSystem(disk)) return false;
+  if (transportOf(disk) !== 'usb' && transportOf(disk) !== 'removable') return false;
+  const parts = disk.children || [];
+  const efi = parts.filter((part) => String(part.parttype || '').toLowerCase() === EFI_PARTITION_TYPE && part.fstype === 'vfat');
+  return efi.length === 1 && parts.some((part) => part.fstype === 'ext4') && parts.every((part) => !(part.mountpoints || []).some(Boolean));
+}
+
+// Every filesystem lsblk reports off the system disk. Partitions too small or shaped
+// like a boot partition are not drives, and the disks in `skip` are listed elsewhere.
+function storageCandidates(blockdevices = [], skip = new Set()) {
   const drives = [];
-  function visit(device, driveModel = null) {
-    if (device.type === 'disk' && holdsSystem(device)) return;
+  function visit(device, disk = null) {
+    if (device.type === 'disk' && (holdsSystem(device) || skip.has(device.path || `/dev/${device.name}`))) return;
     const fileSystem = String(device.fstype || '').toLowerCase();
     const sizeBytes = Number(device.size) || null;
-    const usable = STORAGE_FILESYSTEMS.has(fileSystem);
+    const reason = fileSystem ? formatReason(fileSystem) : null;
     // A disk image attached as a loop device counts only when it could hold app
     // files, so the read-only images snaps mount never show up as drives.
-    const isFilesystem = (device.type === 'part' || isWholeDiskFilesystem(device) || (device.type === 'loop' && usable)) && fileSystem && device.uuid;
+    const isFilesystem = (device.type === 'part' || isWholeDiskFilesystem(device) || (device.type === 'loop' && APP_FOLDER_FILESYSTEMS.includes(fileSystem))) && fileSystem && device.uuid;
     const bootShaped = String(device.label || '').toLowerCase() === 'efi' || (fileSystem === 'vfat' && sizeBytes && sizeBytes < ONE_GIB);
     if (isFilesystem && !bootShaped && !holdsSystem(device)) {
       drives.push({
         devicePath: device.path || `/dev/${device.name}`,
         fileSystem,
+        holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(fileSystem),
+        holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(fileSystem),
         id: device.uuid,
-        label: device.label || device.model || driveModel || device.name,
+        label: device.label || device.model || disk?.model || device.name,
+        model: String(disk?.model || device.model || '').trim() || null,
         mountpoints: (device.mountpoints || []).filter(Boolean),
-        reason: usable ? null : unusableReason(fileSystem),
+        reason,
+        removable: isRemovable(device, disk),
         sizeBytes,
-        usable,
+        transport: transportOf(device, disk),
       });
     }
-    for (const child of device.children || []) visit(child, device.model || driveModel);
+    for (const child of device.children || []) visit(child, device.type === 'disk' ? device : disk);
   }
   for (const device of blockdevices) visit(device);
   return drives;
@@ -87,7 +120,7 @@ function driveState({ claim, connected, mount }) {
   if (claim?.ejected) return 'ejected';
   if (!connected) return 'away';
   if (mount) return mount.readOnly ? 'read-only' : 'ready';
-  return claim ? 'failed' : 'available';
+  return isRememberedDrive(claim) ? 'failed' : 'available';
 }
 
 function stateReason(state, claim) {
@@ -99,56 +132,23 @@ function stateReason(state, claim) {
 }
 
 class AppStorage {
-  constructor({ claimsPath, execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT }) {
-    this.claimsPath = claimsPath;
+  constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, registryPath }) {
+    this.registry = new StorageRegistry({ registryPath });
     this.execute = execute;
     this.executeCapture = executeCapture;
     this.mountRoot = mountRoot;
+    this.provenSticks = new Map();
   }
 
-  readClaims() {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(this.claimsPath, 'utf8'));
-      return parsed && typeof parsed.drives === 'object' ? parsed : { drives: {}, version: 1 };
-    } catch {
-      return { drives: {}, version: 1 };
-    }
-  }
-
-  // The attach unit udev starts writes here too, in a process of its own.
-  updateClaims(change) {
-    const lock = `${this.claimsPath}.lock`;
-    fs.mkdirSync(path.dirname(this.claimsPath), { recursive: true });
-    for (;;) {
-      try { fs.closeSync(fs.openSync(lock, 'wx')); break; } catch (error) {
-        if (error.code !== 'EEXIST') throw error;
-        try { if (Date.now() - fs.statSync(lock).mtimeMs > STALE_LOCK_MS) fs.rmSync(lock, { force: true }); } catch {}
-        Atomics.wait(LOCK_WAIT, 0, 0, 20);
-      }
-    }
-    try {
-      const claims = this.readClaims();
-      change(claims.drives);
-      const temporary = `${this.claimsPath}.${process.pid}`;
-      fs.writeFileSync(temporary, `${JSON.stringify(claims, null, 2)}\n`, { mode: 0o600 });
-      fs.renameSync(temporary, this.claimsPath);
-    } finally {
-      fs.rmSync(lock, { force: true });
-    }
-  }
-
-  recordDrive(driveId, fields) {
-    this.updateClaims((drives) => {
-      if (!drives[driveId]) return;
-      const next = { ...drives[driveId], ...fields };
-      for (const [key, value] of Object.entries(fields)) if (value === undefined) delete next[key];
-      drives[driveId] = next;
-    });
+  async blockDevices() {
+    const output = await this.executeCapture('lsblk', [...LSBLK_ARGS], { timeoutMs: 10_000 }).catch(() => null);
+    try { return JSON.parse(output).blockdevices || []; } catch { return []; }
   }
 
   async candidates() {
-    const output = await this.executeCapture('lsblk', [...LSBLK_ARGS], { timeoutMs: 10_000 }).catch(() => null);
-    try { return storageCandidates(JSON.parse(output).blockdevices); } catch { return []; }
+    const devices = await this.blockDevices();
+    const sticks = await this.installerSticks(devices);
+    return storageCandidates(devices, new Set(sticks.map((stick) => stick.devicePath)));
   }
 
   async mountOn(target) {
@@ -157,10 +157,10 @@ class AppStorage {
     return source ? { readOnly: options.split(',').includes('ro'), source } : null;
   }
 
-  // Connected drives, plus remembered ones that are away. A remembered drive no app
-  // claims any more is still mounted while connected, for the folders left on it.
+  // Every drive plugged in, plus remembered ones that are away. A remembered drive
+  // nothing claims any more is still mounted while connected, for what is left on it.
   async drives() {
-    const claims = this.readClaims().drives;
+    const claims = this.registry.read().drives;
     const listed = [];
     for (const drive of await this.candidates()) {
       const target = driveMountPath(drive.id, this.mountRoot);
@@ -169,50 +169,147 @@ class AppStorage {
       const claim = claims[drive.id];
       const state = driveState({ claim, connected: true, mount });
       const roots = mount ? [target, ...drive.mountpoints] : drive.mountpoints;
+      const open = ['available', 'ready'].includes(state);
       listed.push({
         apps: claim?.apps || [],
-        availableBytes: mount ? availableBytes(target) : null,
+        availableBytes: mount ? availableBytes(target) : drive.mountpoints.length ? availableBytes(drive.mountpoints[0]) : null,
+        backups: claim?.backups === true,
         connected: true,
         detail: claim?.problem?.detail || null,
+        devicePath: drive.devicePath,
         fileSystem: drive.fileSystem,
+        holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
         holdsBackups: roots.some((root) => fs.existsSync(path.join(root, BACKUPS_DIR))),
+        holdsBackupsFormat: drive.holdsBackupsFormat,
         id: drive.id,
         label: drive.label,
+        model: drive.model,
+        mountPath: mount ? target : null,
+        name: claim?.name || null,
         reason: drive.reason || stateReason(state, claim),
+        removable: drive.removable,
         sizeBytes: drive.sizeBytes,
         state,
-        usable: drive.usable && ['available', 'ready'].includes(state),
+        transport: drive.transport,
+        usable: drive.holdsAppFoldersFormat && open,
+        usableForBackups: drive.holdsBackupsFormat && open,
       });
     }
     for (const [id, claim] of Object.entries(claims)) {
-      if (listed.some((drive) => drive.id === id) || !claim.apps?.length) continue;
+      if (listed.some((drive) => drive.id === id) || !(claim.apps?.length || claim.backups)) continue;
       const state = driveState({ claim, connected: false });
-      listed.push({ apps: claim.apps, availableBytes: null, connected: false, detail: null, fileSystem: claim.fileSystem || null, holdsBackups: false, id, label: claim.label || id, reason: stateReason(state, claim), sizeBytes: null, state, usable: false });
+      listed.push({ apps: claim.apps || [], availableBytes: null, backups: claim.backups === true, connected: false, detail: null, devicePath: null, fileSystem: claim.fileSystem || null, holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem), holdsBackups: false, holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem), id, label: claim.label || id, model: claim.model || null, mountPath: null, name: claim.name || null, reason: stateReason(state, claim), sizeBytes: claim.sizeBytes || null, state, transport: claim.transport || null, usable: false, usableForBackups: false });
     }
     return listed;
   }
 
+  // The disk MOS runs from, which holds every app's own data.
+  // The disk MOS runs from, as the owner needs it: what MOS itself takes, what the
+  // apps and their data take, and what is left for them. On a machine with a vault
+  // the apps live there, so the system partition's own free space is not theirs.
+  async systemDrive() {
+    const devices = await this.blockDevices();
+    const disk = devices.find((device) => device.type === 'disk' && holdsSystem(device));
+    const spaces = systemSpaces(disk, (point) => {
+      try { const stat = fs.statfsSync(point); return { availableBytes: stat.bavail * stat.bsize, sizeBytes: stat.blocks * stat.bsize }; } catch { return null; }
+    });
+    const system = spaces.find((space) => space.role === 'system');
+    const apps = spaces.filter((space) => space.role === 'apps');
+    const sum = (list, key) => list.reduce((total, space) => total + space[key], 0);
+    const appsBytes = apps.length ? sum(apps, 'sizeBytes') - sum(apps, 'availableBytes') : 0;
+    return {
+      appsBytes,
+      availableBytes: apps.length ? sum(apps, 'availableBytes') : system?.availableBytes ?? null,
+      encrypted: JSON.stringify(disk || {}).includes('"crypto_LUKS"'),
+      model: String(disk?.model || '').trim() || null,
+      sizeBytes: Number(disk?.size) || null,
+      systemBytes: system ? system.sizeBytes - system.availableBytes : null,
+      usableBytes: spaces.length ? sum(spaces, 'sizeBytes') : null,
+    };
+  }
+
+  async inventory() {
+    const devices = await this.blockDevices();
+    const sticks = await this.installerSticks(devices);
+    return {
+      buckets: this.registry.bucketList().map(publicBucket),
+      drives: await this.drives(),
+      installerSticks: sticks.map(({ devicePath, model, sizeBytes }) => ({ devicePath, model, sizeBytes })),
+      system: await this.systemDrive(),
+    };
+  }
+
+  // A stick is proven once by its own image file and remembered by the EFI
+  // partition's identity, so the page's polling does not mount it every minute.
+  async installerSticks(devices) {
+    const sticks = [];
+    for (const disk of devices) {
+      if (!looksLikeInstallerStick(disk)) continue;
+      const efi = disk.children.find((part) => String(part.parttype || '').toLowerCase() === EFI_PARTITION_TYPE);
+      const key = `${efi.path}:${efi.uuid}`;
+      if (!this.provenSticks.has(key)) this.provenSticks.set(key, await this.carriesInstallerImage(efi.path || `/dev/${efi.name}`));
+      if (this.provenSticks.get(key)) sticks.push({ devicePath: disk.path || `/dev/${disk.name}`, model: String(disk.model || '').trim() || null, sizeBytes: Number(disk.size) || null });
+    }
+    return sticks;
+  }
+
+  async carriesInstallerImage(efiPath) {
+    const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-stick-'));
+    try {
+      await this.execute('mount', ['-t', 'vfat', '-o', 'ro,nodev,nosuid,noexec', efiPath, probe], { timeoutMs: 30_000 });
+    } catch {
+      fs.rmSync(probe, { force: true, recursive: true });
+      return false;
+    }
+    try {
+      return Boolean(JSON.parse(fs.readFileSync(path.join(probe, INSTALLER_IMAGE_ID), 'utf8')));
+    } catch {
+      return false;
+    } finally {
+      await this.execute('umount', [probe], { timeoutMs: 30_000 }).catch(() => {});
+      fs.rmSync(probe, { force: true, recursive: true });
+    }
+  }
+
+  // Erases the install stick into one exFAT drive that opens on any computer. Only a
+  // disk proven to be the stick right now, with nothing on it mounted, is touched.
+  async formatInstallerStick(devicePath) {
+    const devices = await this.blockDevices();
+    this.provenSticks.clear();
+    const stick = (await this.installerSticks(devices)).find((item) => item.devicePath === devicePath);
+    if (!stick) throw new StorageError('That is not the MOS install stick, so nothing was erased.');
+    await this.execute('wipefs', ['--all', '--force', devicePath], { timeoutMs: 60_000 });
+    await this.execute('sh', ['-c', `printf 'type=7\\n' | sfdisk --quiet --label dos ${devicePath}`], { timeoutMs: 60_000 });
+    await this.execute('udevadm', ['settle'], { timeoutMs: 60_000 }).catch(() => {});
+    const partition = (await this.blockDevices()).find((device) => (device.path || `/dev/${device.name}`) === devicePath)?.children?.[0];
+    if (!partition) throw new StorageError('The stick was erased, but MOS could not make a drive on it. Unplug it and plug it back in.');
+    await this.execute('mkfs.exfat', ['-L', FORMATTED_LABEL, partition.path || `/dev/${partition.name}`], { timeoutMs: 10 * 60_000 });
+    await this.execute('udevadm', ['settle'], { timeoutMs: 60_000 }).catch(() => {});
+  }
+
   // Every app folder on the drives mounted right now, with its size, including
-  // the folders of apps that were uninstalled, which nothing else would show.
-  async folders() {
-    const listed = [];
+  // the folders of apps that were uninstalled, and what the backups there take.
+  async usage() {
+    const folders = [];
+    const backups = [];
     for (const driveId of readDirectoryNames(this.mountRoot)) {
       const target = driveMountPath(driveId, this.mountRoot);
       if (!await this.mountOn(target)) continue;
       const appsDir = path.join(target, FILES_DIR, 'apps');
       for (const app of readDirectoryNames(appsDir)) {
         for (const name of readDirectoryNames(path.join(appsDir, app))) {
-          listed.push({ app, bytes: directorySize(path.join(appsDir, app, name)), driveId, name });
+          folders.push({ app, bytes: directorySize(path.join(appsDir, app, name)), driveId, name });
         }
       }
+      if (fs.existsSync(path.join(target, BACKUPS_DIR))) backups.push({ bytes: directorySize(path.join(target, BACKUPS_DIR)), driveId });
     }
-    return listed;
+    return { backups, folders };
   }
 
   async connectedDrive(driveId) {
     const drive = (await this.candidates()).find((item) => item.id === driveId);
-    if (!drive) throw new StorageError('The drive that holds this app\'s folders is not connected.');
-    if (!drive.usable) throw new StorageError(drive.reason);
+    if (!drive) throw new StorageError('That drive is not connected.');
+    if (!drive.holdsBackupsFormat) throw new StorageError(drive.reason);
     return drive;
   }
 
@@ -226,24 +323,25 @@ class AppStorage {
     if (current) await this.execute('umount', ['--lazy', target], { timeoutMs: 30_000 });
     fs.mkdirSync(target, { recursive: true });
     const logBefore = drive.fileSystem === 'ntfs' ? await this.kernelLog() : '';
-    const mount = (options) => this.execute('mount', ['-t', STORAGE_FILESYSTEMS.get(drive.fileSystem), '-o', options, drive.devicePath, target], { timeoutMs: 60_000 });
+    const baseOptions = drive.fileSystem === 'ext4' ? LINUX_MOUNT_OPTIONS : MOUNT_OPTIONS;
+    const mount = (options) => this.execute('mount', ['-t', KERNEL_DRIVERS.get(drive.fileSystem), '-o', options, drive.devicePath, target], { timeoutMs: 60_000 });
     let refusal = null;
     try {
-      await mount(MOUNT_OPTIONS);
+      await mount(baseOptions);
     } catch (error) {
       refusal = drive.fileSystem === 'ntfs' ? await this.kernelRefusal(drive, logBefore) : null;
       if (!refusal) {
-        this.recordDrive(driveId, { ejected: undefined, problem: { detail: error.message, reason: NOT_OPENED_REASON } });
+        this.registry.recordDrive(driveId, { ejected: undefined, problem: { detail: error.message, reason: NOT_OPENED_REASON } });
         throw error;
       }
-      await mount(`ro,${MOUNT_OPTIONS}`).catch(() => {
-        this.recordDrive(driveId, { ejected: undefined, problem: { detail: refusal, reason: UNREADABLE_REASON } });
+      await mount(`ro,${baseOptions}`).catch(() => {
+        this.registry.recordDrive(driveId, { ejected: undefined, problem: { detail: refusal, reason: UNREADABLE_REASON } });
         throw new StorageError(UNREADABLE_REASON);
       });
     }
     const mounted = await this.mountOn(target);
     if (mounted?.source !== drive.devicePath) throw new StorageError('The drive could not be opened.');
-    this.recordDrive(driveId, { ejected: undefined, problem: refusal ? { detail: refusal, reason: READ_ONLY_REASON } : undefined });
+    this.registry.recordDrive(driveId, { ejected: undefined, problem: refusal ? { detail: refusal, reason: READ_ONLY_REASON } : undefined });
     return { drive, readOnly: mounted.readOnly, target };
   }
 
@@ -278,7 +376,7 @@ class AppStorage {
   async eject(driveId) {
     const drive = await this.connectedDrive(driveId);
     await this.closeDrive(drive);
-    this.recordDrive(driveId, { ejected: true, problem: undefined });
+    this.registry.recordDrive(driveId, { ejected: true, problem: undefined });
   }
 
   // ntfsfix's quick repair, then read-write again. It clears what an unplugged or
@@ -290,7 +388,7 @@ class AppStorage {
     const repaired = await this.execute('ntfsfix', ['--clear-dirty', drive.devicePath], { timeoutMs: 10 * 60_000 }).then(() => true, (error) => error);
     const { readOnly } = await this.attach(driveId);
     if (repaired !== true || readOnly) {
-      this.recordDrive(driveId, { problem: { detail: repaired === true ? 'ntfsfix finished, but the drive still needs a check.' : String(repaired.message || repaired), reason: CHECK_FAILED_REASON } });
+      this.registry.recordDrive(driveId, { problem: { detail: repaired === true ? 'ntfsfix finished, but the drive still needs a check.' : String(repaired.message || repaired), reason: CHECK_FAILED_REASON } });
       throw new StorageError(CHECK_FAILED_REASON);
     }
   }
@@ -300,6 +398,8 @@ class AppStorage {
     const byDrive = new Map();
     for (const folder of folders) byDrive.set(folder.drive, [...(byDrive.get(folder.drive) || []), folder]);
     for (const [driveId, onDrive] of byDrive) {
+      const candidate = await this.connectedDrive(driveId);
+      if (!candidate.holdsAppFoldersFormat) throw new StorageError(candidate.reason);
       const { drive, target } = await this.attach(driveId);
       this.claim(driveId, packageId, drive);
       let created = false;
@@ -319,20 +419,37 @@ class AppStorage {
     return binds;
   }
 
+  remember(drives, driveId, drive) {
+    const current = drives[driveId] || {};
+    drives[driveId] = { ...current, apps: current.apps || [], fileSystem: drive.fileSystem, label: drive.label, model: drive.model, sizeBytes: drive.sizeBytes, transport: drive.transport };
+    return drives[driveId];
+  }
+
   claim(driveId, packageId, drive) {
-    this.updateClaims((drives) => {
-      const current = drives[driveId] || { apps: [] };
-      const apps = current.apps.includes(packageId) ? current.apps : [...current.apps, packageId].sort();
-      drives[driveId] = { ...current, apps, fileSystem: drive.fileSystem, label: drive.label };
+    this.registry.update(({ drives }) => {
+      const entry = this.remember(drives, driveId, drive);
+      if (!entry.apps.includes(packageId)) entry.apps = [...entry.apps, packageId].sort();
     });
+  }
+
+  // A drive kept for backups is opened here, as any drive MOS keeps things on, and
+  // opened again whenever it is plugged back in; the backup agent writes into it.
+  async holdBackups(driveId) {
+    const { drive, readOnly } = await this.attach(driveId);
+    if (readOnly) throw new StorageError(READ_ONLY_REASON);
+    this.registry.update(({ drives }) => { this.remember(drives, driveId, drive).backups = true; });
+  }
+
+  releaseBackups(driveId) {
+    this.registry.recordDrive(driveId, { backups: undefined });
   }
 
   // An app lets go of every drive it no longer mounts; its folders stay on them, and
   // each drive stays remembered so they are still there to see after a restart.
   release(packageId, keptDrives = []) {
     const letGo = (driveId, claim) => !keptDrives.includes(driveId) && claim.apps?.includes(packageId);
-    if (!Object.entries(this.readClaims().drives).some(([driveId, claim]) => letGo(driveId, claim))) return;
-    this.updateClaims((drives) => {
+    if (!Object.entries(this.registry.read().drives).some(([driveId, claim]) => letGo(driveId, claim))) return;
+    this.registry.update(({ drives }) => {
       for (const [driveId, claim] of Object.entries(drives)) {
         if (letGo(driveId, claim)) claim.apps = claim.apps.filter((app) => app !== packageId);
       }
@@ -340,8 +457,29 @@ class AppStorage {
   }
 
   isRemembered(driveId) {
-    return Boolean(this.readClaims().drives[driveId]);
+    return isRememberedDrive(this.registry.drive(driveId));
   }
+
+  rename(id, name) {
+    return { name: this.registry.rename(id, name) };
+  }
+}
+
+// Every filesystem mounted from the system disk, once each: `/` is MOS itself, the
+// rest (the vault) hold the apps. The EFI partition is neither.
+function systemSpaces(disk, measure) {
+  const spaces = [];
+  const visit = (device) => {
+    const points = (device.mountpoints || []).filter(Boolean);
+    const fileSystem = String(device.fstype || '').toLowerCase();
+    if (points.length && fileSystem && fileSystem !== 'vfat' && fileSystem !== 'swap') {
+      const measured = measure(points.includes('/') ? '/' : points[0]);
+      if (measured) spaces.push({ ...measured, role: points.includes('/') ? 'system' : 'apps' });
+    }
+    (device.children || []).forEach(visit);
+  };
+  if (disk) visit(disk);
+  return spaces;
 }
 
 function readDirectoryNames(dir) {
@@ -367,5 +505,7 @@ module.exports = {
   StorageError,
   appFolderPath,
   driveMountPath,
+  looksLikeInstallerStick,
   storageCandidates,
+  systemSpaces,
 };

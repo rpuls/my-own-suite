@@ -1287,3 +1287,87 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 .mos-connect-visual-sm {
   width: min(168px, 100%);
 }
+
+/* How full a piece of storage is. One track, a segment per thing on it in the
+   order of the legend, and what is left as the track itself. The compact bar is
+   the same track at a glance; storage with no fixed size draws no track at all. */
+.mos-usage {
+  display: grid;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.mos-usage-track {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface);
+}
+
+.mos-usage-compact .mos-usage-track {
+  height: 6px;
+}
+
+.mos-usage-segment {
+  flex: none;
+  min-width: 2px;
+  background: var(--mos-color-text-muted);
+}
+
+.mos-usage-segment.is-accent { background: var(--mos-color-accent); }
+.mos-usage-segment.is-info { background: var(--mos-color-info); }
+.mos-usage-segment.is-warning { background: var(--mos-color-warning); }
+.mos-usage-segment.is-muted { background: var(--mos-color-surface-border); }
+
+.mos-usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-2) var(--mos-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.mos-usage-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mos-usage-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--mos-color-surface-strong);
+}
+
+.mos-usage-swatch.is-accent { background: var(--mos-color-accent); }
+.mos-usage-swatch.is-info { background: var(--mos-color-info); }
+.mos-usage-swatch.is-warning { background: var(--mos-color-warning); }
+.mos-usage-swatch.is-muted { background: var(--mos-color-surface-border); }
+
+/* A band that is one sentence and an action: the sentence takes the room and
+   wraps inside it, so the action stays on the same line as it. */
+.mos-panel-band-row {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.mos-panel-band-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mos-panel-band-row > .mos-btn {
+  flex: none;
+}
+
+@media (max-width: 34rem) {
+  .mos-panel-band-row {
+    flex-wrap: wrap;
+  }
+}

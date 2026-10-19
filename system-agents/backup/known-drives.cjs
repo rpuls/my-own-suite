@@ -76,9 +76,10 @@ class KnownDrives {
    *
    * @param {object} options
    * @param {Array} options.attached disk destinations as the listing sees them
+   * @param {string[]} options.connected filesystem UUIDs plugged in, listed as destinations or not
    * @param {(id: string) => string|null} options.lastBackupAt newest restore point per destination
    */
-  reconcile({ attached = [], lastBackupAt = () => null, now = new Date() } = {}) {
+  reconcile({ attached = [], connected = [], lastBackupAt = () => null, now = new Date() } = {}) {
     const seenAt = now.toISOString();
     const before = this.list();
     const drives = new Map(before.map((drive) => [drive.fsUuid, drive]));
@@ -102,7 +103,7 @@ class KnownDrives {
     const next = [...drives.values()];
     if (worthWriting(before, next, now)) this.write(next);
 
-    const present = new Set(attached.map((entry) => entry.fsUuid).filter(Boolean));
+    const present = new Set([...attached.map((entry) => entry.fsUuid).filter(Boolean), ...connected]);
     return next.filter((drive) => !present.has(drive.fsUuid));
   }
 }

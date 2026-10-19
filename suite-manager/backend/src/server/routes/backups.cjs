@@ -4,21 +4,6 @@ const { jsonResponse } = require('../responses.cjs');
 const MANAGE = 'Sign in to manage backups.';
 const INVALID_PASSWORD = { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' };
 
-// Storage credentials go to the agent field by field, so it is never handed
-// something the screen did not ask for; nothing here keeps or logs them.
-function objectDestination(input) {
-  return {
-    accessKeyId: String(input.accessKeyId || ''),
-    bucket: String(input.bucket || ''),
-    endpoint: String(input.endpoint || ''),
-    folder: String(input.folder || ''),
-    label: String(input.label || ''),
-    region: String(input.region || ''),
-    secretAccessKey: String(input.secretAccessKey || ''),
-    ...(input.id ? { id: String(input.id) } : {}),
-  };
-}
-
 function recoveryKeyRoutes({ backupAgent, setup }) {
   return [
     // Its own route because saving the key is what the first-backup gate waits for.
@@ -128,42 +113,18 @@ function destinationRoutes({ backupAgent }) {
         jsonResponse(response, 200, await backupAgent.forgetDrive(String(input.fsUuid || '')));
       },
     },
+    // Another server's backups on a drive, erased so this server can use it.
     {
       method: 'POST',
-      path: '/backups/mount',
+      path: '/backups/destinations/erase',
       signIn: MANAGE,
-      bodyLimit: 8 * 1024,
+      bodyLimit: 4 * 1024,
       handler: async ({ body, response }) => {
         const input = await body();
-        jsonResponse(response, 200, await backupAgent.mount(String(input.destinationId || '')));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        jsonResponse(response, 200, await backupAgent.connectObjectDestination(objectDestination(await body())));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object/test',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        jsonResponse(response, 200, await backupAgent.testObjectDestination(objectDestination(await body())));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object/remove',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(input.destinationId || '') }));
+        const destinationId = String(input.destinationId || '');
+        const erased = await backupAgent.eraseForeignBackups({ confirmation: String(input.confirmation || ''), destinationId });
+        if (input.primary === true) await backupAgent.setPrimaryDestination({ destinationId });
+        jsonResponse(response, 200, erased);
       },
     },
     // Where everything automatic writes: the schedule and the checkpoint before an update.
