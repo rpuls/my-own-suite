@@ -58,7 +58,7 @@ export function AddDestinationDialog({ firstDestination, onAdded, onClose, onUnl
       title={`${foreign.label} holds another server's backups`}
     >
       <p>{points} on {foreign.label} were made by {foreign.from || 'another server'}{foreign.newestAt ? `, the newest ${whenWords(foreign.newestAt).toLowerCase()}` : ''}. This server cannot add its own backups to them.</p>
-      <p className="suite-meta">To restore from them, enter that server&rsquo;s recovery key. To use the drive for this server&rsquo;s backups, erase them. Keeping them leaves the drive listed under &ldquo;Brought in from other servers&rdquo;, and you can decide later.</p>
+      <p className="suite-meta">To restore from them, enter that server&rsquo;s recovery key. To use the drive for this server&rsquo;s backups, erase them. Keeping them leaves the drive listed under &ldquo;Backups from another server&rdquo;, and you can decide later.</p>
     </Dialog>;
   }
 

@@ -4189,6 +4189,21 @@ button.suite-updates-change-head {
   cursor: pointer;
 }
 
+.suite-bk-row-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+  color: var(--mos-color-info);
+}
+
+.suite-bk-row-lock .suite-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
 .suite-bk-radio > span {
   width: 0.75rem;
   height: 0.75rem;
