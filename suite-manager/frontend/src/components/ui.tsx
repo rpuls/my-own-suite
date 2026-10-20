@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -19,6 +19,8 @@ export function Icon({ name }: { name: IconName }) {
     external: <path d="M7 17L17 7M9 7h8v8" />,
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
+    file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" /></>,
+    folder: <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
     'hard-drive': <><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z" /><path d="M2 12h20" /><path d="M6 16h.01M10 16h.01" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
@@ -146,6 +148,17 @@ export function Select({ children, helperText, label, ...props }: SelectHTMLAttr
 // so "I have read this" looks and behaves the same everywhere it is asked.
 export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode }) {
   return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
+}
+
+// Picks a row for a bulk action, ticked and unticked freely — unlike Checkbox,
+// which gates a submit. Its look is .mos-select-box in the branding stylesheet.
+export function SelectBox({ label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  return <label className="mos-select-box"><input aria-label={label} type="checkbox" {...props} /><span aria-hidden="true" className="mos-select-box-mark"><Icon name="check" /></span></label>;
+}
+
+export function ProgressBar({ label, value }: { label: string; value: number }) {
+  const percent = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return <div aria-label={label} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className="mos-progress" role="progressbar"><span className="mos-progress-fill" style={{ width: `${percent}%` }} /></div>;
 }
 
 // The shared setting switch: label and optional description on the left, the

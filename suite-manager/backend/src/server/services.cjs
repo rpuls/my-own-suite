@@ -8,6 +8,7 @@ const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
 const { DriveJobs } = require('../apps/drive-jobs.cjs');
+const { FilesService } = require('../storage/files-service.cjs');
 const { StorageService } = require('../storage/storage-service.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
 const { AppPackageService } = require('../apps/app-package-service.cjs');
@@ -194,6 +195,7 @@ function createServices({
   });
   addressService.start();
   const storage = new StorageService({ appAgent, backupAgent, names: () => appPackages.appNames() });
+  const files = new FilesService({ appAgent, stateDir: setup.store.stateDir, storage });
   const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
@@ -223,6 +225,7 @@ function createServices({
     disposableLab,
     driveJobs,
     externalSourceService,
+    files,
     frontDoor,
     frontendDistDir,
     handover,
@@ -252,9 +255,10 @@ async function startCatalogRefresh(catalogService) {
 }
 
 // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
-async function startServices({ addressService, appPackages, appUrls, catalogService, setup }) {
+async function startServices({ addressService, appPackages, appUrls, catalogService, files, setup }) {
   const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
   const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
+  await files.sweep().catch(() => {});
   void startCatalogRefresh(catalogService);
   addressService.watchEasyDoor();
   return { recoveries, sweptCandidates };

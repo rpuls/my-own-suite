@@ -29,7 +29,7 @@ export type StorageEntry = {
   availableBytes: number | null;
   backups: StorageBackups | null;
   bucket?: { accessKeyId: string; bucket: string; endpoint: string; folder: string; region: string };
-  capabilities: { checkable: boolean; ejectable: boolean; holdsAppFolders: boolean; holdsBackups: boolean; renamable: boolean };
+  capabilities: { browsable: boolean; checkable: boolean; ejectable: boolean; holdsAppFolders: boolean; holdsBackups: boolean; renamable: boolean; writable: boolean };
   connected: boolean;
   // The kernel's, the command's or the provider's own words when it is not working.
   detail: string | null;

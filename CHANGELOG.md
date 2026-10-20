@@ -22,12 +22,19 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
   - A drive formatted for Linux can now be picked for backups but not for app files, and a drive in a format MOS cannot use is named but not offered.
   - A drive or bucket holding another server's backups is something to restore from, never where this server backs up, even after its recovery key is entered. Backup & Restore now says that, instead of calling a plugged-in drive "not connected", and its "up to date" counts only this server's own backups. **Erase these backups** frees such a drive for yours. It is on the drive's row in Backups, in Settings → Storage, and in **Add destination** when the drive you pick turns out to hold them.
   - **Compatibility:** drives, their names and claims, and the connections to storage online now live in one record, `/var/lib/mos/storage.json`, which replaces `storage-drives.json` and the backup agent's `object-destinations.json` and is not carried over. After the update, connect storage you rent online again in Settings → Storage and pick it, like a backup drive, under **Backups → Add destination**; the backups already in it are listed again. Drives kept for backups are mounted under `/media/mos-storage/<filesystem id>` by the storage module, which the backup agent no longer does itself.
+- **Browse, add, download, move and delete the files on a drive from your browser.** **Browse files** on a drive in Settings → Storage opens its folders: drag files onto the page to add them, download one, make folders, rename, move within the drive, and delete one or many. Big files arrive a piece at a time, so a dropped connection or a reload carries on where it stopped and nothing half-added is left behind, and deleting says first that these are the only copies, not in your backups.
+  - A drive that needs a check can still be browsed and downloaded from; changes wait for **Check drive**. Folders an uninstalled app left on a drive are listed apart, to browse, move or delete.
+  - While it adds or deletes, MOS keeps working folders named `.mos-uploads` and `.mos-deleting` inside `MOS-files`, which another computer may show.
 - **Jellyfin joins the catalog.** Your own films and series, streamed to every screen in the house. Install it with a drive, and it starts with your administrator and its Movies and Series libraries already set up, so there is no setup wizard to click through.
 
 ### Changed
 
 - **An app's privacy review says who last reviewed it, and at which version.** The privacy dialog names the person and the app version they reviewed, so updates checked by AI since then no longer clear or borrow that sign-off. An AI review that finds a serious change, such as a new company receiving data, shows it under "Waiting for a human review" until a person has checked it. Actual Budget, Paperless and Radicale get small package updates that restore their human review.
 - **Immich package 0.9.0 sets up its administrator for you and can show photos from your own drive.** A new install asks for the administrator's email and password instead of sending you to Immich's sign-up page, and its settings can add a drive whose Photos folder Immich shows as a library, read where it is and never changed. Updating asks once for your current Immich email and password.
+
+### Fixed
+
+- **Suite Manager restarts in seconds.** It waited for its open pages to disconnect before stopping, so every restart, an update's included, hung for a minute and a half until the system stopped it by force.
 
 ## [0.22.0] - 2026-10-15
 

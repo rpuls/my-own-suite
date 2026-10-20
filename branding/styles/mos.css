@@ -392,6 +392,17 @@ summary:focus-visible {
   border-color: transparent;
 }
 
+/* An action that cannot be undone, such as deleting the only copy of a file. */
+.mos-btn-danger {
+  color: var(--mos-color-danger);
+  border-color: var(--mos-color-danger-border);
+  background: var(--mos-color-danger-soft);
+}
+
+.mos-btn-danger:hover {
+  border-color: var(--mos-color-danger);
+}
+
 .mos-btn:hover {
   transform: translateY(-1px);
 }
@@ -588,6 +599,86 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
 
 @media (prefers-reduced-motion: reduce) {
   .mos-range::-webkit-slider-thumb {
+    transition: none;
+  }
+}
+
+/* Selection box: picks rows for a bulk action and is ticked and unticked
+   freely. Not the confirmation checkbox, which is an acknowledgement submitted
+   with something else; "on" carries the accent gradient like the switch.
+
+   Structure contract: a <label class="mos-select-box"> holding a visually
+   hidden <input type="checkbox"> immediately followed by the decorative mark. */
+.mos-select-box {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  cursor: pointer;
+}
+
+.mos-select-box input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mos-select-box-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--mos-color-surface-border);
+  border-radius: 0.375rem;
+  color: transparent;
+  transition:
+    background var(--mos-transition),
+    border-color var(--mos-transition);
+}
+
+.mos-select-box-mark .suite-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  stroke-width: 3.5;
+}
+
+.mos-select-box:hover input:enabled + .mos-select-box-mark {
+  border-color: var(--mos-color-accent-border);
+}
+
+.mos-select-box input:checked + .mos-select-box-mark {
+  border-color: transparent;
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  color: var(--mos-color-button-primary-text);
+}
+
+.mos-select-box input:focus-visible + .mos-select-box-mark {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+/* Progress: how much of a known amount is done, such as the bytes of a file on
+   its way. The spent part is the switch's gradient. */
+.mos-progress {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+}
+
+.mos-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--mos-radius-pill);
+  background: linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  transition: width 400ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-select-box-mark,
+  .mos-progress-fill {
     transition: none;
   }
 }

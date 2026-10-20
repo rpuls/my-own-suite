@@ -12,6 +12,10 @@ export const STEPS = {
   'drive-check': { arg: 'none', budgetMinutes: 15, describe: 'Check the read-only drive from Settings, and wait until it works read-write with its apps running.' },
   'drive-eject': { arg: 'none', budgetMinutes: 10, describe: 'Eject the drive from Settings, unplug it and plug it back in; it must come back working with no check.' },
   'power-cut': { arg: 'none', budgetMinutes: 15, describe: 'Reset the lab on the spot with the drive mounted, as a power cut would; an NTFS drive must come back read-only with its apps running.' },
+  'drive-files': { arg: 'none', budgetMinutes: 30, describe: "In the files screen of the apps' drive: make a folder, add a multi-GB file while the connection is cut twice, download it back byte for byte, rename it, move it, and delete the lot." },
+  'drive-files-read-only': { arg: 'none', budgetMinutes: 5, describe: "The apps' drive needs a check: its files can be browsed and downloaded, and every change is refused." },
+  'drive-files-live': { arg: 'none', budgetMinutes: 10, describe: "Eject the apps' drive under an open files screen, which closes, then plug it back in, and the screen opens again without a reload." },
+  'drive-files-leftovers': { arg: 'none', budgetMinutes: 5, describe: 'The folders an uninstalled app left on a drive are listed apart, and deleting them gives the space back.' },
   reboot: { arg: 'none', budgetMinutes: 15, describe: "Restart the lab; every drive open before is open again, with the same app folders, uninstalled apps' included." },
   dns01: { arg: 'none', budgetMinutes: 10, describe: 'Move the suite to the DNS-01 domain in test/e2e/.env; later steps use its https address.' },
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },
@@ -83,6 +87,15 @@ export const NAMED_PATHS = {
       'drive-eject', `verify:${app}`,
       'power-cut', `verify:${app}`, 'drive-check',
       `uninstall:${app}`, 'reboot',
+    ],
+  },
+  'drive-files': {
+    app: true,
+    describe: "The files screen on the app's NTFS drive: browse, add, download, rename, move and delete, then read-only, ejected and replugged under an open screen, and the folders it leaves when uninstalled.",
+    build: (app) => [
+      'reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`,
+      'drive-files', 'drive-pull', 'drive-files-read-only', 'drive-check', 'drive-files-live',
+      `uninstall:${app}`, 'drive-files-leftovers',
     ],
   },
   update: {

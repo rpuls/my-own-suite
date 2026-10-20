@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Spinner, type AdvancedFact } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Spinner, Tooltip, type AdvancedFact } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
+import { browseReason, openFiles } from '../files/model';
 import { AddStorageDialog } from './AddStorageDialog';
 import {
   freeLine,
@@ -110,6 +111,9 @@ function StorageRow({ entry, expanded, names, onFlow, onToggle, onUse, usage }: 
         {running ? <span className="suite-meta suite-storage-flow-working"><Spinner />Working</span> : null}
         {!running && entry.capabilities.checkable ? <button className="mos-btn mos-btn-primary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'check' })} type="button">Check drive</button> : null}
         {!running && entry.state === 'ejected' && entry.connected ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={onUse} type="button">Use it again</button> : null}
+        {!running && expanded && entry.kind === 'drive' && entry.capabilities.holdsAppFolders ? (entry.capabilities.browsable
+          ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => openFiles(entry.id)} type="button">Browse files</button>
+          : <Tooltip label={browseReason(entry)}><button className="mos-btn mos-btn-secondary mos-btn-sm" disabled type="button">Browse files</button></Tooltip>) : null}
         {!running && expanded && entry.capabilities.ejectable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'eject' })} type="button">Eject</button> : null}
         {expanded && menu.length ? <ActionMenu ariaLabel={`More actions for ${entry.name}`} items={menu} /> : null}
         {!expanded && (entry.kind === 'system' || entry.state === 'ready') ? <span className="suite-storage-glance">

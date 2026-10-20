@@ -68,6 +68,8 @@ async function fillSetupFields(ctx, app, dialog) {
 // step earlier in the run names the one to take.
 async function pickDrive(ctx, dialog, storage) {
   const choice = dialog.getByRole('radiogroup', { name: storage?.label || 'Drive for its files' });
+  // The picker appears once the storage list has loaded; one that is required always does.
+  if (storage?.required) await choice.waitFor({ timeout: 30000 }).catch(() => undefined);
   if (!await choice.isVisible().catch(() => false)) return null;
   await expect(choice.getByRole('radio').first()).toBeVisible({ timeout: 30000 });
   const offered = await choice.locator('input[type=radio]:not([disabled])').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));

@@ -46,6 +46,14 @@ class AppAgentClient {
   renameStorage(input) { return this.request('POST', '/v1/storage/rename', input); }
   holdBackups(input) { return this.request('POST', '/v1/storage/backups', input); }
   formatInstallerStick(input) { return this.request('POST', '/v1/storage/format-installer', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  filesCreateFolder(input) { return this.request('POST', '/v1/files/folder', input); }
+  filesRename(input) { return this.request('POST', '/v1/files/rename', input); }
+  filesMove(input) { return this.request('POST', '/v1/files/move', input); }
+  filesDelete(input) { return this.request('POST', '/v1/files/delete', input); }
+  filesUploadOffset(input) { return this.request('POST', '/v1/files/upload/offset', input); }
+  filesUploadAppend(input) { return this.request('POST', '/v1/files/upload/append', input); }
+  filesUploadFinish(input) { return this.request('POST', '/v1/files/upload/finish', input); }
+  filesUploadCancel(input) { return this.request('POST', '/v1/files/upload/cancel', input); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   waitForAddress(input) { return this.request('POST', '/v1/apps/address', input, { timeoutMs: APP_AGENT_ADDRESS_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }

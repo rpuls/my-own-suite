@@ -41,7 +41,7 @@ export async function drive(ctx, fileSystem) {
   if (wanted) ctx.labDrive = (await offered())[0].id;
 }
 
-async function appDriveOf(ctx) {
+export async function appDriveOf(ctx) {
   const installed = await installedPackages(ctx.page);
   const holder = installed.find((app) => app.instance?.folders?.length);
   if (!holder) throw new Error('No installed app keeps files on a drive; install one first.');
@@ -51,7 +51,7 @@ async function appDriveOf(ctx) {
   return { apps, driveId, fileSystem: found?.fileSystem || null };
 }
 
-async function driveReaches(ctx, driveId, states, { minutes = 2 } = {}) {
+export async function driveReaches(ctx, driveId, states, { minutes = 2 } = {}) {
   let last = null;
   await expect.poll(async () => {
     last = (await listDrives(ctx.page)).find((item) => item.id === driveId) || null;

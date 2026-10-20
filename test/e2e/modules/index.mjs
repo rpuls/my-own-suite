@@ -3,6 +3,7 @@ import { backup, cleanup, restore } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
 import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall } from './drive.mjs';
+import { files, filesLeftovers, filesLive, filesReadOnly } from './files.mjs';
 import { homepage, homepageCheck } from './homepage.mjs';
 import { dns01 } from './https.mjs';
 import { reset } from './lab.mjs';
@@ -25,6 +26,10 @@ export const MODULES = {
   'drive-check': driveCheck,
   'drive-eject': driveEject,
   'drive-pull': drivePull,
+  'drive-files': files,
+  'drive-files-leftovers': filesLeftovers,
+  'drive-files-live': filesLive,
+  'drive-files-read-only': filesReadOnly,
   homepage,
   'homepage-check': homepageCheck,
   install,
