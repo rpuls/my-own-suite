@@ -205,57 +205,6 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
-### S. An app's files on the owner's own drive
-
-**Gate:** a non-technical owner installs Jellyfin, picks an attached drive when the installer
-asks, fills the drive from any computer of theirs, and the films play — with no path, mount,
-UID or terminal at any point, apps noticing files without being asked, and uninstalling
-an app never touching the owner's files.
-
-The 0.23.0 sprint. Research and the decided design live in
-`.local-tools/research/2026-10-16-storage-and-your-files.md`: per-app external folders
-(`MOS-files/apps/<app>/<folder>`) on an owner-chosen portable drive, declared by an optional
-additive manifest field, created and mounted by MOS, filled outside MOS. Sequel slices —
-encrypted drives, SMB, the MOS disk as a home, backup opt-in for external folders — stay out
-of this theme until it ships; slice 1 must not preclude any of them.
-
-- **S1 — Manifest amendment for exposed folders.** The optional additive field naming the
-  folders an app wants mounted; schema, validator, and the manifest reference move together,
-  gated by `minimumMosVersion`. *(Small)*
-- **S2 — Storage drives: adopt, mount persistently, survive absence.** Adopt a portable
-  (exFAT-class) drive by fsUuid, MOS's first persistent mount (obeys the vault gating test),
-  controlled mount options for container readability, offline state when missing at boot,
-  and the backup candidate list and storage claims excluding each other. *(Medium)*
-- **S3 — Install-flow disk picker.** Pick 1 of n eligible drives; none → install blocked with
-  "requires extra storage device"; MOS creates the app's folders and mounts them. *(Medium)*
-- **S4 — Pre-provision the app's libraries and rescans.** MOS drives the app's admin API once
-  at install (Jellyfin library, Immich external library) and triggers rescans when a drive
-  returns. *(Medium)*
-- **S5 — Pilots: Jellyfin package (#215, taken in-house) and the Immich retrofit.** *(Medium)*
-- **S7 — Drill and E2E coverage for the new states.** App cycle with a storage drive, drive
-  absent at boot, drive unplugged and returned, a dirty NTFS drive (pulled cable, and a power
-  cut simulated by a hard reset), and backup/storage coexisting on one drive; the lab gains an
-  NTFS VHDX beside the exFAT one, which is the gap that let the dirty-volume case through.
-  *(Medium)*
-- **S8 — Recover automatically from a dirty drive.**
-  `.local-tools/handoffs/storage-dirty-drive-recovery.md` is the brief. A read-write mount
-  refused as dirty falls back to read-only so reader apps keep working, the drive carries a
-  needs-check state, a Check drive action (`ntfsfix`, packaged on the image) returns it to
-  read-write from Suite Manager, writer apps are held with the reason shown — which needs the
-  manifest to say which folders an app writes — and ntfs3 `force` is never used. A power cut is
-  the same path as a pulled cable. *(Medium)*
-- **S9 — Eject.** Stop the drive's containers, unmount cleanly, say "safe to unplug"; replug
-  returns through the existing attach path. Reverses slice 1's no-eject decision, now that a
-  pulled NTFS cable is known to strand the files until a Windows machine checks the disk.
-  *(Small)*
-- **S11 — The storage story, told.** A docs page for drives and app folders that states the two
-  protective schemes plainly — app data lives in MOS backups; media libraries live on the
-  owner's drive and reattach on any new server — with the drill that proves it (fresh install,
-  restore the backup, plug in the drive, everything is back) run as part of S7. *(Small)*
-- **S12 — Move files between drives.** The files screen's Move dialog shows "Another drive" as
-  *Later*: it needs the app agent's first long-running copy job, with progress, crash sweeps and
-  both drives held for its length, which a within-drive rename never did. *(Medium)*
-
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -452,6 +401,13 @@ the update or install path requires SSH.
   anything on it. The role is theatre until MOS has a unified sign-in story, and the SSO and LDAP
   forms of that are declined below. Blocked on that question being reopened, not on any work here.
   *(Medium — blocked)*
+- **L11 — Move files between drives.** The files screen's Move dialog shows "Another drive" as
+  *Later*: it needs the app agent's first long-running copy job, with progress, crash sweeps and
+  both drives held for its length, which a within-drive rename never did. Waits until the drive
+  features have had months of real use (#336). *(Medium)*
+- **L12 — A bucket as a shared media library.** Storage rented online holding a library an app
+  reads, so a few friends can share one: a mounted bucket beside the drive model, kept apart from
+  any backup bucket. The storage module was shaped so this fits; it waits with L11. *(Large)*
 
 ---
 

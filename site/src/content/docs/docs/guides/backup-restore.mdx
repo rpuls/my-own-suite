@@ -33,6 +33,8 @@ A MOS backup captures:
 - the Home dashboard layout,
 - domain and HTTPS configuration.
 
+Files an app reads from a drive you plugged in, such as Jellyfin's films, are not in it: they stay on the drive, which goes with you to any server. See [Your files on a drive](/docs/guides/files-on-a-drive/).
+
 Restore requires a working MOS installation. A backup is not a bare-metal installer by itself. The version does not have to match: MOS restores a backup written by its own release or any earlier one, so a current install reads a backup taken months ago.
 
 ## Choose a destination for your installation
@@ -128,6 +130,8 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 4. The restore points appear, each showing which server wrote it. Pick one and restore it as usual.
 
 5. When the restore finishes you are signed out. Sign in with the **owner password of the server the backup came from** — accounts and passwords now match the backup.
+
+6. Plug in the drive that held your app files, if an app used one. The restored apps find their folders on it and carry on; [Your files on a drive](/docs/guides/files-on-a-drive/) explains what lives where.
 
 </Steps>
 

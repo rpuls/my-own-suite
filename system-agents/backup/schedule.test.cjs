@@ -173,7 +173,7 @@ test('a disconnected drive holds the run open instead of failing it', async () =
 
 test('a drive that is here but refuses backups waits with its own reason, not as unplugged', async () => {
   const refusal = 'This drive holds backups another server made, so this server cannot back up to it.';
-  const { created, scheduler, state } = harness({ destinations: [{ foreignStore: true, id: '/media/backup', label: 'Backup drive', refusal, writable: true }] });
+  const { created, scheduler, state } = harness({ destinations: [{ id: '/media/backup', label: 'Backup drive', refusal, writable: true }] });
   scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
 

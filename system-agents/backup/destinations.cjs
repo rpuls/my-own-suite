@@ -374,10 +374,14 @@ class DiskArchive {
       // passing engine failure would start this server a second archive.
       return { keyState: this.guestKey() ? 'borrowed' : 'own', reason: null };
     }
+    const answer = { keyState: keyStateOf(probe.state, Boolean(this.guestKey())), reason: probe.state === 'locked' ? probe.message : null };
+    // A first backup writes the descriptor before the repository, so a poll in
+    // between sees nothing there yet: a moment, not an answer to hold.
+    if (answer.keyState === 'empty') return answer;
     this.keyStateAtMs = Date.now();
     this.keyStateFor = keys;
-    this.keyStateHeld = { keyState: keyStateOf(probe.state, Boolean(this.guestKey())), reason: probe.state === 'locked' ? probe.message : null };
-    return this.keyStateHeld;
+    this.keyStateHeld = answer;
+    return answer;
   }
 
   get lostMessage() {

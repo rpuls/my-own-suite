@@ -57,7 +57,7 @@ function printList(catalog) {
 }
 
 function describePlan(plan) {
-  return plan.steps.map((step, index) => `  ${String(index + 1).padStart(2)}. ${step.token}${step.auto ? '   (added: the app needs HTTPS)' : ''}`).join('\n');
+  return plan.steps.map((step, index) => `  ${String(index + 1).padStart(2)}. ${step.token}${step.auto ? `   (added: ${step.auto})` : ''}`).join('\n');
 }
 
 function runId(label) {

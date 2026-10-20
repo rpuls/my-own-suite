@@ -844,10 +844,11 @@ async function openWithEnteredKey(body) {
   return { archive, key: normalized.key, repository: { engineName: engine.name, ...spec, password: undefined } };
 }
 
-// A note or a deletion changes an archive, so neither is made in one this
-// server only borrows a key for: it belongs to the server that made it.
-function assertOwnRestorePoint(locator) {
-  if (core.resolveBackup(locator).destination.guestKey()) throw new Error('These backups belong to another server, so MOS does not change them.');
+// A note or a deletion changes an archive, so neither is made in one that is
+// not this server's own: it belongs to the server whose key made it.
+async function assertOwnRestorePoint(locator) {
+  const { destination } = core.resolveBackup(locator);
+  if (destination.guestKey() || (await destination.health()).keyState !== 'own') throw new Error('These backups belong to another server, so MOS does not change them.');
 }
 
 // Forgetting a borrowed key. The archive is untouched by this too: the key
@@ -871,7 +872,12 @@ async function eraseOtherServersArchive(body) {
   if (isActive(reconcileCurrentJob())) throw new Error('A backup or restore is running. Erase these once it has finished.');
   const archive = destinationResolver.resolve(listed.id);
   const doomed = `${archive.root}.erasing-${Date.now()}`;
-  fs.renameSync(archive.root, doomed);
+  try {
+    fs.renameSync(archive.root, doomed);
+  } catch (error) {
+    if (error.code === 'EROFS') throw new Error('MOS can read this drive but cannot change it until it is checked in Settings → Storage.');
+    throw error;
+  }
   void fs.promises.rm(doomed, { force: true, recursive: true }).catch((error) => process.stderr.write(`[mos-backup-agent] ${doomed} was not fully erased: ${error.message}\n`));
   guestKeys.forget(listed.id);
   destinationResolver.forget(listed.id);
@@ -1133,7 +1139,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         const body = await readBody(request);
         const locator = normalizeBackupLocator(body.backupPath);
         if (!locator) { respond(response, 400, { code: 'INVALID_BACKUP', error: 'Choose a detected backup from a connected destination.' }); return; }
-        assertOwnRestorePoint(locator);
+        await assertOwnRestorePoint(locator);
         const note = String(body.note || '').trim().slice(0, 500);
         const { destination, pointId } = core.resolveBackup(locator);
         await destination.points.writeNote(pointId, note);
@@ -1149,7 +1155,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         // drive may be the only recovery material there is.
         const body = await readBody(request);
         const locator = normalizeBackupLocator(body.backupPath);
-        if (locator) assertOwnRestorePoint(locator);
+        if (locator) await assertOwnRestorePoint(locator);
         respond(response, 202, { job: createJob('delete', body) });
         return;
       }

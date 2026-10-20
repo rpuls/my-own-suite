@@ -71,6 +71,7 @@ export default defineConfig({
           items: [
             'docs/guides/suite-manager',
             'docs/guides/apps',
+            'docs/guides/files-on-a-drive',
             'docs/guides/customize-homepage',
             'docs/guides/https-domain',
             'docs/guides/email-relay',

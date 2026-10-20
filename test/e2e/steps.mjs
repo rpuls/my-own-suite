@@ -99,6 +99,11 @@ export const NAMED_PATHS = {
       `uninstall:${app}`, 'drive-files-leftovers',
     ],
   },
+  'drive-dr': {
+    app: true,
+    describe: "The storage story: the app's files on an NTFS drive and its data in a disk backup, a reset lab restored from that backup finds its files on the drive again, and a copy of that backup only another server's key opens is taken over.",
+    build: (app) => ['reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`, 'backup', 'reset', 'owner', 'restore', `verify:${app}`, 'takeover', 'routes', 'network', 'cleanup'],
+  },
   update: {
     app: true,
     describe: 'Update insurance: the journeys, the platform update, the app update, the checks, and before/after screenshot and network reports, with the apps it works with installed and connected.',
@@ -242,11 +247,11 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
     if (step.name === 'dns01') secure = true;
     if (step.name === 'drive') drive = true;
     if (!drive && step.name === 'install' && byId.get(step.arg)?.keepsFilesOnDrive) {
-      steps.push({ arg: null, auto: true, name: 'drive', token: 'drive' });
+      steps.push({ arg: null, auto: 'the app keeps its files on a drive', name: 'drive', token: 'drive' });
       drive = true;
     }
     if (!secure && STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps) {
-      steps.push({ arg: null, auto: true, name: 'dns01', token: 'dns01' });
+      steps.push({ arg: null, auto: 'the app needs HTTPS', name: 'dns01', token: 'dns01' });
       secure = true;
     }
     steps.push(step);

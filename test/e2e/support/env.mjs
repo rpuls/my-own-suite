@@ -105,6 +105,7 @@ export function loadEnv() {
       password: envString('MOS_E2E_OWNER_PASSWORD', 'correct horse battery'),
     },
     labShell: labShell(baseURL),
+    labVm: envString('MOS_E2E_LAB_VM'),
     read: envString,
   };
 }

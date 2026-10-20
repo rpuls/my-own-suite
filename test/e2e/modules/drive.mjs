@@ -1,10 +1,16 @@
+import { createRequire } from 'node:module';
+
 import { expect } from '@playwright/test';
 
 import { apiJson } from '../support/api.mjs';
 import { mountOptions, plugDrive, pullDrive, REMEMBER_LOOPS, RESTORE_LOOPS, writeInFlight } from '../support/drive.mjs';
 import { saveHandoverIfPending } from '../support/gates.mjs';
+import { vmAddress } from '../support/hyperv.mjs';
 import { runOnLab } from '../support/lab-shell.mjs';
 import { appRunning, installedPackages, waitForRunning } from '../support/packages.mjs';
+import { followAddress } from './owner.mjs';
+
+const { easyDoorAddressOf, easyDoorHomeHost } = createRequire(import.meta.url)('../../../shared/easy-door.cjs');
 
 // A disk image on a loop device, which MOS treats like any drive plugged in. Kept
 // between runs, so a later run finds the files an earlier one left on it.
@@ -122,11 +128,28 @@ export async function driveEject(ctx) {
   await appsRunAgain(ctx, apps);
 }
 
+async function answers(ctx) {
+  const response = await ctx.page.request.get(ctx.url('/suite-manager/api/setup/status'), { timeout: 10000 }).catch(() => null);
+  return response?.ok() || false;
+}
+
 async function suiteAnswers(ctx, minutes) {
-  await expect.poll(async () => {
-    const response = await ctx.page.request.get(ctx.url('/suite-manager/api/setup/status'), { timeout: 10000 }).catch(() => null);
-    return response?.ok() || false;
-  }, { intervals: [5000], message: 'the suite should answer after the restart', timeout: minutes * 60000 }).toBe(true);
+  await expect.poll(() => answers(ctx), { intervals: [5000], message: 'the suite should answer after the restart', timeout: minutes * 60000 }).toBe(true);
+}
+
+// The Hyper-V switch may lease the lab a new address when it restarts, and its Easy
+// Door name follows the address: the run follows too, asking Hyper-V where it went.
+async function labMoved(ctx) {
+  const { env } = ctx;
+  const was = env.labVm ? easyDoorAddressOf(new URL(ctx.homeUrl).hostname) : null;
+  const now = was ? await vmAddress(env.labVm) : null;
+  if (!now || now === was) return false;
+  console.log(`[restart] the lab moved from ${was} to ${now}; the run follows it`);
+  const follow = (url) => url.replace(easyDoorHomeHost(was), easyDoorHomeHost(now));
+  ctx.homeUrl = follow(ctx.homeUrl);
+  env.baseURL = follow(env.baseURL);
+  if (env.labShell) env.labShell.target = env.labShell.target.replace(/@.*$/u, `@${now}`);
+  return true;
 }
 
 // So the server still answering before a restart is not taken for it coming back.
@@ -143,7 +166,16 @@ async function restartLab(ctx, command) {
   await runOnLab(ctx.env.labShell, REMEMBER_LOOPS);
   await runOnLab(ctx.env.labShell, `systemd-run --quiet --on-active=3 /bin/sh -c '${command.replaceAll("'", "'\\''")}'`);
   await suiteStops(ctx);
-  await suiteAnswers(ctx, 8);
+  let moved = false;
+  await expect.poll(async () => {
+    if (await answers(ctx)) return true;
+    moved = await labMoved(ctx);
+    return moved;
+  }, { intervals: [5000], message: 'the suite should answer after the restart, at its address or the one the lab moved to', timeout: 8 * 60000 }).toBe(true);
+  if (moved) {
+    await suiteAnswers(ctx, 8);
+    await followAddress(ctx);
+  }
   await runOnLab(ctx.env.labShell, RESTORE_LOOPS);
 }
 

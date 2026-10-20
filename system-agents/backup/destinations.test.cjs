@@ -383,6 +383,16 @@ test('a key adopted or dropped by another process is not answered from the held 
   assert.equal((await archive.health()).keyState, 'own');
 });
 
+test('an archive seen between its descriptor and its repository is asked again on the next look', async () => {
+  const { mountPath } = drives();
+  const states = ['absent', 'open'];
+  const engine = { name: 'restic', async probe() { return { state: states.shift() || 'open' }; } };
+  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, mountPath, name: 'archive-0000beef' });
+  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  assert.equal((await archive.health()).keyState, 'empty');
+  assert.equal((await archive.health()).keyState, 'own');
+});
+
 test('an archive opened with another server\'s key is read from but never backed up into', async () => {
   const { mountPath } = drives();
   const engine = { name: 'restic', async probe() { return { state: 'open' }; } };

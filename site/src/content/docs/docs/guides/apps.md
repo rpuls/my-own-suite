@@ -8,7 +8,7 @@ Everything you host lives in the **Apps** screen of Suite Manager: a curated cat
 ## Installing an app
 
 1. Open **Suite Manager → Apps** and browse or search the catalog. Each app's card shows what it replaces, how involved the setup is, and roughly how heavy it is on your machine; the detail view adds features, related apps, and its [privacy posture](/docs/privacy/how-we-assess/) — the A-to-D grade every catalog app receives from the MOS privacy assessment.
-2. Click through to **install**. Some apps need nothing from you at all. Others ask for one or two inputs — typically an admin email (pre-filled with your owner email) and a password. Secrets an app needs internally are generated for you and stored on the server, never shown or asked for.
+2. Click through to **install**. Some apps need nothing from you at all. Others ask for one or two inputs — typically an admin email (pre-filled with your owner email) and a password. An app that keeps its library on a drive, like Jellyfin, asks which drive; see [Your files on a drive](/docs/guides/files-on-a-drive/). Secrets an app needs internally are generated for you and stored on the server, never shown or asked for.
 3. Wait for the install to finish. Under the hood, MOS builds the app from its pinned recipe, starts it, wires up its web address, and adds a tile to your Home dashboard.
 
 **That recipe is then yours.** MOS keeps a verified copy of the exact package it installed, and your app runs from that copy from then on. Nothing we change in the repository later can reach in and alter the app you're already running — it changes only when you choose to update it.
@@ -77,3 +77,5 @@ Every installed app shows a live health indicator, verified against the actual r
 ## Where your data actually lives
 
 Each app keeps its data in dedicated storage volumes on your server, named and owned by MOS. Whole-suite [backups](/docs/guides/backup-restore/) capture every one of them automatically — you never need to know an individual app's layout.
+
+The exception is the files an app reads from a drive you plugged in — a film library, a photo folder. Those live on that drive, not in your backups, and the drive goes with you to any server. [Your files on a drive](/docs/guides/files-on-a-drive/) explains.
