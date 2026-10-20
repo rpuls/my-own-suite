@@ -25,7 +25,8 @@ import { CloudUsage, UsageBar, usageSegments } from './UsageBar';
 
 type Flow =
   | { kind: 'add' }
-  | { kind: 'check' | 'disconnect' | 'eject' | 'erase' | 'rename'; id: string }
+  | { kind: 'check' | 'disconnect' | 'eject' | 'rename'; id: string }
+  | { archiveId: string; id: string; kind: 'erase' }
   | { kind: 'edit'; draft: BucketDraft }
   | { kind: 'format'; stick: InstallerStick };
 
@@ -94,7 +95,10 @@ function StorageRow({ entry, expanded, names, onFlow, onToggle, onUse, usage }: 
       { label: 'Edit connection', onSelect: () => onFlow({ draft: { ...entry.bucket!, id: entry.id, label: entry.name, secretAccessKey: '' }, kind: 'edit' }) },
       { label: 'Disconnect', onSelect: () => onFlow({ id: entry.id, kind: 'disconnect' }) },
     ] : [],
-    ...entry.kind === 'drive' && entry.connected && entry.backups?.foreignStore ? [{ label: 'Erase the other server\'s backups…', onSelect: () => onFlow({ id: entry.id, kind: 'erase' }) }] : [],
+    ...entry.kind === 'drive' && entry.connected ? (entry.backups?.otherServers || []).map((archive, _index, all) => ({
+      label: all.length > 1 ? `Erase ${archive.writtenBy?.hostname || 'another server'}'s backups…` : 'Erase the other server\'s backups…',
+      onSelect: () => onFlow({ archiveId: archive.id, id: entry.id, kind: 'erase' }),
+    })) : [],
   ];
   return <PanelItem className={`suite-storage-row is-${entry.kind}${isAttention(entry) ? ' is-attention' : ''}`} flush quiet={!entry.connected || entry.state === 'ejected'} selected={expanded}>
     <div className="suite-storage-head">
@@ -190,10 +194,10 @@ export function StoragePanel() {
     {flowEntry && flow?.kind === 'check' ? <CheckDialog act={act} appNames={appNames(flowEntry)} entry={flowEntry} onClose={close} /> : null}
     {flowEntry && flow?.kind === 'rename' ? <RenameDialog entry={flowEntry} onClose={close} onRenamed={close} /> : null}
     {flowEntry && flow?.kind === 'disconnect' ? <DisconnectDialog entry={flowEntry} onClose={close} onDisconnected={close} /> : null}
-    {flowEntry?.backups?.destinationId && flow?.kind === 'erase' ? <EraseBackupsDialog
+    {flowEntry && flow?.kind === 'erase' ? <EraseBackupsDialog
+      archive={{ from: flowEntry.backups?.otherServers.find((archive) => archive.id === flow.archiveId)?.writtenBy?.hostname || null, id: flow.archiveId, label: flowEntry.name, newestAt: null, restorePoints: null }}
       onClose={close}
       onErased={close}
-      store={{ destinationId: flowEntry.backups.destinationId, from: null, label: flowEntry.name, newestAt: flowEntry.backups.lastBackupAt, restorePoints: flowEntry.backups.restorePoints }}
     /> : null}
   </>;
 }

@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { fingerprint, generate, isRecoveryKey, MISTYPED_CHECKSUM, MISTYPED_SHAPE, normalize } = require('./recovery-key.cjs');
+const { fingerprint, generate, MISTYPED_CHECKSUM, MISTYPED_SHAPE, normalize } = require('./recovery-key.cjs');
 
 const KEY = generate().key;
 const BODY = KEY.replace(/^MOS-/u, '').replace(/-/gu, '');
@@ -80,11 +80,3 @@ test('a fingerprint identifies a key without showing it', () => {
   assert.notEqual(fingerprint(generate().key), print);
 });
 
-// How the agent tells a pre-release 64-hex repository password from a key an
-// owner could have written down.
-test('only a canonical recovery key is recognised as one', () => {
-  assert.equal(isRecoveryKey(KEY), true);
-  assert.equal(isRecoveryKey(BODY), false);
-  assert.equal(isRecoveryKey('a'.repeat(64)), false);
-  assert.equal(isRecoveryKey(''), false);
-});

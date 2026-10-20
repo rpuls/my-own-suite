@@ -16,7 +16,6 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
-const { generate, isRecoveryKey } = require('../recovery-key.cjs');
 const { RecoveryKeyStore } = require('../../lib/recovery-key-store.cjs');
 
 const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
@@ -28,10 +27,6 @@ const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on th
 // tmpfs, so a key handed to one command never reaches a disk — least of all
 // the plaintext system partition the vault exists to keep owner data off.
 const RUNTIME_SECRET_DIR = '/run/mos-backup-agent';
-// The pre-release 64-hex password, moved aside rather than replaced. It is
-// never deleted: a drive that stays unplugged for months must still open, and
-// migrate, on the day it is finally attached.
-const LEGACY_KEY_SUFFIX = '.legacy';
 // Keys a rotation has replaced. They are kept rather than destroyed because a
 // repository that was not attached when the key changed still answers to the
 // one it had: a drive in a drawer may be months behind, and dropping the key
@@ -219,8 +214,6 @@ class ResticEngine {
 
   get keyFile() { return this.keys.keyPath; }
 
-  get legacyKeyFile() { return `${this.keyFile}${LEGACY_KEY_SUFFIX}`; }
-
   get supersededKeyFile() { return `${this.keyFile}${SUPERSEDED_KEY_SUFFIX}`; }
 
   get stagedKeyFile() { return `${this.keyFile}${STAGED_KEY_SUFFIX}`; }
@@ -276,36 +269,6 @@ class ResticEngine {
     } catch {
       return [];
     }
-  }
-
-  // Every key this machine used before its current one, newest first: what a
-  // rotation replaced, and then the pre-release password a machine installed
-  // before recovery keys existed may still be carrying. One list, because a
-  // repository holding either is the same problem with the same fix.
-  supersededKeys() {
-    const legacy = this.legacyKey();
-    return [...this.rotatedKeys(), ...(legacy ? [legacy] : [])];
-  }
-
-  legacyKey() {
-    try {
-      return fs.readFileSync(this.legacyKeyFile, 'utf8').trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
-  // Moves a pre-release 64-hex password aside so this machine gets a key its
-  // owner can write down. Idempotent, and it never removes the old value: the
-  // repositories keyed with it are migrated one at a time, whenever each is
-  // next opened, which for an unplugged drive may be months from now.
-  migrateLegacyKey() {
-    if (!fs.existsSync(this.keyFile)) return false;
-    const existing = fs.readFileSync(this.keyFile, 'utf8').trim();
-    if (!existing || isRecoveryKey(existing)) return false;
-    writeSecretFile(this.legacyKeyFile, existing);
-    this.keys.writeKey(generate().key);
-    return true;
   }
 
   // Verification has to read the repository, not a local copy of what the
@@ -454,9 +417,8 @@ class ResticEngine {
 
   /**
    * One repository's catch-up onto this machine's current key, run the first
-   * time probing it answers `locked` while a key it used to have is still here.
-   * It covers both ways a repository falls behind: a pre-release password, and
-   * a key the owner has since rotated.
+   * time probing it answers `locked` while a key it used to have is still here:
+   * one the owner has since rotated away from.
    *
    * Adding the current key and removing the old one is a metadata write. restic
    * wraps a single data key with any number of passwords, so nothing stored is
@@ -472,7 +434,7 @@ class ResticEngine {
    */
   async migrateRepositoryKey({ env = {}, localPath = null, location, secrets = [] }) {
     const repository = { engineName: this.name, env, localPath, location, secrets };
-    for (const previous of this.supersededKeys()) {
+    for (const previous of this.rotatedKeys()) {
       if ((await this.probeRepository({ env, location, password: previous, secrets })).state !== 'open') continue;
       const previousKeyId = this.keyList({ password: previous, repository }).find((entry) => entry.current)?.id || null;
       this.keyAdd({ newPassword: this.recoveryKey(), password: previous, repository });
@@ -486,9 +448,9 @@ class ResticEngine {
 
   // Whether a repository opens, wherever it lives. A drive with no config file
   // is absent without asking the engine; a `locked` answer is retried once
-  // through the pre-release password, which is the single place every
-  // repository keyed before the recovery key existed gets migrated — so health
-  // checks, preflights and opens all migrate, not only the open.
+  // through the keys a rotation replaced, the single place a repository that
+  // fell behind gets re-keyed — so health checks, preflights and opens all
+  // re-key, not only the open.
   //
   // `password` is the key of the server that owns the repository, for a
   // destination this machine only borrows. It also stops the migration, which

@@ -91,10 +91,8 @@ function InterruptionNotice({ kind }: { kind: Interruption }) {
   return null;
 }
 
-// Whether a row can be ticked: anything MOS manages and may change, and the
-// folder an app left, which goes whole.
 function selectable(entry: FileEntry, readOnly: boolean) {
-  return !readOnly && entry.managed && (!entry.locked || Boolean(entry.appState));
+  return !readOnly && !entry.refusals.delete;
 }
 
 // What MOS uses now is drawn in color; what an app left and what MOS never made
@@ -109,12 +107,14 @@ function FileRow({ dimmed, entry, onFlow, onOpen, onToggle, readOnly, selected, 
   selected: boolean;
   selecting: boolean;
 }) {
-  const changeable = entry.managed && !entry.locked && !readOnly;
+  const changeable = !entry.refusals.change && !readOnly;
+  const deletable = !entry.refusals.delete && !readOnly;
   const leftover = Boolean(entry.appState);
   const menu = [
     ...entry.kind === 'file' ? [{ label: 'Download', onSelect: () => onFlow('download') }] : [],
     ...changeable ? [{ label: 'Rename', onSelect: () => onFlow('rename') }, { label: 'Move', onSelect: () => onFlow('move') }, { label: 'Delete', onSelect: () => onFlow('delete') }] : [],
-    ...leftover ? [{ label: 'Open', onSelect: onOpen }, ...readOnly ? [] : [{ label: `Delete ${entry.appName || entry.name}'s files`, onSelect: () => onFlow('delete') }]] : [],
+    ...leftover ? [{ label: 'Open', onSelect: onOpen }] : [],
+    ...deletable && !changeable ? [{ label: `Delete ${entry.appName || entry.name}'s files`, onSelect: () => onFlow('delete') }] : [],
   ];
   const quiet = dimmed || !entry.managed || leftover;
   return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}${quiet ? ' is-unused' : ''}`} selected={selected}>
@@ -130,7 +130,7 @@ function FileRow({ dimmed, entry, onFlow, onOpen, onToggle, readOnly, selected, 
       ? <a className="suite-files-facts" href={BACKUPS_PATH} onClick={openBackups}>Your backups — open in Backups ›</a>
       : <span className="suite-meta suite-files-facts">{entryFacts(entry)}</span>}
     <span className="suite-files-actions">
-      {entry.locked && entry.managed && !leftover && !entry.special ? <Tooltip label={entry.locked}><Icon name="lock" /></Tooltip> : null}
+      {entry.refusals.delete && entry.managed && !entry.special ? <Tooltip label={entry.refusals.delete}><Icon name="lock" /></Tooltip> : null}
       {menu.length ? <ActionMenu ariaLabel={`Actions for ${entry.name}`} items={menu} /> : null}
     </span>
   </PanelItem>;
@@ -179,7 +179,7 @@ export function FilesScreen() {
       if (listed.path !== shown.current) return;
       setListing(listed);
       setError('');
-      setSelected((current) => current.filter((name) => listed.entries.some((item) => item.name === name && !item.locked)));
+      setSelected((current) => current.filter((name) => listed.entries.some((item) => item.name === name && !item.refusals.delete)));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The files on this drive could not be listed.');
     }
@@ -214,7 +214,7 @@ export function FilesScreen() {
   const parentPath = joinPath(segments.slice(0, -1));
   const deleteLeftApp = () => {
     if (!listing?.app) return;
-    const folder = { appName: listing.app.name, appState: listing.app.state, bytes: listing.totals.bytes, items: listing.totals.items, kind: 'folder' as const, locked: null, managed: true, modifiedAt: '', name: listing.app.id, special: null };
+    const folder = { appName: listing.app.name, appState: listing.app.state, bytes: listing.totals.bytes, items: listing.totals.items, kind: 'folder' as const, managed: true, modifiedAt: '', name: listing.app.id, refusals: { change: 'An app folder stays where it is.', delete: null }, special: null };
     setFlow({ entries: [folder], from: parentPath, kind: 'delete', then: () => openFiles(driveId, parentPath, { replace: true }) });
   };
 
@@ -285,7 +285,7 @@ export function FilesScreen() {
         <strong>{picked.length} selected{pickedBytes !== null ? ` · ${formatBytes(pickedBytes)}` : ''}</strong>
         {picked.length < entries.filter((item) => selectable(item, !writable)).length ? <button className="mos-link suite-link-button" onClick={() => setSelected(entries.filter((item) => selectable(item, !writable)).map((item) => item.name))} type="button">Select all {entries.filter((item) => selectable(item, !writable)).length}</button> : null}
         <span className="suite-files-spacer" />
-        {picked.some((item) => item.appState) ? null : <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'move' })} type="button">Move</button>}
+        {picked.some((item) => item.refusals.change) ? null : <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'move' })} type="button">Move</button>}
         <button className="mos-btn mos-btn-danger mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'delete' })} type="button">Delete</button>
         <button aria-label="Clear selection" className="suite-icon-button suite-files-quiet-button" onClick={() => setSelected([])} title="Clear selection" type="button"><Icon name="x" /></button>
       </div> : <div className="suite-files-toolbar">

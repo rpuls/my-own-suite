@@ -101,7 +101,7 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
       calls.push(['reveal']);
       return { key: 'MOS-7K2F-9XQ4-0000-0000-0000-0000-0000-0000', kit: 'My Own Suite — recovery kit', kitFilename: 'mos-recovery-kit-lab-2026-09-07.txt' };
     },
-    async unlockDestination(input) {
+    async unlockArchive(input) {
       calls.push(['unlock', input]);
       return { result: { adopted: true, message: 'Unlocked.' } };
     },
@@ -128,8 +128,8 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
     assert.equal(again.status, 200);
     assert.match(again.json().key, /^MOS-/u);
 
-    const unlocked = await call('POST', '/backups/destinations/unlock', {
-      body: { destinationId: 'object:abc123', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' },
+    const unlocked = await call('POST', '/backups/archives/unlock', {
+      body: { archiveId: '1A2B-3C4D/archive-0000beef', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' },
     });
     assert.equal(unlocked.status, 200);
   });
@@ -138,6 +138,6 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
     ['reveal'],
     ['acknowledge'],
     ['reveal'],
-    ['unlock', { destinationId: 'object:abc123', recoveryKey: 'mos 7k2f 9xq4' }],
+    ['unlock', { archiveId: '1A2B-3C4D/archive-0000beef', recoveryKey: 'mos 7k2f 9xq4' }],
   ]);
 });

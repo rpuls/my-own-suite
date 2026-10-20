@@ -5,17 +5,16 @@ import { postJson } from '../../lib/api';
 import { AddStorageDialog } from '../storage/AddStorageDialog';
 import { useAppNames, useStorage } from '../storage/model';
 import { StoragePicker } from '../storage/StoragePicker';
-import { EraseBackupsDialog } from './dialogs';
-import { whenWords, type ForeignStore } from './model';
 
 // Making storage a backup destination. The storage itself is set up in Settings →
 // Storage, or from the picker's last row, which opens the same dialog right here:
 // on a fresh server that is the way to the bucket holding the backups to restore.
-export function AddDestinationDialog({ firstDestination, onAdded, onClose, onUnlock, startOnline = false }: {
+// Backups another server left on it are listed apart once it is open, and never
+// stand in the way of this server's own.
+export function AddDestinationDialog({ firstDestination, onAdded, onClose, startOnline = false }: {
   firstDestination: boolean;
   onAdded: () => void;
   onClose: () => void;
-  onUnlock: (destinationId: string) => void;
   startOnline?: boolean;
 }) {
   const { reload, storage } = useStorage();
@@ -25,41 +24,18 @@ export function AddDestinationDialog({ firstDestination, onAdded, onClose, onUnl
   const [primary, setPrimary] = useState(firstDestination);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // What is on a drive is only known once MOS has opened it, so another server's
-  // backups are found here, after the pick, and the owner decides what happens.
-  const [foreign, setForeign] = useState<ForeignStore | null>(null);
-  const [erasing, setErasing] = useState(false);
   const already = (storage || []).filter((entry) => entry.backups?.destination).map((entry) => entry.id);
 
   async function add() {
     setBusy(true);
     setError('');
     try {
-      const added = await postJson<{ foreignStore: ForeignStore | null }>('/suite-manager/api/backups/destinations/add', { primary, storageId: picked }, 'MOS could not make this a backup destination.');
-      if (added.foreignStore) { setForeign(added.foreignStore); setBusy(false); return; }
+      await postJson('/suite-manager/api/backups/destinations/add', { primary, storageId: picked }, 'MOS could not make this a backup destination.');
       onAdded();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'MOS could not make this a backup destination.');
       setBusy(false);
     }
-  }
-
-  if (foreign && erasing) return <EraseBackupsDialog onClose={() => setErasing(false)} onErased={onAdded} primary={primary} store={foreign} />;
-
-  if (foreign) {
-    const points = `${foreign.restorePoints} restore point${foreign.restorePoints === 1 ? '' : 's'}`;
-    return <Dialog
-      footer={<>
-        <button className="mos-btn mos-btn-secondary" onClick={onAdded} type="button">Keep them</button>
-        <button className="mos-btn mos-btn-secondary" onClick={() => onUnlock(foreign.destinationId)} type="button">Enter its recovery key</button>
-        <button className="mos-btn mos-btn-primary" onClick={() => setErasing(true)} type="button">Erase them…</button>
-      </>}
-      onClose={onAdded}
-      title={`${foreign.label} holds another server's backups`}
-    >
-      <p>{points} on {foreign.label} were made by {foreign.from || 'another server'}{foreign.newestAt ? `, the newest ${whenWords(foreign.newestAt).toLowerCase()}` : ''}. This server cannot add its own backups to them.</p>
-      <p className="suite-meta">To restore from them, enter that server&rsquo;s recovery key. To use the drive for this server&rsquo;s backups, erase them. Keeping them leaves the drive listed under &ldquo;Backups from another server&rdquo;, and you can decide later.</p>
-    </Dialog>;
   }
 
   if (adding) {

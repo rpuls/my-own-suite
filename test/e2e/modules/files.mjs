@@ -260,6 +260,7 @@ export async function filesLive(ctx) {
   const { driveId } = await appDriveOf(ctx);
   await driveReaches(ctx, driveId, ['ready']);
   await openDrive(ctx, driveId);
+  await openFolder(page, FILES_DIR);
   await expect(page.getByRole('button', { name: 'Add files' })).toBeEnabled();
   await page.evaluate(() => { window.mosFilesNoReload = true; });
   await apiJson(page, `/suite-manager/api/storage/drives/${driveId}/eject`, { method: 'POST' });

@@ -50,83 +50,25 @@ function recoveryKeyRoutes({ backupAgent, setup }) {
   ];
 }
 
-function destinationRoutes({ backupAgent }) {
+function archiveRoutes({ backupAgent }) {
+  const archive = (path, call, fields = []) => ({
+    method: 'POST',
+    path,
+    signIn: MANAGE,
+    bodyLimit: 8 * 1024,
+    handler: async ({ body, response }) => {
+      const input = await body();
+      jsonResponse(response, 200, await call(Object.fromEntries(['archiveId', ...fields].map((field) => [field, String(input[field] || '')]))));
+    },
+  });
   return [
     // Another server's key goes straight through to the agent and is never kept here.
-    {
-      method: 'POST',
-      path: '/backups/destinations/unlock',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.unlockDestination({
-          destinationId: String(input.destinationId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/keys',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.archiveKeys({
-          destinationId: String(input.destinationId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/keys/remove',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.removeArchiveKey({
-          destinationId: String(input.destinationId || ''),
-          keyId: String(input.keyId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/forget-key',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(input.destinationId || '')));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/forget-drive',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.forgetDrive(String(input.fsUuid || '')));
-      },
-    },
-    // Another server's backups on a drive, erased so this server can use it.
-    {
-      method: 'POST',
-      path: '/backups/destinations/erase',
-      signIn: MANAGE,
-      bodyLimit: 4 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        const destinationId = String(input.destinationId || '');
-        const erased = await backupAgent.eraseForeignBackups({ confirmation: String(input.confirmation || ''), destinationId });
-        if (input.primary === true) await backupAgent.setPrimaryDestination({ destinationId });
-        jsonResponse(response, 200, erased);
-      },
-    },
+    archive('/backups/archives/unlock', (input) => backupAgent.unlockArchive(input), ['recoveryKey']),
+    archive('/backups/archives/keys', (input) => backupAgent.archiveKeys(input), ['recoveryKey']),
+    archive('/backups/archives/keys/remove', (input) => backupAgent.removeArchiveKey(input), ['keyId', 'recoveryKey']),
+    archive('/backups/archives/forget-key', (input) => backupAgent.forgetArchiveKey(input)),
+    // One archive another server made on a drive; the screen asked for the confirmation.
+    archive('/backups/archives/erase', (input) => backupAgent.eraseArchive(input), ['confirmation']),
     // Where everything automatic writes: the schedule and the checkpoint before an update.
     {
       method: 'POST',
@@ -163,6 +105,7 @@ function backupRoutes(services) {
           // Answered 200 so the screen can say so; a genuine fault looks the same as a stopped agent.
           logger.warn('backup-agent-unavailable', { error });
           jsonResponse(response, 200, {
+            archives: [],
             backups: [],
             currentJob: null,
             destinations: [],
@@ -178,7 +121,7 @@ function backupRoutes(services) {
       },
     },
     ...recoveryKeyRoutes(services),
-    ...destinationRoutes(services),
+    ...archiveRoutes(services),
     {
       method: 'POST',
       path: '/backups/start',

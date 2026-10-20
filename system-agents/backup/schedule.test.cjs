@@ -112,7 +112,7 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
   const jobs = new Map();
   const created = [];
   const state = { clock: new Date('2026-09-07T00:59:00.000Z'), createError: null, destinations, points, updating: false };
-  const primary = new PrimaryDestination({ agentStateDir: dir, now: () => state.clock, repositoryId: () => 'repo-1' });
+  const primary = new PrimaryDestination({ agentStateDir: dir, now: () => state.clock });
   primary.save({ destinationId: '/media/backup', label: 'Backup drive' });
   const scheduler = new BackupScheduler({
     agentStateDir: dir,
@@ -162,13 +162,12 @@ test('a disconnected drive holds the run open instead of failing it', async () =
   assert.match(scheduler.state().waiting.reason, /not connected/u);
   assert.equal(scheduler.state().lastResult, null, 'a drive in a drawer is not a failed backup');
 
-  // Hours later the drive comes back on a different mount path; the repository
-  // on it is what identifies it as the one the schedule was pointed at.
+  // Hours later the drive comes back, and the run that was owed starts.
   state.clock = new Date('2026-09-07T18:00:00.000Z');
-  state.destinations = [{ id: '/media/backup-2', label: 'Backup drive', writable: true }];
+  state.destinations = [{ id: '/media/backup', label: 'Backup drive', writable: true }];
   await scheduler.tick();
   assert.equal(created.length, 1);
-  assert.equal(created[0].destinationId, '/media/backup-2');
+  assert.equal(created[0].destinationId, '/media/backup');
   assert.equal(scheduler.state().waiting, null);
 });
 

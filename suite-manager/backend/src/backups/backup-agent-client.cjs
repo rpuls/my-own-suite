@@ -47,14 +47,11 @@ class BackupAgentClient {
   // and hands back the new one exactly once, the same way the first one was
   // handed over.
   rotateRecoveryKey() { return this.request('POST', '/v1/recovery-key/rotate', {}); }
-  unlockDestination(input) { return this.request('POST', '/v1/destinations/unlock', input); }
-  forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
-  // Stops MOS remembering a drive it is not holding. Nothing on the drive is
-  // touched: it is not here.
-  forgetDrive(fsUuid) { return this.request('POST', '/v1/destinations/forget-drive', { fsUuid }); }
-  eraseForeignBackups(input) { return this.request('POST', '/v1/destinations/erase', input); }
-  archiveKeys(input) { return this.request('POST', '/v1/destinations/keys', input); }
-  removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
+  unlockArchive(input) { return this.request('POST', '/v1/archives/unlock', input); }
+  forgetArchiveKey(input) { return this.request('POST', '/v1/archives/forget-key', input); }
+  eraseArchive(input) { return this.request('POST', '/v1/archives/erase', input); }
+  archiveKeys(input) { return this.request('POST', '/v1/archives/keys', input); }
+  removeArchiveKey(input) { return this.request('POST', '/v1/archives/keys/remove', input); }
 }
 
 module.exports = { BackupAgentClient };

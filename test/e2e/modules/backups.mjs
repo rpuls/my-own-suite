@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 
 import { apiJson } from '../support/api.mjs';
+import { runOnLab } from '../support/lab-shell.mjs';
 import { openSuiteManager } from '../support/navigation.mjs';
 import { installedPackages } from '../support/packages.mjs';
 import { capturePageShot } from '../support/screenshots.mjs';
@@ -75,7 +76,7 @@ async function storageEntries(page) {
 async function backupDriveDestination(ctx) {
   const { page } = ctx;
   const status = await apiJson(page, STATUS);
-  const ready = (status.destinations || []).find((item) => item.kind !== 'object' && item.ready);
+  const ready = (status.destinations || []).find((item) => item.kind !== 'object' && item.condition === 'ready');
   if (ready) return ready;
   const drive = (await storageEntries(page)).find((item) => item.kind === 'drive' && item.capabilities.holdsBackups && !item.apps.length && ['available', 'ready'].includes(item.state));
   const reasons = (await storageEntries(page)).map((item) => `${item.name}: ${item.state}`).join('; ');
@@ -83,7 +84,7 @@ async function backupDriveDestination(ctx) {
   await useForBackups(page, await openDestinationPicker(page), drive.id);
   let found = null;
   await expect.poll(async () => {
-    found = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.fsUuid === drive.id && item.ready);
+    found = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === drive.id && item.condition === 'ready');
     return Boolean(found);
   }, { message: 'the picked drive should become a ready backup destination', timeout: 60000 }).toBe(true);
   return found;
@@ -118,7 +119,7 @@ async function backupToDisk(ctx) {
   expect(done.lastJob?.status, `The backup should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
   await expect(page.getByText(/Your backups are up to date/iu)).toBeVisible({ timeout: 60000 });
   await capturePageShot(page, 'backups', { fullPage: true });
-  const point = (done.backups || []).filter((item) => item.destinationId === destination.id && item.restorable)[0];
+  const point = (done.backups || []).filter((item) => item.containerId === destination.id && item.owner === 'this')[0];
   expect(point, 'The new restore point should be listed').toBeTruthy();
   ctx.backups.push({ apps, createdAt: point.createdAt, destination: 'local', destinationId: destination.id, path: point.path, runId: ctx.runId });
 }
@@ -183,14 +184,14 @@ async function backupToBucket(ctx) {
   await openSuiteManager(page, 'Backup', ctx.url('/'));
   const folder = `e2e-${ctx.runId}`.toLowerCase();
   const destinationId = await connectBucket(ctx, folder);
-  await waitForDestination(page, destinationId, (item) => item.ready);
+  await waitForDestination(page, destinationId, (item) => item.condition === 'ready');
   await rememberRecoveryKey(ctx);
 
   const apps = await installedIds(page);
   await post(page, 'start', { destinationId, note: `E2E ${ctx.runId}` });
   const done = await waitForJobToEnd(ctx, 25);
   expect(done.lastJob?.status, `The bucket backup should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
-  const point = (done.backups || []).find((item) => item.destinationId === destinationId && item.restorable);
+  const point = (done.backups || []).find((item) => item.containerId === destinationId && item.owner === 'this');
   expect(point, 'The bucket restore point should be listed').toBeTruthy();
   ctx.backups.push({ apps, createdAt: point.createdAt, destination: 'bucket', destinationId, folder, path: point.path, runId: ctx.runId });
 }
@@ -198,6 +199,19 @@ async function backupToBucket(ctx) {
 export async function backup(ctx, destination) {
   if (destination === 'bucket') await backupToBucket(ctx);
   else await backupToDisk(ctx);
+}
+
+// The archive in a bucket, once MOS has heard back from it: this server's, or
+// another server's locked or opened with its key.
+async function waitForArchive(page, containerId, accept) {
+  let last = null;
+  await expect(async () => {
+    last = ((await apiJson(page, STATUS)).archives || []).find((item) => item.containerId === containerId);
+    expect(last && accept(last)).toBeTruthy();
+  }).toPass({ intervals: [3000], timeout: 120000 }).catch(() => {
+    throw new Error(`The bucket's backups did not reach the expected state. Last: ${JSON.stringify(last).slice(0, 300)}`);
+  });
+  return last;
 }
 
 // Reconnected from its settings alone, so the restore point is found in the bucket.
@@ -215,34 +229,27 @@ async function reconnectBucket(ctx, record) {
   await fillBucketForm(ctx, page.getByRole('dialog', { name: 'Add storage' }), record.folder);
   const destinationId = await bucketId(page, record.folder);
   await useForBackups(page, page.getByRole('dialog', { name: 'Add a backup destination' }), destinationId);
-  const found = await waitForDestination(page, destinationId, (item) => item.locked || item.ready);
-  if (found.locked) {
+  const found = await waitForArchive(page, destinationId, () => true);
+  if (found.keyState === 'locked') {
     console.log('[restore:bucket] the bucket is locked to this machine; opening it with the recovery key saved at backup time');
-    await post(page, 'destinations/unlock', { destinationId, recoveryKey: ctx.recoveryKey });
-    await waitForDestination(page, destinationId, (item) => item.ready);
+    await post(page, 'archives/unlock', { archiveId: found.id, recoveryKey: ctx.recoveryKey });
+    await waitForArchive(page, destinationId, (item) => item.keyState === 'borrowed');
   }
-  const point = ((await apiJson(page, STATUS)).backups || []).find((item) => item.destinationId === destinationId && item.createdAt === record.createdAt);
+  const point = ((await apiJson(page, STATUS)).backups || []).find((item) => item.containerId === destinationId && item.createdAt === record.createdAt);
   expect(point, 'The bucket restore point should be listed after reconnecting').toBeTruthy();
   return { destinationId, path: point.path };
 }
 
-export async function restore(ctx, destination) {
+// The read-only check first: the same integrity checks the restore preflight
+// runs, proven to pass without touching the running suite.
+async function checkAndRestore(ctx, backupPath, apps) {
   const { page } = ctx;
-  const kind = destination || 'local';
-  const record = [...ctx.backups].reverse().find((item) => item.destination === kind);
-  if (!record) throw new Error(`restore${destination ? `:${destination}` : ''} needs an earlier backup${destination ? `:${destination}` : ''} in this run.`);
-  await openSuiteManager(page, 'Backup', ctx.url('/'));
-  // Reconnected, the bucket is a destination again, so the record follows it for cleanup.
-  if (kind === 'bucket') Object.assign(record, await reconnectBucket(ctx, record));
-
-  // The read-only check first: the same integrity checks the restore preflight
-  // runs, proven to pass without touching the running suite.
-  await post(page, 'validate', { backupPath: record.path });
+  await post(page, 'validate', { backupPath });
   const validated = await waitForJobToEnd(ctx, 15);
   expect(validated.lastJob?.kind, 'The check should be the latest job').toBe('validate');
   expect(validated.lastJob?.status, `The read-only check should pass before restoring (${validated.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
 
-  await post(page, 'restore', { backupPath: record.path, confirmation: 'RESTORE' });
+  await post(page, 'restore', { backupPath, confirmation: 'RESTORE' });
   await page.waitForTimeout(5000);
   const done = await waitForJobToEnd(ctx, 30);
   expect(done.lastJob?.status, `The restore should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
@@ -253,7 +260,99 @@ export async function restore(ctx, destination) {
   expect(done.interruptedRestore, 'No interrupted-restore record should remain').toBeFalsy();
 
   await followAddress(ctx);
-  expect(await installedIds(page), 'The restored apps should be the ones the backup held').toEqual(record.apps);
+  expect(await installedIds(page), 'The restored apps should be the ones the backup held').toEqual(apps);
+}
+
+export async function restore(ctx, destination) {
+  const kind = destination || 'local';
+  const record = [...ctx.backups].reverse().find((item) => item.destination === kind);
+  if (!record) throw new Error(`restore${destination ? `:${destination}` : ''} needs an earlier backup${destination ? `:${destination}` : ''} in this run.`);
+  await openSuiteManager(ctx.page, 'Backup', ctx.url('/'));
+  // Reconnected, the bucket is a destination again, so the record follows it for cleanup.
+  if (kind === 'bucket') Object.assign(record, await reconnectBucket(ctx, record));
+  await checkAndRestore(ctx, record.path, record.apps);
+}
+
+const OTHER_SERVER = 'e2e-old-server';
+
+// Beside the archive a disk backup went to, a copy as another server would have
+// left it: its restore points name another install, and only a fresh key, which
+// that server holds, opens it. Prints the copy's folder name and that key.
+function otherServerArchive(pointPath) {
+  return `set -euo pipefail
+src=$(dirname "$(dirname ${JSON.stringify(pointPath)})")
+name=archive-$(head -c4 /dev/urandom | od -An -tx1 | tr -dc 0-9a-f)
+dst=$(dirname "$src")/$name
+cp -a "$src" "$dst"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+export HOME=$work
+key=$(node -e 'process.stdout.write(require("/opt/mos/repo/system-agents/backup/recovery-key.cjs").generate().key)')
+printf %s "$key" > "$work/key"
+restic() { /usr/local/libexec/mos/restic --no-cache --quiet -r "$dst/repository" "$@"; }
+RESTIC_PASSWORD_FILE=/var/lib/mos/backup-agent/engine-key restic key add --new-password-file "$work/key"
+for id in $(RESTIC_PASSWORD_FILE="$work/key" restic key list --json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{for(const k of JSON.parse(s))if(!k.current)console.log(k.id)})'); do
+  RESTIC_PASSWORD_FILE="$work/key" restic key remove "$id"
+done
+node - "$dst" ${OTHER_SERVER} <<'JS'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const [root, server] = process.argv.slice(2);
+const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\\n');
+const descriptor = path.join(root, 'MOS-REPOSITORY.json');
+write(descriptor, { ...JSON.parse(fs.readFileSync(descriptor, 'utf8')), createdByHostname: server, createdByInstallId: server });
+const points = path.join(root, 'restore-points');
+for (const name of fs.readdirSync(points).filter((file) => file.endsWith('.json'))) {
+  const file = path.join(points, name);
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  write(file, { ...manifest, source: { ...manifest.source, hostname: server, installId: server } });
+  fs.writeFileSync(file + '.sha256', crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') + '  ' + name + '\\n');
+}
+JS
+printf '{"name":"%s","key":"%s"}' "$name" "$key"`;
+}
+
+async function archiveIn(page, archiveId) {
+  return ((await apiJson(page, STATUS)).archives || []).find((item) => item.id === archiveId) || null;
+}
+
+// A drive holding another server's backups: they are listed apart and locked,
+// the drive stays this server's backup place, the other server's key opens them
+// without making them changeable, and restoring one makes this server that one,
+// with its key and the drive.
+export async function takeover(ctx) {
+  const { page } = ctx;
+  const record = [...ctx.backups].reverse().find((item) => item.destination === 'local');
+  if (!record) throw new Error('takeover needs an earlier backup to the backup disk in this run.');
+  const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path)));
+  const archiveId = `${record.destinationId}/${made.name}`;
+  try {
+    await openSuiteManager(page, 'Backup', ctx.url('/'));
+    let archive = null;
+    await expect.poll(async () => { archive = await archiveIn(page, archiveId); return archive?.keyState; }, { message: "the other server's archive should be listed, locked", timeout: 60000 }).toBe('locked');
+    expect([archive.owner, archive.writtenBy?.hostname], 'It should be listed as the other server\'s').toEqual(['other', OTHER_SERVER]);
+    const destination = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === record.destinationId);
+    expect(destination?.condition, 'The drive should stay ready for this server\'s own backups').toBe('ready');
+    await capturePageShot(page, 'backups-other-server', { fullPage: true });
+
+    await post(page, 'archives/unlock', { archiveId, recoveryKey: made.key });
+    await expect.poll(async () => (await archiveIn(page, archiveId))?.keyState, { message: 'the other server\'s key should open it', timeout: 60000 }).toBe('borrowed');
+    const point = ((await apiJson(page, STATUS)).backups || []).find((item) => item.archiveId === archiveId);
+    expect(point?.owner, 'Its restore point should be listed as the other server\'s').toBe('other');
+    const refused = await post(page, 'delete', { backupPath: point.path }).then(() => null, (error) => error);
+    expect(refused, 'Deleting another server\'s restore point should be refused').toBeTruthy();
+
+    await checkAndRestore(ctx, point.path, record.apps);
+    const status = await apiJson(page, STATUS);
+    const taken = (status.archives || []).find((item) => item.id === archiveId);
+    expect([taken?.owner, taken?.keyState], 'The restore should make the archive this server\'s').toEqual(['this', 'own']);
+    expect((status.destinations || []).find((item) => item.id === record.destinationId)?.condition, 'The drive should still be this server\'s backup place').toBe('ready');
+    await rememberRecoveryKey(ctx);
+    expect(ctx.recoveryKey, 'This server should now use the other server\'s recovery key').toBe(made.key);
+  } finally {
+    await runOnLab(ctx.env.labShell, `rm -rf "$(dirname "$(dirname ${JSON.stringify(record.path)})")/../${made.name}"`);
+  }
 }
 
 export async function cleanup(ctx) {
@@ -262,7 +361,7 @@ export async function cleanup(ctx) {
   const status = await apiJson(page, STATUS);
   const failures = [];
   for (const record of ctx.backups) {
-    const point = (status.backups || []).find((item) => item.path === record.path || (item.destinationId === record.destinationId && item.createdAt === record.createdAt));
+    const point = (status.backups || []).find((item) => item.path === record.path || (item.containerId === record.destinationId && item.createdAt === record.createdAt));
     if (!point) continue;
     try {
       await post(page, 'delete', { backupPath: point.path });

@@ -94,8 +94,8 @@ test('the top of the drive lists MOS\'s folders first, then the rest, without wh
   assert.equal(top.managed, false);
   const inside = await service.list(DRIVE, 'MOS-files');
   assert.deepEqual(inside.entries.map((entry) => entry.name), ['apps', 'Home videos']);
-  assert.match(inside.entries[0].locked, /keeps your apps/u);
-  assert.equal(inside.entries[1].locked, null);
+  assert.match(inside.entries[0].refusals.delete, /keeps your apps/u);
+  assert.deepEqual(inside.entries[1].refusals, { change: null, delete: null });
   await assert.rejects(service.list(DRIVE, 'MOS-backups'), { code: 'FILES_PATH_REFUSED' });
   await assert.rejects(service.list(DRIVE, '$RECYCLE.BIN'), { code: 'FILES_PATH_REFUSED' });
 });
@@ -106,7 +106,7 @@ test('files MOS does not manage are listed and downloaded, never changed', async
   fs.mkdirSync(path.join(mount, 'Photos 2019'));
   fs.writeFileSync(path.join(mount, 'Photos 2019', 'IMG_0412.jpg'), 'jpeg');
   const photos = await service.list(DRIVE, 'Photos 2019');
-  assert.deepEqual(photos.entries.map((entry) => [entry.name, entry.managed, Boolean(entry.locked)]), [['IMG_0412.jpg', false, true]]);
+  assert.deepEqual(photos.entries.map((entry) => [entry.name, entry.managed, Boolean(entry.refusals.change), Boolean(entry.refusals.delete)]), [['IMG_0412.jpg', false, true, true]]);
   assert.equal(photos.managed, false);
   await withRoutes({ files: service }, async (call) => {
     assert.equal((await call('GET', `${BASE}/download?path=${encodeURIComponent('Photos 2019/IMG_0412.jpg')}`)).body, 'jpeg');
@@ -117,19 +117,19 @@ test('files MOS does not manage are listed and downloaded, never changed', async
   });
 });
 
-test('the apps folder lists the folders of apps not reading this drive last, and the app tree says why it stays put', async () => {
+test('the apps folder lists the folders of apps not reading this drive last, deletable whole but never moved', async () => {
   const { files, service } = fixture();
   fs.mkdirSync(path.join(files, 'apps', 'immich', 'Photos'), { recursive: true });
   const apps = await service.list(DRIVE, 'MOS-files/apps');
-  assert.deepEqual(apps.entries.map((entry) => [entry.name, entry.appState, entry.appName, Boolean(entry.locked)]), [
-    ['jellyfin', null, null, true],
-    ['immich', 'not-installed', 'immich', true],
-    ['plex', 'not-installed', 'Plex', true],
+  assert.deepEqual(apps.entries.map((entry) => [entry.name, entry.appState, entry.appName, Boolean(entry.refusals.change), Boolean(entry.refusals.delete)]), [
+    ['jellyfin', null, null, true, true],
+    ['immich', 'not-installed', 'immich', true, false],
+    ['plex', 'not-installed', 'Plex', true, false],
   ]);
   assert.equal((await service.list(DRIVE, 'MOS-files/apps/plex')).app.state, 'not-installed');
   const jellyfin = await service.list(DRIVE, 'MOS-files/apps/jellyfin');
   assert.match(jellyfin.addRefusal, /inside one of the app/u);
-  assert.match(jellyfin.entries[0].locked, /An app reads this folder/u);
+  assert.match(jellyfin.entries[0].refusals.change, /An app reads this folder/u);
 });
 
 test('a drive MOS keeps nothing on is opened by the first look at its files', async () => {

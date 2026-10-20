@@ -1,20 +1,18 @@
 import { ActionMenu, Icon, Panel, PanelBand, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
 import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../storage/model';
-import { destinationIconName, isOtherServers, type DestinationView } from './model';
+import { destinationIconName, type DestinationView, type OtherArchiveView } from './model';
 
 // The places this server backs up to. One list, one row per place, sorted so
 // the selected one is first. A row has exactly three zones — the radio that
 // chooses it, what it is and how it is doing, and at most one button plus a
 // More menu — because the old screen had four affordances in four positions
 // and nothing to read first.
-export function DestinationsPanel({ busy, onAdd, onAction, onErase, onForgetDrive, onForgetKey, onKeys, onSelect, onShowKey, onStopUsing, running, views }: {
+export function DestinationsPanel({ busy, onAction, onAdd, onForgetDrive, onKeys, onSelect, onShowKey, onStopUsing, running, views }: {
   busy: string;
   onAction: (view: DestinationView) => void;
   onAdd: () => void;
-  onErase: (view: DestinationView) => void;
   onForgetDrive: (view: DestinationView) => void;
-  onForgetKey: (view: DestinationView) => void;
-  onKeys: (view: DestinationView) => void;
+  onKeys: (archiveId: string, label: string) => void;
   onSelect: (view: DestinationView) => void;
   onShowKey: () => void;
   onStopUsing: (view: DestinationView) => void;
@@ -27,21 +25,6 @@ export function DestinationsPanel({ busy, onAdd, onAction, onErase, onForgetDriv
   // rather than as the contrast it is there to draw.
   const showReach = views.some((view) => view.away);
 
-  const row = (view: DestinationView) => <DestinationRow
-    busy={busy}
-    key={view.id}
-    locked={locked}
-    showReach={showReach}
-    onAction={() => onAction(view)}
-    onErase={() => onErase(view)}
-    onForgetDrive={() => onForgetDrive(view)}
-    onForgetKey={() => onForgetKey(view)}
-    onKeys={() => onKeys(view)}
-    onSelect={() => onSelect(view)}
-    onStopUsing={() => onStopUsing(view)}
-    view={view}
-  />;
-
   return <Panel>
     <PanelHead
       actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onAdd} type="button">
@@ -53,7 +36,46 @@ export function DestinationsPanel({ busy, onAdd, onAction, onErase, onForgetDriv
       <p className="suite-meta">The places this server backs up to. Pick one for automatic backups. Storage itself is set up in <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Settings → Storage</a>.</p>
     </PanelHead>
 
-    <PanelList>{views.map(row)}</PanelList>
+    <PanelList>{views.map((view) => {
+      const working = [`release:${view.id}`, `primary:${view.id}`, `retest:${view.id}`, `forget-drive:${view.id}`].includes(busy);
+      const own = view.destination.ownArchive;
+      const menu = [
+        ...own && view.selectable ? [{ label: 'Keys that open this', onSelect: () => onKeys(own.id, view.label) }] : [],
+        ...!view.selected && !view.away ? [{ label: 'Stop using for backups', onSelect: () => onStopUsing(view) }] : [],
+        // Only the memory of the drive goes. MOS cannot write to a drive that is
+        // not here, so nothing on it changes and plugging it back in lists it again.
+        ...view.away && !view.selected && view.destination.kind === 'disk' ? [{ label: 'Forget this drive', onSelect: () => onForgetDrive(view) }] : [],
+      ];
+      return <PanelItem className={`suite-bk-row is-${view.tone}`} key={view.id} quiet={view.away} selected={view.selected}>
+        <button
+          aria-label={`Use ${view.label} for backups`}
+          aria-pressed={view.selected}
+          className="suite-bk-radio"
+          disabled={!view.selectable || locked}
+          onClick={() => onSelect(view)}
+          type="button"
+        >
+          <span />
+        </button>
+        <div className="suite-bk-row-body">
+          <div className="suite-bk-row-title">
+            <span className="suite-bk-row-icon"><Icon name={destinationIconName(view.destination)} /></span>
+            <strong>{view.label}</strong>
+            <span className="suite-bk-kind">{view.kindLabel}</span>
+          </div>
+          <p className="suite-bk-status"><span className={`suite-bk-dot is-${view.tone}`} />{view.status}</p>
+          {view.spaceLine ? <p className="suite-bk-detail">{view.spaceLine}</p> : null}
+          {view.detail ? <p className="suite-bk-detail">{view.detail}</p> : null}
+          {showReach ? <p className="suite-bk-detail">{view.reachLine}</p> : null}
+          {view.selected ? <p className="suite-bk-selected-note">Automatic backups go here, including the one taken before a MOS update.</p> : null}
+        </div>
+        <div className="suite-bk-row-actions">
+          {working ? <span className="suite-bk-working"><Spinner />Working</span> : null}
+          {!working && view.actionLabel ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={() => onAction(view)} type="button">{view.actionLabel}</button> : null}
+          {menu.length ? <ActionMenu ariaLabel={`More for ${view.label}`} disabled={locked} items={menu} /> : null}
+        </div>
+      </PanelItem>;
+    })}</PanelList>
 
     {/* The key is a property of this list, so it closes it: everything above
         it is this server's, and nothing from another server is in here. */}
@@ -66,100 +88,50 @@ export function DestinationsPanel({ busy, onAdd, onAction, onErase, onForgetDriv
   </Panel>;
 }
 
-// Drives and buckets holding another server's backups. They stay out of this
-// server's own list until they become this server's, by a restore that takes
-// over their key or by erasing them, because unlocking them only reads.
-export function OtherServersPanel({ busy, onAction, onErase, onForgetDrive, onForgetKey, onKeys, running, views }: {
+// Archives other servers made, on drives and in buckets connected here. They
+// stay out of this server's own list until they become this server's — by a
+// restore that takes over their key — because unlocking them only reads.
+export function OtherServersPanel({ busy, onAction, onErase, onForgetKey, onKeys, running, views }: {
   busy: string;
-  onAction: (view: DestinationView) => void;
-  onErase: (view: DestinationView) => void;
-  onForgetDrive: (view: DestinationView) => void;
-  onForgetKey: (view: DestinationView) => void;
-  onKeys: (view: DestinationView) => void;
+  onAction: (view: OtherArchiveView) => void;
+  onErase: (view: OtherArchiveView) => void;
+  onForgetKey: (view: OtherArchiveView) => void;
+  onKeys: (archiveId: string, label: string) => void;
   running: boolean;
-  views: DestinationView[];
+  views: OtherArchiveView[];
 }) {
   const locked = Boolean(busy) || running;
   const one = views.length === 1;
   return <Panel className="suite-bk-others">
     <PanelHead title={one ? 'Backups from another server' : 'Backups from other servers'}>
-      <p className="suite-meta">{one ? 'This holds backups another server made.' : 'These hold backups other servers made.'} Unlock {one ? 'it' : 'one'} with the recovery key of the server that made {one ? 'it' : 'them'} to restore from {one ? 'it' : 'them'}. This server never backs up into {one ? 'it' : 'them'}.</p>
+      <p className="suite-meta">{one ? 'These were made by another server.' : 'These were made by other servers.'} Unlock {one ? 'them' : 'one'} with the recovery key of the server that made {one ? 'them' : 'it'} to restore from {one ? 'them' : 'it'}. This server never backs up into them.</p>
     </PanelHead>
-    <PanelList>{views.map((view) => <DestinationRow
-      busy={busy}
-      key={view.id}
-      locked={locked}
-      showReach={false}
-      onAction={() => onAction(view)}
-      onErase={() => onErase(view)}
-      onForgetDrive={() => onForgetDrive(view)}
-      onForgetKey={() => onForgetKey(view)}
-      onKeys={() => onKeys(view)}
-      onSelect={() => undefined}
-      onStopUsing={() => undefined}
-      view={view}
-    />)}</PanelList>
+    <PanelList>{views.map((view) => {
+      const working = busy === `unlock:${view.id}` || busy === `forget-key:${view.id}`;
+      const borrowed = view.archive.keyState === 'borrowed';
+      const menu = [
+        ...borrowed ? [{ label: 'Keys that open this', onSelect: () => onKeys(view.id, view.label) }, { label: 'Lock again', onSelect: () => onForgetKey(view) }] : [],
+        ...view.erasable ? [{ label: 'Erase these backups…', onSelect: () => onErase(view) }] : [],
+      ];
+      return <PanelItem className="suite-bk-row is-other-server" key={view.id}>
+        <span className="suite-bk-row-lock"><Icon name="key" /></span>
+        <div className="suite-bk-row-body">
+          <div className="suite-bk-row-title">
+            <span className="suite-bk-row-icon"><Icon name={destinationIconName({ kind: view.archive.containerKind === 'object' ? 'object' : 'disk', storageKind: 'external' })} /></span>
+            <strong>{view.label}</strong>
+            <span className="suite-bk-kind">{view.kindLabel}</span>
+            <span className="mos-pill">{borrowed ? 'Unlocked' : 'Locked'}</span>
+            {view.from ? <span className="suite-bk-chip is-guest">From {view.from}</span> : null}
+          </div>
+          <p className="suite-bk-status"><span className={`suite-bk-dot is-${borrowed ? 'ready' : 'warning'}`} />{view.status}</p>
+          <p className={`suite-bk-keyline is-${borrowed ? 'ready' : 'warning'}`}><Icon name="key" />{view.keyLine}</p>
+        </div>
+        <div className="suite-bk-row-actions">
+          {working ? <span className="suite-bk-working"><Spinner />{busy.startsWith('unlock') ? 'Unlocking' : 'Working'}</span> : null}
+          {!working ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={() => onAction(view)} type="button">{view.actionLabel}</button> : null}
+          {menu.length ? <ActionMenu ariaLabel={`More for ${view.label}`} disabled={locked} items={menu} /> : null}
+        </div>
+      </PanelItem>;
+    })}</PanelList>
   </Panel>;
-}
-
-function DestinationRow({ busy, locked, onAction, onErase, onForgetDrive, onForgetKey, onKeys, onSelect, onStopUsing, showReach, view }: {
-  busy: string;
-  locked: boolean;
-  onAction: () => void;
-  onErase: () => void;
-  onForgetDrive: () => void;
-  onForgetKey: () => void;
-  onKeys: () => void;
-  onSelect: () => void;
-  onStopUsing: () => void;
-  showReach: boolean;
-  view: DestinationView;
-}) {
-  const working = busy === `release:${view.id}` || busy === `unlock:${view.id}` || busy === `primary:${view.id}` || busy === `retest:${view.id}`;
-  const menuItems = [
-    ...view.readable ? [{ label: 'Keys that open this', onSelect: onKeys }] : [],
-    ...view.destination.borrowedKey ? [{ label: 'Lock again', onSelect: onForgetKey }] : [],
-    ...view.erasable ? [{ label: 'Erase these backups…', onSelect: onErase }] : [],
-    ...!view.selected && view.present ? [{ label: 'Stop using for backups', onSelect: onStopUsing }] : [],
-    // Only the memory of the drive goes. MOS cannot write to a drive that is
-    // not here, so nothing on it changes and plugging it back in lists it again.
-    ...view.away ? [{ label: 'Forget this drive', onSelect: onForgetDrive }] : [],
-  ];
-
-  const others = isOtherServers(view);
-  return <PanelItem className={`suite-bk-row is-${view.tone}${others ? ' is-other-server' : ''}`} quiet={!view.present} selected={view.selected}>
-    {others ? <span className="suite-bk-row-lock"><Icon name="key" /></span> : <button
-      aria-label={`Use ${view.label} for backups`}
-      aria-pressed={view.selected}
-      className="suite-bk-radio"
-      disabled={!view.selectable || locked}
-      onClick={onSelect}
-      type="button"
-    >
-      <span />
-    </button>}
-
-    <div className="suite-bk-row-body">
-      <div className="suite-bk-row-title">
-        <span className="suite-bk-row-icon"><Icon name={destinationIconName(view.destination)} /></span>
-        <strong>{view.label}</strong>
-        <span className="suite-bk-kind">{view.kindLabel}</span>
-        {others ? <span className="mos-pill">{view.destination.locked ? 'Locked' : 'Unlocked'}</span> : null}
-        {view.foreign ? <span className="suite-bk-chip is-guest">From {view.foreign}</span> : null}
-      </div>
-
-      <p className="suite-bk-status"><span className={`suite-bk-dot is-${view.tone}`} />{view.status}</p>
-      {view.spaceLine ? <p className="suite-bk-detail">{view.spaceLine}</p> : null}
-      {view.detail ? <p className="suite-bk-detail">{view.detail}</p> : null}
-      {view.keyLine ? <p className={`suite-bk-keyline is-${view.keyTone}`}><Icon name="key" />{view.keyLine}</p> : null}
-      {showReach && view.reachLine ? <p className="suite-bk-detail">{view.reachLine}</p> : null}
-      {view.selected ? <p className="suite-bk-selected-note">Automatic backups go here, including the one taken before a MOS update.</p> : null}
-    </div>
-
-    <div className="suite-bk-row-actions">
-      {working ? <span className="suite-bk-working"><Spinner />{busy.startsWith('unlock') ? 'Unlocking' : 'Working'}</span> : null}
-      {!working && view.actionLabel ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onAction} type="button">{view.actionLabel}</button> : null}
-      {menuItems.length ? <ActionMenu ariaLabel={`More for ${view.label}`} disabled={locked} items={menuItems} /> : null}
-    </div>
-  </PanelItem>;
 }

@@ -16,6 +16,7 @@ import {
   RestoreDialog,
   ScheduleDialog,
   UnlockDialog,
+  type ArchiveRef,
 } from './dialogs';
 import {
   activityLine,
@@ -24,11 +25,10 @@ import {
   browserTimeZone,
   countShare,
   destinationViews,
-  isOtherServers,
-  foreignStoreOf,
   isRunning,
   jobLine,
   jobWorkingLine,
+  otherArchiveViews,
   restoreAftermath,
   restorePhaseWords,
   scheduleLive,
@@ -42,6 +42,7 @@ import {
   type DestinationView,
   type JobProgress,
   type ArchiveKey,
+  type OtherArchiveView,
   type RotationResult,
 } from './model';
 import { fetchRecoveryKey, markRecoveryKeySaved, type RevealedRecoveryKey } from '../../lib/recovery-key';
@@ -54,9 +55,9 @@ type Dialog =
   | { kind: 'note'; backup: BackupEntry; value: string }
   | { kind: 'restore'; backup: BackupEntry }
   | { kind: 'schedule' }
-  | { kind: 'keys'; view: DestinationView }
-  | { kind: 'unlock'; id: string }
-  | { kind: 'erase'; view: DestinationView }
+  | { kind: 'keys'; archive: ArchiveRef }
+  | { kind: 'unlock'; archive: ArchiveRef }
+  | { kind: 'erase'; view: OtherArchiveView }
   | { kind: 'add'; online: boolean }
   | null;
 
@@ -118,8 +119,7 @@ export function BackupsScreen() {
   const backingUp = isRunning(activeJob) && activeJob?.kind !== 'restore' && activeJob?.kind !== 'validate' && activeJob?.kind !== 'delete';
 
   const views = destinationViews(status);
-  const ownViews = views.filter((view) => !isOtherServers(view));
-  const otherViews = views.filter(isOtherServers);
+  const otherViews = otherArchiveViews(status);
   const readyViews = views.filter((view) => view.selectable);
   const selected = views.find((view) => view.selected) || null;
   const backupTarget = readyViews.find((view) => view.id === backupTargetId)
@@ -129,7 +129,6 @@ export function BackupsScreen() {
   const blockReason = status ? backupBlockReason(status, views, backupTarget) : '';
   const banner = bannerState(status, views, Boolean(backingUp));
   const blockNote = blockReason === banner.detail ? '' : blockReason;
-  const unlockView = dialog?.kind === 'unlock' ? views.find((view) => view.id === dialog.id) || null : null;
   const workingLine = jobWorkingLine(activeJob);
   const recoveryKey = status?.recoveryKey || null;
   // Until the key is saved, taking a backup or enabling a schedule goes through
@@ -340,11 +339,11 @@ export function BackupsScreen() {
     setUnlockError('');
   }
 
-  async function unlockDestination(view: DestinationView, recoveryKeyInput: string) {
-    setBusy(`unlock:${view.id}`);
+  async function unlockArchive(archive: ArchiveRef, recoveryKeyInput: string) {
+    setBusy(`unlock:${archive.id}`);
     setUnlockError('');
     try {
-      await post('destinations/unlock', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to unlock these backups.');
+      await post('archives/unlock', { archiveId: archive.id, recoveryKey: recoveryKeyInput }, 'Unable to unlock these backups.');
       closeDialog();
       await load().catch(() => undefined);
     } catch (caught) {
@@ -356,11 +355,11 @@ export function BackupsScreen() {
 
   // Who can open an archive. The key is entered here and used for the read; it
   // is never kept, which is why removing one asks for it again.
-  async function listArchiveKeys(view: DestinationView, recoveryKeyInput: string) {
-    setBusy(`keys:${view.id}`);
+  async function listArchiveKeys(archive: ArchiveRef, recoveryKeyInput: string) {
+    setBusy(`keys:${archive.id}`);
     setArchiveKeysError('');
     try {
-      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('archives/keys', { archiveId: archive.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
       setArchiveKeys(result?.result?.keys || []);
     } catch (caught) {
       setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to read the keys on this archive.');
@@ -369,13 +368,13 @@ export function BackupsScreen() {
     }
   }
 
-  async function removeArchiveKey(view: DestinationView, recoveryKeyInput: string, keyId: string) {
+  async function removeArchiveKey(archive: ArchiveRef, recoveryKeyInput: string, keyId: string) {
     setBusy(`key-remove:${keyId}`);
     setArchiveKeysError('');
     try {
-      await post('destinations/keys/remove', { destinationId: view.id, keyId, recoveryKey: recoveryKeyInput }, 'Unable to remove that key.');
-      setBusy(`keys:${view.id}`);
-      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      await post('archives/keys/remove', { archiveId: archive.id, keyId, recoveryKey: recoveryKeyInput }, 'Unable to remove that key.');
+      setBusy(`keys:${archive.id}`);
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('archives/keys', { archiveId: archive.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
       setArchiveKeys(result?.result?.keys || []);
     } catch (caught) {
       setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to remove that key.');
@@ -386,17 +385,17 @@ export function BackupsScreen() {
 
   // Handing the key back. Only this machine forgets it: the archive it opens
   // was never changed and is not changed now.
-  async function forgetDestinationKey(view: DestinationView) {
+  async function forgetArchiveKey(view: OtherArchiveView) {
     await runAction(`forget-key:${view.id}`, async () => {
-      await post('destinations/forget-key', { destinationId: view.id }, 'Unable to forget this key.');
+      await post('archives/forget-key', { archiveId: view.id }, 'Unable to forget this key.');
     });
   }
-  // Forgetting a drive MOS is not holding. It stops MOS saying a copy of the
+  // Forgetting a drive that is not here. It stops MOS saying a copy of the
   // owner's data is out there on that drive, which is worth stopping once it is
   // no longer true — and it touches nothing on the drive, which is not here.
   async function forgetDrive(view: DestinationView) {
     await runAction(`forget-drive:${view.id}`, async () => {
-      await post('destinations/forget-drive', { fsUuid: view.destination.fsUuid || '' }, 'Unable to forget this drive.');
+      await postJson(`/suite-manager/api/storage/drives/${encodeURIComponent(view.id)}/forget`, {}, 'Unable to forget this drive.');
     });
   }
 
@@ -445,7 +444,7 @@ export function BackupsScreen() {
   // The storage stays set up in Settings → Storage; only the backups claim on it goes.
   async function stopUsing(view: DestinationView) {
     await runAction(`release:${view.id}`, async () => {
-      await post('destinations/release', { storageId: view.destination.kind === 'object' ? view.id : view.destination.fsUuid || '' }, 'Unable to stop using this for backups.');
+      await post('destinations/release', { storageId: view.id }, 'Unable to stop using this for backups.');
       if (backupTargetId === view.id) setBackupTargetId('');
     });
   }
@@ -506,13 +505,27 @@ export function BackupsScreen() {
   }
 
   function destinationAction(view: DestinationView) {
-    if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', id: view.id }); return; }
     if (view.action === 'retest') void runAction(`retest:${view.id}`, async () => undefined);
-    if (view.action === 'restore') {
-      const newest = (status?.backups || []).filter((backup) => backup.destinationId === view.id && backup.restorable !== false)
-        .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0];
-      if (newest) { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup: newest }); }
-    }
+  }
+
+  function archiveRef(id: string, label: string): ArchiveRef {
+    const archive = status?.archives.find((entry) => entry.id === id);
+    return { containerKind: archive?.containerKind || 'disk', id, label };
+  }
+
+  // Unlocking reads another server's archive; restoring from it, newest first,
+  // is the one thing this server can then do with it.
+  function otherArchiveAction(view: OtherArchiveView) {
+    if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', archive: archiveRef(view.id, view.label) }); return; }
+    const newest = (status?.backups || []).filter((backup) => backup.archiveId === view.id)
+      .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0];
+    if (newest) { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup: newest }); }
+  }
+
+  function openArchiveKeys(archiveId: string, label: string) {
+    setArchiveKeys(null);
+    setArchiveKeysError('');
+    setDialog({ kind: 'keys', archive: archiveRef(archiveId, label) });
   }
 
   const hero = <div className="suite-hero">
@@ -628,7 +641,7 @@ export function BackupsScreen() {
           <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">
             {busy === 'acknowledge' ? <><Spinner />Unblocking</> : 'I have read this'}
           </button>
-        </Notice> : ownViews.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
+        </Notice> : views.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
           <div className="suite-bk-banner-text">
             <span className={`suite-bk-dot is-${banner.tone}`} />
             <div>
@@ -674,16 +687,15 @@ export function BackupsScreen() {
             sections. */}
         {otherViews.length ? <OtherServersPanel
           busy={busy}
-          onAction={destinationAction}
+          onAction={otherArchiveAction}
           onErase={(view) => setDialog({ kind: 'erase', view })}
-          onForgetDrive={(view) => void forgetDrive(view)}
-          onForgetKey={(view) => void forgetDestinationKey(view)}
-          onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
+          onForgetKey={(view) => void forgetArchiveKey(view)}
+          onKeys={openArchiveKeys}
           running={running}
           views={otherViews}
         /> : null}
 
-        {ownViews.length ? null : <Panel>
+        {views.length ? null : <Panel>
           <PanelBody>
           <h2 className="mos-card-title">You have no backups yet.</h2>
           <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage you rent online. You can add the other one later.</p>
@@ -700,22 +712,20 @@ export function BackupsScreen() {
           </PanelBody>
         </Panel>}
 
-        {ownViews.length ? <DestinationsPanel
+        {views.length ? <DestinationsPanel
           busy={busy}
           onAction={destinationAction}
           onAdd={() => setDialog({ kind: 'add', online: false })}
           onForgetDrive={(view) => void forgetDrive(view)}
-          onErase={(view) => setDialog({ kind: 'erase', view })}
-          onForgetKey={(view) => void forgetDestinationKey(view)}
-          onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
+          onKeys={openArchiveKeys}
           onSelect={(view) => void choosePrimary(view)}
           onStopUsing={(view) => void stopUsing(view)}
           onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
           running={running}
-          views={ownViews}
+          views={views}
         /> : null}
 
-        {ownViews.length && status.schedule ? <Panel>
+        {views.length && status.schedule ? <Panel>
           <PanelHead
             actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
             title="Automatic backups"
@@ -728,7 +738,7 @@ export function BackupsScreen() {
           </PanelHead>
         </Panel> : null}
 
-        {views.length ? <RestorePointsPanel
+        {views.length || otherViews.length ? <RestorePointsPanel
           busy={busy}
           checking={checking}
           onCheck={(backup) => void checkBackup(backup)}
@@ -740,7 +750,7 @@ export function BackupsScreen() {
           views={views}
         /> : null}
 
-        {views.length ? <Panel>
+        {views.length || otherViews.length ? <Panel>
           <button aria-expanded={activityOpen} className="suite-bk-activity-head" onClick={() => setActivityOpen(!activityOpen)} type="button">
             <span className={`suite-bk-chevron${activityOpen ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
             <strong>Recent activity</strong>
@@ -779,6 +789,7 @@ export function BackupsScreen() {
       /> : null}
 
       {dialog?.kind === 'key' ? <RecoveryKeyDialog
+        archives={status?.archives || []}
         busy={busy}
         error={keyError}
         keyState={recoveryKey}
@@ -791,31 +802,30 @@ export function BackupsScreen() {
         onStartRotation={() => openKey('rotate')}
         revealed={revealedKey}
         rotation={rotation}
-        views={views}
       /> : null}
 
       {dialog?.kind === 'keys' ? <ArchiveKeysDialog
+        archive={dialog.archive}
         busy={busy}
         error={archiveKeysError}
         keys={archiveKeys}
         onClose={closeDialog}
-        onList={(entered) => void listArchiveKeys(dialog.view, entered)}
-        onRemove={(entered, keyId) => void removeArchiveKey(dialog.view, entered, keyId)}
-        view={dialog.view}
+        onList={(entered) => void listArchiveKeys(dialog.archive, entered)}
+        onRemove={(entered, keyId) => void removeArchiveKey(dialog.archive, entered, keyId)}
       /> : null}
 
-      {unlockView ? <UnlockDialog
+      {dialog?.kind === 'unlock' ? <UnlockDialog
+        archive={dialog.archive}
         busy={busy}
         error={unlockError}
         onCancel={closeDialog}
-        onUnlock={(entered) => void unlockDestination(unlockView, entered)}
-        view={unlockView}
+        onUnlock={(entered) => void unlockArchive(dialog.archive, entered)}
       /> : null}
 
       {dialog?.kind === 'erase' ? <EraseBackupsDialog
+        archive={{ ...dialog.view, newestAt: dialog.view.archive.newestAt, restorePoints: dialog.view.archive.restorePoints }}
         onClose={closeDialog}
         onErased={() => { closeDialog(); void load(); }}
-        store={foreignStoreOf(dialog.view)}
       /> : null}
 
       {dialog?.kind === 'schedule' && status?.schedule ? <ScheduleDialog
@@ -837,7 +847,6 @@ export function BackupsScreen() {
         onCancel={closeDialog}
         onConfirmation={setRestoreConfirmation}
         onStart={() => void startRestore(dialog.backup)}
-        status={status as BackupStatus}
       /> : null}
 
       {dialog?.kind === 'delete' ? <DeleteDialog
@@ -860,7 +869,6 @@ export function BackupsScreen() {
         firstDestination={!selected}
         onAdded={() => { closeDialog(); void load(); }}
         onClose={closeDialog}
-        onUnlock={(id) => { closeDialog(); void load().then(() => setDialog({ kind: 'unlock', id })); }}
         startOnline={dialog.online}
       /> : null}
     </div>

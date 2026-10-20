@@ -14,12 +14,12 @@ export type FileEntry = {
   bytes: number | null;
   items: number | null;
   kind: 'file' | 'folder';
-  // Why this entry stays where it is, or null when it can be renamed, moved and deleted.
-  locked: string | null;
   // Inside MOS-files, or one of MOS's own folders at the top of the drive.
   managed: boolean;
   modifiedAt: string;
   name: string;
+  // Why it cannot be renamed and moved, or deleted; null where it can.
+  refusals: { change: string | null; delete: string | null };
   special: 'backups' | null;
 };
 

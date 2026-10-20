@@ -12,12 +12,11 @@ export type StorageState = 'available' | 'away' | 'ejected' | 'failed' | 'read-o
 export type DriveAction = 'check' | 'eject' | 'use';
 
 export type StorageBackups = {
+  // This server backs up here.
   destination: boolean;
-  destinationId: string | null;
-  // Holds another server's backups, which this server never adds to.
-  foreignStore: boolean;
   lastBackupAt: string | null;
-  locked: boolean;
+  // Archives other servers made here, which this server reads and never writes.
+  otherServers: Array<{ id: string; keyState: 'borrowed' | 'locked'; writtenBy: { hostname: string | null } | null }>;
   primary: boolean;
   ready: boolean;
   restorePoints: number;
@@ -119,11 +118,11 @@ export function rowLine(entry: StorageEntry, names: Map<string, string>) {
   if (entry.kind === 'system') return `${entry.diskSizeBytes ? `${formatBytes(entry.diskSizeBytes)} · ` : ''}the drive MOS and your apps run from`;
   if (entry.kind === 'bucket') {
     if (entry.state === 'unreachable') return 'MOS could not reach this storage. Check the internet connection, then look again.';
+    if (entry.backups?.otherServers.length && !entry.backups.destination) return 'Holds backups another server made';
     if (!entry.backups?.destination) return 'Connected · not holding anything yet';
-    if (entry.backups.foreignStore) return 'Holds backups another server made';
     return entry.backups.storedBytes ? `Holds your backups · about ${formatBytes(entry.backups.storedBytes)} stored` : 'Holds your backups · none yet';
   }
-  if (entry.backups?.foreignStore && (entry.state === 'ready' || entry.state === 'available')) return `${hardwareLine(entry)} · holds backups another server made`;
+  if (entry.backups?.otherServers.length && entry.state === 'ready') return `${hardwareLine(entry)} · also holds backups another server made`;
   const apps = appNamesFor(entry, names);
   switch (entry.state) {
     case 'read-only': return 'Apps can read it; nothing can save to it until it is checked';

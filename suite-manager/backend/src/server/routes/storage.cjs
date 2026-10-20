@@ -76,6 +76,14 @@ function storageRoutes({ backupAgent, driveJobs, storage }) {
     })),
     {
       method: 'POST',
+      pattern: /^\/storage\/drives\/([^/]+)\/forget$/u,
+      signIn: MANAGE,
+      handler: async ({ params: [driveId], response }) => {
+        jsonResponse(response, 200, await storage.forgetDrive(driveId));
+      },
+    },
+    {
+      method: 'POST',
       path: '/storage/buckets',
       signIn: MANAGE,
       bodyLimit: 8 * 1024,

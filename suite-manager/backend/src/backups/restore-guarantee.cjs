@@ -13,20 +13,13 @@
 // recovery restore — plus a 15.4 GB measured restore that came back with zero
 // metadata differences across 26,149 entries.
 //
-// A backup MOS can no longer read gets no guarantee at all rather than a
-// weaker one: the honest answer about a retired-format bundle is that this
-// version will not restore it.
+// MOS lists only restore points in an archive it can read, so the guarantee
+// is the archive's. A retired tar bundle left on a drive is no longer listed.
 
 const REPOSITORY_GUARANTEE = 'verified';
-const UNREADABLE_GUARANTEE = 'unsupported';
 
-function restoreGuaranteeFor(agentStatus) {
-  const backups = Array.isArray(agentStatus?.backups) ? agentStatus.backups : [];
-  const onlyUnreadable = backups.length > 0 && backups.every((backup) => backup?.restorable === false);
-  return {
-    restoreGuarantee: onlyUnreadable ? UNREADABLE_GUARANTEE : REPOSITORY_GUARANTEE,
-    restoreGuaranteeByKind: { 'legacy-bundle': UNREADABLE_GUARANTEE, 'restore-point': REPOSITORY_GUARANTEE },
-  };
+function restoreGuaranteeFor() {
+  return { restoreGuarantee: REPOSITORY_GUARANTEE, restoreGuaranteeByKind: { 'restore-point': REPOSITORY_GUARANTEE } };
 }
 
-module.exports = { restoreGuaranteeFor, UNREADABLE_GUARANTEE };
+module.exports = { restoreGuaranteeFor };

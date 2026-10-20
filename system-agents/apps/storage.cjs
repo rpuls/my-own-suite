@@ -196,7 +196,7 @@ class AppStorage {
       });
     }
     for (const [id, claim] of Object.entries(claims)) {
-      if (listed.some((drive) => drive.id === id) || !(claim.apps?.length || claim.backups)) continue;
+      if (listed.some((drive) => drive.id === id) || !isRememberedDrive(claim)) continue;
       const state = driveState({ claim, connected: false });
       listed.push({ apps: claim.apps || [], availableBytes: null, backups: claim.backups === true, connected: false, detail: null, devicePath: null, fileSystem: claim.fileSystem || null, holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem), holdsBackups: false, holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem), id, label: claim.label || id, model: claim.model || null, mountPath: null, name: claim.name || null, reason: stateReason(state, claim), sizeBytes: claim.sizeBytes || null, state, transport: claim.transport || null, usable: false, usableForBackups: false });
     }
@@ -432,13 +432,19 @@ class AppStorage {
     });
   }
 
-  // Opened for its files alone, and remembered so it opens again when plugged back in.
+  // Opened for its files alone, and kept open so it opens again when plugged back in.
   async open(driveId) {
     const candidate = await this.connectedDrive(driveId);
     if (!candidate.holdsAppFoldersFormat) throw new StorageError(candidate.reason);
     const { drive, readOnly } = await this.attach(driveId);
-    this.registry.update(({ drives }) => { this.remember(drives, driveId, drive); });
+    this.registry.update(({ drives }) => { this.remember(drives, driveId, drive).keepOpen = true; });
     return { readOnly };
+  }
+
+  // Only a drive that is not plugged in: one that is goes through Eject first.
+  async forget(driveId) {
+    if ((await this.candidates()).some((drive) => drive.id === driveId)) throw new StorageError('Eject the drive before forgetting it.');
+    if (!this.registry.forgetDrive(driveId)) throw new StorageError('An app keeps its files on this drive, so MOS keeps it.');
   }
 
   // A drive kept for backups is opened here, as any drive MOS keeps things on, and
@@ -454,13 +460,15 @@ class AppStorage {
   }
 
   // An app lets go of every drive it no longer mounts; its folders stay on them, and
-  // each drive stays remembered so they are still there to see after a restart.
+  // each drive is kept open so they are still there to see after a restart.
   release(packageId, keptDrives = []) {
     const letGo = (driveId, claim) => !keptDrives.includes(driveId) && claim.apps?.includes(packageId);
     if (!Object.entries(this.registry.read().drives).some(([driveId, claim]) => letGo(driveId, claim))) return;
     this.registry.update(({ drives }) => {
       for (const [driveId, claim] of Object.entries(drives)) {
-        if (letGo(driveId, claim)) claim.apps = claim.apps.filter((app) => app !== packageId);
+        if (!letGo(driveId, claim)) continue;
+        claim.apps = claim.apps.filter((app) => app !== packageId);
+        claim.keepOpen = true;
       }
     });
   }

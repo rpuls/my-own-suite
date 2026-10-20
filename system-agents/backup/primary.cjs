@@ -9,31 +9,18 @@
 // answers for all of them.
 //
 // The schedule keeps everything that is genuinely the schedule's: when it fires
-// and how many copies it keeps.
+// and how many copies it keeps. A destination is named by the storage it is —
+// a drive's filesystem UUID or a bucket connection — so it is the same choice
+// wherever Linux happens to attach the drive.
 
 const fs = require('node:fs');
 const path = require('node:path');
 
 const PRIMARY_FILENAME = 'primary-destination.json';
 
-// Finds the primary among what is mounted right now. A drive that was unplugged
-// and reconnected can come back on a different mount path, so the repository
-// already on it identifies it when the path no longer does — an identity that
-// belongs to the backups themselves rather than to where Linux happened to
-// attach them this time.
-function resolvePrimary(primary, mounted, repositoryId) {
-  if (!primary?.destinationId) return null;
-  const byPath = mounted.find((destination) => destination.id === primary.destinationId);
-  if (byPath) return byPath;
-  if (!primary.repositoryId) return null;
-  const matches = mounted.filter((destination) => repositoryId(destination.id) === primary.repositoryId);
-  return matches.length === 1 ? matches[0] : null;
-}
-
 class PrimaryDestination {
-  constructor({ agentStateDir, now = () => new Date(), repositoryId = () => null }) {
+  constructor({ agentStateDir, now = () => new Date() }) {
     this.now = now;
-    this.repositoryId = repositoryId;
     this.statePath = path.join(agentStateDir, PRIMARY_FILENAME);
   }
 
@@ -60,9 +47,6 @@ class PrimaryDestination {
     return this.write({
       destinationId: id,
       label: String(label || '').trim() || (current?.destinationId === id ? current.label : null),
-      // Only knowable once a backup has written one, so a destination chosen
-      // before its first backup carries none and is found by path until then.
-      repositoryId: this.repositoryId(id) || (current?.destinationId === id ? current.repositoryId : null) || null,
       setAt: this.now().toISOString(),
     });
   }
@@ -72,26 +56,18 @@ class PrimaryDestination {
     return null;
   }
 
-  resolve(mounted) {
-    return resolvePrimary(this.read(), mounted, this.repositoryId);
-  }
-
-  // Captured after a backup rather than when the destination is chosen, because
-  // an empty drive has no repository to be identified by yet.
-  rememberRepository(destinationId) {
-    const current = this.read();
-    if (!current || current.destinationId !== destinationId || current.repositoryId) return current;
-    const repositoryId = this.repositoryId(destinationId);
-    return repositoryId ? this.write({ ...current, repositoryId }) : current;
+  // The primary among the destinations listed right now, or null.
+  resolve(destinations) {
+    const chosen = this.read();
+    return chosen ? destinations.find((destination) => destination.id === chosen.destinationId) || null : null;
   }
 
   // What the Backups screen shows. `label` is the name the destination had when
-  // it was chosen, so a drive in a drawer is still named rather than reduced to
-  // its mount path.
+  // it was chosen, so a drive in a drawer is still named.
   state() {
     const current = this.read();
     return current ? { destinationId: current.destinationId, label: current.label, setAt: current.setAt || null } : null;
   }
 }
 
-module.exports = { PrimaryDestination, resolvePrimary };
+module.exports = { PrimaryDestination };

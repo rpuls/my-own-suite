@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { DiskDestination, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
+const { DestinationResolver, DiskArchive, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
 const { writeRepositoryDescriptor } = require('./engines/engine.cjs');
 const { normalizeObjectDestination, objectRepositorySpec } = require('./object-destinations.cjs');
 
@@ -266,7 +266,7 @@ test('a bucket never reports free space, so a backup is not refused against a nu
 // must see that immediately — trusting its own memory instead made a bucket
 // keep reporting itself empty for the whole refresh interval after a backup
 // into it had already succeeded.
-test('a restore point written by another process shows up at once', async () => {
+test('a restore point written by another process shows up at once, in an archive that is no longer empty', async () => {
   const world = await bucket();
   await world.destination.readIndex({ force: true });
   assert.deepEqual(await world.destination.points.summaries(), []);
@@ -279,6 +279,7 @@ test('a restore point written by another process shows up at once', async () => 
   // otherwise wait out.
   assert.deepEqual((await world.destination.points.summaries()).map((point) => point.id), ['point-1']);
   assert.equal(world.destination.usage().restorePoints, 1);
+  assert.equal((await world.destination.health()).keyState, 'own');
 });
 
 // Recording a point MOS just wrote is not the same as having listed the bucket.
@@ -313,12 +314,12 @@ test('a bucket written by another server is reported locked, not unreachable', a
   await reopened.refreshInBackground();
   const health = await reopened.health();
   assert.equal(health.ready, false);
-  assert.equal(health.locked, true);
+  assert.equal(health.keyState, 'locked');
   assert.match(health.reason, /written by another server/u);
   assert.match(health.reason, /recovery key/u);
   // And nothing hands the locked repository on to something that would read or
-  // write with it: a backup aimed here is refused with the same sentence, not
-  // with whatever the engine says about a wrong password.
+  // write with it: a backup aimed here is refused, not met with whatever the
+  // engine says about a wrong password.
   await assert.rejects(() => reopened.repository({ create: false }), /written by another server/u);
   await assert.rejects(() => reopened.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server made/u });
 
@@ -327,14 +328,19 @@ test('a bucket written by another server is reported locked, not unreachable', a
   world.engine.locked = false;
   await reopened.refreshInBackground();
   const unlocked = await reopened.health();
-  assert.equal(unlocked.locked, false);
+  assert.equal(unlocked.keyState, 'own');
   assert.equal(unlocked.ready, true);
 });
 
-// The same answer for a drive, asked the only way a drive can be asked: by
-// trying this machine's key against the repository on it.
-test('a drive written by another server is reported locked, at most once per interval', async () => {
-  const mountPath = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-drive-'));
+function drives() {
+  const mountRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-media-'));
+  return { mountRoot, mountPath: path.join(mountRoot, 'TEST-DRIVE-0001') };
+}
+
+// Whose key opens an archive on a drive is asked the only way it can be: by
+// trying this machine's key against the repository there.
+test('an archive on a drive another server made is reported locked, at most once per interval', async () => {
+  const { mountPath } = drives();
   const probes = [];
   const engine = {
     name: 'restic',
@@ -343,36 +349,68 @@ test('a drive written by another server is reported locked, at most once per int
       return { message: "This drive holds MOS backups written by another server. Enter that server's recovery key to use them here.", state: 'locked' };
     },
   };
-  const destination = new DiskDestination({ engine, label: 'Backup USB', mountPath });
+  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, mountPath, name: 'archive-0000beef' });
 
-  // A drive with no repository on it costs nothing to judge.
-  assert.deepEqual(await destination.health(), { locked: false });
+  // An archive with nothing written yet costs nothing to judge.
+  assert.deepEqual(await archive.health(), { keyState: 'empty' });
   assert.equal(probes.length, 0);
 
-  writeRepositoryDescriptor(mountPath, { engineName: 'restic', repositoryId: 'r1' });
-  const health = await destination.health();
-  assert.equal(health.locked, true);
+  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  const health = await archive.health();
+  assert.equal(health.keyState, 'locked');
   assert.match(health.reason, /written by another server/u);
-  // The destination listing is polled, so the answer is held rather than
-  // spawning a process per drive per look.
-  await destination.health();
+  // The listing is polled, so the answer is held rather than spawning a
+  // process per archive per look.
+  await archive.health();
   assert.equal(probes.length, 1);
   assert.equal(probes[0].localPath, probes[0].location);
-  // A drive whose restore points are readable as files but whose repository is
-  // not must refuse a backup, rather than starting one that fails on its first
-  // write with the engine own words.
-  await assert.rejects(() => destination.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server made/u });
+  await assert.rejects(() => archive.assertAvailable(), { code: 'DESTINATION_FOREIGN' });
 });
 
-test('a store opened with another server\'s key is read from but never backed up into', async () => {
-  const mountPath = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-drive-'));
-  writeRepositoryDescriptor(mountPath, { engineName: 'restic', repositoryId: 'r1' });
+test('a key adopted or dropped by another process is not answered from the held key state', async () => {
+  const { mountPath } = drives();
+  const keyFile = path.join(mountPath, '..', 'engine-key');
+  fs.writeFileSync(keyFile, 'MOS-OLD');
+  let guest = 'MOS-BORROWED';
+  const engine = { keyFile, name: 'restic', async probe() { return { state: 'open' }; } };
+  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, guestKey: () => guest, mountPath, name: 'archive-0000beef' });
+  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  assert.equal((await archive.health()).keyState, 'borrowed');
+
+  guest = null;
+  fs.writeFileSync(keyFile, 'MOS-ADOPTED');
+  fs.utimesSync(keyFile, new Date(), new Date(Date.now() + 5000));
+  assert.equal((await archive.health()).keyState, 'own');
+});
+
+test('an archive opened with another server\'s key is read from but never backed up into', async () => {
+  const { mountPath } = drives();
   const engine = { name: 'restic', async probe() { return { state: 'open' }; } };
-  const drive = new DiskDestination({ engine, guestKey: () => 'MOS-BORROWED', label: 'Backup USB', mountPath });
-  assert.deepEqual(await drive.health(), { locked: false });
-  await assert.rejects(() => drive.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /Erase them in Backups/u });
+  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, guestKey: () => 'MOS-BORROWED', mountPath, name: 'archive-0000beef' });
+  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  assert.equal((await archive.health()).keyState, 'borrowed');
+  await assert.rejects(() => archive.assertAvailable(), { code: 'DESTINATION_FOREIGN' });
 
   const world = await bucket();
   const borrowed = new ObjectDestination({ agentStateDir: world.agentStateDir, engine: world.engine, guestKey: () => 'MOS-BORROWED', record: world.record });
-  await assert.rejects(() => borrowed.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /Choose another place/u });
+  await assert.rejects(() => borrowed.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another place/u });
+});
+
+// One drive can carry this server's archive beside archives other servers
+// made, so a drive is never refused for what someone else left on it.
+test('this server backs up into its own archive on a drive, beside other servers\' archives', async () => {
+  const { mountRoot, mountPath } = drives();
+  const owners = { 'archive-00000001': 'locked', 'archive-00000002': 'open' };
+  const engine = { name: 'restic', async probe({ localPath }) { return { state: owners[path.basename(path.dirname(localPath))] }; } };
+  const resolver = new DestinationResolver({ engine, mountRoot });
+  assert.match((await resolver.target('TEST-DRIVE-0001')).name, /^archive-[0-9a-f]{8}$/u, 'a drive with nothing on it gets a new archive');
+
+  for (const name of Object.keys(owners)) writeRepositoryDescriptor(path.join(mountPath, 'MOS-backups', name), { engineName: 'restic', repositoryId: name });
+  fs.mkdirSync(path.join(mountPath, 'MOS-backups', 'Not an archive'), { recursive: true });
+  assert.deepEqual(resolver.archivesOn('TEST-DRIVE-0001').map((archive) => archive.name), ['archive-00000001', 'archive-00000002']);
+  assert.equal((await resolver.target('TEST-DRIVE-0001')).id, 'TEST-DRIVE-0001/archive-00000002');
+  const point = path.join(mountPath, 'MOS-backups', 'archive-00000001', 'restore-points', 'job-1.json');
+  assert.equal(resolver.archiveAt(path.dirname(path.dirname(point))).id, 'TEST-DRIVE-0001/archive-00000001');
+  assert.throws(() => resolver.resolve('TEST-DRIVE-0001/../etc'), /Choose a backup/u);
+  assert.throws(() => resolver.archiveAt(path.join(mountRoot, '..')), /connected destination/u);
 });

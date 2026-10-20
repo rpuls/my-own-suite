@@ -17,7 +17,7 @@ test('an unsaved recovery key blocks only what would create unopenable backups',
   assert.deepEqual([...RECOVERY_KEY_GATED_ROUTES].sort(), ['/v1/backups', '/v1/schedule']);
   // Connecting a bucket is deliberately open: a replacement machine has to
   // connect the surviving bucket before it can enter the key that opens it.
-  for (const open of ['/v1/backups/validate', '/v1/destinations/object', '/v1/destinations/object/backups', '/v1/destinations/object/test', '/v1/destinations/unlock', '/v1/recovery-key/reveal', '/v1/restores', '/v1/status']) {
+  for (const open of ['/v1/backups/validate', '/v1/destinations/object', '/v1/destinations/object/backups', '/v1/destinations/object/test', '/v1/archives/unlock', '/v1/recovery-key/reveal', '/v1/restores', '/v1/status']) {
     assert.equal(RECOVERY_KEY_GATED_ROUTES.includes(open), false, open);
   }
   assert.match(RECOVERY_KEY_UNACKNOWLEDGED, /recovery key/iu);

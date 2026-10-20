@@ -3,45 +3,49 @@
 // returns: no fetching, no state, no JSX. The page reads as a list of sections;
 // the sentences those sections show are decided here.
 
+import type { IconName } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
 
+type Condition = 'away' | 'ejected' | 'no-engine' | 'not-open' | 'read-only' | 'ready' | 'unreachable';
+
+// A place this server backs up to, as the backup agent states it.
 type BackupDestination = {
   accessKeyId?: string;
   availableBytes: number | null;
   bucket?: string;
   checkedAt?: string | null;
+  condition: Condition;
   endpoint?: string;
   folder?: string;
-  // How a drive stays the same drive across being unplugged: where it is
-  // mounted is a fact about this boot, the filesystem on it is not.
-  fsUuid?: string | null;
   holdsAppFiles?: boolean;
   id: string;
-  kind?: 'disk' | 'object';
+  kind: 'disk' | 'object';
   label: string;
-  lastBackupAt?: string | null;
-  lastSeenAt?: string | null;
-  // Reached, and holding backups written with another server's key. Neither
-  // usable nor broken: one recovery key away from both.
-  borrowedKey?: boolean;
-  // Holds a store another server made, locked or opened with its key. This server
-  // restores from it but never backs up into it.
-  foreignStore?: boolean;
-  locked?: boolean;
-  mountBlockedReason?: string | null;
-  mountPath: string | null;
-  // `away` is the only state describing something MOS cannot see: a drive it
-  // has backed up to before and that is not plugged in now.
-  mountState?: 'away' | 'mounted';
-  notReadyReason?: string | null;
-  ready?: boolean;
+  lastBackupAt: string | null;
+  // This server's archive here, once its first backup has made one.
+  ownArchive: { id: string; restorePoints: number | null; storedBytes: number | null } | null;
   // Why this server cannot back up here right now, in the agent's words, or null.
-  refusal?: string | null;
+  refusal: string | null;
   region?: string;
-  repository?: { engineName: string | null; restorePoints: number; storedBytes: number | null } | null;
   sizeBytes: number | null;
-  storageKind?: 'external' | 'local' | 'network' | 'object' | null;
-  writable: boolean;
+  storageKind: 'external' | 'local' | 'object';
+};
+
+// One set of backups — an encrypted repository and its restore points — and
+// whose it is, as the backup agent states it. This screen never works that out
+// for itself.
+export type Archive = {
+  containerId: string;
+  containerKind: 'disk' | 'object';
+  containerLabel: string;
+  id: string;
+  keyState: 'borrowed' | 'locked' | 'own';
+  newestAt: string | null;
+  owner: 'other' | 'this';
+  reason: string | null;
+  restorePoints: number | null;
+  storedBytes: number | null;
+  writtenBy: { hostname: string | null; installId: string | null } | null;
 };
 
 type BackupValidation = {
@@ -126,23 +130,23 @@ type RecentJob = {
 
 export type BackupEntry = {
   appCount: number;
+  archiveId: string;
+  containerId: string;
+  containerLabel: string;
   createdAt: string | null;
-  destinationId: string;
-  destinationLabel: string;
   encrypted?: boolean;
   engineName?: string | null;
-  // What checking or restoring this point will take here; absent on a backup
-  // in the retired format, which can be neither.
+  // What checking or restoring this point will take here.
   expect?: { check: JobExpectation; restore: JobExpectation } | null;
   id: string;
   // Who asked for this restore point: the owner, the schedule, or the update
   // that took it as its last-known-good state before changing anything.
   initiator?: 'owner' | 'schedule' | 'update';
-  kind?: string;
   note?: string | null;
+  // Whose archive it is in: restoring another server's makes this one that server.
+  owner: 'other' | 'this';
   path: string;
   repositoryId?: string | null;
-  restorable?: boolean;
   sizeBytes?: number | null;
   // The domain the writing machine served: a string, null for none, and absent
   // on a restore point too old to say.
@@ -196,17 +200,16 @@ export type RecoveryKeyState = {
   adoptedAt?: string | null;
   fingerprint: string | null;
   keyFile?: string | null;
-  legacyKeyPresent?: boolean;
 };
 
 
 export type BackupStatus = {
+  archives: Archive[];
   backups: BackupEntry[];
   currentJob: BackupJob | null;
   destinations: BackupDestination[];
   error?: string | null;
   hostname?: string | null;
-  installId?: string | null;
   interruptedRestore?: InterruptedRestore | null;
   inventory?: {
     summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
@@ -290,36 +293,27 @@ export const RETENTION_OPTIONS = [
   { label: 'All of them', value: 0 },
 ];
 
-export function destinationIconName(destination: BackupDestination) {
-  if (destination.kind === 'object') return 'cloud-bucket';
-  if (destination.storageKind === 'external') return 'usb-drive';
-  if (destination.storageKind === 'network') return 'network-drive';
+export function destinationIconName(place: { kind?: string; storageKind?: string | null }): IconName {
+  if (place.kind === 'object') return 'cloud-bucket';
+  if (place.storageKind === 'external') return 'usb-drive';
+  if (place.storageKind === 'network') return 'network-drive';
   return 'hard-drive';
 }
 
-function destinationKindLabel(destination: BackupDestination) {
-  if (destination.kind === 'object') return 'Storage you rent online';
-  if (destination.storageKind === 'external') return 'A drive you plug in';
-  if (destination.storageKind === 'network') return 'A folder on your network';
+function destinationKindLabel(place: { kind?: string; storageKind?: string | null }) {
+  if (place.kind === 'object') return 'Storage you rent online';
+  if (place.storageKind === 'external') return 'A drive you plug in';
+  if (place.storageKind === 'network') return 'A folder on your network';
   return 'A disk in this machine';
 }
 
-// Where the backups actually go, in the terms the owner entered them: the
-// bucket and folder, and the host they live on.
-function destinationAddress(destination: BackupDestination) {
-  if (destination.kind !== 'object') return destination.mountPath;
-  const host = (destination.endpoint || '').replace(/^https?:\/\//u, '');
-  return `${destination.bucket || ''}${destination.folder ? `/${destination.folder}` : ''} · ${host}`;
-}
-
 // A restore point's size is the suite data it restores, not space it takes on
-// the drive — points share the store's deduplicated data, so sizes are not
+// the drive — points share the archive's deduplicated data, so sizes are not
 // additive and are worded to not read that way.
 export function backupDescription(backup: BackupEntry) {
   const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} · ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
   if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
-  const size = formatBytes(backup.sizeBytes as number);
-  return backup.kind === 'restore-point' ? `${contents} · ${size} to restore` : `${contents} · ${size}`;
+  return `${contents} · ${formatBytes(backup.sizeBytes as number)} to restore`;
 }
 
 // The checkpoint MOS takes before it updates itself, named by what it was taken
@@ -330,76 +324,40 @@ export function checkpointLabel(backup: BackupEntry) {
   return backup.updateTarget ? `Before update to ${backup.updateTarget}` : 'Before a MOS update';
 }
 
-// Which machine wrote a restore point, said only when it was not this one. The
-// install id decides when both sides have one — a standby may carry the same
-// name on purpose — and the hostname before that; a backup naming neither
-// counts as this machine's, which is the answer that never invents a warning.
-export function writtenElsewhere(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  if (!status?.installId || backup.sourceInstallId === status.installId) return null;
-  // Every fresh install is called "mos", so a name this machine shares tells the owner nothing.
-  return backup.sourceHostname && backup.sourceHostname !== status.hostname ? backup.sourceHostname : 'another server';
+// Which server made a restore point in another server's archive, for the one
+// moment it matters: restoring it makes this machine that server.
+export function writtenElsewhere(backup: BackupEntry) {
+  return backup.owner === 'other' ? backup.sourceHostname || 'another server' : null;
 }
 
-// The domain a restore onto this machine will set aside, or null. It used to be
-// a question — move the name here, or keep this machine's own address — asked
-// before a restore and acted on in the middle of one, which is the stretch
-// where Suite Manager is down and no screen can report what happened. It is a
-// statement now: the suite comes back on this machine's own address, and the
-// name is offered back afterwards, in the open.
-export function carriedDomain(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  return writtenElsewhere(backup, status) ? backup.sourceDomain || null : null;
-}
-
-// Which server's backups a destination holds, when it is not this one. Read off
-// the restore points rather than stored on the destination: the store itself
-// says who wrote it, and a bucket that has been unlocked has to keep saying so
-// long after the sentence that announced it has gone.
-function foreignServer(destination: BackupDestination, status: BackupStatus | null | undefined) {
-  const points = (status?.backups || []).filter((backup) => backup.destinationId === destination.id);
-  const names = points.map((backup) => writtenElsewhere(backup, status)).filter(Boolean) as string[];
-  if (!names.length) return null;
-  // A store every point of which came from elsewhere is that server's; one that
-  // also holds this machine's own points is shared, and named for the guest.
-  return names[0] || null;
-}
-
-function bytesLine(destination: BackupDestination) {
-  const store = destination.repository;
-  const points = store?.restorePoints || 0;
-  if (!points) return 'Ready · no backups here yet';
-  const stored = store?.storedBytes ? ` · ${formatBytes(store.storedBytes)} stored` : '';
-  return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
+// The domain a restore onto this machine will set aside, or null. The suite
+// comes back on this machine's own address, and the name is offered back
+// afterwards, in the open.
+export function carriedDomain(backup: BackupEntry) {
+  return backup.owner === 'other' ? backup.sourceDomain || null : null;
 }
 
 type DestinationAction = '' | 'restore' | 'retest' | 'unlock';
 
+// One of this server's places, reduced to the row the design draws: a status
+// line that states the condition once, a detail line under it, and at most one
+// button.
 export type DestinationView = {
   action: DestinationAction;
   actionLabel: string;
-  address: string | null;
   away: boolean;
   // Why this server cannot back up here, as the one sentence the page says about
   // it wherever it says it; empty when it can.
   blocked: string;
   detail: string;
   destination: BackupDestination;
-  // Another server's backups on a drive that is here, which the owner may erase.
-  erasable: boolean;
-  foreign: string | null;
   id: string;
-  keyLine: string;
-  keyTone: Tone;
+  kindLabel: string;
+  label: string;
   // Whether someone who breaks into this server could erase this copy. MOS may
   // decline to enforce good practice, but it must never imply protection the
   // owner does not have.
   reachLine: string;
-  kindLabel: string;
-  label: string;
-  newestAt: string | null;
-  present: boolean;
-  // MOS can read what is there, which is all restoring needs.
-  readable: boolean;
-  restorePoints: number;
   // This server can back up here, so it can be chosen.
   selectable: boolean;
   selected: boolean;
@@ -408,178 +366,117 @@ export type DestinationView = {
   tone: Tone;
 };
 
-// Another server's backups, as the owner is told about them before erasing.
-export type ForeignStore = { destinationId: string; from: string | null; label: string; newestAt: string | null; restorePoints: number };
-
-// A place holding another server's backups, locked or opened with its key. This
-// server restores from it but never backs up into it, so it is listed apart.
-export function isOtherServers(view: DestinationView) {
-  return view.destination.foreignStore === true || view.destination.locked === true;
-}
-
 const PICK_A_PLACE = "Pick a place under This server's backups and MOS starts keeping copies.";
 
-export function foreignStoreOf(view: DestinationView): ForeignStore {
-  return { destinationId: view.id, from: view.foreign, label: view.label, newestAt: view.newestAt, restorePoints: view.restorePoints };
+function storedLine(destination: BackupDestination) {
+  const points = destination.ownArchive?.restorePoints || 0;
+  if (!points) return 'Ready · no backups here yet';
+  const stored = destination.ownArchive?.storedBytes ? ` · ${formatBytes(destination.ownArchive.storedBytes)} stored` : '';
+  return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }
 
-function blockedSentence(destination: BackupDestination) {
-  const { label } = destination;
-  if (destination.foreignStore) {
-    return destination.kind === 'object'
-      ? `${label} holds backups another server made, so this server cannot back up there. Pick another place below.`
-      : `${label} holds backups another server made, so this server cannot back up there. Erase them from its menu below, or pick another place.`;
-  }
-  if (destination.kind === 'object') return `MOS could not reach ${label}. Check the internet connection; backups go there again once it answers.`;
-  if (destination.mountState !== 'mounted') return `${label} is not plugged in. Plug it in and MOS backs up on its own.`;
-  if (!destination.writable) return `MOS cannot write to ${label}. It may be locked by a switch on the drive itself.`;
-  return destination.refusal || destination.notReadyReason || `${label} cannot take backups right now.`;
-}
-
-// One destination, reduced to the row the design draws: a status line that
-// states the condition once, a detail line under it, and at most one button.
-// Everything that used to be split over a pill, a helper and a footer is folded
-// into `status` and `detail` here.
-function destinationView(destination: BackupDestination, status: BackupStatus | null | undefined, selectedId: string): DestinationView {
-  const selected = destination.id === selectedId;
-  const ready = destination.ready === true;
-  const bucket = destination.kind === 'object';
-  const foreign = foreignServer(destination, status);
-  const borrowed = destination.borrowedKey === true;
-  const foreignStore = destination.foreignStore === true;
-  const present = ready || destination.locked === true || bucket;
-  const points = (status?.backups || []).filter((backup) => backup.destinationId === destination.id);
-  const restorePoints = destination.repository?.restorePoints || points.length;
-
-  let tone: Tone = 'ready';
-  let line = bytesLine(destination);
-  let detail = '';
-  let action: DestinationAction = '';
-  let actionLabel = '';
-
-  if (destination.locked) {
-    tone = 'warning';
-    line = 'Made by another server';
-    action = 'unlock';
-    actionLabel = 'Enter recovery key';
-  } else if (ready && foreignStore) {
-    line = `${restorePoints} restore point${restorePoints === 1 ? '' : 's'} to restore from`;
-    action = 'restore';
-    actionLabel = 'Restore from these…';
-  } else if (ready) {
-    detail = bucket ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
-      : destination.holdsAppFiles ? "Also holds your apps' files, which these backups do not include." : '';
-  } else if (bucket) {
-    tone = 'error';
-    line = 'MOS could not reach this storage';
-    detail = 'Check the internet connection, then try again.';
-    action = 'retest';
-    actionLabel = 'Try again';
-  } else if (destination.mountState === 'mounted' && !destination.writable) {
-    tone = 'warning';
-    line = 'MOS can read this drive but cannot write to it';
-    detail = 'It may be locked by a switch on the drive itself.';
-  } else if (destination.mountState === 'away') {
+// How each condition the agent states reads on a row. The sentence for any
+// condition but these three is the agent's own refusal.
+function conditionRow(destination: BackupDestination, selected: boolean): Pick<DestinationView, 'action' | 'actionLabel' | 'detail' | 'status' | 'tone'> {
+  const none = { action: '' as DestinationAction, actionLabel: '' };
+  switch (destination.condition) {
+    case 'ready': return {
+      ...none,
+      detail: destination.kind === 'object' ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
+        : destination.holdsAppFiles ? "Also holds your apps' files, which these backups do not include." : '',
+      status: storedLine(destination),
+      tone: 'ready',
+    };
     // Not a problem to fix. This is the copy that survives the thing every
     // other copy does not, and the row says so rather than reading as an error.
-    tone = 'muted';
-    line = destination.lastBackupAt ? `Unplugged · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : 'Unplugged';
-    detail = 'Plug it in to bring it up to date.';
-  } else if (!present) {
-    tone = selected ? 'warning' : 'muted';
-    line = 'Not connected';
-    detail = selected
-      ? 'This is still where automatic backups go — MOS waits for it.'
-      : 'Plug it in to use it.';
-  } else {
-    tone = 'warning';
-    line = destination.notReadyReason || 'This destination is not available';
+    case 'away': return {
+      ...none,
+      detail: selected ? 'This is still where automatic backups go — MOS waits for it.' : 'Plug it in to bring it up to date.',
+      status: destination.lastBackupAt ? `Unplugged · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : 'Unplugged',
+      tone: 'muted',
+    };
+    case 'unreachable': return { action: 'retest', actionLabel: 'Try again', detail: destination.refusal || 'Check the internet connection, then try again.', status: 'MOS could not reach this storage', tone: 'error' };
+    default: return { ...none, detail: '', status: destination.refusal || 'This place cannot take backups right now.', tone: 'warning' };
   }
-
-  let keyLine = '';
-  let keyTone: Tone = 'ready';
-  if (destination.locked) {
-    keyLine = "Opens only with the recovery key of the server that made it, not this server's.";
-    keyTone = 'warning';
-  } else if (foreign && borrowed) {
-    keyLine = `Opens with ${foreign}'s key, kept on this server. Nothing in these backups was changed.`;
-  } else if (foreign) {
-    keyLine = 'Opens with your recovery key.';
-  }
-
-  const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
-  const away = destination.mountState === 'away';
-  const selectable = ready && !foreignStore;
-  return {
-    action,
-    actionLabel,
-    address: destinationAddress(destination),
-    away,
-    blocked: selectable ? '' : blockedSentence(destination),
-    detail,
-    destination,
-    erasable: foreignStore && !bucket && destination.mountState === 'mounted',
-    foreign,
-    id: destination.id,
-    keyLine,
-    keyTone,
-    reachLine: reachOf(destination),
-    kindLabel: destinationKindLabel(destination),
-    label: destination.label,
-    newestAt: points.map((backup) => backup.createdAt || '').sort().at(-1) || null,
-    present,
-    readable: ready,
-    restorePoints,
-    selectable,
-    selected,
-    spaceLine: !bucket && ready && spaceKnown ? `${formatBytes(destination.availableBytes)} free of ${formatBytes(destination.sizeBytes)}` : '',
-    status: line,
-    tone,
-  };
 }
 
 /**
  * Whether this copy is within reach of someone who gets into the server.
  *
- * It is the one thing MOS must always be able to say. Ransomware runs on an
- * unlocked machine with the owner's own credentials, so anything MOS can write
- * to, it can also delete, and anything MOS can undo an attacker with root can
- * undo. No setting on this screen changes that: only a drive that is not
+ * Ransomware runs on an unlocked machine with the owner's own credentials, so
+ * anything MOS can write to, it can also delete. Only a drive that is not
  * plugged in is out of reach, which is why unplugging is worth saying out loud
  * rather than leaving as something the owner is supposed to infer.
  */
 function reachOf(destination: BackupDestination) {
-  if (destination.mountState === 'away') return 'Unplugged, so nothing that gets into this server can reach it.';
-  if (destination.locked) return '';
+  if (destination.condition === 'away') return 'Unplugged, so nothing that gets into this server can reach it.';
   if (destination.kind === 'object') return 'Anything that gets into this server can erase this copy.';
-  if (destination.mountState === 'mounted') return 'Plugged in, so anything that gets into this server can erase this copy.';
-  return '';
+  return 'Plugged in, so anything that gets into this server can erase this copy.';
 }
 
-// The list the page draws, in the order it draws it: the selected place first,
-// then whatever is usable, then whatever needs attention, then whatever is
-// away. A selected destination that is not in the list at all — a drive in a
-// drawer — is put back, because dropping it would silently repoint automatic
-// backups at whichever drive happens to be plugged in.
+function destinationView(destination: BackupDestination, selectedId: string): DestinationView {
+  const selected = destination.id === selectedId;
+  const ready = destination.condition === 'ready';
+  const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
+  return {
+    ...conditionRow(destination, selected),
+    away: destination.condition === 'away',
+    blocked: ready ? '' : destination.refusal || 'This place cannot take backups right now.',
+    destination,
+    id: destination.id,
+    kindLabel: destinationKindLabel(destination),
+    label: destination.label,
+    reachLine: reachOf(destination),
+    selectable: ready,
+    selected,
+    spaceLine: destination.kind === 'disk' && ready && spaceKnown ? `${formatBytes(destination.availableBytes)} free of ${formatBytes(destination.sizeBytes)}` : '',
+  };
+}
+
+// This server's places, in the order the page draws them: the selected one
+// first, then whatever is usable, then whatever needs attention, then whatever
+// is away.
 export function destinationViews(status: BackupStatus | null | undefined): DestinationView[] {
-  const primary = status?.primaryDestination || null;
-  const selectedId = primary?.destinationId || '';
-  const listed = status?.destinations || [];
-  const known = listed.some((destination) => destination.id === selectedId);
-  const withAbsent: BackupDestination[] = known || !primary ? [...listed] : [...listed, {
-    availableBytes: null,
-    id: primary.destinationId,
-    label: primary.label || 'The place you chose',
-    mountPath: null,
-    ready: false,
-    sizeBytes: null,
-    storageKind: 'external',
-    writable: false,
-  }];
-  const rank = (view: DestinationView) => (view.selected ? 0 : view.selectable ? 1 : view.present ? 2 : 3);
-  return withAbsent
-    .map((destination) => destinationView(destination, status, selectedId))
-    .sort((left, right) => rank(left) - rank(right));
+  const selectedId = status?.primaryDestination?.destinationId || '';
+  const rank = (view: DestinationView) => (view.selected ? 0 : view.selectable ? 1 : view.away ? 3 : 2);
+  return (status?.destinations || []).map((destination) => destinationView(destination, selectedId)).sort((left, right) => rank(left) - rank(right));
+}
+
+// Another server's archive, as its row in "Backups from another server".
+export type OtherArchiveView = {
+  action: 'restore' | 'unlock';
+  actionLabel: string;
+  archive: Archive;
+  // On a drive the owner may erase it; a bucket's is the provider's to delete.
+  erasable: boolean;
+  from: string | null;
+  id: string;
+  keyLine: string;
+  kindLabel: string;
+  label: string;
+  status: string;
+};
+
+export function otherArchiveViews(status: BackupStatus | null | undefined): OtherArchiveView[] {
+  return (status?.archives || []).filter((archive) => archive.owner === 'other').map((archive) => {
+    const from = archive.writtenBy?.hostname || null;
+    const locked = archive.keyState === 'locked';
+    const points = archive.restorePoints || 0;
+    return {
+      action: locked ? 'unlock' : 'restore',
+      actionLabel: locked ? 'Enter recovery key' : 'Restore from these…',
+      archive,
+      erasable: archive.containerKind === 'disk',
+      from,
+      id: archive.id,
+      keyLine: locked
+        ? "Opens only with the recovery key of the server that made it, not this server's."
+        : `Opens with ${from || 'that server'}'s key, kept on this server. Nothing in these backups was changed.`,
+      kindLabel: destinationKindLabel({ kind: archive.containerKind === 'object' ? 'object' : 'disk', storageKind: archive.containerKind === 'object' ? 'object' : 'external' }),
+      label: archive.containerLabel,
+      status: locked ? 'Made by another server' : `${points} restore point${points === 1 ? '' : 's'} to restore from`,
+    };
+  });
 }
 
 export type ArchiveKey = {
@@ -600,13 +497,11 @@ export function archiveKeyLine(key: ArchiveKey) {
 
 // The one sentence at the top of the page: am I safe, where does it go, when
 // was the last one. Everything else on the screen is a detail of this.
-// Only backups in this server's own stores count towards "am I safe": a drive
-// holding another server's backups can be read here, but it says nothing about
-// this suite.
+// Only backups in this server's own archives count towards "am I safe": another
+// server's can be read here, but they say nothing about this suite.
 export function bannerState(status: BackupStatus | null | undefined, views: DestinationView[], busyBackup: boolean) {
   const selected = views.find((view) => view.selected) || null;
-  const foreignStores = new Set(views.filter((view) => view.destination.foreignStore).map((view) => view.id));
-  const newest = (status?.backups || []).filter((backup) => backup.restorable !== false && !foreignStores.has(backup.destinationId || ''))
+  const newest = (status?.backups || []).filter((backup) => backup.owner === 'this')
     .slice().sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const schedule = status?.schedule || null;
   const nextRun = schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
@@ -630,22 +525,22 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
     };
   }
   if (age !== null && age > 3) {
-    return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' as Tone };
+    return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.containerLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' as Tone };
   }
   // The end of the rotation, said once, at the only moment it is useful: a
   // drive that has just been written to and is not where automatic backups go
   // is a drive on its way back to a drawer, and it is only out of reach once it
   // is unplugged. Never said about the chosen destination — unplugging that one
   // would break the schedule the owner set up.
-  const writtenTo = views.find((view) => view.id === newest.destinationId) || null;
-  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.mountState === 'mounted') {
+  const writtenTo = views.find((view) => view.id === newest.containerId) || null;
+  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.condition === 'ready') {
     return {
       detail: `Backed up to ${writtenTo.label}. Unplug it and keep it somewhere else: a drive that stays plugged in can be erased by anything that gets into this server.`,
       title: 'Your backups are up to date.',
       tone: 'ready' as Tone,
     };
   }
-  return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' as Tone };
+  return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.containerLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' as Tone };
 }
 
 // Why Back up now is not available, in the words of the thing the owner has to

@@ -15,15 +15,18 @@ import {
   carriedDomain,
   whenWords,
   writtenElsewhere,
+  type Archive,
   type ArchiveKey,
   type BackupEntry,
   type BackupSchedule,
-  type BackupStatus,
   type DestinationView,
-  type ForeignStore,
+  type OtherArchiveView,
   type RecoveryKeyState,
   type RotationResult,
 } from './model';
+
+// The archive a key dialog is about: its id, the drive or bucket it is on, and which of the two that is.
+export type ArchiveRef = { containerKind: 'disk' | 'object'; id: string; label: string };
 
 // Taking a backup by hand. The destination is stated rather than asked: it was
 // chosen before this dialog opened, on the page or in the picker beside the
@@ -62,15 +65,15 @@ export function BackupDialog({ busy, note, onCancel, onChange, onStart, target }
 // Handing this machine the key to backups another server wrote. The same
 // forgiving entry as the kit promises: case, spaces and hyphens do not matter,
 // and a slip is answered as a slip.
-export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
+export function UnlockDialog({ archive, busy, error, onCancel, onUnlock }: {
+  archive: ArchiveRef;
   busy: string;
   error: string;
   onCancel: () => void;
   onUnlock: (recoveryKey: string) => void;
-  view: DestinationView;
 }) {
   const [entered, setEntered] = useState('');
-  const working = busy === `unlock:${view.id}`;
+  const working = busy === `unlock:${archive.id}`;
 
   return <Dialog
     footer={<>
@@ -80,10 +83,10 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
       <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!working) onCancel(); }}
-    title={`Unlock the backups on ${view.label}`}
+    title={`Unlock the backups on ${archive.label}`}
   >
     <p>Another server made these. Enter <strong>that server&rsquo;s</strong> recovery key, from its recovery kit. This server&rsquo;s own key does not open them.</p>
-    <p className="suite-meta">Unlocking only reads: MOS keeps the key here to open this {view.destination.kind === 'object' ? 'bucket' : 'drive'}, and nothing in it changes. Lock again forgets the key.</p>
+    <p className="suite-meta">Unlocking only reads: MOS keeps the key here to open these backups, and nothing in them changes. Lock again forgets the key.</p>
     <TextInput
       autoFocus
       disabled={working}
@@ -103,17 +106,17 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
 // before it can show anything — which is also why this is not something a
 // passer-by can use to lock the owner out. The key doing the asking is never
 // offered for removal, and neither is the last one left.
-export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove, view }: {
+export function ArchiveKeysDialog({ archive, busy, error, keys, onClose, onList, onRemove }: {
+  archive: ArchiveRef;
   busy: string;
   error: string;
   keys: ArchiveKey[] | null;
   onClose: () => void;
   onList: (recoveryKey: string) => void;
   onRemove: (recoveryKey: string, keyId: string) => void;
-  view: DestinationView;
 }) {
   const [entered, setEntered] = useState('');
-  const listing = busy === `keys:${view.id}`;
+  const listing = busy === `keys:${archive.id}`;
   const working = listing || busy.startsWith('key-remove:');
 
   return <Dialog
@@ -124,9 +127,9 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
       <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onClose} type="button">{keys ? 'Done' : 'Cancel'}</button>
     </>}
     onClose={() => { if (!working) onClose(); }}
-    title={`Keys that open ${view.label}`}
+    title={`Keys that open the backups on ${archive.label}`}
   >
-    <p>Anyone holding one of these keys can read the backups in <strong>{view.label}</strong>. To see them, enter a recovery key that already opens this {view.destination.kind === 'object' ? 'bucket' : 'drive'}.</p>
+    <p>Anyone holding one of these keys can read these backups on <strong>{archive.label}</strong>. To see them, enter a recovery key that already opens them.</p>
 
     {keys ? <>
       <Panel density="tight">
@@ -167,7 +170,8 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
 // before the key appears, which is why they are not two dialogs. What it opens
 // is listed by name, because one key for the whole server is only reassuring
 // once you can see which places that covers.
-export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup, views }: {
+export function RecoveryKeyDialog({ archives, busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup }: {
+  archives: Archive[];
   busy: string;
   error: string;
   keyState: RecoveryKeyState | null;
@@ -180,13 +184,13 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
   revealed: RevealedRecoveryKey | null;
   rotation: RotationResult | null;
   startup: VaultStartup;
-  views: DestinationView[];
 }) {
   const [password, setPassword] = useState('');
   const [saved, setSaved] = useState(false);
   const locked = Boolean(busy);
-  const opens = views.filter((view) => !view.destination.locked);
-  const missing = views.filter((view) => view.destination.locked);
+  const opens = archives.filter((archive) => archive.owner === 'this');
+  const others = archives.filter((archive) => archive.owner === 'other');
+  const icon = (archive: Archive) => destinationIconName({ kind: archive.containerKind === 'object' ? 'object' : 'disk', storageKind: 'external' });
   // A rotation ends in the same place a first handover does: a key on screen
   // that has to be saved before the dialog is done with.
   const confirming = mode === 'save' || (mode === 'rotate' && Boolean(rotation));
@@ -256,11 +260,13 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
 
     {opens.length ? <div className="suite-bk-key-list">
       <p className="mos-eyebrow">This key opens</p>
-      {opens.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>{view.foreign ? `Brought in from ${view.foreign} · opens with ${view.foreign}'s key, kept here` : 'Made here'}</span></p>)}
+      {opens.map((archive) => <p key={archive.id}><Icon name={icon(archive)} /><strong>{archive.containerLabel}</strong><span>This server&rsquo;s backups</span></p>)}
     </div> : null}
-    {missing.length ? <div className="suite-bk-key-list is-missing">
+    {others.length ? <div className="suite-bk-key-list is-missing">
       <p className="mos-eyebrow">This key does not open</p>
-      {missing.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>Needs the recovery key of the server that wrote it</span></p>)}
+      {others.map((archive) => <p key={archive.id}><Icon name={icon(archive)} /><strong>{archive.containerLabel}</strong><span>{archive.keyState === 'borrowed'
+        ? `Made by ${archive.writtenBy?.hostname || 'another server'} · opens with that server's key, kept here`
+        : 'Made by another server · needs that server\u2019s recovery key'}</span></p>)}
     </div> : null}
 
     {confirming && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
@@ -281,7 +287,6 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     <AdvancedPanel facts={[
       { code: true, label: 'Key fingerprint', value: keyState?.fingerprint || 'unknown' },
       { code: true, label: 'Key file on this server', value: keyState?.keyFile || 'unknown' },
-      { label: 'Pre-release key kept for old repositories', value: keyState?.legacyKeyPresent ? 'yes' : 'no' },
     ]} reveal="technical-mode" />
   </Dialog>;
 }
@@ -364,17 +369,16 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
 // happen to the address the backup carried rather than asking. The question it
 // used to ask was answered blind — the consequences only became visible twenty
 // minutes later, on a screen the answer could take away.
-export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart, status }: {
+export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart }: {
   backup: BackupEntry;
   busy: string;
   confirmation: string;
   onCancel: () => void;
   onConfirmation: (next: string) => void;
   onStart: () => void;
-  status: BackupStatus;
 }) {
-  const elsewhere = writtenElsewhere(backup, status);
-  const domain = carriedDomain(backup, status);
+  const elsewhere = writtenElsewhere(backup);
+  const domain = carriedDomain(backup);
 
   return <Dialog
     footer={<>
@@ -390,7 +394,7 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
     title={elsewhere ? `Make this server ${elsewhere}?` : 'Restore this backup'}
   >
     <p>This replaces everything on this machine with the backup from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
-    <p className="suite-meta">{backupDescription(backup)} · {backup.destinationLabel}</p>
+    <p className="suite-meta">{backupDescription(backup)} · {backup.containerLabel}</p>
     {/* The estimate is the agent's: read off this machine's own jobs and app
         build times, or a stated range when it has none, and it says which. */}
     {backup.expect ? <p>{backup.expect.restore.sentence}</p> : null}
@@ -400,7 +404,7 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
     </Notice>
 
     {elsewhere ? <Notice title={`This backup was made by ${elsewhere}`} variant="info">
-      <p>This machine becomes that server. It takes over {elsewhere}&rsquo;s recovery key, for these backups and this machine&rsquo;s encrypted disk, and the key it was installed with stops opening anything. Keep {elsewhere}&rsquo;s recovery kit: from now on it is this server&rsquo;s, and {backup.destinationLabel} becomes one of this server&rsquo;s backup places.</p>
+      <p>This machine becomes that server. It takes over {elsewhere}&rsquo;s recovery key, for these backups and this machine&rsquo;s encrypted disk, and the key it was installed with stops opening anything. Keep {elsewhere}&rsquo;s recovery kit: from now on it is this server&rsquo;s, and {backup.containerLabel} becomes one of this server&rsquo;s backup places.</p>
       <p>After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
     </Notice> : null}
 
@@ -421,24 +425,24 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
   </Dialog>;
 }
 
-// Erasing another server's backups from a drive, so this server can use it for
-// its own. Opened from the drive's row in Backups, from Settings → Storage, and
-// from Add destination when the drive picked turns out to hold them.
-export function EraseBackupsDialog({ onClose, onErased, primary = false, store }: {
+// Erasing an archive another server made on a drive. This server's own
+// backups on the same drive are not touched, so nothing here frees a drive
+// "for" this server: it only gives back the space the other server's take.
+// Opened from the archive's row in Backups and from the drive in Settings → Storage.
+export function EraseBackupsDialog({ archive, onClose, onErased }: {
+  archive: Pick<OtherArchiveView, 'from' | 'id' | 'label'> & { newestAt: string | null; restorePoints: number | null };
   onClose: () => void;
   onErased: () => void;
-  primary?: boolean;
-  store: ForeignStore;
 }) {
   const [understood, setUnderstood] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const points = `${store.restorePoints} restore point${store.restorePoints === 1 ? '' : 's'}`;
+  const points = archive.restorePoints === null ? 'backups' : `${archive.restorePoints} restore point${archive.restorePoints === 1 ? '' : 's'}`;
   async function erase() {
     setBusy(true);
     setError('');
     try {
-      await postJson('/suite-manager/api/backups/destinations/erase', { confirmation: 'ERASE', destinationId: store.destinationId, primary }, 'MOS could not erase these backups.');
+      await postJson('/suite-manager/api/backups/archives/erase', { archiveId: archive.id, confirmation: 'ERASE' }, 'MOS could not erase these backups.');
       onErased();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'MOS could not erase these backups.');
@@ -448,13 +452,13 @@ export function EraseBackupsDialog({ onClose, onErased, primary = false, store }
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-primary" disabled={busy || !understood} onClick={() => void erase()} type="button">{busy ? <><Spinner />Erasing</> : primary ? 'Erase and use for backups' : 'Erase these backups'}</button>
+      <button className="mos-btn mos-btn-primary" disabled={busy || !understood} onClick={() => void erase()} type="button">{busy ? <><Spinner />Erasing</> : 'Erase these backups'}</button>
     </>}
     onClose={() => { if (!busy) onClose(); }}
-    title={`Erase the backups on ${store.label}?`}
+    title={`Erase another server's backups on ${archive.label}?`}
   >
-    <p>{store.label} holds {points} that {store.from || 'another server'} made{store.newestAt ? `, the newest ${whenWords(store.newestAt).toLowerCase()}` : ''}. They belong to that server, so this server cannot add its own backups to them.</p>
-    <p className="suite-meta">Erasing them frees the drive for this server&rsquo;s backups. Keep them instead if you may still want to restore from them: that needs the other server&rsquo;s recovery key, entered on the drive in Backups.</p>
+    <p>{archive.label} holds {points} that {archive.from || 'another server'} made{archive.newestAt ? `, the newest ${whenWords(archive.newestAt).toLowerCase()}` : ''}. They may be that server&rsquo;s only copies.</p>
+    <p className="suite-meta">Erasing them gives back the space they take. This server&rsquo;s own backups on the drive are not touched. Keep them instead if you may still want to restore from them.</p>
     <Checkbox checked={understood} disabled={busy} onChange={(event) => setUnderstood(event.currentTarget.checked)}>
       I understand these {points} are erased for good. No key brings them back.
     </Checkbox>
@@ -478,10 +482,8 @@ export function DeleteDialog({ backup, busy, onCancel, onDelete }: {
     onClose={() => { if (!busy) onCancel(); }}
     title="Delete this backup"
   >
-    <p>Delete the backup from <strong>{whenWords(backup.createdAt)}</strong>? It is removed from {backup.destinationLabel} and cannot be brought back.</p>
-    <p className="suite-meta">{backup.restorable === false
-      ? 'This backup is in the retired format and cannot be restored by this version of MOS. Deleting it frees the space its folder takes.'
-      : 'The space only this restore point was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.'}</p>
+    <p>Delete the backup from <strong>{whenWords(backup.createdAt)}</strong>? It is removed from {backup.containerLabel} and cannot be brought back.</p>
+    <p className="suite-meta">The space only this restore point was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.</p>
   </Dialog>;
 }
 

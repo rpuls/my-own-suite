@@ -1,5 +1,5 @@
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
-import { backup, cleanup, restore } from './backups.mjs';
+import { backup, cleanup, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
 import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall } from './drive.mjs';
@@ -44,6 +44,7 @@ export const MODULES = {
   reset,
   restore,
   routes,
+  takeover,
   tiles,
   uninstall,
   update,

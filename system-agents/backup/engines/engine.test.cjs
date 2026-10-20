@@ -10,7 +10,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
-const { generate, isRecoveryKey } = require('../recovery-key.cjs');
+const { generate } = require('../recovery-key.cjs');
 const { assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
 const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
@@ -26,29 +26,6 @@ test('the single engine exposes the whole surface under its own binary name', ()
   assert.equal(engine.name, ENGINE_NAME);
   assert.equal(path.basename(engine.binaryPath), ENGINE_NAME);
   for (const method of surface) assert.equal(typeof engine[method], 'function', `${ENGINE_NAME}.${method}`);
-});
-
-// Pre-release machines hold a 64-hex password. It is moved aside so the owner
-// gets a key they can write down, and never deleted: a drive left unplugged for
-// months still has to open, and migrate, the day it is attached.
-test('a pre-release hex key is set aside and replaced with a recovery key', async () => {
-  const root = await scratch();
-  const keyFile = path.join(root, 'agent-state', 'engine-key');
-  const legacy = 'a1b2c3d4'.repeat(8);
-  fs.mkdirSync(path.dirname(keyFile), { recursive: true });
-  fs.writeFileSync(keyFile, `${legacy}\n`, 'utf8');
-
-  const engine = createEngine({ agentStateDir: path.dirname(keyFile) });
-  assert.equal(engine.migrateLegacyKey(), true);
-  const key = engine.recoveryKey();
-  assert.equal(isRecoveryKey(key), true);
-  assert.equal(engine.legacyKey(), legacy);
-  if (process.platform !== 'win32') assert.equal(fs.statSync(engine.legacyKeyFile).mode & 0o777, 0o600);
-
-  // Idempotent, and it never touches a key that is already a recovery key.
-  assert.equal(engine.migrateLegacyKey(), false);
-  assert.equal(engine.recoveryKey(), key);
-  assert.equal(engine.legacyKey(), legacy);
 });
 
 // An owner may replace this machine's key with the one from their recovery kit,
@@ -71,11 +48,11 @@ test('repositoryUsage reports the store size and restore point count without an 
   assert.equal(repositoryUsage(root), null);
 
   writeRepositoryDescriptor(root, { engineName: 'restic', repositoryId: 'r1' });
-  const repoDir = path.join(root, 'MOS-backups', 'repository', 'data');
+  const repoDir = path.join(root, 'repository', 'data');
   fs.mkdirSync(repoDir, { recursive: true });
   fs.writeFileSync(path.join(repoDir, 'pack-1'), Buffer.alloc(1000));
   fs.writeFileSync(path.join(repoDir, 'pack-2'), Buffer.alloc(500));
-  const pointsDir = path.join(root, 'MOS-backups', 'restore-points');
+  const pointsDir = path.join(root, 'restore-points');
   fs.mkdirSync(pointsDir, { recursive: true });
   fs.writeFileSync(path.join(pointsDir, 'job-1.json'), '{}');
   fs.writeFileSync(path.join(pointsDir, 'job-1.json.sha256'), 'digest');
@@ -200,40 +177,36 @@ test('storage credentials are masked out of captured output by exact value', () 
   assert.equal(maskSecrets('exit status 2', ['2', '']), 'exit status 2');
 });
 
-// A repository keyed with the pre-release password must migrate on any probe,
-// not only on an open: a drive's health check and a bucket's preflight both run
-// before a backup job ever opens the repository, and a `locked` answer from
-// either would refuse the backup the migration exists to keep working.
-test('a repository keyed with the pre-release password is migrated by whichever probe meets it first', async () => {
+// A repository still keyed with a key the owner rotated away from must be
+// re-keyed on any probe, not only on an open: a drive's health check and a
+// bucket's preflight both run before a backup job ever opens the repository,
+// and a `locked` answer from either would refuse the backup.
+test('a repository keyed with a rotated-away key is re-keyed by whichever probe meets it first', async () => {
   const root = await scratch();
-  const keyFile = path.join(root, 'agent-state', 'engine-key');
-  const legacy = 'f00dbabe'.repeat(8);
-  fs.mkdirSync(path.dirname(keyFile), { recursive: true });
-  fs.writeFileSync(keyFile, `${legacy}\n`, 'utf8');
-  const engine = createEngine({ agentStateDir: path.dirname(keyFile) });
-  engine.migrateLegacyKey();
-  const recovery = engine.recoveryKey();
+  const engine = createEngine({ agentStateDir: path.join(root, 'agent-state') });
+  const previous = engine.recoveryKey();
+  const recovery = engine.rotateRecoveryKey(generate().key);
 
-  const accepted = new Set([legacy]);
+  const accepted = new Set([previous]);
   const calls = [];
   engine.probeRepository = async ({ password }) => {
     calls.push(['probe', password ? 'entered' : 'own']);
     return accepted.has(password || recovery) ? { state: 'open' } : { message: 'locked', state: 'locked' };
   };
-  engine.keyList = () => [{ current: true, id: 'legacy-id' }];
+  engine.keyList = () => [{ current: true, id: 'previous-id' }];
   engine.keyAdd = ({ newPassword }) => { calls.push(['add']); accepted.add(newPassword); };
-  engine.keyRemove = ({ keyId }) => { calls.push(['remove', keyId]); accepted.delete(legacy); };
+  engine.keyRemove = ({ keyId }) => { calls.push(['remove', keyId]); accepted.delete(previous); };
 
   const spec = { env: {}, localPath: null, location: 's3:example/bucket/MOS-backups/repository', secrets: [] };
   const [first, second] = await Promise.all([engine.probe(spec), engine.probe(spec)]);
   assert.equal(first.state, 'open');
   assert.equal(second.state, 'open');
-  assert.equal(calls.filter(([call]) => call === 'add').length, 1, 'overlapping probes migrated once');
-  assert.deepEqual(calls.filter(([call]) => call === 'remove'), [['remove', 'legacy-id']]);
+  assert.equal(calls.filter(([call]) => call === 'add').length, 1, 'overlapping probes re-keyed once');
+  assert.deepEqual(calls.filter(([call]) => call === 'remove'), [['remove', 'previous-id']]);
   assert.equal(accepted.has(recovery), true);
-  assert.equal(accepted.has(legacy), false);
-  // The legacy file itself is kept for the drives still keyed with it.
-  assert.equal(engine.legacyKey(), legacy);
+  assert.equal(accepted.has(previous), false);
+  // The rotated-away key is kept for the drives still keyed with it.
+  assert.deepEqual(engine.rotatedKeys(), [previous]);
   // A repository that genuinely belongs to another server stays locked.
   accepted.clear();
   accepted.add('MOS-SOME-OTHER-SERVER');
@@ -242,14 +215,13 @@ test('a repository keyed with the pre-release password is migrated by whichever 
 
 // The guarantee an owner is entitled to when they point MOS at backups another
 // server wrote: MOS reads them with that server's key and writes nothing —
-// not a snapshot, not a key, not the pre-release migration that would otherwise
-// fire on any repository this machine's own key cannot open.
+// not a snapshot, not a key, not the re-keying that would otherwise fire on any
+// repository this machine's own key cannot open.
 test('opening a repository with another server\'s key never writes to it', async () => {
   const root = await scratch();
   const agentStateDir = path.join(root, 'agent-state');
   fs.mkdirSync(agentStateDir, { recursive: true });
-  const legacy = 'f00dbabe'.repeat(8);
-  fs.writeFileSync(path.join(agentStateDir, 'engine-key.legacy'), `${legacy}\n`, 'utf8');
+  fs.writeFileSync(path.join(agentStateDir, 'engine-key.superseded'), JSON.stringify([generate().key]), 'utf8');
   let ownKeyUsed = false;
   const engine = createEngine({ agentStateDir, onKeyUsed: () => { ownKeyUsed = true; } });
   const borrowed = 'MOS-THEIR-SERVER-KEY';

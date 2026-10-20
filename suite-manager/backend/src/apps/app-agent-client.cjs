@@ -43,6 +43,7 @@ class AppAgentClient {
   checkDrive(input) { return this.request('POST', '/v1/storage/check', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   ejectDrive(input) { return this.request('POST', '/v1/storage/eject', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   useDrive(input) { return this.request('POST', '/v1/storage/use', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  forgetDrive(input) { return this.request('POST', '/v1/storage/forget', input); }
   openDrive(input) { return this.request('POST', '/v1/storage/open', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   renameStorage(input) { return this.request('POST', '/v1/storage/rename', input); }
   holdBackups(input) { return this.request('POST', '/v1/storage/backups', input); }

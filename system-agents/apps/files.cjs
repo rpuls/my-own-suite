@@ -5,9 +5,13 @@ const path = require('node:path');
 
 const { CodedError } = require('../../shared/coded-error.cjs');
 const {
+  ABANDONED_UPLOAD_MS,
   APPS_DIR,
   DELETING_DIR,
+  MAX_UPLOAD_CHUNK_BYTES,
   READ_ONLY_SENTENCE,
+  UPLOAD_ID_PATTERN,
+  UPLOAD_STAGING_DIRNAME,
   UPLOADS_DIR,
   addRefusal,
   changeRefusal,
@@ -28,11 +32,8 @@ const { driveMountPath } = require('./storage.cjs');
 // drives. Each change proves the drive is the mount first, so nothing ever lands on
 // the system disk in its place.
 
-const UPLOAD_STAGING_ROOT = process.env.MOS_FILE_UPLOAD_ROOT || '/var/lib/mos/suite-manager/file-uploads';
-const UPLOAD_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-const MAX_CHUNK_BYTES = 64 * 1024 * 1024;
+const UPLOAD_STAGING_ROOT = process.env.MOS_FILE_UPLOAD_ROOT || `/var/lib/mos/suite-manager/${UPLOAD_STAGING_DIRNAME}`;
 const MAX_PATHS_PER_REQUEST = 200;
-const ABANDONED_UPLOAD_MS = 24 * 60 * 60_000;
 const SWEEP_EVERY_MS = 10 * 60_000;
 const WRITABLE_KERNEL_FILESYSTEMS = ['exfat', 'ntfs3', 'vfat'];
 const NO_FOLLOW = fs.constants.O_NOFOLLOW || 0;
@@ -258,7 +259,7 @@ class DriveFiles {
     const handle = await fsp.open(path.join(root, `${uploadId}.chunk`), fs.constants.O_RDONLY | NO_FOLLOW).catch(() => null);
     if (!handle) throw filesError('FILES_UPLOAD_INVALID', 'That part of the upload did not arrive.', 400);
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== owner || stat.size > MAX_CHUNK_BYTES) {
+    if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== owner || stat.size > MAX_UPLOAD_CHUNK_BYTES) {
       await handle.close();
       throw filesError('FILES_UPLOAD_INVALID', 'That part of the upload is not valid.', 400);
     }
@@ -398,4 +399,4 @@ function filesRoutes(files) {
   };
 }
 
-module.exports = { DriveFiles, MAX_CHUNK_BYTES, MAX_PATHS_PER_REQUEST, READ_ONLY_SENTENCE, UPLOAD_ID_PATTERN, UPLOAD_STAGING_ROOT, filesRoutes };
+module.exports = { DriveFiles, MAX_PATHS_PER_REQUEST, READ_ONLY_SENTENCE, UPLOAD_ID_PATTERN, UPLOAD_STAGING_ROOT, filesRoutes };

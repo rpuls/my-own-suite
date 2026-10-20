@@ -26,48 +26,29 @@ function capabilitiesOf(entry) {
   };
 }
 
-function newestBackupAt(backups, destinationId) {
-  return (backups || []).filter((backup) => backup.destinationId === destinationId).map((backup) => backup.createdAt).sort().at(-1) || null;
-}
-
-// What the owner is told about another server's backups before deciding what to do with them.
-function foreignStoreFacts(destination, status) {
-  const points = (status?.backups || []).filter((backup) => backup.destinationId === destination.id);
-  const hostname = points.map((backup) => backup.sourceHostname).find(Boolean) || null;
+// What backups mean for one piece of storage, as the backup agent states it:
+// whether this server backs up there, and the archives other servers left on
+// it. Null when neither.
+function backupFacts(storageId, status, { held }) {
+  const destination = (status?.destinations || []).find((item) => item.id === storageId) || null;
+  const others = (status?.archives || []).filter((archive) => archive.containerId === storageId && archive.owner === 'other');
+  if (!destination && !held && !others.length) return null;
   return {
-    destinationId: destination.id,
-    from: hostname && hostname !== status?.hostname ? hostname : null,
-    label: destination.label,
-    newestAt: newestBackupAt(points, destination.id),
-    restorePoints: destination.repository?.restorePoints ?? points.length,
-  };
-}
-
-// What the backups on one place amount to, or null when it is not a destination.
-function backupFacts(destination, status, { held }) {
-  if (!destination) return held ? { destination: true, destinationId: null, foreignStore: false, lastBackupAt: null, locked: false, primary: false, ready: false, restorePoints: 0, storedBytes: null } : null;
-  const primaryId = status?.primaryDestination?.destinationId || null;
-  return {
-    destination: true,
-    destinationId: destination.id,
-    foreignStore: destination.foreignStore === true,
-    lastBackupAt: newestBackupAt(status?.backups, destination.id) || destination.lastBackupAt || null,
-    locked: destination.locked === true,
-    primary: destination.id === primaryId,
-    ready: destination.ready === true,
-    restorePoints: destination.repository?.restorePoints ?? 0,
-    storedBytes: destination.repository?.storedBytes ?? null,
+    destination: Boolean(destination || (held && !others.length)),
+    lastBackupAt: destination?.lastBackupAt || null,
+    otherServers: others.map(({ id, keyState, writtenBy }) => ({ id, keyState, writtenBy })),
+    primary: storageId === (status?.primaryDestination?.destinationId || null),
+    ready: destination?.condition === 'ready',
+    restorePoints: destination?.ownArchive?.restorePoints ?? 0,
+    storedBytes: destination?.ownArchive?.storedBytes ?? null,
   };
 }
 
 function driveEntry(drive, status) {
-  const destinations = status?.destinations || [];
-  const destination = destinations.find((item) => item.kind === 'disk' && item.fsUuid === drive.id && item.mountState !== 'away')
-    || destinations.find((item) => item.kind === 'disk' && item.fsUuid === drive.id);
   const entry = {
     apps: drive.apps || [],
     availableBytes: drive.availableBytes,
-    backups: backupFacts(destination, status, { held: drive.backups }),
+    backups: backupFacts(drive.id, status, { held: drive.backups }),
     connected: drive.connected,
     detail: drive.detail || null,
     devicePath: drive.devicePath || null,
@@ -90,49 +71,25 @@ function driveEntry(drive, status) {
   return { ...entry, capabilities: capabilitiesOf(entry) };
 }
 
-// A drive the backups remember from before, that the storage module has no record of.
-function rememberedBackupDrive(destination, status) {
-  const entry = {
-    apps: [],
-    availableBytes: null,
-    backups: backupFacts(destination, status, { held: true }),
-    connected: false,
-    detail: null,
-    devicePath: null,
-    fileSystem: null,
-    holdsAppFoldersFormat: false,
-    holdsBackupsFormat: true,
-    id: destination.fsUuid,
-    kind: 'drive',
-    label: destination.label,
-    model: null,
-    mountPath: null,
-    name: destination.label,
-    named: false,
-    reason: 'This drive is not connected.',
-    sizeBytes: null,
-    state: 'away',
-    transport: null,
-  };
-  return { ...entry, capabilities: capabilitiesOf(entry) };
-}
-
+// A connection whose one archive another server made is reachable, and listed
+// only as that archive; so is one MOS has not heard back from yet.
 function bucketEntry(bucket, status) {
-  const destination = (status?.destinations || []).find((item) => item.kind === 'object' && item.id === bucket.id);
-  const reachable = destination ? destination.ready || destination.locked : null;
+  const destination = (status?.destinations || []).find((item) => item.id === bucket.id);
+  const archive = (status?.archives || []).find((item) => item.containerId === bucket.id);
+  const reachable = destination ? destination.condition === 'ready' : archive ? true : null;
   const entry = {
     apps: [],
     availableBytes: null,
-    backups: backupFacts(destination, status, { held: bucket.backups }),
+    backups: backupFacts(bucket.id, status, { held: bucket.backups }),
     bucket: { accessKeyId: bucket.accessKeyId, bucket: bucket.bucket, endpoint: bucket.endpoint, folder: bucket.folder || '', region: bucket.region || '' },
     connected: true,
-    detail: destination?.notReadyReason || null,
+    detail: destination?.refusal || null,
     id: bucket.id,
     kind: 'bucket',
     label: bucket.label,
     name: bucket.label,
     named: true,
-    reason: reachable === false ? destination.notReadyReason || 'MOS could not reach this storage.' : null,
+    reason: reachable === false ? destination.refusal || 'MOS could not reach this storage.' : null,
     sizeBytes: null,
     state: reachable === false ? 'unreachable' : 'ready',
   };
@@ -221,13 +178,9 @@ class StorageService {
       Promise.resolve(this.backupAgent.status()).catch(() => null),
     ]);
     if (!found) return null;
-    const drives = (found.drives || []).map((drive) => driveEntry(drive, status));
-    const known = new Set(drives.map((drive) => drive.id));
-    const remembered = (status?.destinations || []).filter((item) => item.kind === 'disk' && item.mountState === 'away' && item.fsUuid && !known.has(item.fsUuid));
     const storage = [
       systemEntry(found.system),
-      ...drives,
-      ...remembered.map((destination) => rememberedBackupDrive(destination, status)),
+      ...(found.drives || []).map((drive) => driveEntry(drive, status)),
       ...(found.buckets || []).map((bucket) => bucketEntry(bucket, status)),
     ].map((entry) => ({ ...entry, job: this.driveJobs?.get(entry.id) || null }));
     return { backupsKnown: Boolean(status), installerSticks: found.installerSticks || [], storage };
@@ -269,10 +222,9 @@ class StorageService {
     return this.appAgent.useDrive({ drive: driveId });
   }
 
-  // Making storage a backup destination is a claim the storage module records; the
-  // repository itself is created by the first backup, as it always was. What is
-  // already on a drive is only known once the claim has opened it, so a store
-  // another server made is answered here, for the owner to decide about.
+  // Making storage a backup destination is a claim the storage module records;
+  // this server's archive on it is created by the first backup. Archives other
+  // servers left there stay beside it and never stand in its way.
   async holdBackups(storageId, { primary = false } = {}) {
     const entry = await this.entry(storageId);
     if (!entry) throw Object.assign(new Error('That storage is no longer connected.'), { code: 'STORAGE_NOT_FOUND', statusCode: 404 });
@@ -280,10 +232,9 @@ class StorageService {
     if (entry.kind === 'bucket') await this.backupAgent.holdObjectBackups({ destinationId: storageId, held: true });
     else await this.appAgent.holdBackups({ drive: storageId, held: true });
     const status = await this.backupAgent.status();
-    const destination = (status.destinations || []).find((item) => (item.kind === 'object' ? item.id === storageId : item.fsUuid === storageId && item.mountState === 'mounted')) || null;
-    if (destination?.foreignStore) return { destination, foreignStore: foreignStoreFacts(destination, status) };
+    const destination = (status.destinations || []).find((item) => item.id === storageId) || null;
     if (primary && destination) await this.backupAgent.setPrimaryDestination({ destinationId: destination.id });
-    return { destination, foreignStore: null };
+    return { destination };
   }
 
   async releaseBackups(storageId) {
@@ -293,6 +244,14 @@ class StorageService {
     if (entry.kind === 'bucket') await this.backupAgent.holdObjectBackups({ destinationId: storageId, held: false });
     else await this.appAgent.holdBackups({ drive: storageId, held: false });
     return { released: true };
+  }
+
+  // A drive that is away and that no app reads. Backups going to it are let go
+  // with it, unless automatic backups go there.
+  async forgetDrive(driveId) {
+    const entry = await this.entry(driveId);
+    if (entry?.backups?.primary) throw Object.assign(new Error('Automatic backups go to this drive. Choose another place for them first.'), { code: 'STORAGE_IS_PRIMARY', statusCode: 409 });
+    return this.appAgent.forgetDrive({ drive: driveId });
   }
 
   async formatInstallerStick(devicePath) {

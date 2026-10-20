@@ -278,7 +278,7 @@ test('naming a drive changes only what MOS calls it, and does not make MOS keep 
   assert.equal((await storage.drives())[0].name, null);
 });
 
-test('drives lists remembered drives that are away, and release forgets an uninstalled app', async () => {
+test('drives lists remembered drives that are away, release keeps a drive open for what an app left, and forget lets it go', async () => {
   const host = fakeHost([USB_DRIVE]);
   const { storage } = await storageFor(host);
   await storage.prepareFolders('jellyfin', [{ drive: '1A2B-3C4D', name: 'Movies', path: '/media/movies' }]);
@@ -293,7 +293,11 @@ test('drives lists remembered drives that are away, and release forgets an unins
   assert.deepEqual(storage.registry.read().drives['1A2B-3C4D'].apps, ['immich']);
   storage.release('immich');
   assert.equal(storage.isRemembered('1A2B-3C4D'), true, 'its folders are still mounted after a restart');
-  assert.deepEqual(await away.drives(), [], 'a drive no app uses is not listed while it is away');
+  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.apps]), [['1A2B-3C4D', 'away', []]]);
+  await assert.rejects(storage.forget('1A2B-3C4D'), /Eject the drive/u);
+  await away.forget('1A2B-3C4D');
+  assert.deepEqual(await away.drives(), [], 'a forgotten drive is no longer listed');
+  assert.equal(away.isRemembered('1A2B-3C4D'), false);
   assert.equal(fs.existsSync(`${storage.registry.registryPath}.lock`), false);
 });
 

@@ -6,13 +6,16 @@ const { withRoutes } = require('./support/route-harness.cjs');
 
 const FILMS = { apps: ['jellyfin'], availableBytes: 346e9, backups: false, connected: true, devicePath: '/dev/sdb1', fileSystem: 'ntfs', holdsAppFoldersFormat: true, holdsBackups: true, holdsBackupsFormat: true, id: '20C2CDDCC2CDB676', label: 'Expansion', model: 'Seagate Expansion', mountPath: '/media/mos-storage/20C2CDDCC2CDB676', name: 'Movies drive', sizeBytes: 1e12, state: 'ready', transport: 'usb', usable: true };
 const LINUX = { ...FILMS, apps: [], fileSystem: 'ext4', holdsAppFoldersFormat: false, id: 'e1e1e1e1-0000', mountPath: null, name: null, state: 'available' };
+const DRAWER = { ...FILMS, apps: [], availableBytes: null, backups: true, connected: false, devicePath: null, id: 'DRAWER-0001', mountPath: null, name: 'Backup drive', state: 'away' };
 const BUCKET = { accessKeyId: 'AKIAEXAMPLE', backups: true, bucket: 'family', endpoint: 'https://s3.test', folder: '', id: 'object:0123456789ab', label: 'Family backups', region: '' };
 const STATUS = {
-  backups: [{ createdAt: '2026-10-18T03:00:00.000Z', destinationId: 'object:0123456789ab' }],
+  archives: [
+    { containerId: 'object:0123456789ab', id: 'object:0123456789ab', keyState: 'own', owner: 'this', restorePoints: 6, storedBytes: 140e9 },
+    { containerId: '20C2CDDCC2CDB676', id: '20C2CDDCC2CDB676/archive-0000beef', keyState: 'locked', owner: 'other', writtenBy: { hostname: 'mos-old', installId: 'old' } },
+  ],
   destinations: [
-    { fsUuid: '20C2CDDCC2CDB676', id: '/media/mos-storage/20C2CDDCC2CDB676', kind: 'disk', mountState: 'mounted', ready: true },
-    { id: 'object:0123456789ab', kind: 'object', ready: true, repository: { restorePoints: 6, storedBytes: 140e9 } },
-    { fsUuid: 'DRAWER-0001', id: '/media/mos-storage/DRAWER-0001', kind: 'disk', label: 'Backup drive', lastBackupAt: '2026-10-01T03:00:00.000Z', mountState: 'away' },
+    { condition: 'ready', id: 'object:0123456789ab', kind: 'object', lastBackupAt: '2026-10-18T03:00:00.000Z', ownArchive: { id: 'object:0123456789ab', restorePoints: 6, storedBytes: 140e9 } },
+    { condition: 'away', id: 'DRAWER-0001', kind: 'disk', lastBackupAt: '2026-10-01T03:00:00.000Z', ownArchive: null },
   ],
   primaryDestination: { destinationId: 'object:0123456789ab' },
 };
@@ -20,7 +23,7 @@ const STATUS = {
 function service({ calls = [], status = async () => STATUS } = {}) {
   const appAgent = {
     holdBackups: async (input) => { calls.push(['hold', input]); },
-    storageInventory: async () => ({ buckets: [BUCKET], drives: [FILMS, LINUX], installerSticks: [{ devicePath: '/dev/sdd' }], system: { appsBytes: 200e9, availableBytes: 236e9, encrypted: true, sizeBytes: 500e9, systemBytes: 14e9 } }),
+    storageInventory: async () => ({ buckets: [BUCKET], drives: [FILMS, LINUX, DRAWER], installerSticks: [{ devicePath: '/dev/sdd' }], system: { appsBytes: 200e9, availableBytes: 236e9, encrypted: true, sizeBytes: 500e9, systemBytes: 14e9 } }),
   };
   const backupAgent = {
     holdObjectBackups: async (input) => { calls.push(['hold-object', input]); },
@@ -47,7 +50,8 @@ test('one list holds the system drive, every drive and every bucket, each with w
   assert.deepEqual([linux.capabilities.holdsAppFolders, linux.capabilities.holdsBackups], [false, true]);
   assert.deepEqual([bucket.capabilities.holdsAppFolders, bucket.capabilities.holdsBackups], [false, true]);
   assert.deepEqual([bucket.backups.primary, bucket.backups.storedBytes, bucket.backups.lastBackupAt], [true, 140e9, '2026-10-18T03:00:00.000Z']);
-  assert.equal(films.backups.destinationId, '/media/mos-storage/20C2CDDCC2CDB676');
+  assert.deepEqual(films.backups.otherServers, [{ id: '20C2CDDCC2CDB676/archive-0000beef', keyState: 'locked', writtenBy: { hostname: 'mos-old', installId: 'old' } }]);
+  assert.equal(films.backups.destination, false, 'another server\'s archive does not make a drive this server\'s place');
   assert.deepEqual([drawer.backups.lastBackupAt, drawer.name], ['2026-10-01T03:00:00.000Z', 'Backup drive']);
 });
 
@@ -61,28 +65,27 @@ test('without the backup agent the drives are still listed, and without the app 
 
 test('making storage a backup destination is a claim for its kind, and the primary follows the destination it becomes', async () => {
   const calls = [];
-  await service({ calls }).holdBackups('20C2CDDCC2CDB676', { primary: true });
+  const claimed = { ...STATUS, destinations: [...STATUS.destinations, { condition: 'ready', id: '20C2CDDCC2CDB676', kind: 'disk', ownArchive: null }] };
+  await service({ calls, status: async () => claimed }).holdBackups('20C2CDDCC2CDB676', { primary: true });
   await service({ calls }).holdBackups('object:0123456789ab');
   assert.deepEqual(calls, [
     ['hold', { drive: '20C2CDDCC2CDB676', held: true }],
-    ['primary', { destinationId: '/media/mos-storage/20C2CDDCC2CDB676' }],
+    ['primary', { destinationId: '20C2CDDCC2CDB676' }],
     ['hold-object', { destinationId: 'object:0123456789ab', held: true }],
   ]);
   await assert.rejects(service().holdBackups('system'), /cannot hold backups/u);
   await assert.rejects(service().releaseBackups('object:0123456789ab'), /Choose another place/u);
 });
 
-test('a drive found holding another server\'s backups is claimed but never made the primary', async () => {
+test('a drive holding another server\'s backups still becomes this server\'s place, beside them', async () => {
   const calls = [];
-  const foreign = {
-    ...STATUS,
-    backups: [{ createdAt: '2026-10-18T03:00:00.000Z', destinationId: '/media/mos-storage/20C2CDDCC2CDB676', sourceHostname: 'mos' }],
-    destinations: [{ ...STATUS.destinations[0], foreignStore: true, label: 'Ext HDD', locked: true, ready: false, repository: { restorePoints: 3 } }],
-    hostname: 'mos',
-  };
-  const added = await service({ calls, status: async () => foreign }).holdBackups('20C2CDDCC2CDB676', { primary: true });
-  assert.deepEqual(calls, [['hold', { drive: '20C2CDDCC2CDB676', held: true }]]);
-  assert.deepEqual(added.foreignStore, { destinationId: '/media/mos-storage/20C2CDDCC2CDB676', from: null, label: 'Ext HDD', newestAt: '2026-10-18T03:00:00.000Z', restorePoints: 3 });
+  const claimed = { ...STATUS, destinations: [...STATUS.destinations, { condition: 'ready', id: '20C2CDDCC2CDB676', kind: 'disk', ownArchive: null }] };
+  const added = await service({ calls, status: async () => claimed }).holdBackups('20C2CDDCC2CDB676', { primary: true });
+  assert.deepEqual(calls, [['hold', { drive: '20C2CDDCC2CDB676', held: true }], ['primary', { destinationId: '20C2CDDCC2CDB676' }]]);
+  assert.equal(added.destination.id, '20C2CDDCC2CDB676');
+  const { storage } = await service({ status: async () => claimed }).inventory();
+  const films = storage.find((entry) => entry.id === '20C2CDDCC2CDB676');
+  assert.deepEqual([films.backups.destination, films.backups.otherServers.length], [true, 1]);
 });
 
 test('the install stick is formatted only while it is still the one listed', async () => {

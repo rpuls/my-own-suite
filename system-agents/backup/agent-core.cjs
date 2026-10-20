@@ -58,17 +58,14 @@ const { RESTORE_POINTS_DIRNAME } = require('./engines/engine.cjs');
 const { parseObjectLocator, readRestorePoint, sha256, writeRestorePoint } = require('./destinations.cjs');
 
 const RESTORE_JOURNAL_FILENAME = 'restore-journal.json';
-// MOS 0.19 and earlier wrote each backup as an unencrypted tar bundle. That
-// read path is gone with the format, so such a backup gets one plain sentence
-// instead of a checksum failure from a file this code no longer understands.
-const UNREADABLE_LEGACY_BACKUP = 'This backup was written by an older MOS in the unencrypted bundle format, which this version can no longer read. Restore it with MOS 0.19 or earlier, or take a new backup on this machine.';
+const UNREADABLE_BACKUP = 'This backup is in a format this version of MOS cannot read. Take a new backup on the machine you are running now.';
 // A restore point is readable by the MOS that wrote it and by every MOS after
 // it, so a schema this version does not accept can only belong to a later
 // generation. The way out is the release named in the manifest, which is why
 // the refusal reports it rather than a fixed version.
 function unreadableGeneration(manifest) {
   const version = manifest?.source?.version;
-  if (!version) return UNREADABLE_LEGACY_BACKUP;
+  if (!version) return UNREADABLE_BACKUP;
   return `This backup was written by MOS ${version}, which stores backups in a format this version of MOS no longer reads. Restore it with MOS ${version}, or take a new backup on the machine you are running now.`;
 }
 // One sentence for every way a drive can go away mid-write, so an owner reads
@@ -161,21 +158,15 @@ function formatBytes(bytes) {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
-// A restore point on a drive is identified by its manifest file inside the
-// destination's restore-points directory. Anything else on the wire is not
-// something this version can restore, and is refused rather than guessed at.
+// A restore point on a drive is identified by its manifest file inside its
+// archive's restore-points directory; in a bucket by the connection and the
+// point's id. Anything else on the wire is refused rather than guessed at.
 function isRestorePointPath(target) {
   return typeof target === 'string' && target.endsWith('.json') && path.basename(path.dirname(target)) === RESTORE_POINTS_DIRNAME;
 }
 
-// Either shape of locator that names something MOS can still restore. A bucket
-// has only this one: there were never any retired-format backups in one.
-function isRestorePointLocator(target) {
-  return Boolean(parseObjectLocator(target)) || isRestorePointPath(target);
-}
-
-function destinationOfRestorePoint(manifestPath) {
-  return path.resolve(path.dirname(manifestPath), '..', '..');
+function archiveOfRestorePoint(manifestPath) {
+  return path.resolve(path.dirname(manifestPath), '..');
 }
 
 function snapshotIdsOfRestorePoint(manifest) {
@@ -276,7 +267,7 @@ class BackupAgentCore {
   // for a backup, and refusing it because leftover data could not be collected
   // would turn a housekeeping problem into a lost backup.
   async collectUncollectedData(destination, jobFile) {
-    const destinationId = destination?.id;
+    const destinationId = destination?.containerId;
     if (!destinationId || !this.readUncollectedData().includes(String(destinationId))) return false;
     this.jobs.stage(jobFile, 'Reclaiming space from an interrupted backup');
     try {
@@ -294,17 +285,13 @@ class BackupAgentCore {
     return managedStateTargets(this.paths).filter((target) => target.backedUp && target.stagePath);
   }
 
-  // What a backup locator names: which destination holds it, which restore
-  // point it is, and whether it is a restore point at all — a drive can still
-  // carry a directory written in the retired tar format, which is listed and
-  // deletable but no longer readable.
+  // What a backup locator names: which archive holds it and which restore
+  // point it is.
   resolveBackup(locator) {
     const object = parseObjectLocator(locator);
-    if (object) return { destination: this.destinations.resolve(object.destinationId), kind: 'restore-point', pointId: object.pointId };
-    if (isRestorePointPath(locator)) {
-      return { destination: this.destinations.resolve(destinationOfRestorePoint(locator)), kind: 'restore-point', pointId: path.basename(locator, '.json') };
-    }
-    return { destination: this.destinations.resolve(path.resolve(path.dirname(locator), '..')), kind: 'legacy-bundle', path: locator };
+    if (object) return { destination: this.destinations.resolve(object.destinationId), pointId: object.pointId };
+    if (isRestorePointPath(locator)) return { destination: this.destinations.archiveAt(archiveOfRestorePoint(locator)), pointId: path.basename(locator, '.json') };
+    throw new Error('Choose a detected backup from a connected destination.');
   }
 
   // A destination lost mid-write fails inside the engine, which reports the
@@ -381,7 +368,7 @@ class BackupAgentCore {
     const { jobs, packages, system } = this;
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting new backup or restore work.');
-    const destination = this.destinations.resolve(started.destinationId);
+    const destination = await this.destinations.target(started.destinationId);
     await destination.assertAvailable('The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
     await this.collectUncollectedData(destination, jobFile);
     // exFAT and NTFS destinations reject app-packages' setgid mode, so the
@@ -545,7 +532,7 @@ class BackupAgentCore {
     // Nothing to forget does not mean nothing was written: a backup that failed
     // before its first snapshot was recorded still left packs behind, and only a
     // maintenance pass can tell that they are referenced by nothing.
-    if (!snapshotIds.length) this.noteUncollectedData(destination?.id);
+    if (!snapshotIds.length) this.noteUncollectedData(destination?.containerId);
     if (snapshotIds.length) {
       try {
         await this.engine.forgetSnapshots({ repository, snapshotIds });
@@ -566,14 +553,7 @@ class BackupAgentCore {
   // it runs only as a queued job through the same one-at-a-time pipeline as
   // backup and restore (deleteBackupJob), never inline.
   async deleteBackup(target) {
-    const { destination, kind, pointId } = this.resolveBackup(target);
-    // A backup left over in the retired tar format can no longer be read, but
-    // it is still a directory the owner is entitled to remove: refusing that
-    // too would strand its space on the drive with nothing MOS can do about it.
-    if (kind === 'legacy-bundle') {
-      fs.rmSync(target, { force: true, recursive: true });
-      return { kind, path: target };
-    }
+    const { destination, pointId } = this.resolveBackup(target);
     let snapshotIds = [];
     try {
       snapshotIds = snapshotIdsOfRestorePoint(await destination.points.read(pointId));
@@ -592,7 +572,7 @@ class BackupAgentCore {
       await this.engine.forgetSnapshots({ repository, snapshotIds });
       await this.engine.maintainRepository({ repository });
     }
-    return { kind, path: target };
+    return { path: target };
   }
 
   async deleteBackupJob(jobFile) {
@@ -607,7 +587,7 @@ class BackupAgentCore {
     jobs.update(jobFile, (job) => {
       job.stage = 'completed';
       job.status = 'succeeded';
-      job.summary = { deletedKind: deleted.kind };
+      job.summary = { deleted: deleted.path };
     });
   }
 
@@ -631,7 +611,6 @@ class BackupAgentCore {
   async validateRestorePoint(locator, { keepStagedState = false, onManifest = null, onStep = null } = {}) {
     const { packages } = this;
     const step = (name) => { if (onStep) onStep(name); };
-    if (!isRestorePointLocator(locator)) throw new Error(UNREADABLE_LEGACY_BACKUP);
     const { destination, pointId } = this.resolveBackup(locator);
     const manifest = await destination.points.read(pointId);
     this.assertRestorableManifest(manifest);
@@ -967,7 +946,7 @@ module.exports = {
   carriedAddress,
   isRestorePointPath,
   readRestorePoint,
-  UNREADABLE_LEGACY_BACKUP,
+  UNREADABLE_BACKUP,
   sha256,
   validatePackagePayloads,
   writeRestorePoint,

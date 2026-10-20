@@ -31,6 +31,7 @@ export const STEPS = {
   uninstall: { arg: 'app', budgetMinutes: 3, describe: 'Uninstall the app; folders it kept on a drive stay there.' },
   backup: { arg: 'destination', budgetMinutes: 25, describe: 'Back up now, to the backup disk (`backup`) or to a new folder in the lab bucket (`backup:bucket`).' },
   restore: { arg: 'destination', budgetMinutes: 30, describe: "Restore this run's latest backup. `restore:bucket` first disconnects and reconnects the bucket, and opens it with the saved recovery key if it is locked." },
+  takeover: { arg: 'none', budgetMinutes: 35, describe: "Find this run's latest disk backup beside a copy only another server's key opens: listed apart and locked, opened with that key but not changeable, and restoring from it makes this server that one, with its key and the drive." },
   'platform-update': { arg: 'wait', budgetMinutes: 50, describe: 'Apply the platform update the lab track offers. `platform-update:wait` waits up to 40 minutes for the track to move first.' },
   diagnostics: { arg: 'none', budgetMinutes: 8, describe: 'Export the diagnostics file and check it for leaked secrets, crashes and missing sections.' },
   marketing: { arg: 'none', budgetMinutes: 10, describe: 'Refresh the public site screenshots from the installed suite.' },

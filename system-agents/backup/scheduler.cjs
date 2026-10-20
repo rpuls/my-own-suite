@@ -170,9 +170,6 @@ class BackupScheduler {
       if (!job || job.status !== 'succeeded') {
         return this.settle(schedule, { message: job?.error || 'The automatic backup did not finish. Its record is in the activity below.', status: 'failed' });
       }
-      // The repository identity is only knowable once a backup has written one,
-      // which is why it is captured here rather than when the primary is chosen.
-      this.primary.rememberRepository(schedule.pending.destinationId);
       return this.prune({ ...schedule, pending: { ...schedule.pending, phase: 'retention' } });
     }
     if (job && job.status !== 'succeeded') {

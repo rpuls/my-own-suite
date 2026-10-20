@@ -7,11 +7,14 @@ const { pipeline } = require('node:stream/promises');
 
 const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
+  ABANDONED_UPLOAD_MS,
   APPS_DIR,
+  MAX_UPLOAD_CHUNK_BYTES,
   NOT_MANAGED_SENTENCE,
   READ_ONLY_SENTENCE,
   addRefusal,
   changeRefusal,
+  deleteRefusal,
   entryKind,
   filesRootOf,
   foldKey,
@@ -21,6 +24,9 @@ const {
   parseRelativePath,
   placeOnDrive,
   resolveExisting,
+  UPLOAD_CHUNK_BYTES,
+  UPLOAD_ID_PATTERN,
+  UPLOAD_STAGING_DIRNAME,
 } = require('../../../../shared/drive-files.cjs');
 const { BACKUPS_DIR, FILES_DIR } = require('../../../../shared/storage-contract.cjs');
 
@@ -28,12 +34,9 @@ const { BACKUPS_DIR, FILES_DIR } = require('../../../../shared/storage-contract.
 // chunk at a time for the app agent, the only writer. Each chunk is one request of
 // a few seconds, so no proxy timeout can cut a film-sized upload.
 
-const CHUNK_BYTES = 16 * 1024 * 1024;
-const MAX_CHUNK_BYTES = 32 * 1024 * 1024;
 const MAX_OPEN_UPLOADS = 32;
 const MAX_CHUNKS_IN_FLIGHT = 3;
 const CHUNK_IDLE_MS = 60_000;
-const ABANDONED_UPLOAD_MS = 24 * 60 * 60_000;
 const FREE_SPACE_MARGIN_BYTES = 64 * 1024 * 1024;
 // Folder sizes are walked for a listing until this many entries have been seen;
 // past it a folder shows how many items it holds but not their size.
@@ -42,7 +45,6 @@ const SIZE_WALK_BUDGET = 20_000;
 const BATCH_PATHS = 200;
 const BATCH_BYTES = 48 * 1024;
 const MAX_SELECTION = 5_000;
-const UPLOAD_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function filesError(code, message, statusCode, extra = {}) {
   return new CodedError(code, message, { statusCode, ...extra });
@@ -51,6 +53,11 @@ function filesError(code, message, statusCode, extra = {}) {
 const UPLOAD_LOST = () => filesError('FILES_UPLOAD_GONE', 'MOS lost track of this upload, so it starts again.', 410);
 const TOP_ADD_REFUSAL = 'Open MOS-files to add files.';
 const MOS_FILES_LOCKED = 'MOS keeps your files here, so this stays where it is.';
+const BACKUPS_LOCKED = 'Your backups are opened in Backups.';
+
+function refusedAlways(sentence) {
+  return { change: sentence, delete: sentence };
+}
 
 // The path inside MOS-files that a path from the top of the drive names, for a
 // change; anything outside MOS-files is only ever read.
@@ -138,7 +145,7 @@ class FilesService {
     this.appAgent = appAgent;
     this.now = now;
     this.storage = storage;
-    this.stagingRoot = path.join(stateDir, 'file-uploads');
+    this.stagingRoot = path.join(stateDir, UPLOAD_STAGING_DIRNAME);
     this.inFlight = new Map();
   }
 
@@ -217,12 +224,12 @@ class FilesService {
   // without what the computers it was used with keep there for themselves.
   async topEntries(drive, budget) {
     const found = (await this.entriesOf(drive.mountPath, budget, { skip: (name) => isHousekeeping(name) || name === BACKUPS_DIR }))
-      .map((entry) => ({ ...entry, locked: entry.name === FILES_DIR ? MOS_FILES_LOCKED : NOT_MANAGED_SENTENCE, managed: entry.name === FILES_DIR }));
+      .map((entry) => ({ ...entry, managed: entry.name === FILES_DIR, refusals: refusedAlways(entry.name === FILES_DIR ? MOS_FILES_LOCKED : NOT_MANAGED_SENTENCE) }));
     const mosFiles = found.find((entry) => entry.name === FILES_DIR && entry.kind === 'folder')
-      || { bytes: 0, items: 0, kind: 'folder', locked: MOS_FILES_LOCKED, managed: true, modifiedAt: new Date(this.now()).toISOString(), name: FILES_DIR };
+      || { bytes: 0, items: 0, kind: 'folder', managed: true, modifiedAt: new Date(this.now()).toISOString(), name: FILES_DIR, refusals: refusedAlways(MOS_FILES_LOCKED) };
     const backups = await resolveExisting(drive.mountPath, [BACKUPS_DIR]).catch(() => null);
     const backupsEntry = backups?.kind === 'folder'
-      ? [{ bytes: null, items: null, kind: 'folder', locked: 'Your backups are opened in Backups.', managed: true, modifiedAt: backups.stat.mtime.toISOString(), name: BACKUPS_DIR, special: 'backups' }]
+      ? [{ bytes: null, items: null, kind: 'folder', managed: true, modifiedAt: backups.stat.mtime.toISOString(), name: BACKUPS_DIR, refusals: refusedAlways(BACKUPS_LOCKED), special: 'backups' }]
       : [];
     return [mosFiles, ...backupsEntry, ...found.filter((entry) => entry.name !== FILES_DIR)];
   }
@@ -239,7 +246,10 @@ class FilesService {
     return {
       addRefusal: addRefusal(inner),
       app: appId ? { id: appId, name: this.appNamed(appId), readsDrive: drive.apps.includes(appId), state: this.appState(appId, drive) } : null,
-      entries: entries.map((entry) => ({ ...entry, locked: changeRefusal([...inner, entry.name], drive.apps), managed: true })),
+      entries: entries.map((entry) => {
+        const segments = [...inner, entry.name];
+        return { ...entry, managed: true, refusals: { change: changeRefusal(segments, drive.apps), delete: deleteRefusal(segments, drive.apps) } };
+      }),
     };
   }
 
@@ -256,7 +266,7 @@ class FilesService {
     else {
       const folder = await resolveExisting(drive.mountPath, segments);
       if (folder.kind !== 'folder') throw filesError('FILES_NOT_A_FOLDER', 'That is a file, not a folder.', 400);
-      shown = { addRefusal: NOT_MANAGED_SENTENCE, app: null, entries: (await this.entriesOf(folder.absolute, budget)).map((entry) => ({ ...entry, locked: NOT_MANAGED_SENTENCE, managed: false })) };
+      shown = { addRefusal: NOT_MANAGED_SENTENCE, app: null, entries: (await this.entriesOf(folder.absolute, budget)).map((entry) => ({ ...entry, managed: false, refusals: refusedAlways(NOT_MANAGED_SENTENCE) })) };
     }
     const entries = shown.entries.map((entry) => ({ appName: null, appState: null, special: null, ...entry }));
     return {
@@ -433,7 +443,7 @@ class FilesService {
     await this.takeOver(session.id);
     const { offset } = await this.appAgent.filesUploadOffset({ acknowledged: session.acknowledged, drive: driveId, uploadId: session.id });
     await this.saveSession({ ...session, acknowledged: offset });
-    return { chunkBytes: CHUNK_BYTES, offset, uploadId: session.id };
+    return { chunkBytes: UPLOAD_CHUNK_BYTES, offset, uploadId: session.id };
   }
 
   // One chunk: staged on the system disk, appended to the drive by the agent,
@@ -448,7 +458,7 @@ class FilesService {
     this.inFlight.set(uploadId, entry);
     request.setTimeout(CHUNK_IDLE_MS, () => request.destroy(filesError('FILES_CHUNK_STALLED', 'That part of the upload stopped arriving.', 408)));
     try {
-      const { counter, received } = limitTo(MAX_CHUNK_BYTES);
+      const { counter, received } = limitTo(MAX_UPLOAD_CHUNK_BYTES);
       await fsp.mkdir(this.stagingRoot, { mode: 0o700, recursive: true });
       await pipeline(request, counter, fs.createWriteStream(this.chunkPath(uploadId), { mode: 0o600 }));
       if (!received() || offset + received() > session.size) throw filesError('FILES_UPLOAD_INVALID', 'That part of the upload does not fit the file.', 400);
@@ -512,4 +522,4 @@ class FilesService {
   }
 }
 
-module.exports = { CHUNK_BYTES, FilesService, MAX_CHUNK_BYTES, batchesOf, byteRange, closedReason, contentDisposition };
+module.exports = { FilesService, batchesOf, byteRange, closedReason, contentDisposition };

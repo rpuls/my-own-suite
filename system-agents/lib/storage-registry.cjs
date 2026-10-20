@@ -35,8 +35,8 @@ class StorageRegistry {
     }
   }
 
-  // The app agent, the plug-in unit and the backup agent each write here, in
-  // processes of their own.
+  // Drives are written by the app agent and its plug-in unit, buckets by the
+  // backup agent that holds their keys; each in a process of its own.
   update(change) {
     const lock = `${this.registryPath}.lock`;
     fs.mkdirSync(path.dirname(this.registryPath), { recursive: true });
@@ -71,6 +71,16 @@ class StorageRegistry {
       const next = { ...drives[driveId], ...fields };
       for (const [key, value] of Object.entries(fields)) if (value === undefined) delete next[key];
       drives[driveId] = next;
+    });
+  }
+
+  // A drive nothing claims any more, forgotten so it is neither listed nor
+  // opened when plugged in. One an app still reads stays.
+  forgetDrive(driveId) {
+    return this.update(({ drives }) => {
+      if (!drives[driveId] || drives[driveId].apps?.length) return false;
+      delete drives[driveId];
+      return true;
     });
   }
 
@@ -114,10 +124,11 @@ function publicBucket(record) {
   };
 }
 
-// A drive is remembered once something claimed it, and stays remembered after the
-// claim goes, so the folders left on it are still opened after a restart.
+// A drive MOS opens whenever it is plugged in: an app reads it, backups go to it,
+// or it is kept open for its files — browsed once, or left holding an
+// uninstalled app's folders.
 function isRememberedDrive(entry) {
-  return Boolean(entry && (Array.isArray(entry.apps) || entry.backups === true));
+  return Boolean(entry && (entry.apps?.length || entry.backups === true || entry.keepOpen === true));
 }
 
 module.exports = { MAX_NAME_LENGTH, RECORD_VERSION, StorageRegistry, isRememberedDrive, normalizeName, publicBucket };
