@@ -7,8 +7,11 @@ const test = require('node:test');
 const {
   addRefusal,
   changeRefusal,
+  deleteRefusal,
+  isHousekeeping,
   nameProblem,
   parseRelativePath,
+  placeOnDrive,
   resolveExisting,
   resolveNew,
 } = require('../../shared/drive-files.cjs');
@@ -164,4 +167,21 @@ test('the app folder tree stays put while its app uses the drive, and leftovers 
   assert.match(addRefusal(['apps', 'jellyfin']), /inside one of the app/u);
   assert.equal(addRefusal(['apps', 'jellyfin', 'Movies']), null);
   assert.equal(addRefusal([]), null);
+});
+
+test('only an app folder no app reads may be deleted whole, and never renamed or moved', () => {
+  assert.equal(deleteRefusal(['apps', 'immich'], ['jellyfin']), null);
+  assert.match(deleteRefusal(['apps', 'jellyfin'], ['jellyfin']), /keeps your apps/u);
+  assert.match(deleteRefusal(['apps']), /keeps your apps/u);
+  assert.match(changeRefusal(['apps', 'immich'], ['jellyfin']), /keeps your apps/u);
+});
+
+test('the drive top is read from, MOS-files is where changes happen, and backups and system folders stay closed', () => {
+  assert.deepEqual(placeOnDrive([]), { inner: null });
+  assert.deepEqual(placeOnDrive(['Photos 2019', 'Summer']), { inner: null });
+  assert.deepEqual(placeOnDrive(['MOS-files', 'apps']), { inner: ['apps'] });
+  assert.throws(() => placeOnDrive(['MOS-backups']), { code: 'FILES_PATH_REFUSED' });
+  assert.throws(() => placeOnDrive(['System Volume Information']), { code: 'FILES_PATH_REFUSED' });
+  assert.equal(isHousekeeping('$RECYCLE.BIN'), true);
+  assert.equal(isHousekeeping('Photos'), false);
 });

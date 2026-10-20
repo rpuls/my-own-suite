@@ -818,6 +818,10 @@ a.suite-files-name {
   color: var(--mos-color-text-muted);
 }
 
+.suite-files-row.is-unused a.suite-files-name {
+  font-weight: var(--mos-weight-regular);
+}
+
 .suite-files-empty {
   display: grid;
   justify-items: center;

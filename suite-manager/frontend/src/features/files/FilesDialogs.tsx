@@ -105,14 +105,23 @@ export function DeleteDialog({ driveName, entries, onClose, onDelete, onDone }: 
   const { busy, error, submit } = useSubmit(onDone, 'Nothing was deleted.');
   const one = entries.length === 1;
   const bytes = sizeOf(entries);
+  const size = bytes !== null ? ` — ${formatBytes(bytes)}` : '';
+  const leftovers = entries.every((entry) => entry.appState);
+  const first = entries[0]!;
+  const appName = first.appName || first.name;
+  const title = leftovers
+    ? (one ? `Delete ${appName}'s files?` : `Delete the files of ${entries.length} apps?`)
+    : (one ? `Delete ${first.name}?` : `Delete ${itemsLabel(entries.length)}?`);
   return <Dialog
     footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-danger" disabled={busy || !understood} onClick={() => void submit(onDelete)} type="button">{busy ? <><Spinner />Deleting</> : 'Delete'}</button></>}
     onClose={() => { if (!busy) onClose(); }}
-    title={one ? `Delete ${entries[0]!.name}?` : `Delete ${itemsLabel(entries.length)}?`}
+    title={title}
   >
-    <p>{one ? 'This lives' : 'These live'} only on {driveName}{bytes !== null ? ` — ${formatBytes(bytes)}` : ''}. Deleting {one ? 'it deletes the only copy; it is' : 'them deletes the only copies; they are'} not in your backups.</p>
+    {leftovers
+      ? <p>{one ? `${appName} ${first.appState === 'elsewhere' ? 'keeps its files on another drive now' : 'is not installed'}. Its folder stayed on` : 'These apps are not using this drive. Their folders stayed on'} {driveName}{size}. Deleting {one ? 'it' : 'them'} deletes the only copies; they are not in your backups.{one && first.appState === 'not-installed' ? ` If you install ${appName} again, it starts with empty folders.` : ''}</p>
+      : <p>{one ? 'This lives' : 'These live'} only on {driveName}{size}. Deleting {one ? 'it deletes the only copy; it is' : 'them deletes the only copies; they are'} not in your backups.</p>}
     <Checkbox checked={understood} disabled={busy} onChange={(event) => setUnderstood(event.currentTarget.checked)}>
-      I understand {one ? 'this is the only copy' : 'these are the only copies'}
+      I understand {one && !leftovers ? 'this is the only copy' : 'these are the only copies'}
     </Checkbox>
     {error ? <Notice title="Not deleted" variant="error"><p>{error}</p></Notice> : null}
   </Dialog>;

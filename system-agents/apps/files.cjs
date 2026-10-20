@@ -12,6 +12,7 @@ const {
   addRefusal,
   changeRefusal,
   checkedName,
+  deleteRefusal,
   filesRootOf,
   foldKey,
   isWithin,
@@ -182,7 +183,7 @@ class DriveFiles {
     const { claimed, filesRoot, target } = await this.writableDrive(drive);
     const entries = [];
     for (const segments of assertPaths(paths)) {
-      const refusal = changeRefusal(segments, claimed);
+      const refusal = deleteRefusal(segments, claimed);
       if (refusal) throw filesError('FILES_PROTECTED', refusal);
       entries.push(await resolveExisting(filesRoot, segments));
     }

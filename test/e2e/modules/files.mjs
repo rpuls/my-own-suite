@@ -23,8 +23,9 @@ function quote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+// `relative` is named from the top of the drive, as the files screen names it.
 function onDrive(driveId, relative) {
-  return path.posix.join(STORAGE_MOUNT_ROOT, driveId, FILES_DIR, relative);
+  return path.posix.join(STORAGE_MOUNT_ROOT, driveId, relative);
 }
 
 // Bytes that never repeat, so a chunk landing at the wrong offset changes the hash.
@@ -94,12 +95,13 @@ async function rowAction(page, name, action) {
 // Into the first folder of the first app reading the drive, by what the drive holds.
 async function openAppFolder(ctx, apps) {
   const { page } = ctx;
+  await openFolder(page, FILES_DIR);
   await openFolder(page, 'apps');
   await openFolder(page, apps[0]);
   const first = page.locator('.suite-files-row a.suite-files-name').first();
   const folder = (await first.textContent()).trim();
   await openFolder(page, folder);
-  return ['apps', apps[0], folder].join('/');
+  return [FILES_DIR, 'apps', apps[0], folder].join('/');
 }
 
 async function progressOf(page) {
@@ -154,7 +156,7 @@ export async function files(ctx) {
   const source = path.join(ctx.resultsDir, 'files-upload.bin');
   fs.mkdirSync(ctx.resultsDir, { recursive: true });
   const sourceHash = await makeSourceFile(source, UPLOAD_BYTES);
-  const workingFiles = () => runOnLab(ctx.env.labShell, `ls -A ${quote(onDrive(driveId, '.mos-uploads'))} /var/lib/mos/suite-manager/file-uploads 2>/dev/null | grep -v ':$' | grep -v '^$' | sort || true`);
+  const workingFiles = () => runOnLab(ctx.env.labShell, `ls -A ${quote(onDrive(driveId, `${FILES_DIR}/.mos-uploads`))} /var/lib/mos/suite-manager/file-uploads 2>/dev/null | grep -v ':$' | grep -v '^$' | sort || true`);
   const before = await workingFiles();
   const chunks = trackChunks(page);
   await page.locator('input[type=file]').setInputFiles(source);
@@ -197,7 +199,7 @@ export async function files(ctx) {
 
   await rowAction(page, renamed, 'Move');
   const dialog = page.getByRole('dialog');
-  await dialog.locator('label').filter({ hasText: new RegExp(`^${appFolder.split('/').slice(1).join(' › ')}$`, 'u') }).click();
+  await dialog.locator('label').filter({ hasText: new RegExp(`^${appFolder.split('/').slice(2).join(' › ')}$`, 'u') }).click();
   await dialog.getByRole('button', { exact: true, name: 'Move here' }).click();
   await expect(row(page, renamed)).toHaveCount(0);
   await page.locator('.suite-files-crumbs a').last().click();
@@ -216,7 +218,7 @@ export async function files(ctx) {
   await confirm.getByRole('button', { exact: true, name: 'Delete' }).click();
   await expect(row(page, renamed)).toHaveCount(0);
   await expect(row(page, folder)).toHaveCount(0);
-  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `ls -A ${quote(onDrive(driveId, '.mos-deleting'))} 2>/dev/null | wc -l`)).trim(), { intervals: [2000], message: 'what was deleted should be erased from the drive', timeout: 120000 }).toBe('0');
+  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `ls -A ${quote(onDrive(driveId, `${FILES_DIR}/.mos-deleting`))} 2>/dev/null | wc -l`)).trim(), { intervals: [2000], message: 'what was deleted should be erased from the drive', timeout: 120000 }).toBe('0');
 }
 
 async function firstFile(page, driveId, folder, depth = 2) {
@@ -238,9 +240,9 @@ export async function filesReadOnly(ctx) {
   await driveReaches(ctx, driveId, ['read-only']);
   await openDrive(ctx, driveId);
   await expect(page.getByText('This drive needs a check, so it opened read-only')).toBeVisible();
+  const appFolder = await openAppFolder(ctx, apps);
   await expect(page.getByRole('button', { exact: true, name: 'New folder' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Add files' })).toBeDisabled();
-  const appFolder = await openAppFolder(ctx, apps);
   const file = await firstFile(page, driveId, appFolder);
   expect(file, 'the app folder should hold a file to download').toBeTruthy();
   const download = await page.request.get(ctx.url(`/suite-manager/api/storage/drives/${driveId}/files/download?path=${encodeURIComponent(file.path)}`));
@@ -278,37 +280,35 @@ export async function filesLive(ctx) {
   expect(await page.evaluate(() => window.mosFilesNoReload === true), 'the screen came back without a reload').toBe(true);
 }
 
-// After an app is uninstalled its folders stay on the drive, listed last and greyed
-// in the apps folder, and deleting them gives the space back.
+// After an app is uninstalled its folder stays on the drive, listed last and greyed
+// in the apps folder, and deleting it whole from its row gives the space back.
 export async function filesLeftovers(ctx) {
   const { page } = ctx;
   const drives = (await apiJson(page, '/suite-manager/api/storage')).storage.filter((item) => item.kind === 'drive' && item.capabilities.writable);
   let found = null;
   for (const drive of drives) {
-    const apps = await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=apps`).catch(() => null);
+    const apps = await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=${FILES_DIR}%2Fapps`).catch(() => null);
     const gone = apps?.entries.find((entry) => entry.appState === 'not-installed');
-    if (gone) found = { app: gone.name, apps: apps.entries, bytes: gone.bytes || 0, drive };
+    if (gone) found = { app: gone.name, appName: gone.appName, apps: apps.entries, bytes: gone.bytes || 0, drive };
   }
   expect(found, 'an uninstalled app should have left its folder on a drive').toBeTruthy();
-  const { app, apps, bytes, drive } = found;
+  const { app, appName, apps, bytes, drive } = found;
   expect(apps.findIndex((entry) => entry.appState) >= apps.findIndex((entry) => !entry.appState), 'folders of apps not reading the drive come last').toBe(true);
   const free = async () => Number((await runOnLab(ctx.env.labShell, `df --output=avail -B1 ${quote(path.posix.join(STORAGE_MOUNT_ROOT, drive.id))} | tail -1`)).trim());
   const before = await free();
   await openDrive(ctx, drive.id);
+  await openFolder(page, FILES_DIR);
   await openFolder(page, 'apps');
   await expect(row(page, app)).toHaveClass(/is-unused/u);
   await expect(row(page, app)).toContainText('Not installed');
-  await openFolder(page, app);
-  const inside = (await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=${encodeURIComponent(`apps/${app}`)}`)).entries;
-  for (const entry of inside) {
-    await row(page, entry.name).hover();
-    await page.getByRole('button', { name: `Actions for ${entry.name}` }).click();
-    await page.getByRole('menuitem', { name: 'Delete' }).click();
-    const confirm = page.getByRole('dialog');
-    await confirm.getByText('I understand this is the only copy').click();
-    await confirm.getByRole('button', { exact: true, name: 'Delete' }).click();
-    await expect(confirm).toHaveCount(0);
-  }
-  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `test -e ${quote(onDrive(drive.id, `apps/${app}`))} && echo there || echo gone`)).trim(), { intervals: [2000], message: 'the app folder should be gone from the drive', timeout: 120000 }).toBe('gone');
+  await rowAction(page, app, `Delete ${appName}'s files`);
+  const confirm = page.getByRole('dialog');
+  await expect(confirm).toContainText(`${appName} is not installed`);
+  await confirm.getByText('I understand these are the only copies').click();
+  await confirm.getByRole('button', { exact: true, name: 'Delete' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(row(page, app)).toHaveCount(0, { timeout: 30000 });
+  await expect(page.locator('.suite-files-crumbs strong')).toHaveText('apps');
+  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `test -e ${quote(onDrive(drive.id, `${FILES_DIR}/apps/${app}`))} && echo there || echo gone`)).trim(), { intervals: [2000], message: 'the app folder should be gone from the drive', timeout: 120000 }).toBe('gone');
   await expect.poll(free, { intervals: [2000], message: 'the space should come back', timeout: 120000 }).toBeGreaterThanOrEqual(before + bytes * 0.9);
 }

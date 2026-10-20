@@ -8,7 +8,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 
 const { CodedError } = require('./coded-error.cjs');
-const { FILES_DIR } = require('./storage-contract.cjs');
+const { BACKUPS_DIR, FILES_DIR } = require('./storage-contract.cjs');
 
 // MOS's own working names inside MOS-files, never listed and never given to the owner.
 const RESERVED_PREFIX = '.mos-';
@@ -16,6 +16,9 @@ const UPLOADS_DIR = '.mos-uploads';
 const DELETING_DIR = '.mos-deleting';
 const APPS_DIR = 'apps';
 const READ_ONLY_SENTENCE = 'This drive needs a check, so it opened read-only. Adding, moving and deleting are paused until Check drive in Settings → Storage puts it right.';
+const NOT_MANAGED_SENTENCE = 'MOS does not manage these files, so they can be looked at and downloaded here but not changed.';
+// What Windows and macOS keep at the top of a drive for themselves.
+const HOUSEKEEPING = new Set(['$recycle.bin', 'system volume information', '.trashes', '.spotlight-v100', '.fseventsd', '.temporaryitems']);
 const MAX_NAME_BYTES = 255;
 const MAX_PATH_LENGTH = 4096;
 const MAX_SEGMENTS = 64;
@@ -77,7 +80,7 @@ function foldKey(name) {
   return name.normalize('NFC').toUpperCase();
 }
 
-// "" is the top of MOS-files; anything else is names joined by "/".
+// "" is the top of the folder a path is read from; anything else is names joined by "/".
 function parseRelativePath(relative) {
   if (relative === undefined || relative === null || relative === '') return [];
   if (typeof relative !== 'string' || relative.length > MAX_PATH_LENGTH) throw invalid('That path is not valid.');
@@ -89,6 +92,19 @@ function parseRelativePath(relative) {
     if (problem) throw invalid(problem);
   }
   return segments;
+}
+
+function isHousekeeping(name) {
+  return HOUSEKEEPING.has(name.toLowerCase());
+}
+
+// The files screen names paths from the top of the drive, and MOS changes only
+// what is inside MOS-files: `inner` is the path there, or null outside it.
+function placeOnDrive(segments) {
+  const [top] = segments;
+  if (top === BACKUPS_DIR) throw refused('Your backups are opened in Backups, not here.');
+  if (top !== undefined && isHousekeeping(top)) throw refused('That folder belongs to the computer the drive was used with.');
+  return { inner: top === FILES_DIR ? segments.slice(1) : null };
 }
 
 function filesRootOf(mountPath) {
@@ -172,6 +188,13 @@ function changeRefusal(segments, claimedApps = []) {
   return null;
 }
 
+// An app folder no app on this drive reads may go whole, so what an uninstalled
+// app left is deleted in one step; it is still never renamed or moved.
+function deleteRefusal(segments, claimedApps = []) {
+  if (segments.length === 2 && segments[0] === APPS_DIR && !claimedApps.includes(segments[1])) return null;
+  return changeRefusal(segments, claimedApps);
+}
+
 function addRefusal(parentSegments) {
   if (parentSegments[0] === APPS_DIR && parentSegments.length <= 2) return 'Add files inside one of the app\'s folders, not beside them.';
   return null;
@@ -180,20 +203,24 @@ function addRefusal(parentSegments) {
 module.exports = {
   APPS_DIR,
   DELETING_DIR,
+  NOT_MANAGED_SENTENCE,
   READ_ONLY_SENTENCE,
   RESERVED_PREFIX,
   UPLOADS_DIR,
   addRefusal,
   changeRefusal,
   checkedName,
+  deleteRefusal,
   entryKind,
   filesRootOf,
   foldKey,
+  isHousekeeping,
   isReserved,
   isWithin,
   nameProblem,
   openRoot,
   parseRelativePath,
+  placeOnDrive,
   resolveExisting,
   resolveNew,
 };

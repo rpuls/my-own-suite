@@ -8,17 +8,21 @@ const { pipeline } = require('node:stream/promises');
 const { CodedError } = require('../../../../shared/coded-error.cjs');
 const {
   APPS_DIR,
+  NOT_MANAGED_SENTENCE,
   READ_ONLY_SENTENCE,
   addRefusal,
   changeRefusal,
   entryKind,
   filesRootOf,
   foldKey,
+  isHousekeeping,
   isReserved,
   nameProblem,
   parseRelativePath,
+  placeOnDrive,
   resolveExisting,
 } = require('../../../../shared/drive-files.cjs');
+const { BACKUPS_DIR, FILES_DIR } = require('../../../../shared/storage-contract.cjs');
 
 // The files screen in Suite Manager: it reads drives itself and stages uploads a
 // chunk at a time for the app agent, the only writer. Each chunk is one request of
@@ -45,6 +49,20 @@ function filesError(code, message, statusCode, extra = {}) {
 }
 
 const UPLOAD_LOST = () => filesError('FILES_UPLOAD_GONE', 'MOS lost track of this upload, so it starts again.', 410);
+const TOP_ADD_REFUSAL = 'Open MOS-files to add files.';
+const MOS_FILES_LOCKED = 'MOS keeps your files here, so this stays where it is.';
+
+// The path inside MOS-files that a path from the top of the drive names, for a
+// change; anything outside MOS-files is only ever read.
+function managedPath(relative) {
+  const { inner } = placeOnDrive(parseRelativePath(relative));
+  if (!inner) throw filesError('FILES_NOT_MANAGED', NOT_MANAGED_SENTENCE, 409);
+  return inner.join('/');
+}
+
+function withPrefix(inner) {
+  return [FILES_DIR, ...inner].join('/');
+}
 
 // Why a drive's files cannot be opened, in the owner's words.
 function closedReason(drive) {
@@ -165,10 +183,10 @@ class FilesService {
 
   // Files and folders only: links, MOS's own working folders and anything else
   // a drive can hold are left out, because none of them can be acted on here.
-  async entriesOf(dir, budget) {
+  async entriesOf(dir, budget, { skip = () => false } = {}) {
     const entries = [];
     for (const name of await fsp.readdir(dir)) {
-      if (isReserved(name)) continue;
+      if (isReserved(name) || skip(name)) continue;
       const stat = await fsp.lstat(path.join(dir, name)).catch(() => null);
       const kind = stat && !stat.isSymbolicLink() ? entryKind(stat) : null;
       if (!kind) continue;
@@ -178,48 +196,88 @@ class FilesService {
     return entries.sort(byName);
   }
 
+  // Whether the app an app folder is named after reads this drive: null when it
+  // does, else why its folder is only left here.
+  appState(name, drive) {
+    if (drive.apps.includes(name)) return null;
+    return this.storage.names().get(name)?.installed === true ? 'elsewhere' : 'not-installed';
+  }
+
   // In the apps folder, a folder whose app does not read this drive is told apart
   // and listed after the ones in use.
   withAppStates(entries, drive) {
-    const stateOf = (name) => {
-      if (drive.apps.includes(name)) return null;
-      return this.storage.names().get(name)?.installed === true ? 'elsewhere' : 'not-installed';
-    };
-    const marked = entries.map((entry) => ({ ...entry, appState: entry.kind === 'folder' ? stateOf(entry.name) : null }));
+    const marked = entries.map((entry) => {
+      const appState = entry.kind === 'folder' ? this.appState(entry.name, drive) : null;
+      return { ...entry, appName: appState ? this.appNamed(entry.name) : null, appState };
+    });
     return [...marked.filter((entry) => !entry.appState), ...marked.filter((entry) => entry.appState)];
   }
 
-  async list(driveId, relative) {
-    const drive = await this.openDrive(driveId);
-    const segments = parseRelativePath(relative);
-    const filesRoot = filesRootOf(drive.mountPath);
-    const folder = await resolveExisting(filesRoot, segments).catch((error) => {
-      if (error.code === 'FILES_NOT_FOUND' && !segments.length) return null;
+  // The top of the drive: MOS's two folders first, then whatever else is on it,
+  // without what the computers it was used with keep there for themselves.
+  async topEntries(drive, budget) {
+    const found = (await this.entriesOf(drive.mountPath, budget, { skip: (name) => isHousekeeping(name) || name === BACKUPS_DIR }))
+      .map((entry) => ({ ...entry, locked: entry.name === FILES_DIR ? MOS_FILES_LOCKED : NOT_MANAGED_SENTENCE, managed: entry.name === FILES_DIR }));
+    const mosFiles = found.find((entry) => entry.name === FILES_DIR && entry.kind === 'folder')
+      || { bytes: 0, items: 0, kind: 'folder', locked: MOS_FILES_LOCKED, managed: true, modifiedAt: new Date(this.now()).toISOString(), name: FILES_DIR };
+    const backups = await resolveExisting(drive.mountPath, [BACKUPS_DIR]).catch(() => null);
+    const backupsEntry = backups?.kind === 'folder'
+      ? [{ bytes: null, items: null, kind: 'folder', locked: 'Your backups are opened in Backups.', managed: true, modifiedAt: backups.stat.mtime.toISOString(), name: BACKUPS_DIR, special: 'backups' }]
+      : [];
+    return [mosFiles, ...backupsEntry, ...found.filter((entry) => entry.name !== FILES_DIR)];
+  }
+
+  async managedListing(drive, inner, budget) {
+    const folder = await resolveExisting(filesRootOf(drive.mountPath), inner).catch((error) => {
+      if (error.code === 'FILES_NOT_FOUND' && !inner.length) return null;
       throw error;
     });
     if (folder && folder.kind !== 'folder') throw filesError('FILES_NOT_A_FOLDER', 'That is a file, not a folder.', 400);
-    const budget = { left: SIZE_WALK_BUDGET };
     const listed = folder ? await this.entriesOf(folder.absolute, budget) : [];
-    const entries = segments.length === 1 && segments[0] === APPS_DIR ? this.withAppStates(listed, drive) : listed;
-    const appId = segments[0] === APPS_DIR ? segments[1] : undefined;
+    const entries = inner.length === 1 && inner[0] === APPS_DIR ? this.withAppStates(listed, drive) : listed;
+    const appId = inner[0] === APPS_DIR ? inner[1] : undefined;
     return {
-      addRefusal: addRefusal(segments),
-      app: appId ? { id: appId, name: this.appNamed(appId), readsDrive: drive.apps.includes(appId) } : null,
+      addRefusal: addRefusal(inner),
+      app: appId ? { id: appId, name: this.appNamed(appId), readsDrive: drive.apps.includes(appId), state: this.appState(appId, drive) } : null,
+      entries: entries.map((entry) => ({ ...entry, locked: changeRefusal([...inner, entry.name], drive.apps), managed: true })),
+    };
+  }
+
+  // A path is named from the top of the drive. MOS-files is MOS's and can be
+  // changed; everything else on the drive is listed to look at and download.
+  async list(driveId, relative) {
+    const drive = await this.openDrive(driveId);
+    const segments = parseRelativePath(relative);
+    const { inner } = placeOnDrive(segments);
+    const budget = { left: SIZE_WALK_BUDGET };
+    let shown;
+    if (inner) shown = await this.managedListing(drive, inner, budget);
+    else if (!segments.length) shown = { addRefusal: TOP_ADD_REFUSAL, app: null, entries: await this.topEntries(drive, budget) };
+    else {
+      const folder = await resolveExisting(drive.mountPath, segments);
+      if (folder.kind !== 'folder') throw filesError('FILES_NOT_A_FOLDER', 'That is a file, not a folder.', 400);
+      shown = { addRefusal: NOT_MANAGED_SENTENCE, app: null, entries: (await this.entriesOf(folder.absolute, budget)).map((entry) => ({ ...entry, locked: NOT_MANAGED_SENTENCE, managed: false })) };
+    }
+    const entries = shown.entries.map((entry) => ({ appName: null, appState: null, special: null, ...entry }));
+    return {
+      addRefusal: shown.addRefusal,
+      app: shown.app,
       drive: { availableBytes: drive.availableBytes, id: drive.id, name: drive.name, state: drive.state, writable: drive.capabilities.writable },
-      entries: entries.map((entry) => ({ appState: null, ...entry, locked: changeRefusal([...segments, entry.name], drive.apps) })),
+      entries,
+      managed: Boolean(inner),
       path: segments.join('/'),
       segments,
       totals: { bytes: entries.some((entry) => entry.bytes === null) ? null : entries.reduce((sum, entry) => sum + entry.bytes, 0), items: entries.length },
     };
   }
 
-  // Where a move can take things on this drive: its top, the folders there, and
-  // every app folder on it.
+  // Where a move can take things on this drive: the top of MOS-files, the folders
+  // there, and every app folder on it.
   async destinations(driveId) {
     const drive = await this.writableDrive(driveId);
     const filesRoot = filesRootOf(drive.mountPath);
     const top = await resolveExisting(filesRoot, []).catch(() => null);
-    if (!top) return { destinations: [{ label: drive.name, path: '' }] };
+    if (!top) return { destinations: [{ label: FILES_DIR, path: FILES_DIR }] };
     const folders = async (segments) => {
       const at = await resolveExisting(filesRoot, segments).catch(() => null);
       if (at?.kind !== 'folder') return [];
@@ -230,19 +288,21 @@ class FilesService {
       }
       return names;
     };
-    const destinations = [{ label: drive.name, path: '' }];
+    const destinations = [{ label: FILES_DIR, path: FILES_DIR }];
     for (const name of await folders([])) {
-      if (name !== APPS_DIR) destinations.push({ label: name, path: name });
+      if (name !== APPS_DIR) destinations.push({ label: name, path: withPrefix([name]) });
     }
     for (const app of await folders([APPS_DIR])) {
-      for (const name of await folders([APPS_DIR, app])) destinations.push({ label: `${app} › ${name}`, path: [APPS_DIR, app, name].join('/') });
+      for (const name of await folders([APPS_DIR, app])) destinations.push({ label: `${app} › ${name}`, path: withPrefix([APPS_DIR, app, name]) });
     }
     return { destinations };
   }
 
   async streamDownload(driveId, relative, request, response) {
     const drive = await this.openDrive(driveId);
-    const entry = await resolveExisting(filesRootOf(drive.mountPath), parseRelativePath(relative));
+    const segments = parseRelativePath(relative);
+    const { inner } = placeOnDrive(segments);
+    const entry = inner ? await resolveExisting(filesRootOf(drive.mountPath), inner) : await resolveExisting(drive.mountPath, segments);
     if (entry.kind !== 'file') throw filesError('FILES_NOT_A_FILE', 'Only files can be downloaded, one at a time.', 400);
     const handle = await fsp.open(entry.absolute, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
     const { size } = await handle.stat();
@@ -275,24 +335,30 @@ class FilesService {
     await pipeline(handle.createReadStream({ end, start }), response).catch(() => {});
   }
 
-  createFolder(driveId, { name, path: parent }) {
-    return this.appAgent.filesCreateFolder({ drive: driveId, name: String(name ?? ''), path: String(parent ?? '') });
+  async createFolder(driveId, { name, path: parent }) {
+    if (!parent) throw filesError('FILES_PROTECTED', TOP_ADD_REFUSAL, 409);
+    const made = await this.appAgent.filesCreateFolder({ drive: driveId, name: String(name ?? ''), path: managedPath(String(parent)) });
+    return { path: withPrefix(parseRelativePath(made.path)) };
   }
 
-  rename(driveId, { name, path: entry }) {
-    return this.appAgent.filesRename({ drive: driveId, name: String(name ?? ''), path: String(entry ?? '') });
+  async rename(driveId, { name, path: entry }) {
+    const renamed = await this.appAgent.filesRename({ drive: driveId, name: String(name ?? ''), path: managedPath(String(entry ?? '')) });
+    return { path: withPrefix(parseRelativePath(renamed.path)) };
   }
 
   async move(driveId, { paths, to }) {
+    const inner = selection(paths).map(managedPath);
+    const destination = managedPath(String(to ?? ''));
     let moved = 0;
-    for (const batch of batchesOf(selection(paths))) moved += (await this.appAgent.filesMove({ drive: driveId, paths: batch, to: String(to ?? '') })).moved;
+    for (const batch of batchesOf(inner)) moved += (await this.appAgent.filesMove({ drive: driveId, paths: batch, to: destination })).moved;
     return { moved };
   }
 
   async remove(driveId, { confirmed, paths }) {
     if (confirmed !== true) throw filesError('CONFIRMATION_REQUIRED', 'Confirm that these are the only copies and may be deleted.', 400);
+    const inner = selection(paths).map(managedPath);
     let deleted = 0;
-    for (const batch of batchesOf(selection(paths))) deleted += (await this.appAgent.filesDelete({ drive: driveId, paths: batch })).deleted;
+    for (const batch of batchesOf(inner)) deleted += (await this.appAgent.filesDelete({ drive: driveId, paths: batch })).deleted;
     return { deleted };
   }
 
@@ -338,7 +404,8 @@ class FilesService {
   // same folder, so a page reloaded mid-film carries on where the drive has it.
   async beginUpload(driveId, input) {
     const drive = await this.writableDrive(driveId);
-    const segments = parseRelativePath(input.path);
+    if (!input.path) throw filesError('FILES_PROTECTED', TOP_ADD_REFUSAL, 409);
+    const segments = parseRelativePath(managedPath(String(input.path)));
     const refusal = addRefusal(segments);
     if (refusal) throw filesError('FILES_PROTECTED', refusal, 409);
     const problem = nameProblem(input.name);
@@ -415,7 +482,7 @@ class FilesService {
     try {
       const answer = await this.appAgent.filesUploadFinish({ drive: driveId, name: session.name, path: session.path, size: session.size, uploadId });
       await this.dropSession(uploadId);
-      return answer;
+      return { ...answer, path: withPrefix(parseRelativePath(answer.path)) };
     } catch (error) {
       if (['FILES_NAME_TAKEN', 'FILES_UPLOAD_GONE', 'FILES_NOT_FOUND'].includes(error.code)) await this.dropSession(uploadId);
       throw error;

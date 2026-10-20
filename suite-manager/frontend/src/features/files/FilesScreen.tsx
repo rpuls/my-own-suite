@@ -6,6 +6,8 @@ import { formatBytes } from '../../lib/bytes';
 import { STORAGE_SETTINGS_PATH, openStorageSettings, stateLabel, useStorage, type StorageEntry } from '../storage/model';
 import { DeleteDialog, MoveDialog, NameDialog } from './FilesDialogs';
 import {
+  BACKUPS_PATH,
+  appStateLabel,
   browseReason,
   createFolder,
   deleteEntries,
@@ -16,6 +18,7 @@ import {
   joinPath,
   listFiles,
   moveEntries,
+  openBackups,
   openFiles,
   renameEntry,
   filesLabel,
@@ -28,7 +31,7 @@ import { useUploads, type Interruption, type UploadItem } from './uploads';
 type Flow =
   | { kind: 'folder' }
   | { entry: FileEntry; from: string; kind: 'rename' }
-  | { entries: FileEntry[]; from: string; kind: 'delete' | 'move' };
+  | { entries: FileEntry[]; from: string; kind: 'delete' | 'move'; then?: () => void };
 
 function useLocation() {
   const [location, setLocation] = useState(() => filesLocation() || { driveId: '', path: '' });
@@ -88,7 +91,16 @@ function InterruptionNotice({ kind }: { kind: Interruption }) {
   return null;
 }
 
-function FileRow({ entry, onFlow, onOpen, onToggle, readOnly, selected, selecting }: {
+// Whether a row can be ticked: anything MOS manages and may change, and the
+// folder an app left, which goes whole.
+function selectable(entry: FileEntry, readOnly: boolean) {
+  return !readOnly && entry.managed && (!entry.locked || Boolean(entry.appState));
+}
+
+// What MOS uses now is drawn in color; what an app left and what MOS never made
+// are grey, and only the first of those can be changed.
+function FileRow({ dimmed, entry, onFlow, onOpen, onToggle, readOnly, selected, selecting }: {
+  dimmed: boolean;
   entry: FileEntry;
   onFlow: (kind: 'delete' | 'download' | 'move' | 'rename') => void;
   onOpen: () => void;
@@ -97,26 +109,37 @@ function FileRow({ entry, onFlow, onOpen, onToggle, readOnly, selected, selectin
   selected: boolean;
   selecting: boolean;
 }) {
-  const changeable = !entry.locked && !readOnly;
+  const changeable = entry.managed && !entry.locked && !readOnly;
+  const leftover = Boolean(entry.appState);
   const menu = [
     ...entry.kind === 'file' ? [{ label: 'Download', onSelect: () => onFlow('download') }] : [],
     ...changeable ? [{ label: 'Rename', onSelect: () => onFlow('rename') }, { label: 'Move', onSelect: () => onFlow('move') }, { label: 'Delete', onSelect: () => onFlow('delete') }] : [],
+    ...leftover ? [{ label: 'Open', onSelect: onOpen }, ...readOnly ? [] : [{ label: `Delete ${entry.appName || entry.name}'s files`, onSelect: () => onFlow('delete') }]] : [],
   ];
-  return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}${entry.appState ? ' is-unused' : ''}`} selected={selected}>
-    <span className="suite-files-pick">{changeable ? <SelectBox checked={selected} label={`Select ${entry.name}`} onChange={onToggle} /> : null}</span>
+  const quiet = dimmed || !entry.managed || leftover;
+  return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}${quiet ? ' is-unused' : ''}`} selected={selected}>
+    <span className="suite-files-pick">{selectable(entry, readOnly) ? <SelectBox checked={selected} label={`Select ${entry.name}`} onChange={onToggle} /> : null}</span>
     <span className={`suite-files-icon is-${entry.kind}`}><Icon name={entry.kind} /></span>
     <span className="suite-files-label">
-      {entry.kind === 'folder'
+      {entry.kind === 'folder' && !entry.special
         ? <a className="suite-files-name is-folder" href="#folder" onClick={(event) => { event.preventDefault(); onOpen(); }}>{entry.name}</a>
         : <span className="suite-files-name">{entry.name}</span>}
-      {entry.appState ? <span className="mos-pill">{entry.appState === 'elsewhere' ? 'Uses another drive' : 'Not installed'}</span> : null}
+      {entry.appState ? <span className="mos-pill">{appStateLabel(entry.appState)}</span> : null}
     </span>
-    <span className="suite-meta suite-files-facts">{entryFacts(entry)}</span>
+    {entry.special === 'backups'
+      ? <a className="suite-files-facts" href={BACKUPS_PATH} onClick={openBackups}>Your backups — open in Backups ›</a>
+      : <span className="suite-meta suite-files-facts">{entryFacts(entry)}</span>}
     <span className="suite-files-actions">
-      {entry.locked && !entry.appState ? <Tooltip label={entry.locked}><Icon name="lock" /></Tooltip> : null}
+      {entry.locked && entry.managed && !leftover && !entry.special ? <Tooltip label={entry.locked}><Icon name="lock" /></Tooltip> : null}
       {menu.length ? <ActionMenu ariaLabel={`Actions for ${entry.name}`} items={menu} /> : null}
     </span>
   </PanelItem>;
+}
+
+function LeftoverNotice({ app, onDelete, readOnly }: { app: NonNullable<FilesListing['app']>; onDelete: () => void; readOnly: boolean }) {
+  return <Notice title={app.state === 'elsewhere' ? `${app.name} keeps its files on another drive now` : `${app.name} is not installed`}>
+    <p>Its files stayed on this drive. Move what you want to keep into another folder{readOnly ? '.' : <>, or <button className="mos-link suite-link-button" onClick={onDelete} type="button">delete {app.name}&apos;s files</button>.</>}</p>
+  </Notice>;
 }
 
 function NotOpen({ entry }: { entry: StorageEntry | null }) {
@@ -172,6 +195,8 @@ export function FilesScreen() {
   const segments = listing?.segments || (path ? path.split('/') : []);
   const folderName = segments.at(-1) || listing?.drive.name || entry?.name || 'this drive';
   const app = listing?.app?.readsDrive ? listing.app : null;
+  const leftApp = listing?.app?.state ? listing.app : null;
+  const foreign = Boolean(listing && !listing.managed && segments.length);
   const canAdd = writable && Boolean(listing) && !listing?.addRefusal;
   const uploads = useUploads({ driveId, onAdded: (folder) => { if (folder === shown.current) void reload(); }, writable });
   const entries = useMemo(() => listing?.entries || [], [listing]);
@@ -179,7 +204,19 @@ export function FilesScreen() {
   const selecting = picked.length > 0;
   const pickedBytes = sizeOf(picked);
   const toggle = (name: string) => setSelected((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
-  const done = () => { setFlow(null); setSelected([]); void reload(); };
+  const done = () => {
+    const then = flow && 'then' in flow ? flow.then : undefined;
+    setFlow(null);
+    setSelected([]);
+    if (then) then();
+    else void reload();
+  };
+  const parentPath = joinPath(segments.slice(0, -1));
+  const deleteLeftApp = () => {
+    if (!listing?.app) return;
+    const folder = { appName: listing.app.name, appState: listing.app.state, bytes: listing.totals.bytes, items: listing.totals.items, kind: 'folder' as const, locked: null, managed: true, modifiedAt: '', name: listing.app.id, special: null };
+    setFlow({ entries: [folder], from: parentPath, kind: 'delete', then: () => openFiles(driveId, parentPath, { replace: true }) });
+  };
 
   function addFiles(files: File[]) {
     if (files.length && canAdd) uploads.add(files, path, folderName);
@@ -246,19 +283,26 @@ export function FilesScreen() {
       {selecting ? <div className="suite-files-toolbar is-selecting" role="toolbar" aria-label="Selection">
         <SelectBox checked label="Clear selection" onChange={() => setSelected([])} />
         <strong>{picked.length} selected{pickedBytes !== null ? ` · ${formatBytes(pickedBytes)}` : ''}</strong>
-        {picked.length < entries.filter((item) => !item.locked).length ? <button className="mos-link suite-link-button" onClick={() => setSelected(entries.filter((item) => !item.locked).map((item) => item.name))} type="button">Select all {entries.filter((item) => !item.locked).length}</button> : null}
+        {picked.length < entries.filter((item) => selectable(item, !writable)).length ? <button className="mos-link suite-link-button" onClick={() => setSelected(entries.filter((item) => selectable(item, !writable)).map((item) => item.name))} type="button">Select all {entries.filter((item) => selectable(item, !writable)).length}</button> : null}
         <span className="suite-files-spacer" />
-        <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'move' })} type="button">Move</button>
+        {picked.some((item) => item.appState) ? null : <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'move' })} type="button">Move</button>}
         <button className="mos-btn mos-btn-danger mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'delete' })} type="button">Delete</button>
         <button aria-label="Clear selection" className="suite-icon-button suite-files-quiet-button" onClick={() => setSelected([])} title="Clear selection" type="button"><Icon name="x" /></button>
       </div> : <div className="suite-files-toolbar">
         <Breadcrumbs driveId={driveId} driveName={listing?.drive.name || entry?.name || 'Drive'} segments={segments} />
         <span className="suite-files-spacer" />
-        {!writable ? <span className="suite-meta">Download still works per file</span> : null}
-        <button className="mos-btn mos-btn-secondary" disabled={!canAdd} onClick={() => setFlow({ kind: 'folder' })} title={listing?.addRefusal || undefined} type="button">New folder</button>
-        <button className="mos-btn mos-btn-primary" disabled={!canAdd} onClick={() => picker.current?.click()} title={listing?.addRefusal || undefined} type="button"><Icon name="upload" />Add files</button>
+        {listing && !listing.managed ? <span className="suite-meta">{foreign ? 'Look and download only' : listing.addRefusal}</span> : <>
+          {!writable ? <span className="suite-meta">Download still works per file</span> : null}
+          <button className="mos-btn mos-btn-secondary" disabled={!canAdd} onClick={() => setFlow({ kind: 'folder' })} title={listing?.addRefusal || undefined} type="button">New folder</button>
+          <button className="mos-btn mos-btn-primary" disabled={!canAdd} onClick={() => picker.current?.click()} title={listing?.addRefusal || undefined} type="button"><Icon name="upload" />Add files</button>
+        </>}
         <input hidden multiple onChange={(event) => { addFiles([...event.currentTarget.files || []]); event.currentTarget.value = ''; }} ref={picker} type="file" />
       </div>}
+
+      {foreign ? <Notice title="MOS does not manage these files">
+        <p>You can look inside and download them. To change them, plug the drive into the computer they came from — or move them into MOS-files there, and they can be managed here.</p>
+      </Notice> : null}
+      {leftApp ? <LeftoverNotice app={leftApp} onDelete={deleteLeftApp} readOnly={!writable} /> : null}
 
       <InterruptionNotice kind={uploads.interruption} />
       {uploads.items.length ? <Panel>
@@ -276,6 +320,7 @@ export function FilesScreen() {
         {listing === null && !error ? <PanelBody><p className="suite-meta suite-storage-flow-working"><Spinner />Opening {folderName}…</p></PanelBody> : null}
         {listing && entries.length ? <PanelList>
           {entries.map((item) => <FileRow
+            dimmed={Boolean(leftApp)}
             entry={item}
             key={item.name}
             onFlow={(kind) => act(kind, item)}

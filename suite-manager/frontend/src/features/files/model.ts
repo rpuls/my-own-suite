@@ -1,27 +1,34 @@
-// The files screen's words and requests; the screen only ever names a drive and a
-// path inside its MOS-files folder.
+// The files screen's words and requests; the screen names a drive and a path
+// from its top. Only what is inside MOS-files can be changed.
 
 import { jsonResponse, postJson } from '../../lib/api';
 import { formatBytes } from '../../lib/bytes';
 import type { StorageEntry } from '../storage/model';
 
+export type AppState = 'elsewhere' | 'not-installed' | null;
+
 export type FileEntry = {
+  appName: string | null;
   // In the apps folder, an app folder whose app does not read this drive.
-  appState: 'elsewhere' | 'not-installed' | null;
+  appState: AppState;
   bytes: number | null;
   items: number | null;
   kind: 'file' | 'folder';
   // Why this entry stays where it is, or null when it can be renamed, moved and deleted.
   locked: string | null;
+  // Inside MOS-files, or one of MOS's own folders at the top of the drive.
+  managed: boolean;
   modifiedAt: string;
   name: string;
+  special: 'backups' | null;
 };
 
 export type FilesListing = {
   addRefusal: string | null;
-  app: { id: string; name: string; readsDrive: boolean } | null;
+  app: { id: string; name: string; readsDrive: boolean; state: AppState } | null;
   drive: { availableBytes: number | null; id: string; name: string; state: string; writable: boolean };
   entries: FileEntry[];
+  managed: boolean;
   path: string;
   segments: string[];
   totals: { bytes: number | null; items: number };
@@ -81,6 +88,18 @@ export function uploadsApi(driveId: string) {
     chunkUrl: (uploadId: string, offset: number) => `${api(driveId, `/uploads/${uploadId}`)}?offset=${offset}`,
     finish: (uploadId: string) => fetch(api(driveId, `/uploads/${uploadId}/finish`), { method: 'POST' }),
   };
+}
+
+export const BACKUPS_PATH = '/suite-manager/backups';
+
+export function openBackups(event: { preventDefault: () => void }) {
+  event.preventDefault();
+  window.history.pushState({}, '', BACKUPS_PATH);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+export function appStateLabel(state: AppState) {
+  return state === 'elsewhere' ? 'Uses another drive' : 'Not installed';
 }
 
 export function joinPath(segments: string[], name?: string) {

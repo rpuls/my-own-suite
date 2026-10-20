@@ -128,6 +128,14 @@ test('delete answers once everything is moved aside, then erases it', async () =
   assert.ok(fs.existsSync(path.join(files, 'apps', 'jellyfin', 'Movies')));
 });
 
+test('the folder of an app not on the drive is deleted whole, one in use never', async () => {
+  const { agent, files } = fixture();
+  await rejectsWith(agent.remove({ drive: DRIVE, paths: ['apps/jellyfin'] }), 'FILES_PROTECTED');
+  await rejectsWith(agent.rename({ drive: DRIVE, name: 'kept', path: 'apps/plex' }), 'FILES_PROTECTED');
+  assert.deepEqual(await agent.remove({ drive: DRIVE, paths: ['apps/plex'] }), { deleted: 1 });
+  assert.equal(fs.existsSync(path.join(files, 'apps', 'plex')), false);
+});
+
 test('the startup sweep finishes deletions a restart interrupted and drops day-old uploads', async () => {
   const { agent, files, state } = fixture();
   fs.mkdirSync(path.join(files, '.mos-deleting', 'half-gone'), { recursive: true });
