@@ -54,11 +54,15 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
+// Open storage event streams and keep-alive sockets never end on their own, so
+// without closing them a restart waited out systemd's 90 s stop timeout.
 function shutdown(signal) {
   logger.info('shutting-down', { signal });
   server.close(() => {
     process.exit(0);
   });
+  server.closeIdleConnections();
+  setTimeout(() => server.closeAllConnections(), 2_000).unref();
 }
 
 process.on('SIGINT', shutdown);

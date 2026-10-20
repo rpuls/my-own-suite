@@ -75,20 +75,20 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-primary" disabled={!entered.trim() || working} onClick={() => onUnlock(entered)} type="button">
-        {working ? <><Spinner />Opening</> : 'Open these backups'}
+        {working ? <><Spinner />Unlocking</> : 'Unlock'}
       </button>
       <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!working) onCancel(); }}
-    title="Enter recovery key"
+    title={`Unlock the backups on ${view.label}`}
   >
-    <p>The backups in <strong>{view.label}</strong> were written by another server. Type that server&rsquo;s recovery key to read them. It starts with MOS-.</p>
-    <p className="suite-meta">MOS keeps the key here to open this {view.destination.kind === 'object' ? 'bucket' : 'drive'} and changes nothing in the backups themselves.</p>
+    <p>Another server made these. Enter <strong>that server&rsquo;s</strong> recovery key, from its recovery kit. This server&rsquo;s own key does not open them.</p>
+    <p className="suite-meta">Unlocking only reads: MOS keeps the key here to open this {view.destination.kind === 'object' ? 'bucket' : 'drive'}, and nothing in it changes. Lock again forgets the key.</p>
     <TextInput
       autoFocus
       disabled={working}
       helperText={error || "From that server's recovery kit. Capitals, spaces and dashes do not matter."}
-      label="Recovery key"
+      label="The other server's recovery key"
       onChange={(event) => setEntered(event.currentTarget.value)}
       onKeyDown={(event) => { if (event.key === 'Enter' && entered.trim() && !working) onUnlock(entered); }}
       placeholder="MOS-XXXX-XXXX-XXXX-XXXX"
@@ -383,11 +383,11 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
         disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || Boolean(busy)}
         onClick={onStart}
         type="button"
-      >{busy === 'restore' ? <><Spinner />Starting</> : 'Restore'}</button>
+      >{busy === 'restore' ? <><Spinner />Starting</> : elsewhere ? 'Restore and take over' : 'Restore'}</button>
       <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!busy) onCancel(); }}
-    title="Restore this backup"
+    title={elsewhere ? `Make this server ${elsewhere}?` : 'Restore this backup'}
   >
     <p>This replaces everything on this machine with the backup from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
     <p className="suite-meta">{backupDescription(backup)} · {backup.destinationLabel}</p>
@@ -399,8 +399,9 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
       <p>MOS saves a complete copy of what is on this machine now before it changes anything, so a restore that stops partway can be looked at rather than guessed about. Apps and app data added after this backup are removed, so the system matches the backup exactly.</p>
     </Notice>
 
-    {elsewhere ? <Notice title={`This backup was written by ${elsewhere}`} variant="info">
-      <p>This machine will become that server. After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
+    {elsewhere ? <Notice title={`This backup was made by ${elsewhere}`} variant="info">
+      <p>This machine becomes that server. It takes over {elsewhere}&rsquo;s recovery key, for these backups and this machine&rsquo;s encrypted disk, and the key it was installed with stops opening anything. Keep {elsewhere}&rsquo;s recovery kit: from now on it is this server&rsquo;s, and {backup.destinationLabel} becomes one of this server&rsquo;s backup places.</p>
+      <p>After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
     </Notice> : null}
 
     {domain ? <Notice title={`${domain} does not come with it`} variant="info">

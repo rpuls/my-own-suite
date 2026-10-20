@@ -216,8 +216,8 @@ The 0.23.0 sprint. Research and the decided design live in
 `.local-tools/research/2026-10-16-storage-and-your-files.md`: per-app external folders
 (`MOS-files/apps/<app>/<folder>`) on an owner-chosen portable drive, declared by an optional
 additive manifest field, created and mounted by MOS, filled outside MOS. Sequel slices —
-web file management, encrypted drives, SMB, the MOS disk as a home, backup opt-in for external
-folders — stay out of this theme until it ships; slice 1 must not preclude any of them.
+encrypted drives, SMB, the MOS disk as a home, backup opt-in for external folders — stay out
+of this theme until it ships; slice 1 must not preclude any of them.
 
 - **S1 — Manifest amendment for exposed folders.** The optional additive field naming the
   folders an app wants mounted; schema, validator, and the manifest reference move together,
@@ -252,6 +252,9 @@ folders — stay out of this theme until it ships; slice 1 must not preclude any
   protective schemes plainly — app data lives in MOS backups; media libraries live on the
   owner's drive and reattach on any new server — with the drill that proves it (fresh install,
   restore the backup, plug in the drive, everything is back) run as part of S7. *(Small)*
+- **S12 — Move files between drives.** The files screen's Move dialog shows "Another drive" as
+  *Later*: it needs the app agent's first long-running copy job, with progress, crash sweeps and
+  both drives held for its length, which a within-drive rename never did. *(Medium)*
 
 ---
 

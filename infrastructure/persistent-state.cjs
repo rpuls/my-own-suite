@@ -119,8 +119,8 @@ function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/s
       backedUp: true,
       class: 'authoritative-persistent',
       // The SQLite database is excluded from the tree copy and captured as a
-      // consistent snapshot instead; the candidate cache is regenerable.
-      exclude: ['app-candidates', SUITE_MANAGER_DATABASE_FILENAME, `${SUITE_MANAGER_DATABASE_FILENAME}-shm`, `${SUITE_MANAGER_DATABASE_FILENAME}-wal`],
+      // consistent snapshot instead; the candidate cache and upload staging are transient.
+      exclude: ['app-candidates', 'file-uploads', SUITE_MANAGER_DATABASE_FILENAME, `${SUITE_MANAGER_DATABASE_FILENAME}-shm`, `${SUITE_MANAGER_DATABASE_FILENAME}-wal`],
       id: 'suite-manager-state',
       kind: 'directory',
       path: stateDir,
@@ -222,6 +222,13 @@ function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/s
       id: 'app-candidate-cache',
       kind: 'directory',
       path: `${stateDir}/app-candidates`,
+    },
+    {
+      backedUp: false,
+      class: 'excluded',
+      id: 'file-upload-staging',
+      kind: 'directory',
+      path: `${stateDir}/file-uploads`,
     },
     {
       backedUp: false,

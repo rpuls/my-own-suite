@@ -6,6 +6,8 @@ import { BackupsScreen } from '../backups/BackupsScreen';
 import { DashboardScreen } from '../dashboard/DashboardScreen';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
+import { FilesScreen } from '../files/FilesScreen';
+import { isFilesPath } from '../files/model';
 import { UpdatesScreen } from '../updates/UpdatesScreen';
 import type { Owner } from '../setup/types';
 
@@ -24,7 +26,7 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-type Route = 'apps' | 'backups' | 'customize' | 'dashboard' | 'not-found' | 'settings' | 'updates';
+type Route = 'apps' | 'backups' | 'customize' | 'dashboard' | 'files' | 'not-found' | 'settings' | 'updates';
 
 const routesByPath: Record<string, Route> = {
   '/suite-manager': 'dashboard',
@@ -36,6 +38,7 @@ const routesByPath: Record<string, Route> = {
 };
 
 function routeForPath(): Route {
+  if (isFilesPath(window.location.pathname)) return 'files';
   return routesByPath[window.location.pathname.replace(/\/+$/u, '')] || 'not-found';
 }
 
@@ -94,12 +97,12 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button>
         <button aria-current={route === 'backups' ? 'page' : undefined} onClick={() => navigate('backups', '/suite-manager/backups')} type="button"><Icon name="backup" />Backup</button>
         <button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="update" />Updates</button>
-        <button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
+        <button aria-current={route === 'settings' || route === 'files' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
         <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
       </nav></Drawer>
 
       <main className="suite-shell-main">
-        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'files' ? <FilesScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
           <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>

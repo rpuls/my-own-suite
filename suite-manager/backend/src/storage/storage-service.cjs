@@ -7,16 +7,22 @@ const SYSTEM_ID = 'system';
 // page is open, and quick enough that an unplug shows before the owner looks away.
 const WATCH_INTERVAL_MS = 3_000;
 
+// A drive's own files can be browsed while it is plugged in, in a format any
+// computer reads; one MOS keeps nothing on yet is opened by the first look.
+// They change only while it is open read-write.
 function capabilitiesOf(entry) {
-  if (entry.kind === 'system') return { checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false };
-  if (entry.kind === 'bucket') return { checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: true, renamable: true };
-  const open = entry.connected && (entry.state === 'ready' || entry.state === 'read-only');
+  const none = { browsable: false, checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false };
+  if (entry.kind === 'system') return none;
+  if (entry.kind === 'bucket') return { ...none, holdsBackups: true, renamable: true };
+  const open = entry.connected && (entry.state === 'ready' || entry.state === 'read-only') && Boolean(entry.mountPath);
   return {
+    browsable: entry.holdsAppFoldersFormat === true && (open || (entry.connected && entry.state === 'available')),
     checkable: entry.connected && entry.fileSystem === 'ntfs' && (entry.state === 'read-only' || entry.state === 'failed'),
     ejectable: open,
     holdsAppFolders: entry.holdsAppFoldersFormat === true,
     holdsBackups: entry.holdsBackupsFormat === true,
     renamable: true,
+    writable: open && entry.holdsAppFoldersFormat === true && entry.state === 'ready',
   };
 }
 
@@ -230,6 +236,14 @@ class StorageService {
   async entry(id) {
     const listed = await this.inventory();
     return listed?.storage.find((item) => item.id === id) || null;
+  }
+
+  // One drive as the app agent sees it right now, without asking the backup agent:
+  // what the files screen checks before every read.
+  async drive(id) {
+    const found = await Promise.resolve(this.appAgent.storageInventory()).catch(() => null);
+    const drive = found?.drives?.find((item) => item.id === id);
+    return drive ? driveEntry(drive, null) : null;
   }
 
   // What each app folder and each backup store takes on the drives open right now.

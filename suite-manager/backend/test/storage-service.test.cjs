@@ -40,7 +40,7 @@ test('one list holds the system drive, every drive and every bucket, each with w
     ['object:0123456789ab', 'bucket', 'ready'],
   ]);
   const [system, films, linux, drawer, bucket] = storage;
-  assert.deepEqual(system.capabilities, { checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false });
+  assert.deepEqual(system.capabilities, { browsable: false, checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false });
   assert.equal(system.encrypted, true);
   assert.deepEqual([system.sizeBytes, system.diskSizeBytes, system.systemUsage], [450e9, 500e9, { appsBytes: 200e9, systemBytes: 14e9 }]);
   assert.deepEqual([films.capabilities.holdsAppFolders, films.capabilities.ejectable, films.capabilities.checkable], [true, true, false]);

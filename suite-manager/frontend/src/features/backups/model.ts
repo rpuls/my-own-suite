@@ -371,7 +371,7 @@ function bytesLine(destination: BackupDestination) {
   return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }
 
-type DestinationAction = '' | 'retest' | 'unlock';
+type DestinationAction = '' | 'restore' | 'retest' | 'unlock';
 
 export type DestinationView = {
   action: DestinationAction;
@@ -410,6 +410,14 @@ export type DestinationView = {
 
 // Another server's backups, as the owner is told about them before erasing.
 export type ForeignStore = { destinationId: string; from: string | null; label: string; newestAt: string | null; restorePoints: number };
+
+// A place holding another server's backups, locked or opened with its key. This
+// server restores from it but never backs up into it, so it is listed apart.
+export function isOtherServers(view: DestinationView) {
+  return view.destination.foreignStore === true || view.destination.locked === true;
+}
+
+const PICK_A_PLACE = "Pick a place under This server's backups and MOS starts keeping copies.";
 
 export function foreignStoreOf(view: DestinationView): ForeignStore {
   return { destinationId: view.id, from: view.foreign, label: view.label, newestAt: view.newestAt, restorePoints: view.restorePoints };
@@ -451,13 +459,13 @@ function destinationView(destination: BackupDestination, status: BackupStatus | 
 
   if (destination.locked) {
     tone = 'warning';
-    line = 'Holds backups written by another server';
-    detail = "Enter that server's recovery key to restore from them.";
+    line = 'Made by another server';
     action = 'unlock';
     actionLabel = 'Enter recovery key';
   } else if (ready && foreignStore) {
     line = `${restorePoints} restore point${restorePoints === 1 ? '' : 's'} to restore from`;
-    detail = 'This server cannot add its own backups to these.';
+    action = 'restore';
+    actionLabel = 'Restore from these…';
   } else if (ready) {
     detail = bucket ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
       : destination.holdsAppFiles ? "Also holds your apps' files, which these backups do not include." : '';
@@ -491,7 +499,7 @@ function destinationView(destination: BackupDestination, status: BackupStatus | 
   let keyLine = '';
   let keyTone: Tone = 'ready';
   if (destination.locked) {
-    keyLine = 'Needs the recovery key of the server that wrote it. Your own key does not open this one yet.';
+    keyLine = "Opens only with the recovery key of the server that made it, not this server's.";
     keyTone = 'warning';
   } else if (foreign && borrowed) {
     keyLine = `Opens with ${foreign}'s key, kept on this server. Nothing in these backups was changed.`;
@@ -608,7 +616,7 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
     if (selected?.blocked) return { detail: selected.blocked, title: 'You have no backups yet.', tone: 'warning' as Tone };
     return selected
       ? { detail: `Nothing has been backed up yet. The first one goes to ${selected.label}.`, title: 'You have no backups yet.', tone: 'warning' as Tone }
-      : { detail: 'Pick a place below and MOS starts keeping copies.', title: 'You have no backups yet.', tone: 'warning' as Tone };
+      : { detail: PICK_A_PLACE, title: 'You have no backups yet.', tone: 'warning' as Tone };
   }
   if (schedule?.lastResult?.status === 'failed') {
     return { detail: schedule.lastResult.message, title: 'The last automatic backup did not finish.', tone: 'error' as Tone };
@@ -646,7 +654,7 @@ export function backupBlockReason(status: BackupStatus | null | undefined, views
   if (status?.interruptedRestore) return 'A restore did not finish. Read what happened before backing up again.';
   if (!status?.recoveryKey?.acknowledged) return 'Save your recovery key first.';
   if (!views.length) return 'Choose where your backups should go first.';
-  if (!target) return views.find((view) => view.selected)?.blocked || 'Pick a place below to make it the one MOS uses.';
+  if (!target) return views.find((view) => view.selected)?.blocked || PICK_A_PLACE;
   return '';
 }
 

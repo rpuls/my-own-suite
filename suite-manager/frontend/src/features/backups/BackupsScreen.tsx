@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
 import { jsonResponse, postJson } from '../../lib/api';
 import { AddDestinationDialog } from './AddDestinationDialog';
-import { DestinationsPanel } from './DestinationsPanel';
+import { DestinationsPanel, OtherServersPanel } from './DestinationsPanel';
 import { ProgressPlan } from './ProgressPlan';
 import { RestorePointsPanel } from './RestorePointsPanel';
 import {
@@ -24,6 +24,7 @@ import {
   browserTimeZone,
   countShare,
   destinationViews,
+  isOtherServers,
   foreignStoreOf,
   isRunning,
   jobLine,
@@ -117,6 +118,8 @@ export function BackupsScreen() {
   const backingUp = isRunning(activeJob) && activeJob?.kind !== 'restore' && activeJob?.kind !== 'validate' && activeJob?.kind !== 'delete';
 
   const views = destinationViews(status);
+  const ownViews = views.filter((view) => !isOtherServers(view));
+  const otherViews = views.filter(isOtherServers);
   const readyViews = views.filter((view) => view.selectable);
   const selected = views.find((view) => view.selected) || null;
   const backupTarget = readyViews.find((view) => view.id === backupTargetId)
@@ -505,6 +508,11 @@ export function BackupsScreen() {
   function destinationAction(view: DestinationView) {
     if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', id: view.id }); return; }
     if (view.action === 'retest') void runAction(`retest:${view.id}`, async () => undefined);
+    if (view.action === 'restore') {
+      const newest = (status?.backups || []).filter((backup) => backup.destinationId === view.id && backup.restorable !== false)
+        .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0];
+      if (newest) { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup: newest }); }
+    }
   }
 
   const hero = <div className="suite-hero">
@@ -620,7 +628,7 @@ export function BackupsScreen() {
           <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">
             {busy === 'acknowledge' ? <><Spinner />Unblocking</> : 'I have read this'}
           </button>
-        </Notice> : views.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
+        </Notice> : ownViews.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
           <div className="suite-bk-banner-text">
             <span className={`suite-bk-dot is-${banner.tone}`} />
             <div>
@@ -664,7 +672,18 @@ export function BackupsScreen() {
         {/* A fresh install has nothing to schedule, nothing to restore and
             nothing to report, so it shows one question instead of four empty
             sections. */}
-        {views.length ? null : <Panel>
+        {otherViews.length ? <OtherServersPanel
+          busy={busy}
+          onAction={destinationAction}
+          onErase={(view) => setDialog({ kind: 'erase', view })}
+          onForgetDrive={(view) => void forgetDrive(view)}
+          onForgetKey={(view) => void forgetDestinationKey(view)}
+          onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
+          running={running}
+          views={otherViews}
+        /> : null}
+
+        {ownViews.length ? null : <Panel>
           <PanelBody>
           <h2 className="mos-card-title">You have no backups yet.</h2>
           <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage you rent online. You can add the other one later.</p>
@@ -681,7 +700,7 @@ export function BackupsScreen() {
           </PanelBody>
         </Panel>}
 
-        {views.length ? <DestinationsPanel
+        {ownViews.length ? <DestinationsPanel
           busy={busy}
           onAction={destinationAction}
           onAdd={() => setDialog({ kind: 'add', online: false })}
@@ -693,10 +712,10 @@ export function BackupsScreen() {
           onStopUsing={(view) => void stopUsing(view)}
           onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
           running={running}
-          views={views}
+          views={ownViews}
         /> : null}
 
-        {views.length && status.schedule ? <Panel>
+        {ownViews.length && status.schedule ? <Panel>
           <PanelHead
             actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
             title="Automatic backups"

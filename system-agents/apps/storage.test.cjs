@@ -113,6 +113,17 @@ test('a drive that is not there creates nothing, and a pulled drive is remounted
   assert.deepEqual(stale.calls.map((call) => call[0]), ['umount', 'mount']);
 });
 
+test('opening a drive for its files mounts it and remembers it without claiming it for anything', async () => {
+  const host = fakeHost([USB_DRIVE, LINUX_DRIVE]);
+  const { storage } = await storageFor(host);
+  await assert.rejects(storage.open('e1e1e1e1-0000'), /can hold backups but not app files/u);
+  assert.deepEqual(await storage.open('1A2B-3C4D'), { readOnly: false });
+  assert.equal(host.calls.filter((call) => call[0] === 'mount').length, 1);
+  assert.deepEqual(storage.registry.read().drives['1A2B-3C4D'].apps, []);
+  assert.equal(storage.isRemembered('1A2B-3C4D'), true);
+  assert.equal((await storage.drives()).find((drive) => drive.id === '1A2B-3C4D').state, 'ready');
+});
+
 const NTFS = { fstype: 'ntfs', label: 'Ext HDD', mountpoints: [null], name: 'sdc1', path: '/dev/sdc1', size: 1_000_000_000_000, type: 'part', uuid: '20C2CDDCC2CDB676' };
 const DIRTY = (options) => (options.startsWith('ro,') ? null : 'volume is dirty and "force" flag is not set!');
 
