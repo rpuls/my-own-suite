@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 
 import { ActionMenu, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, ProgressBar, SelectBox, Spinner, Tooltip } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
-import { STORAGE_SETTINGS_PATH, joinNames, openStorageSettings, stateLabel, useStorage, type StorageEntry } from '../storage/model';
+import { STORAGE_SETTINGS_PATH, openStorageSettings, stateLabel, useStorage, type StorageEntry } from '../storage/model';
 import { DeleteDialog, MoveDialog, NameDialog } from './FilesDialogs';
 import {
   browseReason,
@@ -22,7 +22,6 @@ import {
   sizeOf,
   type FileEntry,
   type FilesListing,
-  type Leftover,
 } from './model';
 import { useUploads, type Interruption, type UploadItem } from './uploads';
 
@@ -48,10 +47,6 @@ function download(driveId: string, path: string) {
   document.body.append(link);
   link.click();
   link.remove();
-}
-
-function leftoverEntry(leftover: Leftover): FileEntry {
-  return { bytes: leftover.bytes, items: null, kind: 'folder', locked: null, modifiedAt: '', name: leftover.name };
 }
 
 function Breadcrumbs({ driveId, driveName, segments }: { driveId: string; driveName: string; segments: string[] }) {
@@ -107,55 +102,21 @@ function FileRow({ entry, onFlow, onOpen, onToggle, readOnly, selected, selectin
     ...entry.kind === 'file' ? [{ label: 'Download', onSelect: () => onFlow('download') }] : [],
     ...changeable ? [{ label: 'Rename', onSelect: () => onFlow('rename') }, { label: 'Move', onSelect: () => onFlow('move') }, { label: 'Delete', onSelect: () => onFlow('delete') }] : [],
   ];
-  return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}`} selected={selected}>
+  return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}${entry.appState ? ' is-unused' : ''}`} selected={selected}>
     <span className="suite-files-pick">{changeable ? <SelectBox checked={selected} label={`Select ${entry.name}`} onChange={onToggle} /> : null}</span>
     <span className={`suite-files-icon is-${entry.kind}`}><Icon name={entry.kind} /></span>
-    {entry.kind === 'folder'
-      ? <a className="suite-files-name is-folder" href="#folder" onClick={(event) => { event.preventDefault(); onOpen(); }}>{entry.name}</a>
-      : <span className="suite-files-name">{entry.name}</span>}
+    <span className="suite-files-label">
+      {entry.kind === 'folder'
+        ? <a className="suite-files-name is-folder" href="#folder" onClick={(event) => { event.preventDefault(); onOpen(); }}>{entry.name}</a>
+        : <span className="suite-files-name">{entry.name}</span>}
+      {entry.appState ? <span className="mos-pill">{entry.appState === 'elsewhere' ? 'Uses another drive' : 'Not installed'}</span> : null}
+    </span>
     <span className="suite-meta suite-files-facts">{entryFacts(entry)}</span>
     <span className="suite-files-actions">
-      {entry.locked ? <Tooltip label={entry.locked}><Icon name="lock" /></Tooltip> : null}
+      {entry.locked && !entry.appState ? <Tooltip label={entry.locked}><Icon name="lock" /></Tooltip> : null}
       {menu.length ? <ActionMenu ariaLabel={`Actions for ${entry.name}`} items={menu} /> : null}
     </span>
   </PanelItem>;
-}
-
-function Leftovers({ driveId, leftovers, onFlow, writable }: { driveId: string; leftovers: Leftover[]; onFlow: (flow: Flow) => void; writable: boolean }) {
-  const gone = [...new Set(leftovers.filter((item) => !item.installed).map((item) => item.appName))];
-  const moved = [...new Set(leftovers.filter((item) => item.installed).map((item) => item.appName))];
-  const from = (leftover: Leftover) => joinPath(['apps', leftover.app]);
-  return <Panel>
-    <PanelHead heading="h3" title="Also on this drive" />
-    <PanelList>
-      {leftovers.map((leftover) => <PanelItem className="suite-files-row is-leftover" key={leftover.path}>
-        <span className="suite-files-icon is-leftover"><Icon name="folder" /></span>
-        <span className="suite-files-leftover">
-          <span className="suite-files-leftover-name">
-            <a className="suite-files-name is-folder" href="#folder" onClick={(event) => { event.preventDefault(); openFiles(driveId, from(leftover)); }}>{leftover.app}</a>
-            <span className="mos-pill">{leftover.installed ? 'uses another drive now' : 'no longer installed'}</span>
-          </span>
-          <span className="suite-meta">{leftover.name}{leftover.bytes !== null ? ` · ${formatBytes(leftover.bytes)}` : ''}</span>
-        </span>
-        <span className="suite-files-actions">
-          <ActionMenu ariaLabel={`Actions for ${leftover.app}'s ${leftover.name}`} items={[
-            { label: 'Browse', onSelect: () => openFiles(driveId, leftover.path) },
-            ...writable ? [
-              { label: 'Move', onSelect: () => onFlow({ entries: [leftoverEntry(leftover)], from: from(leftover), kind: 'move' }) },
-              { label: 'Delete', onSelect: () => onFlow({ entries: [leftoverEntry(leftover)], from: from(leftover), kind: 'delete' }) },
-            ] : [],
-          ]} />
-        </span>
-      </PanelItem>)}
-    </PanelList>
-    <PanelBody>
-      <p className="suite-meta">
-        {gone.length ? `${joinNames(gone)} ${gone.length > 1 ? 'were' : 'was'} uninstalled; ${gone.length > 1 ? 'their' : 'its'} files stayed on the drive. ` : ''}
-        {moved.length ? `${joinNames(moved)} now ${moved.length > 1 ? 'keep their' : 'keeps its'} files on another drive; these stayed here. ` : ''}
-        Browse them, move them into another app&apos;s folder, or delete them to get the space back.
-      </p>
-    </PanelBody>
-  </Panel>;
 }
 
 function NotOpen({ entry }: { entry: StorageEntry | null }) {
@@ -188,6 +149,10 @@ export function FilesScreen() {
     if (!driveId || !browsable) return;
     try {
       const listed = await listFiles(driveId, path);
+      if (!listed) {
+        openFiles(driveId, path.split('/').slice(0, -1).join('/'), { replace: true });
+        return;
+      }
       if (listed.path !== shown.current) return;
       setListing(listed);
       setError('');
@@ -332,7 +297,6 @@ export function FilesScreen() {
         </PanelBody> : null}
       </Panel>
 
-      {listing?.leftovers.length ? <Leftovers driveId={driveId} leftovers={listing.leftovers} onFlow={setFlow} writable={writable} /> : null}
     </> : null}
 
     {dragging && browsable ? createPortal(<div className="suite-files-drop" onDragOver={(event) => event.preventDefault()} onDrop={dropped}>

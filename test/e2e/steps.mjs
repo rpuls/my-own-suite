@@ -15,7 +15,7 @@ export const STEPS = {
   'drive-files': { arg: 'none', budgetMinutes: 30, describe: "In the files screen of the apps' drive: make a folder, add a multi-GB file while the connection is cut twice, download it back byte for byte, rename it, move it, and delete the lot." },
   'drive-files-read-only': { arg: 'none', budgetMinutes: 5, describe: "The apps' drive needs a check: its files can be browsed and downloaded, and every change is refused." },
   'drive-files-live': { arg: 'none', budgetMinutes: 10, describe: "Eject the apps' drive under an open files screen, which closes, then plug it back in, and the screen opens again without a reload." },
-  'drive-files-leftovers': { arg: 'none', budgetMinutes: 5, describe: 'The folders an uninstalled app left on a drive are listed apart, and deleting them gives the space back.' },
+  'drive-files-leftovers': { arg: 'none', budgetMinutes: 5, describe: 'The folders an uninstalled app left on a drive are listed last and greyed in the apps folder, and deleting them gives the space back.' },
   reboot: { arg: 'none', budgetMinutes: 15, describe: "Restart the lab; every drive open before is open again, with the same app folders, uninstalled apps' included." },
   dns01: { arg: 'none', budgetMinutes: 10, describe: 'Move the suite to the DNS-01 domain in test/e2e/.env; later steps use its https address.' },
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },

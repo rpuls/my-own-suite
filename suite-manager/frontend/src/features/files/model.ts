@@ -6,6 +6,8 @@ import { formatBytes } from '../../lib/bytes';
 import type { StorageEntry } from '../storage/model';
 
 export type FileEntry = {
+  // In the apps folder, an app folder whose app does not read this drive.
+  appState: 'elsewhere' | 'not-installed' | null;
   bytes: number | null;
   items: number | null;
   kind: 'file' | 'folder';
@@ -15,14 +17,11 @@ export type FileEntry = {
   name: string;
 };
 
-export type Leftover = { app: string; appName: string; bytes: number | null; installed: boolean; name: string; path: string };
-
 export type FilesListing = {
   addRefusal: string | null;
   app: { id: string; name: string; readsDrive: boolean } | null;
   drive: { availableBytes: number | null; id: string; name: string; state: string; writable: boolean };
   entries: FileEntry[];
-  leftovers: Leftover[];
   path: string;
   segments: string[];
   totals: { bytes: number | null; items: number };
@@ -46,8 +45,8 @@ export function isFilesPath(pathname: string) {
 }
 
 // A folder is a page of its own, so Back goes up a folder.
-export function openFiles(driveId: string, path = '') {
-  window.history.pushState({}, '', filesHref(driveId, path));
+export function openFiles(driveId: string, path = '', { replace = false } = {}) {
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', filesHref(driveId, path));
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
@@ -59,8 +58,11 @@ export function downloadHref(driveId: string, path: string) {
   return `${api(driveId, '/download')}?path=${encodeURIComponent(path)}`;
 }
 
+// Null when the folder is gone, as an uninstalled app's folder is once emptied.
 export async function listFiles(driveId: string, path: string) {
-  return jsonResponse<FilesListing>(await fetch(`${api(driveId)}?path=${encodeURIComponent(path)}`), 'The files on this drive could not be listed.');
+  const response = await fetch(`${api(driveId)}?path=${encodeURIComponent(path)}`);
+  if (response.status === 404 && path) return null;
+  return jsonResponse<FilesListing>(response, 'The files on this drive could not be listed.');
 }
 
 export async function listDestinations(driveId: string) {
@@ -91,7 +93,6 @@ export function browseReason(entry: StorageEntry) {
   switch (entry.state) {
     case 'away': return 'Plug the drive in to browse its files.';
     case 'ejected': return entry.connected ? 'Use the drive again to browse its files.' : 'Plug the drive back in to browse its files.';
-    case 'available': return 'Pick this drive for an app or for backups, and its files can be browsed here.';
     default: return entry.reason || 'MOS could not open this drive.';
   }
 }

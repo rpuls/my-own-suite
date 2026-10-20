@@ -432,6 +432,15 @@ class AppStorage {
     });
   }
 
+  // Opened for its files alone, and remembered so it opens again when plugged back in.
+  async open(driveId) {
+    const candidate = await this.connectedDrive(driveId);
+    if (!candidate.holdsAppFoldersFormat) throw new StorageError(candidate.reason);
+    const { drive, readOnly } = await this.attach(driveId);
+    this.registry.update(({ drives }) => { this.remember(drives, driveId, drive); });
+    return { readOnly };
+  }
+
   // A drive kept for backups is opened here, as any drive MOS keeps things on, and
   // opened again whenever it is plugged back in; the backup agent writes into it.
   async holdBackups(driveId) {

@@ -51,7 +51,6 @@ function closedReason(drive) {
   if (!drive.capabilities.holdsAppFolders) return 'Files can only be browsed on drives formatted as exFAT, NTFS or FAT32.';
   if (drive.state === 'away') return 'Plug the drive in to browse its files.';
   if (drive.state === 'ejected') return 'This drive was ejected. Use it again in Settings → Storage to browse its files.';
-  if (drive.state === 'available') return 'MOS keeps nothing on this drive yet, so it is not open. Pick it for an app or for backups first.';
   return drive.reason || 'MOS could not open this drive.';
 }
 
@@ -126,9 +125,13 @@ class FilesService {
   }
 
   async openDrive(driveId) {
-    const drive = await this.storage.drive(driveId);
+    let drive = await this.storage.drive(driveId);
+    if (drive?.capabilities.browsable && !drive.mountPath) {
+      await this.appAgent.openDrive({ drive: driveId });
+      drive = await this.storage.drive(driveId);
+    }
     if (!drive) throw filesError('FILES_DRIVE_NOT_FOUND', 'That drive is not connected.', 404);
-    if (!drive.capabilities.browsable) throw filesError('FILES_NOT_BROWSABLE', closedReason(drive), 409);
+    if (!drive.capabilities.browsable || !drive.mountPath) throw filesError('FILES_NOT_BROWSABLE', closedReason(drive), 409);
     return drive;
   }
 
@@ -175,20 +178,15 @@ class FilesService {
     return entries.sort(byName);
   }
 
-  // Folders of apps that no longer read this drive, for the band on its top level.
-  async leftovers(filesRoot, drive, budget) {
-    const apps = await resolveExisting(filesRoot, [APPS_DIR]).catch(() => null);
-    if (apps?.kind !== 'folder') return [];
-    const found = [];
-    for (const app of (await fsp.readdir(apps.absolute)).sort()) {
-      if (drive.apps.includes(app)) continue;
-      const folder = await resolveExisting(filesRoot, [APPS_DIR, app]).catch(() => null);
-      if (folder?.kind !== 'folder') continue;
-      for (const entry of await this.entriesOf(folder.absolute, budget)) {
-        if (entry.kind === 'folder') found.push({ app, appName: this.appNamed(app), bytes: entry.bytes, installed: this.storage.names().get(app)?.installed === true, name: entry.name, path: [APPS_DIR, app, entry.name].join('/') });
-      }
-    }
-    return found;
+  // In the apps folder, a folder whose app does not read this drive is told apart
+  // and listed after the ones in use.
+  withAppStates(entries, drive) {
+    const stateOf = (name) => {
+      if (drive.apps.includes(name)) return null;
+      return this.storage.names().get(name)?.installed === true ? 'elsewhere' : 'not-installed';
+    };
+    const marked = entries.map((entry) => ({ ...entry, appState: entry.kind === 'folder' ? stateOf(entry.name) : null }));
+    return [...marked.filter((entry) => !entry.appState), ...marked.filter((entry) => entry.appState)];
   }
 
   async list(driveId, relative) {
@@ -201,14 +199,14 @@ class FilesService {
     });
     if (folder && folder.kind !== 'folder') throw filesError('FILES_NOT_A_FOLDER', 'That is a file, not a folder.', 400);
     const budget = { left: SIZE_WALK_BUDGET };
-    const entries = folder ? await this.entriesOf(folder.absolute, budget) : [];
+    const listed = folder ? await this.entriesOf(folder.absolute, budget) : [];
+    const entries = segments.length === 1 && segments[0] === APPS_DIR ? this.withAppStates(listed, drive) : listed;
     const appId = segments[0] === APPS_DIR ? segments[1] : undefined;
     return {
       addRefusal: addRefusal(segments),
       app: appId ? { id: appId, name: this.appNamed(appId), readsDrive: drive.apps.includes(appId) } : null,
       drive: { availableBytes: drive.availableBytes, id: drive.id, name: drive.name, state: drive.state, writable: drive.capabilities.writable },
-      entries: entries.map((entry) => ({ ...entry, locked: changeRefusal([...segments, entry.name], drive.apps) })),
-      leftovers: segments.length || !folder ? [] : await this.leftovers(filesRoot, drive, budget),
+      entries: entries.map((entry) => ({ appState: null, ...entry, locked: changeRefusal([...segments, entry.name], drive.apps) })),
       path: segments.join('/'),
       segments,
       totals: { bytes: entries.some((entry) => entry.bytes === null) ? null : entries.reduce((sum, entry) => sum + entry.bytes, 0), items: entries.length },

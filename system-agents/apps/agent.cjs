@@ -19,6 +19,7 @@ const server = routeTable({
   'POST /v1/storage/check': (body) => core.checkDrive(body),
   'POST /v1/storage/eject': (body) => core.ejectDrive(body),
   'POST /v1/storage/use': (body) => core.useDrive(body),
+  'POST /v1/storage/open': (body) => core.openDrive(body),
   'POST /v1/storage/rename': (body) => core.renameStorage(body),
   'POST /v1/storage/backups': (body) => core.holdBackups(body),
   'POST /v1/storage/format-installer': (body) => core.formatInstallerStick(body),

@@ -466,6 +466,10 @@ class AppAgentCore {
     return { ...await this.adapter.useDrive(driveOf(input)), status: 'attached' };
   }
 
+  async openDrive(input) {
+    return { ...await this.adapter.storage.open(driveOf(input)), status: 'opened' };
+  }
+
   async renameStorage(input) {
     if (!exactKeys(input, ['id', 'name']) || !STORAGE_ID_PATTERN.test(String(input.id)) || typeof input.name !== 'string') {
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A rename names one drive or bucket and its new name.');

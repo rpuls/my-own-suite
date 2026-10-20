@@ -78,16 +78,42 @@ test('a listing shows folders then files with their sizes, and nothing MOS keeps
   assert.equal(listed.drive.writable, true);
 });
 
-test('the top of a drive lists what apps left behind, and the app tree says why it stays put', async () => {
-  const { service } = fixture();
+test('the apps folder lists the folders of apps not reading this drive last, and the app tree says why it stays put', async () => {
+  const { files, service } = fixture();
+  fs.mkdirSync(path.join(files, 'apps', 'immich', 'Photos'), { recursive: true });
   const top = await service.list(DRIVE, '');
   assert.deepEqual(top.entries.map((entry) => entry.name), ['apps', 'Home videos']);
   assert.match(top.entries[0].locked, /keeps your apps/u);
   assert.equal(top.entries[1].locked, null);
-  assert.deepEqual(top.leftovers, [{ app: 'plex', appName: 'Plex', bytes: 3, installed: false, name: 'Movies', path: 'apps/plex/Movies' }]);
-  const apps = await service.list(DRIVE, 'apps/jellyfin');
-  assert.match(apps.addRefusal, /inside one of the app/u);
-  assert.match(apps.entries[0].locked, /An app reads this folder/u);
+  const apps = await service.list(DRIVE, 'apps');
+  assert.deepEqual(apps.entries.map((entry) => [entry.name, entry.appState, Boolean(entry.locked)]), [
+    ['jellyfin', null, true],
+    ['immich', 'not-installed', true],
+    ['plex', 'not-installed', true],
+  ]);
+  const jellyfin = await service.list(DRIVE, 'apps/jellyfin');
+  assert.match(jellyfin.addRefusal, /inside one of the app/u);
+  assert.match(jellyfin.entries[0].locked, /An app reads this folder/u);
+});
+
+test('a drive MOS keeps nothing on is opened by the first look at its files', async () => {
+  const mountPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-files-open-'));
+  let opened = false;
+  const entry = () => {
+    const found = { apps: [], availableBytes: 1e9, connected: true, holdsAppFoldersFormat: true, id: DRIVE, kind: 'drive', mountPath: opened ? mountPath : null, name: 'Ext HDD', state: opened ? 'ready' : 'available' };
+    return { ...found, capabilities: capabilitiesOf(found) };
+  };
+  assert.equal(entry().capabilities.browsable, true);
+  assert.equal(entry().capabilities.writable, false);
+  const service = new FilesService({
+    appAgent: { openDrive: async ({ drive }) => { assert.equal(drive, DRIVE); opened = true; return { readOnly: false }; } },
+    stateDir: mountPath,
+    storage: { drive: async () => entry(), names: () => new Map() },
+  });
+  const listed = await service.list(DRIVE, '');
+  assert.equal(opened, true);
+  assert.deepEqual(listed.entries, []);
+  assert.equal(listed.drive.writable, true);
 });
 
 test('a drive without MOS-files lists empty, and a closed drive says why', async () => {

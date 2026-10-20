@@ -278,33 +278,37 @@ export async function filesLive(ctx) {
   expect(await page.evaluate(() => window.mosFilesNoReload === true), 'the screen came back without a reload').toBe(true);
 }
 
-// After an app is uninstalled its folders stay on the drive, listed apart, and
-// deleting them gives the space back.
+// After an app is uninstalled its folders stay on the drive, listed last and greyed
+// in the apps folder, and deleting them gives the space back.
 export async function filesLeftovers(ctx) {
   const { page } = ctx;
   const drives = (await apiJson(page, '/suite-manager/api/storage')).storage.filter((item) => item.kind === 'drive' && item.capabilities.writable);
   let found = null;
   for (const drive of drives) {
-    const top = await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=`);
-    if (top.leftovers.length) found = { drive, leftovers: top.leftovers };
+    const apps = await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=apps`).catch(() => null);
+    const gone = apps?.entries.find((entry) => entry.appState === 'not-installed');
+    if (gone) found = { app: gone.name, apps: apps.entries, bytes: gone.bytes || 0, drive };
   }
-  expect(found, 'an uninstalled app should have left folders on a drive').toBeTruthy();
-  const { drive, leftovers } = found;
+  expect(found, 'an uninstalled app should have left its folder on a drive').toBeTruthy();
+  const { app, apps, bytes, drive } = found;
+  expect(apps.findIndex((entry) => entry.appState) >= apps.findIndex((entry) => !entry.appState), 'folders of apps not reading the drive come last').toBe(true);
   const free = async () => Number((await runOnLab(ctx.env.labShell, `df --output=avail -B1 ${quote(path.posix.join(STORAGE_MOUNT_ROOT, drive.id))} | tail -1`)).trim());
   const before = await free();
-  const bytes = leftovers.reduce((sum, item) => sum + (item.bytes || 0), 0);
   await openDrive(ctx, drive.id);
-  const band = page.locator('.mos-panel').filter({ hasText: 'Also on this drive' });
-  await expect(band).toContainText('no longer installed');
-  for (const leftover of leftovers) {
-    await band.getByRole('button', { name: `Actions for ${leftover.app}'s ${leftover.name}` }).click();
+  await openFolder(page, 'apps');
+  await expect(row(page, app)).toHaveClass(/is-unused/u);
+  await expect(row(page, app)).toContainText('Not installed');
+  await openFolder(page, app);
+  const inside = (await apiJson(page, `/suite-manager/api/storage/drives/${drive.id}/files?path=${encodeURIComponent(`apps/${app}`)}`)).entries;
+  for (const entry of inside) {
+    await row(page, entry.name).hover();
+    await page.getByRole('button', { name: `Actions for ${entry.name}` }).click();
     await page.getByRole('menuitem', { name: 'Delete' }).click();
     const confirm = page.getByRole('dialog');
     await confirm.getByText('I understand this is the only copy').click();
     await confirm.getByRole('button', { exact: true, name: 'Delete' }).click();
     await expect(confirm).toHaveCount(0);
   }
-  await expect(band).toHaveCount(0, { timeout: 30000 });
-  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `test -e ${quote(onDrive(drive.id, `apps/${leftovers[0].app}`))} && echo there || echo gone`)).trim(), { intervals: [2000], message: 'the app folder should be gone from the drive', timeout: 120000 }).toBe('gone');
+  await expect.poll(async () => (await runOnLab(ctx.env.labShell, `test -e ${quote(onDrive(drive.id, `apps/${app}`))} && echo there || echo gone`)).trim(), { intervals: [2000], message: 'the app folder should be gone from the drive', timeout: 120000 }).toBe('gone');
   await expect.poll(free, { intervals: [2000], message: 'the space should come back', timeout: 120000 }).toBeGreaterThanOrEqual(before + bytes * 0.9);
 }

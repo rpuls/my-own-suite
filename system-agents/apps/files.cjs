@@ -208,7 +208,7 @@ class DriveFiles {
   }
 
   // The folder of an app no longer on the drive goes once nothing is left in it,
-  // so "Also on this drive" empties when its last folder does.
+  // so the apps folder stops listing it once its last folder is deleted.
   async tidyLeftovers(filesRoot, claimed) {
     const apps = await resolveExisting(filesRoot, [APPS_DIR]).catch(() => null);
     if (!apps) return;

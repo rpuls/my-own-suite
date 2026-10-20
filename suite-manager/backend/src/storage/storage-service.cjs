@@ -7,22 +7,22 @@ const SYSTEM_ID = 'system';
 // page is open, and quick enough that an unplug shows before the owner looks away.
 const WATCH_INTERVAL_MS = 3_000;
 
-// A drive's own files can be browsed while it is open in a format any computer
-// reads, and changed only while it is open read-write.
+// A drive's own files can be browsed while it is plugged in, in a format any
+// computer reads; one MOS keeps nothing on yet is opened by the first look.
+// They change only while it is open read-write.
 function capabilitiesOf(entry) {
   const none = { browsable: false, checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false };
   if (entry.kind === 'system') return none;
   if (entry.kind === 'bucket') return { ...none, holdsBackups: true, renamable: true };
-  const open = entry.connected && (entry.state === 'ready' || entry.state === 'read-only');
-  const browsable = open && entry.holdsAppFoldersFormat === true && Boolean(entry.mountPath);
+  const open = entry.connected && (entry.state === 'ready' || entry.state === 'read-only') && Boolean(entry.mountPath);
   return {
-    browsable,
+    browsable: entry.holdsAppFoldersFormat === true && (open || (entry.connected && entry.state === 'available')),
     checkable: entry.connected && entry.fileSystem === 'ntfs' && (entry.state === 'read-only' || entry.state === 'failed'),
     ejectable: open,
     holdsAppFolders: entry.holdsAppFoldersFormat === true,
     holdsBackups: entry.holdsBackupsFormat === true,
     renamable: true,
-    writable: browsable && entry.state === 'ready',
+    writable: open && entry.holdsAppFoldersFormat === true && entry.state === 'ready',
   };
 }
 
