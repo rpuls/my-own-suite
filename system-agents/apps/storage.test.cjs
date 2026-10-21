@@ -124,6 +124,19 @@ test('opening a drive for its files mounts it and remembers it without claiming 
   assert.equal((await storage.drives()).find((drive) => drive.id === '1A2B-3C4D').state, 'ready');
 });
 
+test('a drive MOS was never told about is opened on sight and listed with what it holds, without being remembered', async () => {
+  const host = fakeHost([USB_DRIVE]);
+  const { storage } = await storageFor(host);
+  await storage.attach('1A2B-3C4D');
+  fs.mkdirSync(path.join(storage.mountRoot, '1A2B-3C4D', 'MOS-backups', 'repository'), { recursive: true });
+  const [drive] = await storage.drives();
+  assert.deepEqual([drive.state, drive.apps, drive.backups, drive.holdsBackups, drive.holdsEarlierBackups], ['ready', [], false, true, true]);
+  assert.equal(storage.isRemembered('1A2B-3C4D'), false);
+
+  const gone = new AppStorage({ registryPath: storage.registry.registryPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
+  assert.deepEqual(await gone.drives(), []);
+});
+
 const NTFS = { fstype: 'ntfs', label: 'Ext HDD', mountpoints: [null], name: 'sdc1', path: '/dev/sdc1', size: 1_000_000_000_000, type: 'part', uuid: '20C2CDDCC2CDB676' };
 const DIRTY = (options) => (options.startsWith('ro,') ? null : 'volume is dirty and "force" flag is not set!');
 

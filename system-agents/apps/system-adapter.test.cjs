@@ -1451,7 +1451,7 @@ test('a drive that cannot be opened fails the apply before the running app is to
   assert.equal(commands.some((command) => command.args[0] === 'rm'), false);
 });
 
-test('a returning drive is remounted and only the containers reading it are restarted', async () => {
+test('every drive that appears is opened, and only the containers reading a remembered one are restarted', async () => {
   const attached = [];
   const storage = { attach: async (driveId) => { attached.push(driveId); }, isRemembered: (driveId) => driveId === '1A2B-3C4D' };
   const commands = [];
@@ -1461,9 +1461,9 @@ test('a returning drive is remounted and only the containers reading it are rest
     storage,
   });
 
-  assert.deepEqual(await adapter.reattachDrive('OTHER-DRIVE'), { attached: false, restarted: 0 });
+  assert.deepEqual(await adapter.reattachDrive('OTHER-DRIVE'), { attached: true, restarted: 0 });
   assert.deepEqual(await adapter.reattachDrive('1A2B-3C4D'), { attached: true, restarted: 2 });
-  assert.deepEqual(attached, ['1A2B-3C4D']);
+  assert.deepEqual(attached, ['OTHER-DRIVE', '1A2B-3C4D']);
   assert.deepEqual(commands, [
     ['docker', 'ps', '--all', '--quiet', '--filter', 'label=mos.storage-drive.1A2B-3C4D'],
     ['docker', 'restart', 'c1', 'c2'],

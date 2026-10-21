@@ -378,9 +378,11 @@ class SystemAppAdapter {
   // A drive that appeared: mounted again if an app keeps folders on it, and the
   // containers reading it restarted, since a bind made before the drive left
   // still points at the old mount. Stopped apps have no containers to restart.
+  // Every drive that appears is opened, so Storage can say what is on it and Backups
+  // can list what another server left there; only a remembered one has containers.
   async reattachDrive(driveId) {
-    if (!this.storage.isRemembered(driveId)) return { attached: false, restarted: 0 };
     await this.storage.attach(driveId);
+    if (!this.storage.isRemembered(driveId)) return { attached: true, restarted: 0 };
     const containers = await this.driveContainers(driveId);
     if (containers.length) await this.execute(this.dockerBinary, ['restart', ...containers], { timeoutMs: 180_000 });
     await this.syncPausedPages();

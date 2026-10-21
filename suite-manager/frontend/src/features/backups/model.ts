@@ -17,6 +17,7 @@ type BackupDestination = {
   condition: Condition;
   endpoint?: string;
   folder?: string;
+  earlierBackups?: boolean;
   holdsAppFiles?: boolean;
   id: string;
   kind: 'disk' | 'object';
@@ -370,7 +371,7 @@ const PICK_A_PLACE = "Pick a place under This server's backups and MOS starts ke
 
 function storedLine(destination: BackupDestination) {
   const points = destination.ownArchive?.restorePoints || 0;
-  if (!points) return 'Ready · no backups here yet';
+  if (!points) return destination.earlierBackups ? 'Ready · holds backups from a MOS before 0.23.0; move them into an archive folder to list them' : 'Ready · no backups here yet';
   const stored = destination.ownArchive?.storedBytes ? ` · ${formatBytes(destination.ownArchive.storedBytes)} stored` : '';
   return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }

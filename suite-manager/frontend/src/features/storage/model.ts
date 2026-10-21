@@ -36,6 +36,7 @@ export type StorageEntry = {
   diskSizeBytes?: number | null;
   encrypted?: boolean;
   fileSystem?: string | null;
+  holdsEarlierBackups?: boolean;
   id: string;
   job: AppJob<DriveStep> | null;
   kind: 'bucket' | 'drive' | 'system';
@@ -122,6 +123,7 @@ export function rowLine(entry: StorageEntry, names: Map<string, string>) {
     if (!entry.backups?.destination) return 'Connected · not holding anything yet';
     return entry.backups.storedBytes ? `Holds your backups · about ${formatBytes(entry.backups.storedBytes)} stored` : 'Holds your backups · none yet';
   }
+  if (entry.holdsEarlierBackups && (entry.state === 'ready' || entry.state === 'read-only')) return `${hardwareLine(entry)} · holds backups from a MOS before 0.23.0; move them into an archive folder to use them`;
   if (entry.backups?.otherServers.length && entry.state === 'ready') return `${hardwareLine(entry)} · also holds backups another server made`;
   const apps = appNamesFor(entry, names);
   switch (entry.state) {
@@ -133,7 +135,7 @@ export function rowLine(entry: StorageEntry, names: Map<string, string>) {
     case 'ejected': return entry.connected
       ? `Safe to unplug — ${apps.length ? `${joinNames(apps)} ${apps.length > 1 ? 'are' : 'is'} paused` : 'nothing is using it'} until it is back`
       : 'Ejected — plug it back in to use it again';
-    case 'available': return entry.backups?.destination ? hardwareLine(entry) : `${hardwareLine(entry)} · nothing kept on it yet`;
+    case 'available': return entry.backups?.destination ? hardwareLine(entry) : `${hardwareLine(entry)} · ${entry.reason || 'not opened yet'}`;
     default: return hardwareLine(entry);
   }
 }

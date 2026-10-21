@@ -180,6 +180,8 @@ class AppStorage {
         fileSystem: drive.fileSystem,
         holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
         holdsBackups: roots.some((root) => fs.existsSync(path.join(root, BACKUPS_DIR))),
+        // The one-store layout of MOS before 0.23.0, which the owner moves into an archive folder by hand.
+        holdsEarlierBackups: roots.some((root) => fs.existsSync(path.join(root, BACKUPS_DIR, 'repository'))),
         holdsBackupsFormat: drive.holdsBackupsFormat,
         id: drive.id,
         label: drive.label,
@@ -198,7 +200,7 @@ class AppStorage {
     for (const [id, claim] of Object.entries(claims)) {
       if (listed.some((drive) => drive.id === id) || !isRememberedDrive(claim)) continue;
       const state = driveState({ claim, connected: false });
-      listed.push({ apps: claim.apps || [], availableBytes: null, backups: claim.backups === true, connected: false, detail: null, devicePath: null, fileSystem: claim.fileSystem || null, holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem), holdsBackups: false, holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem), id, label: claim.label || id, model: claim.model || null, mountPath: null, name: claim.name || null, reason: stateReason(state, claim), sizeBytes: claim.sizeBytes || null, state, transport: claim.transport || null, usable: false, usableForBackups: false });
+      listed.push({ apps: claim.apps || [], availableBytes: null, backups: claim.backups === true, connected: false, detail: null, devicePath: null, fileSystem: claim.fileSystem || null, holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem), holdsBackups: false, holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem), holdsEarlierBackups: false, id, label: claim.label || id, model: claim.model || null, mountPath: null, name: claim.name || null, reason: stateReason(state, claim), sizeBytes: claim.sizeBytes || null, state, transport: claim.transport || null, usable: false, usableForBackups: false });
     }
     return listed;
   }

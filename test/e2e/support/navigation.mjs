@@ -13,8 +13,19 @@ async function diagnosticSnapshot(page, label) {
   return `${label}: url=${page.url()} headings=${JSON.stringify(headings)}`;
 }
 
+// Just after the control plane restarts, as a lab reset leaves it, the first
+// load can be cut off under the browser or overtaken by the page's own redirect;
+// one more try, once that has settled, is what a reload is.
+async function gotoSettled(page, url) {
+  await page.goto(url).catch(async (error) => {
+    if (!/ERR_ABORTED|interrupted by another navigation/u.test(error.message)) throw error;
+    await page.waitForTimeout(3000);
+    await page.goto(url);
+  });
+}
+
 export async function openSuiteManager(page, screenName, entryUrl = '/') {
-  await page.goto(suiteManagerUrl(entryUrl));
+  await gotoSettled(page, suiteManagerUrl(entryUrl));
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   const menu = page.getByRole('navigation', { name: 'Suite Manager menu' });
   await expect(menu).toBeVisible();

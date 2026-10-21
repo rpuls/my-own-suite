@@ -55,6 +55,7 @@ function driveEntry(drive, status) {
     fileSystem: drive.fileSystem || null,
     holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
     holdsBackupsFormat: drive.holdsBackupsFormat,
+    holdsEarlierBackups: drive.holdsEarlierBackups === true,
     id: drive.id,
     kind: 'drive',
     label: drive.label,

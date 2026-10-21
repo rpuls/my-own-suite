@@ -1,11 +1,16 @@
+import { createRequire } from 'node:module';
+
 import { expect } from '@playwright/test';
 
 import { apiJson } from '../support/api.mjs';
+import { plugDrive, pullDrive } from '../support/drive.mjs';
 import { runOnLab } from '../support/lab-shell.mjs';
 import { openSuiteManager } from '../support/navigation.mjs';
 import { installedPackages } from '../support/packages.mjs';
 import { capturePageShot } from '../support/screenshots.mjs';
 import { followAddress } from './owner.mjs';
+
+const { BACKUPS_DIR, STORAGE_MOUNT_ROOT } = createRequire(import.meta.url)('../../../shared/storage-contract.cjs');
 
 const STATUS = '/suite-manager/api/backups/status';
 const STORAGE = '/suite-manager/api/storage';
@@ -275,15 +280,18 @@ export async function restore(ctx, destination) {
 
 const OTHER_SERVER = 'e2e-old-server';
 
-// Beside the archive a disk backup went to, a copy as another server would have
-// left it: its restore points name another install, and only a fresh key, which
-// that server holds, opens it. Prints the copy's folder name and that key.
-function otherServerArchive(pointPath) {
+// Beside the archive a disk backup went to, or in another drive's backups folder,
+// a copy as another server would have left it: its restore points name another
+// install, and only a fresh key, which that server holds, opens it. Prints the
+// copy's folder name and that key.
+function otherServerArchive(pointPath, intoDir = null) {
   return `set -euo pipefail
 src=$(dirname "$(dirname ${JSON.stringify(pointPath)})")
 name=archive-$(head -c4 /dev/urandom | od -An -tx1 | tr -dc 0-9a-f)
-dst=$(dirname "$src")/$name
-cp -a "$src" "$dst"
+into=${intoDir ? JSON.stringify(intoDir) : '$(dirname "$src")'}
+mkdir -p "$into"
+dst=$into/$name
+cp -a "$src" "$dst" 2>/dev/null || { rm -rf "$dst"; cp -r "$src" "$dst"; }
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export HOME=$work
@@ -352,6 +360,39 @@ export async function takeover(ctx) {
     expect(ctx.recoveryKey, 'This server should now use the other server\'s recovery key').toBe(made.key);
   } finally {
     await runOnLab(ctx.env.labShell, `rm -rf "$(dirname "$(dirname ${JSON.stringify(record.path)})")/../${made.name}"`);
+  }
+}
+
+// A drive MOS was never told about, holding backups another server left on it,
+// is opened on sight when plugged in: Storage says what it holds and Backups
+// lists them, with no claim made on the drive.
+export async function driveFound(ctx) {
+  const { page } = ctx;
+  const record = [...ctx.backups].reverse().find((item) => item.destination === 'local');
+  if (!record) throw new Error('drive-found needs an earlier backup to the backup disk in this run.');
+  const free = (entry) => entry.kind === 'drive' && entry.connected && entry.capabilities.holdsBackups && !entry.apps.length && entry.id !== record.destinationId;
+  // A lab with no drive to spare stops using a second backup drive, as its owner would.
+  const extra = (await storageEntries(page)).find((entry) => free(entry) && entry.backups?.destination && !entry.backups.primary);
+  if (extra) await post(page, 'destinations/release', { storageId: extra.id });
+  const spare = (await storageEntries(page)).find((entry) => free(entry) && !entry.backups?.destination);
+  const listed = (await storageEntries(page)).map((item) => `${item.name}: ${item.state}${item.apps.length ? ', apps' : ''}${item.backups?.destination ? ', backups' : ''}`).join('; ');
+  expect(spare, `A connected drive no app or backup uses is needed (${listed || 'none listed'})`).toBeTruthy();
+  const backupsDir = `${STORAGE_MOUNT_ROOT}/${spare.id}/${BACKUPS_DIR}`;
+  if (spare.state !== 'ready') await runOnLab(ctx.env.labShell, `systemctl start mos-storage-attach@${spare.id}.service`);
+  const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path, backupsDir)));
+  const archiveId = `${spare.id}/${made.name}`;
+  try {
+    await pullDrive(ctx, spare.id);
+    await plugDrive(ctx, spare.id);
+    let seen = null;
+    await expect.poll(async () => {
+      seen = (await storageEntries(page)).find((item) => item.id === spare.id) || null;
+      return seen?.state === 'ready' && !seen.apps.length && !seen.backups?.destination && seen.backups?.otherServers.some((other) => other.id === archiveId);
+    }, { intervals: [3000], message: `the drive should open on sight and say it holds another server's backups (last: ${JSON.stringify(seen).slice(0, 200)})`, timeout: 180000 }).toBe(true);
+    const archive = await archiveIn(page, archiveId);
+    expect([archive?.owner, archive?.keyState], 'Backups should list them as another server\'s, locked').toEqual(['other', 'locked']);
+  } finally {
+    await runOnLab(ctx.env.labShell, `rm -rf ${JSON.stringify(`${backupsDir}/${made.name}`)}`);
   }
 }
 

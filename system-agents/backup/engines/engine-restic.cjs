@@ -537,7 +537,9 @@ class ResticEngine {
     const passwordFile = password ? this.stagePassword(password) : null;
     let result;
     try {
-      result = await this.runStreaming(['cat', 'config', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
+      // Lock-free: the listing polls this while a check or a restore may hold the
+      // repository's exclusive lock, and a read of the config needs no lock.
+      result = await this.runStreaming(['cat', 'config', '--no-lock', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
         decisive: (text) => repositoryProbeCause(text).cause !== 'unknown',
         env: passwordFile ? { ...env, RESTIC_PASSWORD_FILE: passwordFile } : env,
         timeout: PROBE_TIMEOUT_MS,
@@ -605,7 +607,7 @@ class ResticEngine {
   // MOS's own to be recognisable after its endpoint or prefix is re-entered.
   repositoryConfigId(repository) {
     try {
-      return JSON.parse(this.runFor(repository, ['cat', 'config', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS }) || '{}').id || null;
+      return JSON.parse(this.runFor(repository, ['cat', 'config', '--no-lock', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS }) || '{}').id || null;
     } catch {
       return null;
     }
@@ -657,7 +659,7 @@ class ResticEngine {
         if (parsed.message_type === 'summary' && parsed.snapshot_id) return parsed.snapshot_id;
       } catch {}
     }
-    const latest = this.listJson(repository, ['snapshots', ...this.repositoryFlags(repository), '--json', '--latest', '1']).pop();
+    const latest = this.listJson(repository, ['snapshots', '--no-lock', ...this.repositoryFlags(repository), '--json', '--latest', '1']).pop();
     if (!latest?.id) throw new Error('The backup storage engine did not report a snapshot for the data it just stored.');
     return latest.id;
   }
@@ -683,7 +685,7 @@ class ResticEngine {
   }
 
   async listSnapshots({ repository }) {
-    return this.listJson(repository, ['snapshots', ...this.repositoryFlags(repository), '--json'])
+    return this.listJson(repository, ['snapshots', '--no-lock', ...this.repositoryFlags(repository), '--json'])
       .map((entry) => ({ createdAt: entry.time || null, snapshotId: entry.id, sourcePath: (entry.paths || [])[0] || null, tags: entry.tags || [] }));
   }
 

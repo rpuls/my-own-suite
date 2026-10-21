@@ -23,7 +23,7 @@ A drive formatted as exFAT, NTFS or FAT32 — the way portable drives come, read
 
 An app that needs a drive, like Jellyfin, says **Requires an extra storage device** until one is plugged in; then its install asks which drive. An app that can use a drive but does not need one, like Immich, offers it in its settings. MOS makes the app's folders on the drive, such as `MOS-files/apps/jellyfin/Movies`, and the app starts with them already set up — no library to configure.
 
-Open **Settings → Storage** to see every drive plugged in and the storage you rent online, how full each is and what is on it.
+Open **Settings → Storage** to see every drive plugged in and the storage you rent online, how full each is and what is on it. MOS opens a drive the moment it is plugged in, so a drive it was never told about — one from an old server, say — shows its app folders and any backups left on it straight away, before you pick it for anything.
 
 ## Filling the drive
 

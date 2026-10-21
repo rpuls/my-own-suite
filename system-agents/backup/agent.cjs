@@ -147,6 +147,7 @@ async function survey() {
     destinations.push({
       availableBytes: drive.connected ? drive.availableBytes ?? null : null,
       condition: driveCondition(drive),
+      earlierBackups: drive.holdsEarlierBackups === true,
       holdsAppFiles: (drive.apps || []).length > 0,
       id: drive.id,
       kind: 'disk',

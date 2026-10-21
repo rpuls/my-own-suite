@@ -1,5 +1,5 @@
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
-import { backup, cleanup, restore, takeover } from './backups.mjs';
+import { backup, cleanup, driveFound, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
 import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall } from './drive.mjs';
@@ -28,6 +28,7 @@ export const MODULES = {
   'drive-pull': drivePull,
   'drive-files': files,
   'drive-files-leftovers': filesLeftovers,
+  'drive-found': driveFound,
   'drive-files-live': filesLive,
   'drive-files-read-only': filesReadOnly,
   homepage,
