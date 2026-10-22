@@ -554,10 +554,9 @@ MaxRetentionSec=1month
 `;
 }
 
-// A drive holding app folders or backups is mounted again whenever it appears, at
-// boot or plugged back in, and the apps reading it restarted onto the fresh mount.
-// The rule only names the instance; the unit asks the storage module whether the
-// drive is one it remembers, so every other drive is left alone.
+// Every drive udev announces with a filesystem MOS can mount is mounted on sight,
+// at boot or when plugged in, so Storage can say what it holds. Only a drive the
+// storage module remembers gets its apps' containers restarted onto the fresh mount.
 const STORAGE_UDEV_RULE_PATH = '/etc/udev/rules.d/90-mos-storage.rules';
 const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
 // One name for every drive's runs: a finished instance is unloaded, so a

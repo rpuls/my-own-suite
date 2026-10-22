@@ -26,7 +26,7 @@ const {
   resolveExisting,
   UPLOAD_CHUNK_BYTES,
   UPLOAD_ID_PATTERN,
-  UPLOAD_STAGING_DIRNAME,
+  uploadStagingRoot,
 } = require('../../../../shared/drive-files.cjs');
 const { BACKUPS_DIR, FILES_DIR } = require('../../../../shared/storage-contract.cjs');
 
@@ -145,7 +145,7 @@ class FilesService {
     this.appAgent = appAgent;
     this.now = now;
     this.storage = storage;
-    this.stagingRoot = path.join(stateDir, UPLOAD_STAGING_DIRNAME);
+    this.stagingRoot = uploadStagingRoot(stateDir);
     this.inFlight = new Map();
   }
 
@@ -522,4 +522,4 @@ class FilesService {
   }
 }
 
-module.exports = { FilesService, batchesOf, byteRange, closedReason, contentDisposition };
+module.exports = { FilesService, batchesOf, byteRange, contentDisposition };

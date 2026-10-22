@@ -3,22 +3,18 @@ import { useState } from 'react';
 import { Checkbox, Dialog, Notice, Spinner } from '../../components/ui';
 import { postJson } from '../../lib/api';
 import { AddStorageDialog } from '../storage/AddStorageDialog';
-import { useAppNames, useStorage } from '../storage/model';
+import { useStorage } from '../storage/model';
 import { StoragePicker } from '../storage/StoragePicker';
 
-// Making storage a backup destination. The storage itself is set up in Settings →
-// Storage, or from the picker's last row, which opens the same dialog right here:
-// on a fresh server that is the way to the bucket holding the backups to restore.
-// Backups another server left on it are listed apart once it is open, and never
-// stand in the way of this server's own.
+// Making storage a backup destination. Storage is set up in Settings → Storage or
+// from the picker's last row, which on a fresh server is the way to the backups to restore.
 export function AddDestinationDialog({ firstDestination, onAdded, onClose, startOnline = false }: {
   firstDestination: boolean;
   onAdded: () => void;
   onClose: () => void;
   startOnline?: boolean;
 }) {
-  const { reload, storage } = useStorage();
-  const names = useAppNames();
+  const { inventory, names, reload, storage } = useStorage();
   const [picked, setPicked] = useState('');
   const [adding, setAdding] = useState(startOnline);
   const [primary, setPrimary] = useState(firstDestination);
@@ -55,10 +51,11 @@ export function AddDestinationDialog({ firstDestination, onAdded, onClose, start
     title="Add a backup destination"
   >
     <StoragePicker
-      addHint="Set up a drive or cloud storage"
+      addHint="Set up a drive, or connect storage online"
+      backupsKnown={inventory?.backupsKnown === true}
       busy={busy}
       context="backups"
-      empty={<><strong>No storage yet</strong><p className="suite-meta">Plug a drive into the server, or connect storage you rent online, and it appears here.</p></>}
+      empty={<><strong>No storage yet</strong><p className="suite-meta">Plug a drive into the server, or connect storage online, and it appears here.</p></>}
       exclude={already}
       label="Where backups go"
       names={names}

@@ -9,7 +9,7 @@ It is short on purpose. You do not need to become a systems administrator to kee
 
 ## One copy is not a backup
 
-A copy that lives in the same place as the original is not a backup of it. The drive inside your server and the data on your server die together — in a fire, a flood, a theft, a power surge, or a disk failure that takes the whole machine with it.
+A copy that lives in the same place as the original is not a backup of it. The drive inside your server and the data on your server die together — in a fire, a flood, a theft, a power surge, or a disk failure that takes the whole server with it.
 
 The word "backup" only means anything once the copy is somewhere the original is not.
 
@@ -17,15 +17,15 @@ The word "backup" only means anything once the copy is somewhere the original is
 
 They need different answers, and this is the part that catches people out.
 
-**The machine stops working.** A dead disk, a dropped server, a house fire. Any copy that is somewhere else covers this — a drive in a drawer, a bucket at a storage provider, a drive at your sister's house.
+**The server stops working.** A dead disk, a dropped server, a house fire. Any copy that is somewhere else covers this — a drive in a drawer, storage online at a provider, a drive at your sister's house.
 
 **Something deletes your data.** Ransomware, an intruder, or you, at eleven at night, sure that you did not need that folder. Here a copy your server can reach is not much of a copy: whatever got into the server can reach it too.
 
 Most people who think they are covered are covered for the first one only.
 
-## Why a bucket alone does not cover the second one
+## Why storage online alone does not cover the second one
 
-MOS writes to your bucket with credentials it keeps on the server. That is what makes automatic backups work without you.
+MOS writes to your storage online with credentials it keeps on the server. That is what makes automatic backups work without you.
 
 It is also the limit. Anything MOS can write to, MOS can delete, and anything running on your server with the same access can delete it too. Ransomware does not even have to delete anything: it can encrypt your live data and wait while MOS faithfully backs up the encrypted version, until the good copies age out on their own.
 
@@ -48,13 +48,13 @@ MOS helps where it can. It remembers the drives you have backed up to, tells you
 
 ## If your storage provider offers it, turn on immutability
 
-Some providers — anything with S3 Object Lock, or Backblaze B2's file lock — can be told to refuse deletions for a number of days, and some let you create an access key that can write but not delete. If your provider offers either, turning it on is worth ten minutes of your evening. It closes most of the gap above for the copy in the bucket.
+Some providers — anything with S3 Object Lock, or Backblaze B2's file lock — can be told to refuse deletions for a number of days, and some let you create an access key that can write but not delete. If your provider offers either, turning it on is worth ten minutes of your evening. It closes most of the gap above for the copy online.
 
 MOS does not set this up for you, and does not depend on it. It is configured in your provider's console, it works differently at every provider, and plenty of providers do not offer it at all.
 
 ## Try a restore before you need one
 
-An untested backup is a belief, not a copy. Once, on a quiet weekend, open a restore point and restore it — ideally onto a spare machine. What you are checking is not really the file: it is that you know how, and that your recovery key is where you thought it was.
+An untested backup is a belief, not a copy. Once, on a quiet weekend, open a restore point and restore it — ideally onto a spare server. What you are checking is not really the file: it is that you know how, and that your recovery key is where you thought it was.
 
 If a restore is the first thing you ever do with a backup, you will be learning it on the worst day of your year.
 

@@ -11,7 +11,6 @@ const {
   MAX_UPLOAD_CHUNK_BYTES,
   READ_ONLY_SENTENCE,
   UPLOAD_ID_PATTERN,
-  UPLOAD_STAGING_DIRNAME,
   UPLOADS_DIR,
   addRefusal,
   changeRefusal,
@@ -24,6 +23,7 @@ const {
   parseRelativePath,
   resolveExisting,
   resolveNew,
+  uploadStagingRoot,
 } = require('../../shared/drive-files.cjs');
 const { STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const { driveMountPath } = require('./storage.cjs');
@@ -32,7 +32,7 @@ const { driveMountPath } = require('./storage.cjs');
 // drives. Each change proves the drive is the mount first, so nothing ever lands on
 // the system disk in its place.
 
-const UPLOAD_STAGING_ROOT = process.env.MOS_FILE_UPLOAD_ROOT || `/var/lib/mos/suite-manager/${UPLOAD_STAGING_DIRNAME}`;
+const SUITE_MANAGER_STATE_DIR = process.env.MOS_STATE_DIR || path.join(process.env.MOS_STATE_ROOT || '/var/lib/mos', 'suite-manager');
 const MAX_PATHS_PER_REQUEST = 200;
 const SWEEP_EVERY_MS = 10 * 60_000;
 const WRITABLE_KERNEL_FILESYSTEMS = ['exfat', 'ntfs3', 'vfat'];
@@ -77,7 +77,7 @@ function sameFolder(left, right) {
 }
 
 class DriveFiles {
-  constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, now = () => Date.now(), registry, stagingRoot = UPLOAD_STAGING_ROOT }) {
+  constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, now = () => Date.now(), registry, stagingRoot = uploadStagingRoot(SUITE_MANAGER_STATE_DIR) }) {
     this.execute = execute;
     this.executeCapture = executeCapture;
     this.mountRoot = mountRoot;
@@ -399,4 +399,4 @@ function filesRoutes(files) {
   };
 }
 
-module.exports = { DriveFiles, MAX_PATHS_PER_REQUEST, READ_ONLY_SENTENCE, UPLOAD_ID_PATTERN, UPLOAD_STAGING_ROOT, filesRoutes };
+module.exports = { DriveFiles, filesRoutes };

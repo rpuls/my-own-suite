@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
 import { DriveChoice, driveFoldersLine, folderList, useDriveChoice } from './DriveChoice';
-import { appDriveNotice, openStorageSettings, STORAGE_SETTINGS_PATH, useStorage } from '../storage/model';
+import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
+import { appDriveNotice, pausedByDrive, useStorage } from '../storage/model';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps } from './ProgressSteps';
 import { isNotAssessed } from './privacy-posture';
@@ -356,7 +357,7 @@ export function AppDetail({
             <div className="suite-app-detail-title-row">
               <h2>{app.name}</h2>
               {app.appVersion ? <span className="suite-app-detail-version">{app.appVersion}</span> : null}
-              <AppHealthIndicator app={app} paused={placedFolders.some((folder) => serverStorage?.find((item) => item.id === folder.driveId)?.state === 'ejected')} />
+              <AppHealthIndicator app={app} paused={Boolean(pausedByDrive(app.id, serverStorage))} />
             </div>
             <p className="suite-app-detail-replaces">
               {app.catalog.replaces.length ? <><span className="suite-app-detail-replaces-label">Replaces</span><strong>{shortReplaces(app.catalog.replaces)}</strong></> : null}
@@ -437,7 +438,7 @@ export function AppDetail({
           />
         </Notice> : null}
 
-        {driveNotice ? <Notice title={driveNotice.title} variant={driveNotice.variant}><p>{driveNotice.body} <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Settings → Storage</a>.</p></Notice> : null}
+        {driveNotice ? <Notice title={driveNotice.title} variant={driveNotice.variant}><p>{driveNotice.body} <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>{driveNotice.linkLabel}</a>.</p></Notice> : null}
 
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
         {app.installJob?.status === 'succeeded' && app.installJob.notice ? <Notice title="Its web address is not open yet" variant="warning">
@@ -759,7 +760,7 @@ export function AppDetail({
         </> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={updating} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
-        {updateStorage ? <DriveChoice appName={app.name} busy={updating} drive={updateDrive.drive} entries={updateDrive.entries} names={updateDrive.names} onChange={updateDrive.setDrive} onReload={updateDrive.reload} storage={updateStorage} /> : null}
+        {updateStorage ? <DriveChoice appName={app.name} backupsKnown={updateDrive.backupsKnown} busy={updating} drive={updateDrive.drive} entries={updateDrive.entries} names={updateDrive.names} onChange={updateDrive.setDrive} onReload={updateDrive.reload} storage={updateStorage} /> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
         {dialogJob ? <>
           <ProgressSteps error={dialogJob.error?.message || (dialogJob.status === 'failed' ? `Unable to update ${app.name}.` : '')} errorTitle="The update did not finish" steps={updateJobSteps(dialogJob)} />

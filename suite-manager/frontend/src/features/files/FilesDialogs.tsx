@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Spinner, TextInput } from '../../components/ui';
+import { Checkbox, ChoiceRow, Dialog, Notice, Panel, PanelItem, PanelList, Spinner, TextInput } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
-import { itemsLabel, listDestinations, sizeOf, type Destination, type FileEntry } from './model';
+import { itemsLabel, listMoveTargets, sizeOf, type FileEntry, type MoveTarget } from './model';
 
 function useSubmit(onDone: () => void, fallback: string) {
   const [busy, setBusy] = useState(false);
@@ -55,22 +55,18 @@ export function MoveDialog({ driveId, driveName, entries, from, onClose, onDone,
   onDone: () => void;
   onMove: (to: string) => Promise<unknown>;
 }) {
-  const [destinations, setDestinations] = useState<Destination[] | null>(null);
+  const [targets, setTargets] = useState<MoveTarget[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [to, setTo] = useState<string | null>(null);
   const { busy, error, submit } = useSubmit(onDone, 'Nothing was moved.');
   useEffect(() => {
-    listDestinations(driveId).then(setDestinations, (caught: Error) => setLoadError(caught.message));
+    listMoveTargets(driveId).then(setTargets, (caught: Error) => setLoadError(caught.message));
   }, [driveId]);
   const moving = entries.filter((entry) => entry.kind === 'folder').map((entry) => (from ? `${from}/${entry.name}` : entry.name));
   const insideMoved = (path: string) => moving.some((folder) => path === folder || path.startsWith(`${folder}/`));
   const one = entries.length === 1;
-  const option = (key: string, body: ReactNode, { checked = false, disabled = false, onPick }: { checked?: boolean; disabled?: boolean; onPick?: () => void }) => <PanelItem flush key={key} quiet={disabled} selected={checked}>
-    <label className={`suite-storage-option${disabled ? ' is-disabled' : ''}`}>
-      <input checked={checked} disabled={disabled || busy} name="destination" onChange={onPick} type="radio" />
-      <span className="suite-storage-icon"><Icon name="folder" /></span>
-      <span className="suite-files-option-body">{body}</span>
-    </label>
+  const option = (key: string, body: ReactNode, { checked = false, disabled = false, onPick = () => undefined }: { checked?: boolean; disabled?: boolean; onPick?: () => void }) => <PanelItem flush key={key} quiet={disabled} selected={checked}>
+    <ChoiceRow disabled={disabled || busy} icon="folder" radio={{ checked, name: 'destination', onChange: onPick, value: key }}>{body}</ChoiceRow>
   </PanelItem>;
   return <Dialog
     footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" disabled={busy || to === null} onClick={() => { if (to !== null) void submit(() => onMove(to)); }} type="button">{busy ? <><Spinner />Moving</> : 'Move here'}</button></>}
@@ -78,13 +74,13 @@ export function MoveDialog({ driveId, driveName, entries, from, onClose, onDone,
     title={one ? `Move ${entries[0]!.name}` : `Move ${itemsLabel(entries.length)}`}
   >
     <p className="suite-meta">Pick where on {driveName} {one ? 'it should' : 'they should'} live.</p>
-    {destinations === null && !loadError ? <p className="suite-meta suite-storage-flow-working"><Spinner />Looking at the folders on the drive…</p> : null}
-    {destinations ? <Panel density="tight">
+    {targets === null && !loadError ? <p className="suite-meta suite-storage-flow-working"><Spinner />Looking at the folders on the drive…</p> : null}
+    {targets ? <Panel density="tight">
       <div aria-label="Where to move" role="radiogroup">
         <PanelList>
-          {destinations.filter((destination) => !insideMoved(destination.path)).map((destination) => (destination.path === from
-            ? option(destination.path, <><span>{destination.label}</span><span className="suite-meta">already here</span></>, { disabled: true })
-            : option(destination.path, <span>{destination.label}</span>, { checked: to === destination.path, onPick: () => setTo(destination.path) })))}
+          {targets.filter((target) => !insideMoved(target.path)).map((target) => (target.path === from
+            ? option(target.path, <><span>{target.label}</span><span className="suite-meta">already here</span></>, { disabled: true })
+            : option(target.path, <span>{target.label}</span>, { checked: to === target.path, onPick: () => setTo(target.path) })))}
           {option('another-drive', <><span>Another drive</span><span className="mos-pill">Later</span></>, { disabled: true })}
         </PanelList>
       </div>

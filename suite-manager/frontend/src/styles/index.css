@@ -414,23 +414,15 @@
 }
 
 /* Settings → Storage: one row per place, collapsed until opened. The item is
-   flush, so the head and the details carry the inset and the selected tint runs
-   the full width of an opened row. */
-.suite-storage-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--mos-space-3);
-  padding: var(--mos-space-3) var(--mos-panel-pad);
-}
-
+   flush, so the disclosure head and the details carry the inset and the selected
+   tint runs the full width of an opened row. */
 .suite-storage-icon {
   display: flex;
   flex: none;
   color: var(--mos-color-info);
 }
 
-.suite-storage-row.is-attention .suite-storage-icon,
+.suite-storage-row.is-attention .mos-disclosure-icon,
 .suite-storage-row.is-attention .suite-storage-name strong {
   color: var(--mos-color-warning);
 }
@@ -442,19 +434,6 @@
 .suite-storage-icon .suite-icon {
   width: 1.3rem;
   height: 1.3rem;
-}
-
-.suite-storage-title {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
 .suite-storage-name {
@@ -474,14 +453,6 @@
   height: 0.8rem;
 }
 
-.suite-storage-trailing {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--mos-space-2);
-}
-
 .suite-storage-glance {
   display: inline-grid;
   grid-template-columns: 9rem auto;
@@ -489,21 +460,11 @@
   gap: var(--mos-space-3);
 }
 
-.suite-storage-chevron {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-color: transparent;
-  background: transparent;
-}
-
-.suite-storage-chevron[aria-expanded='true'] .suite-icon {
-  transform: rotate(90deg);
-}
-
+/* Lined up under the row's name: past the chevron, the icon and their gaps. */
 .suite-storage-details {
   display: grid;
   gap: var(--mos-space-3);
-  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad) calc(var(--mos-panel-pad) + 1.3rem + var(--mos-space-3));
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad) calc(var(--mos-panel-pad) + 1.25rem + 1.3rem + 2 * var(--mos-space-3));
 }
 
 .suite-storage-details .mos-usage {
@@ -554,48 +515,11 @@
   padding-left: 1.2rem;
 }
 
-/* The picker: a radio row per place, the reason it cannot be picked in place of
+/* The picker: a choice row per place, the reason it cannot be picked in place of
    its facts, and adding storage as the last row. */
 .suite-storage-picker {
   display: grid;
   gap: var(--mos-space-3);
-}
-
-.suite-storage-option {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--mos-space-3);
-  width: 100%;
-  padding: var(--mos-space-3) var(--mos-panel-pad);
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-storage-option.is-disabled {
-  cursor: default;
-}
-
-.suite-storage-option.is-add {
-  grid-template-columns: auto minmax(0, 1fr);
-  color: var(--mos-color-accent);
-}
-
-.suite-storage-option input {
-  width: 1.1rem;
-  height: 1.1rem;
-  margin: 0;
-  accent-color: var(--mos-color-accent);
-}
-
-.suite-storage-option-body {
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
 }
 
 .suite-storage-warning {
@@ -631,15 +555,6 @@
 }
 
 @media (max-width: 34rem) {
-  .suite-storage-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .suite-storage-trailing {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-
   .suite-storage-glance {
     grid-template-columns: 6rem auto;
   }
@@ -683,26 +598,6 @@
 .suite-files-title + .suite-lead {
   margin-top: calc(-1 * var(--mos-space-4));
 }
-
-.suite-files-state {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--mos-space-2);
-  color: var(--mos-color-text-muted);
-  font-size: var(--mos-text-small);
-  font-weight: var(--mos-weight-bold);
-}
-
-.suite-files-state > span {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--mos-radius-pill);
-  background: currentColor;
-}
-
-.suite-files-state.is-ready { color: var(--mos-color-accent); }
-.suite-files-state.is-read-only,
-.suite-files-state.is-failed { color: var(--mos-color-warning); }
 
 .suite-files-toolbar {
   display: flex;
@@ -899,14 +794,6 @@ a.suite-files-name {
   height: 2rem;
   border-color: transparent;
   background: transparent;
-}
-
-.suite-files-option-body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mos-space-3);
-  min-width: 0;
 }
 
 /* While files are dragged over the page, the whole page is where they go. */
@@ -4175,18 +4062,9 @@ button.suite-updates-change-head {
 
 /* Selecting a place is the one consequential choice on the page, so it is a
    radio: one of these, and picking another moves it. */
-.suite-bk-radio {
+.suite-bk-row-pick {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
   margin-top: 0.25rem;
-  padding: 0;
-  border: 2px solid var(--mos-color-surface-border);
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
 }
 
 .suite-bk-row-lock {
@@ -4202,26 +4080,6 @@ button.suite-updates-change-head {
 .suite-bk-row-lock .suite-icon {
   width: 1.05rem;
   height: 1.05rem;
-}
-
-.suite-bk-radio > span {
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.mos-panel-item-selected .suite-bk-radio {
-  border-color: var(--mos-color-accent);
-}
-
-.mos-panel-item-selected .suite-bk-radio > span {
-  background: var(--mos-color-accent);
-}
-
-.suite-bk-radio:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .suite-bk-selected-note {
@@ -4254,67 +4112,13 @@ button.suite-updates-change-head {
   margin-top: 0.2rem;
 }
 
-.suite-bk-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.55rem;
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-  color: var(--mos-color-text-muted);
-  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
-  backdrop-filter: var(--mos-frost-filter-backdrop);
-}
-
-.suite-bk-chip.is-guest {
-  border-color: var(--mos-color-info-border);
-  color: var(--mos-color-info);
-}
-
-/* A place in the restore list is a whole-row disclosure, so the item is flush
-   and the button carries the inset. */
-.suite-bk-group-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: var(--mos-panel-pad);
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-group-head:disabled {
-  cursor: default;
-}
-
-.suite-bk-group-head:hover:not(:disabled) {
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-bk-group-name {
-  display: grid;
-  gap: 0.15rem;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.suite-bk-group-name > span:first-child {
+/* A place in the restore list is a whole-row disclosure; its name and chip sit
+   on one line above its summary. */
+.suite-bk-group-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-}
-
-.suite-bk-group-key {
-  flex: none;
-  color: var(--mos-color-text-muted);
-  font-size: 0.8rem;
 }
 
 .suite-bk-chevron {
@@ -4403,23 +4207,8 @@ button.suite-updates-change-head {
   cursor: pointer;
 }
 
-/* History, not a decision, so it is last and closed. The head is the whole
-   row, so it carries the panel's inset itself. */
-.suite-bk-activity-head {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: var(--mos-panel-pad);
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-activity-head .suite-bk-detail {
+/* History, not a decision, so it is last and closed. */
+.suite-bk-activity-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4435,54 +4224,6 @@ button.suite-updates-change-head {
   grid-template-columns: minmax(9rem, auto) minmax(0, 1fr);
   gap: var(--mos-space-3);
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-/* Choosing a kind of destination, in the wizard and in the empty state. */
-.suite-bk-kinds {
-  display: grid;
-  gap: var(--mos-space-3);
-}
-
-.suite-bk-kind-card {
-  display: grid;
-  gap: 0.35rem;
-  padding: var(--mos-space-4);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-kind-card:hover,
-.suite-bk-kind-card.is-picked {
-  border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-accent-soft);
-}
-
-.suite-bk-kind-card > span:first-child {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.suite-bk-kind-card > span:first-child strong {
-  font-size: var(--mos-text-body-lg);
-}
-
-.suite-bk-kind-card > span:first-child .suite-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  color: var(--mos-color-accent);
-}
-
-.suite-bk-kind-card > span:last-child {
-  color: var(--mos-color-text-muted);
   font-size: 0.9rem;
   line-height: 1.55;
 }
@@ -4545,24 +4286,9 @@ button.suite-updates-change-head {
   color: var(--mos-color-text-muted);
 }
 
-/* A restore takes the page over: nothing else on it is true while the machine
+/* A restore takes the page over: nothing else on it is true while the server
    is being replaced. */
-.suite-bk-bar {
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--mos-color-surface-border);
-  overflow: hidden;
-}
-
-.suite-bk-bar > span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--mos-color-accent);
-  transition: width 400ms ease;
-}
-
-.mos-panel-head .suite-bk-bar {
+.suite-bk-progress {
   margin-top: 0.5rem;
   max-width: 24rem;
 }
@@ -4672,7 +4398,6 @@ button.suite-bk-group {
     flex: 1 1 auto;
   }
 
-  .suite-bk-group-key,
   .suite-bk-point-label {
     display: none;
   }

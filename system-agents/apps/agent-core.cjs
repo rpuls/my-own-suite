@@ -450,11 +450,15 @@ class AppAgentCore {
     };
   }
 
-  // Every read also refreshes what paused apps' addresses say, so a drive pulled
-  // while nobody acted is told there as soon as anything looks.
+  // A drive pulled while nobody acted is told on its apps' addresses as soon as
+  // anything looks; reads that find the same drive states write nothing.
   async storageInventory() {
     const inventory = await this.adapter.storage.inventory();
-    await this.adapter.syncPausedPages?.(inventory.drives);
+    const driveStates = JSON.stringify((inventory.drives || []).map((drive) => [drive.id, drive.state]).sort());
+    if (driveStates !== this.syncedDriveStates) {
+      this.syncedDriveStates = driveStates;
+      await this.adapter.syncPausedPages?.(inventory.drives);
+    }
     return inventory;
   }
 

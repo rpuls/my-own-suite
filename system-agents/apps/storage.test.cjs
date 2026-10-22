@@ -124,13 +124,17 @@ test('opening a drive for its files mounts it and remembers it without claiming 
   assert.equal((await storage.drives()).find((drive) => drive.id === '1A2B-3C4D').state, 'ready');
 });
 
+// A folder under MOS-backups that is not an archive is simply a folder: only an
+// archive folder, or the owner's own choice, makes a drive one that holds backups.
 test('a drive MOS was never told about is opened on sight and listed with what it holds, without being remembered', async () => {
   const host = fakeHost([USB_DRIVE]);
   const { storage } = await storageFor(host);
   await storage.attach('1A2B-3C4D');
   fs.mkdirSync(path.join(storage.mountRoot, '1A2B-3C4D', 'MOS-backups', 'repository'), { recursive: true });
+  assert.equal((await storage.drives())[0].holdsBackups, false);
+  fs.mkdirSync(path.join(storage.mountRoot, '1A2B-3C4D', 'MOS-backups', 'archive-0000beef'), { recursive: true });
   const [drive] = await storage.drives();
-  assert.deepEqual([drive.state, drive.apps, drive.backups, drive.holdsBackups, drive.holdsEarlierBackups], ['ready', [], false, true, true]);
+  assert.deepEqual([drive.state, drive.apps, drive.backups, drive.holdsBackups], ['ready', [], false, true]);
   assert.equal(storage.isRemembered('1A2B-3C4D'), false);
 
   const gone = new AppStorage({ registryPath: storage.registry.registryPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
@@ -276,9 +280,26 @@ test('a drive kept for backups is opened with the safety options its format take
   assert.deepEqual(host.calls, [['mount', '-t', 'ext4', '-o', 'noatime,nodev,nosuid,noexec', '/dev/sdc', path.posix.join(path.join(root, 'media'), 'e1e1e1e1-0000')]]);
   assert.equal(storage.isRemembered('e1e1e1e1-0000'), true);
   const away = new AppStorage({ registryPath: storage.registry.registryPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
-  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.backups]), [['e1e1e1e1-0000', 'away', true]]);
+  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.backups, drive.holdsBackups, drive.reason]), [['e1e1e1e1-0000', 'away', true, true, 'This drive is not connected.']]);
+  // Letting go of the backups keeps the drive, like an app letting go of its folders; only Forget lets it go.
   storage.releaseBackups('e1e1e1e1-0000');
+  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.backups, drive.holdsBackups]), [['e1e1e1e1-0000', 'away', false, false]]);
+  await away.forget('e1e1e1e1-0000');
   assert.deepEqual(await away.drives(), []);
+});
+
+// The state's reason comes first, so a drive that failed to open says why rather
+// than what format it is in.
+test('a drive that failed to open gives the failure as its reason, and only a working one its format note', async () => {
+  const host = fakeHost([LINUX_DRIVE]);
+  const { storage } = await storageFor(host);
+  await storage.holdBackups('e1e1e1e1-0000');
+  assert.match((await storage.drives())[0].reason, /can hold backups but not app files/u);
+  const failing = new AppStorage({ registryPath: storage.registry.registryPath, execute: async (file) => { if (file === 'mount') throw new Error('COMMAND_FAILED'); return { stdout: '' }; }, executeCapture: fakeHost([LINUX_DRIVE]).executeCapture, mountRoot: storage.mountRoot });
+  await assert.rejects(failing.attach('e1e1e1e1-0000'), /COMMAND_FAILED/u);
+  const [drive] = await failing.drives();
+  assert.equal(drive.state, 'failed');
+  assert.match(drive.reason, /^MOS could not open this drive/u);
 });
 
 test('naming a drive changes only what MOS calls it, and does not make MOS keep anything on it', async () => {

@@ -118,7 +118,9 @@ class FakeEngine {
 
   get name() { return this.engineName; }
 
-  repositoryInitialized(repositoryPath) { return fs.existsSync(path.join(repositoryPath, 'index.json')); }
+  // A repository on disk has a `config` file, as restic's does: it is what tells
+  // an archive with a repository from one whose first backup has not landed yet.
+  repositoryInitialized(repositoryPath) { return fs.existsSync(path.join(repositoryPath, 'config')); }
 
   indexPath(repository) { return path.join(repository.localPath, 'index.json'); }
   snapshotPath(repository, snapshotId) { return path.join(repository.localPath, 'snapshots', `${snapshotId}.json`); }
@@ -127,10 +129,13 @@ class FakeEngine {
 
   async openOrCreateRepository({ create = true, localPath, location, missingMessage }) {
     const repository = { engineName: this.name, localPath: localPath || location, location: location || localPath };
-    const created = !fs.existsSync(this.indexPath(repository));
+    const created = !this.repositoryInitialized(repository.localPath);
     if (created && !create) throw Object.assign(new Error(missingMessage || 'no repository'), { repositoryAbsent: true });
     ensureDir(path.join(repository.localPath, 'snapshots'));
-    if (created) this.writeIndex(repository, { snapshots: {} });
+    if (created) {
+      this.writeIndex(repository, { snapshots: {} });
+      fs.writeFileSync(path.join(repository.localPath, 'config'), '{"id":"fake"}');
+    }
     this.events.push(['openOrCreateRepository', repository.localPath, created]);
     return { ...repository, created };
   }

@@ -1,47 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent as ReactDragEvent } from 'react';
 import { createPortal } from 'react-dom';
 
-import { ActionMenu, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, ProgressBar, SelectBox, Spinner, Tooltip } from '../../components/ui';
+import { ActionMenu, Dialog, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, ProgressBar, SelectBox, Spinner, Tooltip } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
-import { STORAGE_SETTINGS_PATH, openStorageSettings, stateLabel, useStorage, type StorageEntry } from '../storage/model';
+import { BACKUPS_PATH, navigateTo, openBackups, openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
+import { browseReason, stateLabel, statePill, type StorageEntry } from '../storage/model';
 import { DeleteDialog, MoveDialog, NameDialog } from './FilesDialogs';
+import { FilesToolbar } from './FilesToolbar';
 import {
-  BACKUPS_PATH,
   appStateLabel,
-  browseReason,
+  canSelect,
   createFolder,
   deleteEntries,
   downloadHref,
   entryFacts,
-  filesLocation,
+  filesLabel,
   itemsLabel,
   joinPath,
-  listFiles,
   moveEntries,
-  openBackups,
   openFiles,
   renameEntry,
-  filesLabel,
-  sizeOf,
   type FileEntry,
   type FilesListing,
 } from './model';
+import { useFilesListing } from './useFilesListing';
 import { useUploads, type Interruption, type UploadItem } from './uploads';
 
 type Flow =
-  | { kind: 'folder' }
+  | { kind: 'folder' | 'leave' }
   | { entry: FileEntry; from: string; kind: 'rename' }
   | { entries: FileEntry[]; from: string; kind: 'delete' | 'move'; then?: () => void };
-
-function useLocation() {
-  const [location, setLocation] = useState(() => filesLocation() || { driveId: '', path: '' });
-  useEffect(() => {
-    const update = () => { const next = filesLocation(); if (next) setLocation(next); };
-    window.addEventListener('popstate', update);
-    return () => window.removeEventListener('popstate', update);
-  }, []);
-  return location;
-}
 
 function download(driveId: string, path: string) {
   const link = document.createElement('a');
@@ -50,18 +38,6 @@ function download(driveId: string, path: string) {
   document.body.append(link);
   link.click();
   link.remove();
-}
-
-function Breadcrumbs({ driveId, driveName, segments }: { driveId: string; driveName: string; segments: string[] }) {
-  const crumbs = [{ label: driveName, path: '' }, ...segments.map((segment, index) => ({ label: segment, path: joinPath(segments.slice(0, index + 1)) }))];
-  return <nav aria-label="Folders" className="suite-files-crumbs">
-    {crumbs.map((crumb, index) => <span key={crumb.path || 'top'}>
-      {index ? <span aria-hidden="true" className="suite-files-crumb-gap">›</span> : null}
-      {index === crumbs.length - 1
-        ? <strong aria-current="page">{crumb.label}</strong>
-        : <a href="#folder" onClick={(event) => { event.preventDefault(); openFiles(driveId, crumb.path); }}>{crumb.label}</a>}
-    </span>)}
-  </nav>;
 }
 
 function UploadRow({ item, onStop }: { item: UploadItem; onStop: () => void }) {
@@ -91,10 +67,6 @@ function InterruptionNotice({ kind }: { kind: Interruption }) {
   return null;
 }
 
-function selectable(entry: FileEntry, readOnly: boolean) {
-  return !readOnly && !entry.refusals.delete;
-}
-
 // What MOS uses now is drawn in color; what an app left and what MOS never made
 // are grey, and only the first of those can be changed.
 function FileRow({ dimmed, entry, onFlow, onOpen, onToggle, readOnly, selected, selecting }: {
@@ -118,7 +90,7 @@ function FileRow({ dimmed, entry, onFlow, onOpen, onToggle, readOnly, selected, 
   ];
   const quiet = dimmed || !entry.managed || leftover;
   return <PanelItem className={`suite-files-row${selecting ? ' is-selecting' : ''}${quiet ? ' is-unused' : ''}`} selected={selected}>
-    <span className="suite-files-pick">{selectable(entry, readOnly) ? <SelectBox checked={selected} label={`Select ${entry.name}`} onChange={onToggle} /> : null}</span>
+    <span className="suite-files-pick">{canSelect(entry, readOnly) ? <SelectBox checked={selected} label={`Select ${entry.name}`} onChange={onToggle} /> : null}</span>
     <span className={`suite-files-icon is-${entry.kind}`}><Icon name={entry.kind} /></span>
     <span className="suite-files-label">
       {entry.kind === 'folder' && !entry.special
@@ -154,55 +126,24 @@ function NotOpen({ entry }: { entry: StorageEntry | null }) {
 // the drive itself. The page follows the drive live, so a pull, a check or a
 // replug shows here without a reload.
 export function FilesScreen() {
-  const { driveId, path } = useLocation();
-  const { error: storageError, storage } = useStorage();
-  const entry = storage?.find((item) => item.id === driveId) || null;
-  const browsable = Boolean(entry?.capabilities.browsable);
-  const writable = Boolean(entry?.capabilities.writable);
-  const [listing, setListing] = useState<FilesListing | null>(null);
-  const [error, setError] = useState('');
+  const { browsable, driveId, driveName, entry, error, folderName, listing, path, reload, segments, shown, storage, storageError, writable } = useFilesListing();
   const [selected, setSelected] = useState<string[]>([]);
   const [flow, setFlow] = useState<Flow | null>(null);
   const [dragging, setDragging] = useState(false);
   const [folderDropped, setFolderDropped] = useState(false);
-  const picker = useRef<HTMLInputElement>(null);
-  const shown = useRef(path);
 
-  const reload = useCallback(async () => {
-    if (!driveId || !browsable) return;
-    try {
-      const listed = await listFiles(driveId, path);
-      if (!listed) {
-        openFiles(driveId, path.split('/').slice(0, -1).join('/'), { replace: true });
-        return;
-      }
-      if (listed.path !== shown.current) return;
-      setListing(listed);
-      setError('');
-      setSelected((current) => current.filter((name) => listed.entries.some((item) => item.name === name && !item.refusals.delete)));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The files on this drive could not be listed.');
-    }
-  }, [browsable, driveId, path]);
-
+  useEffect(() => { setSelected([]); }, [path]);
   useEffect(() => {
-    shown.current = path;
-    setSelected([]);
-    setListing((current) => (current?.path === path ? current : null));
-  }, [path]);
-  useEffect(() => { void reload(); }, [reload, entry?.state]);
+    setSelected((current) => current.filter((name) => listing?.entries.some((item) => item.name === name && !item.refusals.delete)));
+  }, [listing]);
 
-  const segments = listing?.segments || (path ? path.split('/') : []);
-  const folderName = segments.at(-1) || listing?.drive.name || entry?.name || 'this drive';
   const app = listing?.app?.readsDrive ? listing.app : null;
   const leftApp = listing?.app?.state ? listing.app : null;
-  const foreign = Boolean(listing && !listing.managed && segments.length);
   const canAdd = writable && Boolean(listing) && !listing?.addRefusal;
-  const uploads = useUploads({ driveId, onAdded: (folder) => { if (folder === shown.current) void reload(); }, writable });
+  const uploads = useUploads({ onAdded: (folder) => { if (folder === shown.current) void reload(); }, writable });
   const entries = useMemo(() => listing?.entries || [], [listing]);
   const picked = entries.filter((item) => selected.includes(item.name));
   const selecting = picked.length > 0;
-  const pickedBytes = sizeOf(picked);
   const toggle = (name: string) => setSelected((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
   const done = () => {
     const then = flow && 'then' in flow ? flow.then : undefined;
@@ -214,12 +155,12 @@ export function FilesScreen() {
   const parentPath = joinPath(segments.slice(0, -1));
   const deleteLeftApp = () => {
     if (!listing?.app) return;
-    const folder = { appName: listing.app.name, appState: listing.app.state, bytes: listing.totals.bytes, items: listing.totals.items, kind: 'folder' as const, managed: true, modifiedAt: '', name: listing.app.id, refusals: { change: 'An app folder stays where it is.', delete: null }, special: null };
+    const folder: FileEntry = { appName: listing.app.name, appState: listing.app.state, bytes: listing.totals.bytes, items: listing.totals.items, kind: 'folder', managed: true, modifiedAt: '', name: listing.app.id, refusals: { change: null, delete: null }, special: null };
     setFlow({ entries: [folder], from: parentPath, kind: 'delete', then: () => openFiles(driveId, parentPath, { replace: true }) });
   };
 
   function addFiles(files: File[]) {
-    if (files.length && canAdd) uploads.add(files, path, folderName);
+    if (files.length && canAdd) uploads.add(files, { driveId, folder: path, folderName });
   }
 
   // The whole page is the drop target while files are dragged over it.
@@ -257,16 +198,26 @@ export function FilesScreen() {
     else setFlow({ entries: [target], from: path, kind });
   }
 
+  // Leaving stops the files still on their way; asked first, like a tab close.
+  function leave(event: { preventDefault: () => void }) {
+    if (!uploads.busy) {
+      openStorageSettings(event);
+      return;
+    }
+    event.preventDefault();
+    setFlow({ kind: 'leave' });
+  }
+
   const dropLabel = canAdd ? `Drop to add to ${folderName}` : 'Files cannot be added here';
   const dropNote = canAdd
     ? (app ? `${app.name} picks up new files on its own.` : 'They are added one at a time, and you can keep browsing.')
     : !writable ? 'This drive opened read-only until it is checked.' : listing?.addRefusal || '';
 
   return <section className="mos-shell mos-page suite-files">
-    <a className="suite-files-back" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>‹ Storage</a>
+    <a className="suite-files-back" href={STORAGE_SETTINGS_PATH} onClick={leave}>‹ Storage</a>
     <div className="suite-files-title">
-      <h1>{listing?.drive.name || entry?.name || 'Drive'}</h1>
-      {entry ? <span className={`suite-files-state is-${entry.state}`}><span aria-hidden="true" />{stateLabel(entry)}</span> : null}
+      <h1>{driveName}</h1>
+      {entry ? <span className={statePill(entry)}>{stateLabel(entry)}</span> : null}
     </div>
     <p className="suite-lead">These files live only on this drive — not in your backups.{app ? ` ${app.name} picks up changes on its own.` : ''}</p>
 
@@ -280,26 +231,23 @@ export function FilesScreen() {
 
       {folderDropped ? <Notice title="Folders cannot be dropped yet"><p>Open the folder on your computer and drop the files inside it, or make the folder here first with New folder.</p></Notice> : null}
 
-      {selecting ? <div className="suite-files-toolbar is-selecting" role="toolbar" aria-label="Selection">
-        <SelectBox checked label="Clear selection" onChange={() => setSelected([])} />
-        <strong>{picked.length} selected{pickedBytes !== null ? ` · ${formatBytes(pickedBytes)}` : ''}</strong>
-        {picked.length < entries.filter((item) => selectable(item, !writable)).length ? <button className="mos-link suite-link-button" onClick={() => setSelected(entries.filter((item) => selectable(item, !writable)).map((item) => item.name))} type="button">Select all {entries.filter((item) => selectable(item, !writable)).length}</button> : null}
-        <span className="suite-files-spacer" />
-        {picked.some((item) => item.refusals.change) ? null : <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'move' })} type="button">Move</button>}
-        <button className="mos-btn mos-btn-danger mos-btn-sm" onClick={() => setFlow({ entries: picked, from: path, kind: 'delete' })} type="button">Delete</button>
-        <button aria-label="Clear selection" className="suite-icon-button suite-files-quiet-button" onClick={() => setSelected([])} title="Clear selection" type="button"><Icon name="x" /></button>
-      </div> : <div className="suite-files-toolbar">
-        <Breadcrumbs driveId={driveId} driveName={listing?.drive.name || entry?.name || 'Drive'} segments={segments} />
-        <span className="suite-files-spacer" />
-        {listing && !listing.managed ? <span className="suite-meta">{foreign ? 'Look and download only' : listing.addRefusal}</span> : <>
-          {!writable ? <span className="suite-meta">Download still works per file</span> : null}
-          <button className="mos-btn mos-btn-secondary" disabled={!canAdd} onClick={() => setFlow({ kind: 'folder' })} title={listing?.addRefusal || undefined} type="button">New folder</button>
-          <button className="mos-btn mos-btn-primary" disabled={!canAdd} onClick={() => picker.current?.click()} title={listing?.addRefusal || undefined} type="button"><Icon name="upload" />Add files</button>
-        </>}
-        <input hidden multiple onChange={(event) => { addFiles([...event.currentTarget.files || []]); event.currentTarget.value = ''; }} ref={picker} type="file" />
-      </div>}
+      <FilesToolbar
+        canAdd={canAdd}
+        driveId={driveId}
+        driveName={driveName}
+        entries={entries}
+        listing={listing}
+        onAddFiles={addFiles}
+        onDelete={() => setFlow({ entries: picked, from: path, kind: 'delete' })}
+        onMove={() => setFlow({ entries: picked, from: path, kind: 'move' })}
+        onNewFolder={() => setFlow({ kind: 'folder' })}
+        onSelect={setSelected}
+        picked={picked}
+        segments={segments}
+        writable={writable}
+      />
 
-      {foreign ? <Notice title="MOS does not manage these files">
+      {listing && !listing.managed && segments.length ? <Notice title="MOS does not manage these files">
         <p>You can look inside and download them. To change them, plug the drive into the computer they came from — or move them into MOS-files there, and they can be managed here.</p>
       </Notice> : null}
       {leftApp ? <LeftoverNotice app={leftApp} onDelete={deleteLeftApp} readOnly={!writable} /> : null}
@@ -352,6 +300,16 @@ export function FilesScreen() {
       </div>
     </div>, document.body) : null}
 
+    {flow?.kind === 'leave' ? <Dialog
+      footer={<>
+        <button className="mos-btn mos-btn-secondary" onClick={() => setFlow(null)} type="button">Keep adding</button>
+        <button className="mos-btn mos-btn-danger" onClick={() => navigateTo(STORAGE_SETTINGS_PATH)} type="button">Leave and stop</button>
+      </>}
+      onClose={() => setFlow(null)}
+      title="Files are still being added"
+    >
+      <p>Leaving this page stops them. Drop the same files again later and MOS carries on from where the drive has them.</p>
+    </Dialog> : null}
     {flow?.kind === 'folder' ? <NameDialog
       action="Create"
       note="The folder is made on the drive right away, so it also shows up when the drive is plugged into another computer."

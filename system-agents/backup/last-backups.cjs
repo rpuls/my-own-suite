@@ -41,4 +41,4 @@ class LastBackups {
   }
 }
 
-module.exports = { LastBackups, RECORD_FILENAME };
+module.exports = { LastBackups };

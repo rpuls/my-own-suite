@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Checkbox, Dialog, Notice, Spinner, TextInput } from '../../components/ui';
 import { postJson } from '../../lib/api';
 import type { AppJob, DriveStep } from '../apps/types';
-import { joinNames, WINDOWS_CHECK_STEPS, type DriveAction, type InstallerStick, type StorageEntry } from './model';
+import { formatInstallerStick, joinNames, useStorage, WINDOWS_CHECK_STEPS, type DriveAction, type InstallerStick, type StorageEntry } from './model';
 
 type Act = (driveId: string, action: DriveAction) => Promise<AppJob<DriveStep>>;
 
@@ -31,6 +31,16 @@ function useDriveJob(entry: StorageEntry, act: Act) {
   return { failure: error || job?.error?.message || '', phase, start };
 }
 
+type DriveJob = ReturnType<typeof useDriveJob>;
+
+// How "use it again" went, said the same way from the eject flow and from the row.
+function UseAgainOutcome({ appNames, using }: { appNames: string[]; using: DriveJob }) {
+  if (using.phase === 'working') return <p className="suite-storage-flow-working"><Spinner />Opening the drive again…</p>;
+  if (using.phase === 'done') return <Notice title="In use again" variant="success"><p>{appNames.length ? `${joinNames(appNames)} ${appNames.length > 1 ? 'are' : 'is'} starting again.` : 'The drive is open again.'}</p></Notice>;
+  if (using.phase === 'failed') return <Notice title="The drive was not opened" variant="warning"><p>{using.failure} Unplug it and plug it back in.</p></Notice>;
+  return null;
+}
+
 export function EjectDialog({ act, appNames, entry, onClose }: { act: Act; appNames: string[]; entry: StorageEntry; onClose: () => void }) {
   const { failure, phase, start } = useDriveJob(entry, act);
   const using = useDriveJob(entry, act);
@@ -49,10 +59,28 @@ export function EjectDialog({ act, appNames, entry, onClose }: { act: Act; appNa
       <p className="suite-meta">{appNames.length ? `Pausing ${joinNames(appNames)}, then closing the drive.` : 'Closing the drive.'}</p>
     </> : null}
     {phase === 'done' && using.phase === 'ask' ? <Notice title="Safe to unplug" variant="success"><p>Plug it back in any time — the apps return on their own. Or use it again without touching the cable.</p></Notice> : null}
-    {phase === 'done' && using.phase === 'working' ? <p className="suite-storage-flow-working"><Spinner />Opening the drive again…</p> : null}
-    {using.phase === 'done' ? <Notice title="In use again" variant="success"><p>{appNames.length ? `${joinNames(appNames)} ${appNames.length > 1 ? 'are' : 'is'} starting again.` : 'The drive is open again.'}</p></Notice> : null}
-    {using.phase === 'failed' ? <Notice title="The drive was not opened" variant="warning"><p>{using.failure} Unplug it and plug it back in.</p></Notice> : null}
+    {phase === 'done' ? <UseAgainOutcome appNames={appNames} using={using} /> : null}
     {phase === 'failed' ? <Notice title="The drive was not ejected" variant="warning"><p>{failure}</p></Notice> : null}
+  </Dialog>;
+}
+
+// "Use it again" from the row, so its outcome is seen the same way as from Eject.
+export function UseAgainDialog({ act, appNames, entry, onClose }: { act: Act; appNames: string[]; entry: StorageEntry; onClose: () => void }) {
+  const using = useDriveJob(entry, act);
+  const begun = useRef(false);
+  const { start } = using;
+  useEffect(() => {
+    if (begun.current) return;
+    begun.current = true;
+    void start('use');
+  }, [start]);
+  const working = using.phase !== 'done' && using.phase !== 'failed';
+  return <Dialog
+    footer={<button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">{using.phase === 'failed' ? 'Close' : 'Done'}</button>}
+    onClose={() => { if (!working) onClose(); }}
+    title={`Using the ${entry.name} again`}
+  >
+    {working ? <UseAgainOutcome appNames={appNames} using={{ ...using, phase: 'working' }} /> : <UseAgainOutcome appNames={appNames} using={using} />}
   </Dialog>;
 }
 
@@ -108,31 +136,51 @@ export function RenameDialog({ entry, onClose, onRenamed }: { entry: StorageEntr
   </Dialog>;
 }
 
+// The format runs as a job the storage list reports back; the stick leaves the
+// list of sticks and comes back as a drive when it is done.
 export function FormatStickDialog({ onClose, onFormatted, stick }: { onClose: () => void; onFormatted: () => void; stick: InstallerStick }) {
+  const { inventory } = useStorage();
   const [understood, setUnderstood] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [startedAt, setStartedAt] = useState('');
   const [error, setError] = useState('');
+  const live = inventory?.installerSticks.find((item) => item.devicePath === stick.devicePath) || null;
+  const job = startedAt && live?.job && live.job.startedAt >= startedAt ? live.job : null;
+  const gone = Boolean(startedAt && inventory && !live);
+  const phase = error || job?.status === 'failed' ? 'failed' : !startedAt ? 'ask' : gone ? 'done' : 'working';
+  const reported = useRef(false);
+  useEffect(() => {
+    if (phase !== 'done' || reported.current) return;
+    reported.current = true;
+    onFormatted();
+  }, [onFormatted, phase]);
+
   async function format() {
-    setBusy(true);
     setError('');
     try {
-      await postJson('/suite-manager/api/storage/installer-stick/format', { confirmed: true, devicePath: stick.devicePath }, 'MOS could not format the stick.');
-      onFormatted();
+      setStartedAt((await formatInstallerStick(stick.devicePath)).startedAt);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'MOS could not format the stick.');
-      setBusy(false);
     }
   }
+  const working = phase === 'working';
   return <Dialog
-    footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" disabled={busy || !understood} onClick={() => void format()} type="button">{busy ? <><Spinner />Formatting</> : 'Format for storage'}</button></>}
-    onClose={() => { if (!busy) onClose(); }}
+    footer={phase === 'ask'
+      ? <><button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-danger" disabled={!understood} onClick={() => void format()} type="button">Format for storage</button></>
+      : <button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">{phase === 'failed' ? 'Close' : 'Done'}</button>}
+    onClose={() => { if (!working) onClose(); }}
     title="Format the install stick for storage?"
   >
-    <p>The stick becomes an ordinary drive that opens on any computer, and appears in Storage when it is done.</p>
-    <Checkbox checked={understood} disabled={busy} onChange={(event) => setUnderstood(event.currentTarget.checked)}>
-      I understand the installer on this stick is erased. A new install stick can be made from the download on any computer.
-    </Checkbox>
-    {error ? <Notice title="The stick was not formatted" variant="error"><p>{error}</p></Notice> : null}
+    {phase === 'ask' ? <>
+      <p>The stick becomes an ordinary drive that opens on any computer, and appears in Storage when it is done.</p>
+      <Checkbox checked={understood} onChange={(event) => setUnderstood(event.currentTarget.checked)}>
+        I understand the installer on this stick is erased. A new install stick can be made from the download on any computer.
+      </Checkbox>
+    </> : null}
+    {working ? <>
+      <p className="suite-storage-flow-working"><Spinner />Formatting…</p>
+      <p className="suite-meta">Usually under a minute. The stick appears in the list as a drive when it is done.</p>
+    </> : null}
+    {phase === 'failed' ? <Notice title="The stick was not formatted" variant="error"><p>{error || job?.error?.message || 'MOS could not format the stick.'}</p></Notice> : null}
   </Dialog>;
 }
 

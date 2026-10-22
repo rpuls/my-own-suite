@@ -23,6 +23,8 @@ const MAX_NAME_BYTES = 255;
 // The upload contract between Suite Manager, which stages each chunk in its
 // state folder, and the agent, which appends it to the drive.
 const UPLOAD_STAGING_DIRNAME = 'file-uploads';
+
+function uploadStagingRoot(suiteManagerStateDir) { return path.join(suiteManagerStateDir, UPLOAD_STAGING_DIRNAME); }
 const UPLOAD_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_UPLOAD_CHUNK_BYTES = 32 * 1024 * 1024;
@@ -215,11 +217,9 @@ module.exports = {
   MAX_UPLOAD_CHUNK_BYTES,
   NOT_MANAGED_SENTENCE,
   READ_ONLY_SENTENCE,
-  RESERVED_PREFIX,
   UPLOADS_DIR,
   UPLOAD_CHUNK_BYTES,
   UPLOAD_ID_PATTERN,
-  UPLOAD_STAGING_DIRNAME,
   addRefusal,
   changeRefusal,
   checkedName,
@@ -236,4 +236,5 @@ module.exports = {
   placeOnDrive,
   resolveExisting,
   resolveNew,
+  uploadStagingRoot,
 };

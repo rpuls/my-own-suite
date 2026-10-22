@@ -1,28 +1,19 @@
-// The on-drive layout of backup archives.
-//
-// MOS has one backup storage engine: restic, chosen 2026-09-06 after a
-// 15.4 GB measured comparison against Kopia on the lab VM (docs/decisions.md
-// records the numbers). The engine name is still written into every archive's
-// descriptor and every manifest, because a drive has to be able to say what
-// wrote it.
-//
-// A drive holds any number of archives side by side, one folder each under
-// MOS-backups: this server's own, and archives other servers made. Each is a
-// repository, its restore points, and a plaintext descriptor. A bucket holds
-// one archive per connection and has no files beside the repository; how
-// either is opened lives in ../destinations.cjs.
+// The on-drive layout of backup archives: any number side by side under
+// MOS-backups, each a repository, its restore points and a plaintext descriptor.
+// A bucket holds one archive per connection; ../destinations.cjs opens both.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ENGINE_MISSING_MESSAGE, ResticEngine } = require('./engine-restic.cjs');
 
+// restic, chosen 2026-09-06 after a measured comparison (docs/decisions.md). Still
+// written into every descriptor and manifest so a drive can say what wrote it.
 const ENGINE_NAME = 'restic';
-const { BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../../shared/storage-contract.cjs');
+const { ARCHIVE_DIR_PATTERN: ARCHIVE_NAME_PATTERN, BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../../shared/storage-contract.cjs');
 const REPOSITORY_DIRNAME = 'repository';
 const RESTORE_POINTS_DIRNAME = 'restore-points';
 const REPOSITORY_SIDECAR_FILENAME = 'MOS-REPOSITORY.json';
-const ARCHIVE_NAME_PATTERN = /^archive-[0-9a-f]{8}$/u;
 
 function createEngine({ agentStateDir, binaryDir, keys, onKeyUsed } = {}) {
   return new ResticEngine({ agentStateDir, binaryDir, keys, onKeyUsed });
@@ -34,19 +25,21 @@ function repositoryPathFor(root) { return path.join(root, REPOSITORY_DIRNAME); }
 function restorePointsDir(root) { return path.join(root, RESTORE_POINTS_DIRNAME); }
 function restorePointPath(root, jobId) { return path.join(restorePointsDir(root), `${jobId}.json`); }
 function repositorySidecarPath(root) { return path.join(root, REPOSITORY_SIDECAR_FILENAME); }
+function repositoryExists(root) { return fs.existsSync(path.join(repositoryPathFor(root), 'config')); }
 
-// A name that is the archive's own and says nothing about which server owns
-// it: that is decided by which key opens it, and a takeover changes it.
+// The name says nothing about which server owns the archive: the key that opens
+// it decides that, and a takeover changes the key, not the name.
 function newArchiveName() {
   return `archive-${crypto.randomBytes(4).toString('hex')}`;
 }
 
-// The archives on a drive, by folder name: every folder MOS wrote a
-// descriptor into.
+// Every archive folder with either a descriptor or a repository in it: a torn
+// descriptor must not make a full repository invisible.
 function archiveNames(mountPath) {
   try {
     return fs.readdirSync(backupsRoot(mountPath), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && ARCHIVE_NAME_PATTERN.test(entry.name) && fs.existsSync(repositorySidecarPath(archiveRoot(mountPath, entry.name))))
+      .filter((entry) => entry.isDirectory() && ARCHIVE_NAME_PATTERN.test(entry.name))
+      .filter((entry) => fs.existsSync(repositorySidecarPath(archiveRoot(mountPath, entry.name))) || repositoryExists(archiveRoot(mountPath, entry.name)))
       .map((entry) => entry.name)
       .sort();
   } catch {
@@ -54,9 +47,8 @@ function archiveNames(mountPath) {
   }
 }
 
-// A plaintext description of what the archive folder is, so a listing can name
-// it and say which server made it without invoking the engine, and an archive
-// in a storage format this MOS does not speak is refused rather than corrupted.
+// Null when the descriptor is missing or will not parse: a stated fact the
+// listing carries, never a reason to treat the archive as empty.
 function readRepositoryDescriptor(root) {
   try {
     return JSON.parse(fs.readFileSync(repositorySidecarPath(root), 'utf8'));
@@ -65,25 +57,26 @@ function readRepositoryDescriptor(root) {
   }
 }
 
+// Staged and renamed in the same folder, so exFAT and NTFS never leave half a file.
 function writeRepositoryDescriptor(root, descriptor) {
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(repositorySidecarPath(root), `${JSON.stringify(descriptor, null, 2)}\n`, 'utf8');
+  const staged = `${repositorySidecarPath(root)}.next`;
+  fs.writeFileSync(staged, `${JSON.stringify(descriptor, null, 2)}\n`, 'utf8');
+  fs.renameSync(staged, repositorySidecarPath(root));
 }
 
-// What an archive actually occupies, from the filesystem alone — no engine
-// invocation, no key. Restore points share the repository's deduplicated data,
-// so per-point data sizes must never be read as additive; this is the one
-// number that says what the drive really carries for it.
+// What the archive occupies on disk, without an engine or a key. Restore points
+// share deduplicated data, so this is the only additive number there is.
 function repositoryUsage(root) {
   const descriptor = readRepositoryDescriptor(root);
-  if (!descriptor) return null;
+  if (!descriptor && !repositoryExists(root)) return null;
   let restorePoints = 0;
   try {
     for (const name of fs.readdirSync(restorePointsDir(root))) {
       if (name.endsWith('.json') && fs.existsSync(path.join(restorePointsDir(root), `${name}.sha256`))) restorePoints += 1;
     }
   } catch {}
-  return { engineName: descriptor.engineName || null, restorePoints, storedBytes: treeBytes(repositoryPathFor(root)) };
+  return { engineName: descriptor?.engineName || null, restorePoints, storedBytes: treeBytes(repositoryPathFor(root)) };
 }
 
 function treeBytes(root) {
@@ -110,13 +103,13 @@ module.exports = {
   archiveRoot,
   assertRepositoryEngine,
   BACKUPS_DIRNAME,
-  backupsRoot,
   createEngine,
   ENGINE_MISSING_MESSAGE,
   ENGINE_NAME,
   newArchiveName,
   readRepositoryDescriptor,
   REPOSITORY_DIRNAME,
+  repositoryExists,
   repositoryPathFor,
   repositorySidecarPath,
   repositoryUsage,

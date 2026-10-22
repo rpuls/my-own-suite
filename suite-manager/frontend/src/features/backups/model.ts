@@ -1,48 +1,45 @@
-// Everything the Backup & Restore screen knows how to say, kept apart from the
-// screen that says it. These are pure functions over the status the agent
-// returns: no fetching, no state, no JSX. The page reads as a list of sections;
-// the sentences those sections show are decided here.
+// Everything the Backup & Restore screen knows how to say, as pure functions over
+// the status the agent returns: no fetching, no state, no JSX.
 
 import type { IconName } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
+import { whenWords } from '../../lib/dates';
+import { stateLabel, stateSentence, type StorageState } from '../storage/model';
 
-type Condition = 'away' | 'ejected' | 'no-engine' | 'not-open' | 'read-only' | 'ready' | 'unreachable';
+type PlaceKind = 'disk' | 'object';
 
-// A place this server backs up to, as the backup agent states it.
+// A place this server backs up to. Its state and reason are the storage module's
+// own words, passed through; the agent adds nothing of its own to them.
 type BackupDestination = {
   accessKeyId?: string;
   availableBytes: number | null;
   bucket?: string;
   checkedAt?: string | null;
-  condition: Condition;
   endpoint?: string;
   folder?: string;
-  earlierBackups?: boolean;
   holdsAppFiles?: boolean;
   id: string;
-  kind: 'disk' | 'object';
+  kind: PlaceKind;
   label: string;
   lastBackupAt: string | null;
-  // This server's archive here, once its first backup has made one.
   ownArchive: { id: string; restorePoints: number | null; storedBytes: number | null } | null;
-  // Why this server cannot back up here right now, in the agent's words, or null.
-  refusal: string | null;
+  reason: string | null;
   region?: string;
   sizeBytes: number | null;
+  state: StorageState;
   storageKind: 'external' | 'local' | 'object';
 };
 
-// One set of backups — an encrypted repository and its restore points — and
-// whose it is, as the backup agent states it. This screen never works that out
-// for itself.
+// One set of backups — an encrypted repository and its restore points — and whose
+// it is, as the backup agent states it. This screen never works that out itself.
 export type Archive = {
-  containerId: string;
-  containerKind: 'disk' | 'object';
-  containerLabel: string;
   id: string;
   keyState: 'borrowed' | 'locked' | 'own';
   newestAt: string | null;
   owner: 'other' | 'this';
+  placeId: string;
+  placeKind: PlaceKind;
+  placeLabel: string;
   reason: string | null;
   restorePoints: number | null;
   storedBytes: number | null;
@@ -62,18 +59,15 @@ type BackupValidation = {
 // Which item of how many the current stage is on, named by its app.
 type JobCount = { current: string | null; done: number; note: string | null; sentence: string; total: number; unit: string };
 
-// Where a running job is, in the agent's own words. The agent knows its own
-// sequence, so the step count and the plan are facts it reports, not a guess
-// this screen keeps beside it; the busy page Caddy serves reads the same
-// record, so the two never drift.
 type PlanState = 'done' | 'next' | 'now';
 
+// Where a running job is, in the agent's own words. The busy page Caddy serves
+// reads the same record, so the two never drift.
 export type JobProgress = {
   count: JobCount | null;
   expect: { sentence: string } | null;
   headline: string;
   kind: string | null;
-  // One entry per group of stages, each carrying the stages it is made of.
   plan: Array<{ sentence: string; state: PlanState; steps: Array<{ sentence: string; state: PlanState }> }>;
   sentence: string;
   stage: string | null;
@@ -83,18 +77,15 @@ export type JobProgress = {
   updatedAt: string | null;
 };
 
-// How long a check or a restore of one restore point will take on this
-// machine, said before it starts. `basis` is whether that came from this
-// machine's history or is a stated range; the sentence already says which.
+// How long a check or a restore will take here, said before it starts; `basis` is
+// whether that came from this server's history or is a stated range.
 type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
 
 type BackupJob = {
-  // The domain the backup carried and the restore set aside, or null when the
-  // backup came from this machine and there was nothing to set aside.
+  // The domain the backup carried and the restore set aside; null when nothing was.
   address?: { domain: string | null } | null;
-  // Whether the restored routes went live. A web server that refused the new
-  // config keeps serving the old one, so this is the difference between a
-  // restored suite and a restored suite its owner can reach.
+  // Whether the restored routes went live: a web server that refused the new
+  // config keeps serving the old one.
   controlPlane?: { detail: string | null; routesLive: boolean } | null;
   error: string | null;
   id: string;
@@ -109,8 +100,7 @@ type BackupJob = {
   validation?: BackupValidation | null;
 };
 
-// One line of the activity list. Thinner than a job on purpose: a finished job
-// is a sentence and a time, not a record to re-open.
+// One line of the activity list: a finished job is a sentence and a time.
 type RecentJob = {
   destinationId: string | null;
   error: string | null;
@@ -118,8 +108,6 @@ type RecentJob = {
   initiator?: 'owner' | 'schedule' | 'update' | null;
   kind: string | null;
   note?: string | null;
-  // The agent's words for where a running job is, and its step; null once
-  // the job is over.
   sentence?: string | null;
   stage: string | null;
   status: string | null;
@@ -132,25 +120,21 @@ type RecentJob = {
 export type BackupEntry = {
   appCount: number;
   archiveId: string;
-  containerId: string;
-  containerLabel: string;
   createdAt: string | null;
   encrypted?: boolean;
   engineName?: string | null;
-  // What checking or restoring this point will take here.
   expect?: { check: JobExpectation; restore: JobExpectation } | null;
   id: string;
-  // Who asked for this restore point: the owner, the schedule, or the update
-  // that took it as its last-known-good state before changing anything.
   initiator?: 'owner' | 'schedule' | 'update';
   note?: string | null;
-  // Whose archive it is in: restoring another server's makes this one that server.
   owner: 'other' | 'this';
   path: string;
+  placeId: string;
+  placeLabel: string;
   repositoryId?: string | null;
   sizeBytes?: number | null;
-  // The domain the writing machine served: a string, null for none, and absent
-  // on a restore point too old to say.
+  // The domain the writing server served; null for none, absent on a restore
+  // point too old to say.
   sourceDomain?: string | null;
   sourceHostname?: string | null;
   sourceInstallId?: string | null;
@@ -159,8 +143,8 @@ export type BackupEntry = {
   volumeCount: number;
 };
 
-// The one destination everything that backs up on its own writes to: the
-// schedule, and the backup taken before a MOS update.
+// Where everything that backs up on its own writes: the schedule, and the backup
+// taken before a MOS update.
 type PrimaryDestination = {
   destinationId: string;
   label: string | null;
@@ -190,11 +174,8 @@ type InterruptedRestore = {
   startedAt: string | null;
 };
 
-// What this machine knows about its own recovery key. The fingerprint is a
-// short digest, never the key: it is how two machines can be shown to hold the
-// same one without either screen displaying it. `adoptedAt` is set when the key
-// was typed off another server's kit rather than made here, which is the
-// difference between "your key" and "their key, now yours".
+// The fingerprint is a short digest, never the key; `adoptedAt` is set when the
+// key was typed off another server's kit rather than made here.
 export type RecoveryKeyState = {
   acknowledged: boolean;
   acknowledgedAt?: string | null;
@@ -202,7 +183,6 @@ export type RecoveryKeyState = {
   fingerprint: string | null;
   keyFile?: string | null;
 };
-
 
 export type BackupStatus = {
   archives: Archive[];
@@ -228,24 +208,6 @@ export type BackupStatus = {
 
 type Tone = 'error' | 'muted' | 'ready' | 'warning';
 
-export { formatBytes };
-
-// The way someone says a date out loud: today and yesterday by name, this year
-// without the year, anything older in full.
-export function whenWords(value: string | null) {
-  if (!value) return 'Unknown time';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  const clock = parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  const midnight = new Date();
-  midnight.setHours(0, 0, 0, 0);
-  const days = Math.floor((midnight.getTime() - parsed.getTime()) / 86_400_000);
-  if (days < 0) return `Today, ${clock}`;
-  if (days === 0) return `Yesterday, ${clock}`;
-  const sameYear = parsed.getFullYear() === new Date().getFullYear();
-  return `${parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })}, ${clock}`;
-}
-
 function daysSince(value: string | null) {
   if (!value) return null;
   const parsed = new Date(value);
@@ -265,10 +227,8 @@ export function browserTimeZone() {
   }
 }
 
-// Scheduled times are wall-clock times in the zone the schedule was set from,
-// which is not necessarily this browser's or the server's, so every moment the
-// panel shows is rendered in that same zone. Otherwise "runs at 03:00" and
-// "next run 09:00" appear side by side and both are right.
+// Scheduled times are wall-clock times in the zone the schedule was set from, so
+// every moment the panel shows is rendered in that same zone.
 function formatInZone(value: string | null, timeZone: string) {
   if (!value) return '';
   const parsed = new Date(value);
@@ -294,72 +254,69 @@ export const RETENTION_OPTIONS = [
   { label: 'All of them', value: 0 },
 ];
 
-export function destinationIconName(place: { kind?: string; storageKind?: string | null }): IconName {
+type Place = { kind?: string; storageKind?: string | null };
+
+export function placeOf(kind: PlaceKind): Place {
+  return { kind, storageKind: kind === 'object' ? 'object' : 'external' };
+}
+
+export function destinationIconName(place: Place): IconName {
   if (place.kind === 'object') return 'cloud-bucket';
   if (place.storageKind === 'external') return 'usb-drive';
   if (place.storageKind === 'network') return 'network-drive';
   return 'hard-drive';
 }
 
-function destinationKindLabel(place: { kind?: string; storageKind?: string | null }) {
-  if (place.kind === 'object') return 'Storage you rent online';
+function destinationKindLabel(place: Place) {
+  if (place.kind === 'object') return 'Storage online';
   if (place.storageKind === 'external') return 'A drive you plug in';
   if (place.storageKind === 'network') return 'A folder on your network';
-  return 'A disk in this machine';
+  return 'A drive inside this server';
 }
 
-// A restore point's size is the suite data it restores, not space it takes on
-// the drive — points share the archive's deduplicated data, so sizes are not
-// additive and are worded to not read that way.
+// A restore point's size is the suite data it restores, not space on the drive:
+// points share the archive's data, so sizes are not additive.
 export function backupDescription(backup: BackupEntry) {
-  const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} · ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
+  const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} · ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this restore point';
   if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
   return `${contents} · ${formatBytes(backup.sizeBytes as number)} to restore`;
 }
 
-// The checkpoint MOS takes before it updates itself, named by what it was taken
-// before. It is the one restore point retention never removes, so an owner
-// deciding what to delete can see why this one is here.
+// The restore point MOS takes before it updates itself, which retention never
+// removes; named so an owner deciding what to delete can see why it is here.
 export function checkpointLabel(backup: BackupEntry) {
   if (backup.initiator !== 'update') return null;
   return backup.updateTarget ? `Before update to ${backup.updateTarget}` : 'Before a MOS update';
 }
 
-// Which server made a restore point in another server's archive, for the one
-// moment it matters: restoring it makes this machine that server.
+// Which server made a restore point in another server's archive: restoring it
+// makes this server that server.
 export function writtenElsewhere(backup: BackupEntry) {
   return backup.owner === 'other' ? backup.sourceHostname || 'another server' : null;
 }
 
-// The domain a restore onto this machine will set aside, or null. The suite
-// comes back on this machine's own address, and the name is offered back
-// afterwards, in the open.
+// The domain a restore onto this server will set aside, or null.
 export function carriedDomain(backup: BackupEntry) {
   return backup.owner === 'other' ? backup.sourceDomain || null : null;
 }
 
 type DestinationAction = '' | 'restore' | 'retest' | 'unlock';
 
-// One of this server's places, reduced to the row the design draws: a status
-// line that states the condition once, a detail line under it, and at most one
-// button.
+// One of this server's places, reduced to the row the design draws: a status line
+// that states the condition once, a detail line under it, and at most one button.
 export type DestinationView = {
   action: DestinationAction;
   actionLabel: string;
   away: boolean;
-  // Why this server cannot back up here, as the one sentence the page says about
-  // it wherever it says it; empty when it can.
+  // Why this server cannot back up here, wherever the page says it; empty when it can.
   blocked: string;
   detail: string;
   destination: BackupDestination;
   id: string;
   kindLabel: string;
   label: string;
-  // Whether someone who breaks into this server could erase this copy. MOS may
-  // decline to enforce good practice, but it must never imply protection the
-  // owner does not have.
+  // Whether someone who gets into this server could erase this copy.
   reachLine: string;
-  // This server can back up here, so it can be chosen.
   selectable: boolean;
   selected: boolean;
   spaceLine: string;
@@ -369,18 +326,22 @@ export type DestinationView = {
 
 const PICK_A_PLACE = "Pick a place under This server's backups and MOS starts keeping copies.";
 
+function conditionOf(destination: BackupDestination) {
+  return { connected: destination.state !== 'away', kind: destination.kind === 'object' ? 'bucket' as const : 'drive' as const, reason: destination.reason, state: destination.state };
+}
+
 function storedLine(destination: BackupDestination) {
   const points = destination.ownArchive?.restorePoints || 0;
-  if (!points) return destination.earlierBackups ? 'Ready · holds backups from a MOS before 0.23.0; move them into an archive folder to list them' : 'Ready · no backups here yet';
+  if (!points) return 'Ready · no restore points yet';
   const stored = destination.ownArchive?.storedBytes ? ` · ${formatBytes(destination.ownArchive.storedBytes)} stored` : '';
   return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
 }
 
-// How each condition the agent states reads on a row. The sentence for any
-// condition but these three is the agent's own refusal.
-function conditionRow(destination: BackupDestination, selected: boolean): Pick<DestinationView, 'action' | 'actionLabel' | 'detail' | 'status' | 'tone'> {
+// How a state reads on a row, in the storage module's words.
+function stateRow(destination: BackupDestination, selected: boolean): Pick<DestinationView, 'action' | 'actionLabel' | 'detail' | 'status' | 'tone'> {
   const none = { action: '' as DestinationAction, actionLabel: '' };
-  switch (destination.condition) {
+  const condition = conditionOf(destination);
+  switch (destination.state) {
     case 'ready': return {
       ...none,
       detail: destination.kind === 'object' ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
@@ -388,41 +349,40 @@ function conditionRow(destination: BackupDestination, selected: boolean): Pick<D
       status: storedLine(destination),
       tone: 'ready',
     };
-    // Not a problem to fix. This is the copy that survives the thing every
-    // other copy does not, and the row says so rather than reading as an error.
+    // Not a problem to fix: this is the copy that survives what every other copy does not.
     case 'away': return {
       ...none,
       detail: selected ? 'This is still where automatic backups go — MOS waits for it.' : 'Plug it in to bring it up to date.',
-      status: destination.lastBackupAt ? `Unplugged · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : 'Unplugged',
+      status: destination.lastBackupAt ? `${stateLabel(condition)} · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : stateLabel(condition),
       tone: 'muted',
     };
-    case 'unreachable': return { action: 'retest', actionLabel: 'Try again', detail: destination.refusal || 'Check the internet connection, then try again.', status: 'MOS could not reach this storage', tone: 'error' };
-    default: return { ...none, detail: '', status: destination.refusal || 'This place cannot take backups right now.', tone: 'warning' };
+    case 'unreachable': return {
+      action: destination.kind === 'object' ? 'retest' : '',
+      actionLabel: destination.kind === 'object' ? 'Try again' : '',
+      detail: stateSentence(condition),
+      status: stateLabel(condition),
+      tone: 'error',
+    };
+    default: return { ...none, detail: stateSentence(condition), status: stateLabel(condition), tone: 'warning' };
   }
 }
 
-/**
- * Whether this copy is within reach of someone who gets into the server.
- *
- * Ransomware runs on an unlocked machine with the owner's own credentials, so
- * anything MOS can write to, it can also delete. Only a drive that is not
- * plugged in is out of reach, which is why unplugging is worth saying out loud
- * rather than leaving as something the owner is supposed to infer.
- */
+// Ransomware runs with the owner's own credentials, so anything MOS can write to
+// it can delete; only a drive that is not plugged in is out of reach.
 function reachOf(destination: BackupDestination) {
-  if (destination.condition === 'away') return 'Unplugged, so nothing that gets into this server can reach it.';
+  if (destination.state === 'away') return 'Not connected, so nothing that gets into this server can reach it.';
   if (destination.kind === 'object') return 'Anything that gets into this server can erase this copy.';
   return 'Plugged in, so anything that gets into this server can erase this copy.';
 }
 
 function destinationView(destination: BackupDestination, selectedId: string): DestinationView {
   const selected = destination.id === selectedId;
-  const ready = destination.condition === 'ready';
+  const ready = destination.state === 'ready';
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
   return {
-    ...conditionRow(destination, selected),
-    away: destination.condition === 'away',
-    blocked: ready ? '' : destination.refusal || 'This place cannot take backups right now.',
+    ...stateRow(destination, selected),
+    away: destination.state === 'away',
+    blocked: ready ? '' : stateSentence(conditionOf(destination)) || 'This place cannot take backups right now.',
     destination,
     id: destination.id,
     kindLabel: destinationKindLabel(destination),
@@ -434,9 +394,8 @@ function destinationView(destination: BackupDestination, selectedId: string): De
   };
 }
 
-// This server's places, in the order the page draws them: the selected one
-// first, then whatever is usable, then whatever needs attention, then whatever
-// is away.
+// This server's places, in the order the page draws them: the selected one first,
+// then whatever is usable, then whatever needs attention, then whatever is away.
 export function destinationViews(status: BackupStatus | null | undefined): DestinationView[] {
   const selectedId = status?.primaryDestination?.destinationId || '';
   const rank = (view: DestinationView) => (view.selected ? 0 : view.selectable ? 1 : view.away ? 3 : 2);
@@ -467,14 +426,14 @@ export function otherArchiveViews(status: BackupStatus | null | undefined): Othe
       action: locked ? 'unlock' : 'restore',
       actionLabel: locked ? 'Enter recovery key' : 'Restore from these…',
       archive,
-      erasable: archive.containerKind === 'disk',
+      erasable: archive.placeKind === 'disk',
       from,
       id: archive.id,
       keyLine: locked
         ? "Opens only with the recovery key of the server that made it, not this server's."
         : `Opens with ${from || 'that server'}'s key, kept on this server. Nothing in these backups was changed.`,
-      kindLabel: destinationKindLabel({ kind: archive.containerKind === 'object' ? 'object' : 'disk', storageKind: archive.containerKind === 'object' ? 'object' : 'external' }),
-      label: archive.containerLabel,
+      kindLabel: destinationKindLabel(placeOf(archive.placeKind)),
+      label: archive.placeLabel,
       status: locked ? 'Made by another server' : `${points} restore point${points === 1 ? '' : 's'} to restore from`,
     };
   });
@@ -488,60 +447,56 @@ export type ArchiveKey = {
   username?: string | null;
 };
 
-// A key in an archive's key list, said as a place rather than as a record: the
-// machine it was made on and when, because that is what an owner recognises
-// when deciding whether it still belongs there.
+// A key in an archive's key list, said as the server it was made on and when,
+// which is what an owner recognises when deciding whether it still belongs there.
 export function archiveKeyLine(key: ArchiveKey) {
-  const where = key.hostname ? `Made on ${key.hostname}` : 'Made on an unnamed machine';
+  const where = key.hostname ? `Made on ${key.hostname}` : 'Made on an unnamed server';
   return key.createdAt ? `${where} · ${whenWords(key.createdAt)}` : where;
 }
 
-// The one sentence at the top of the page: am I safe, where does it go, when
-// was the last one. Everything else on the screen is a detail of this.
-// Only backups in this server's own archives count towards "am I safe": another
-// server's can be read here, but they say nothing about this suite.
-export function bannerState(status: BackupStatus | null | undefined, views: DestinationView[], busyBackup: boolean) {
+type Banner = { detail: string; title: string; tone: Tone };
+
+// The one sentence at the top of the page: am I safe, where does it go, when was
+// the last one. Only this server's own archives count towards "am I safe".
+export function bannerState(status: BackupStatus | null | undefined, views: DestinationView[], busyBackup: boolean): Banner {
   const selected = views.find((view) => view.selected) || null;
   const newest = (status?.backups || []).filter((backup) => backup.owner === 'this')
     .slice().sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const schedule = status?.schedule || null;
   const nextRun = schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
 
-  if (busyBackup) return { detail: 'Your apps pause for a few minutes and come back on their own.', title: 'Backing up now.', tone: 'ready' as Tone };
+  if (busyBackup) return { detail: 'Your apps pause for a few minutes and come back on their own.', title: 'Backing up now.', tone: 'ready' };
   if (!newest) {
-    if (selected?.blocked) return { detail: selected.blocked, title: 'You have no backups yet.', tone: 'warning' as Tone };
+    if (selected?.blocked) return { detail: selected.blocked, title: 'You have no backups yet.', tone: 'warning' };
     return selected
-      ? { detail: `Nothing has been backed up yet. The first one goes to ${selected.label}.`, title: 'You have no backups yet.', tone: 'warning' as Tone }
-      : { detail: PICK_A_PLACE, title: 'You have no backups yet.', tone: 'warning' as Tone };
+      ? { detail: `Nothing has been backed up yet. The first one goes to ${selected.label}.`, title: 'You have no backups yet.', tone: 'warning' }
+      : { detail: PICK_A_PLACE, title: 'You have no backups yet.', tone: 'warning' };
   }
   if (schedule?.lastResult?.status === 'failed') {
-    return { detail: schedule.lastResult.message, title: 'The last automatic backup did not finish.', tone: 'error' as Tone };
+    return { detail: schedule.lastResult.message, title: 'The last automatic backup did not finish.', tone: 'error' };
   }
   const age = daysSince(newest.createdAt);
   if (selected?.blocked) {
     return {
       detail: selected.blocked,
       title: age && age > 1 ? `Your last backup was ${age} days ago.` : 'Your backups are up to date.',
-      tone: 'warning' as Tone,
+      tone: 'warning',
     };
   }
   if (age !== null && age > 3) {
-    return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.containerLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' as Tone };
+    return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.placeLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' };
   }
-  // The end of the rotation, said once, at the only moment it is useful: a
-  // drive that has just been written to and is not where automatic backups go
-  // is a drive on its way back to a drawer, and it is only out of reach once it
-  // is unplugged. Never said about the chosen destination — unplugging that one
-  // would break the schedule the owner set up.
-  const writtenTo = views.find((view) => view.id === newest.containerId) || null;
-  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.condition === 'ready') {
+  // A drive just written to that is not where automatic backups go is on its way
+  // back to a drawer, and only out of reach once unplugged; said once, now.
+  const writtenTo = views.find((view) => view.id === newest.placeId) || null;
+  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.state === 'ready') {
     return {
       detail: `Backed up to ${writtenTo.label}. Unplug it and keep it somewhere else: a drive that stays plugged in can be erased by anything that gets into this server.`,
       title: 'Your backups are up to date.',
-      tone: 'ready' as Tone,
+      tone: 'ready',
     };
   }
-  return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.containerLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' as Tone };
+  return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.placeLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' };
 }
 
 // Why Back up now is not available, in the words of the thing the owner has to
@@ -574,10 +529,8 @@ export function scheduleSummary(schedule: BackupSchedule | null | undefined, sel
   return `${when} at ${clockValue(schedule)} · ${keep} · to ${selected ? selected.label : 'nowhere yet'}`;
 }
 
-// The words for a running job are the agent's (system-agents/backup/progress.cjs):
-// it knows its own sequence, and the busy page reads the same record. This
-// screen only renders what it was sent, and says "Getting ready" for a job the
-// agent has not described yet.
+// The words for a running job are the agent's (system-agents/backup/progress.cjs);
+// "Getting ready" is for a job it has not described yet.
 export function stageWords(job: BackupJob | null | undefined) {
   return job?.progress?.sentence || 'Getting ready';
 }
@@ -596,21 +549,17 @@ export function jobLine(job: BackupJob | null | undefined) {
   return `${stageWords(job)}${stepLine(job?.progress)}${count ? ` · ${count.sentence}` : ''}`;
 }
 
-// The share of a counted stage that is done, for the one bar this screen
-// draws: a proportion of items, never of time.
+// The share of a counted stage that is done: a proportion of items, never of time.
 export function countShare(count: JobCount | null | undefined) {
   if (!count || count.total <= 0) return 0;
   return Math.round(Math.max(0, Math.min(1, count.done / count.total)) * 100);
 }
 
-// Why the controls are dead, for a job that holds the page without taking it
-// over. A running job disables everything on the screen, so each kind has to
-// say what it is waiting for rather than leaving a row of buttons that do
-// nothing. A backup is absent because it reports its own stage and step.
+// Why the controls are dead while a job that is not a backup holds the page.
 export function jobWorkingLine(job: BackupJob | null) {
   if (!isRunning(job)) return '';
-  if (job?.kind === 'delete') return `Deleting a backup: ${jobLine(job)}. This can take a few minutes.`;
-  if (job?.kind === 'validate') return `Checking a backup: ${jobLine(job)}. Backups and restores wait until it finishes.`;
+  if (job?.kind === 'delete') return `Deleting a restore point: ${jobLine(job)}. This can take a few minutes.`;
+  if (job?.kind === 'validate') return `Verifying a restore point: ${jobLine(job)}. Backups and restores wait until it finishes.`;
   return '';
 }
 
@@ -627,29 +576,24 @@ export function restorePhaseWords(phase: string | null | undefined) {
   return RESTORE_PHASE_WORDS[String(phase || '')] || 'at a step it could not name';
 }
 
-// One finished job, as one sentence. The activity list is history, so every
-// line says what happened and where, and a failure says what to do.
+// One finished job, as one sentence: what happened and where, and for a failure what to do.
 export function activityLine(job: RecentJob, destinations: DestinationView[]) {
   const place = destinations.find((view) => view.id === job.destinationId)?.label || '';
   const at = place ? ` on ${place}` : '';
-  const kind = job.kind === 'restore' ? 'Restore' : job.kind === 'validate' ? 'Backup check' : job.kind === 'delete' ? 'Delete' : 'Backup';
+  const kind = job.kind === 'restore' ? 'Restore' : job.kind === 'validate' ? 'Verification' : job.kind === 'delete' ? 'Delete' : 'Backup';
   if (job.status === 'failed') return `${kind} stopped${at}: ${job.error || 'MOS could not say why.'}`;
   if (job.status === 'queued' || job.status === 'running') return `${kind} in progress${at}: ${job.sentence || 'Getting ready'}${stepLine(job)}.`;
-  if (job.kind === 'restore') return `Restore finished. This machine now matches the backup it restored.`;
-  if (job.kind === 'validate') return `Backup check passed${at}. It is readable and complete.`;
-  if (job.kind === 'delete') return `Backup deleted${at}. The space only it was using has been freed.`;
+  if (job.kind === 'restore') return 'Restore finished. This server now matches the restore point it restored.';
+  if (job.kind === 'validate') return `Verification passed${at}. The restore point is readable and complete.`;
+  if (job.kind === 'delete') return `Restore point deleted${at}. The space only it was using has been freed.`;
   if (job.initiator === 'update') return `Backup taken${at} before updating MOS${job.updateTarget ? ` to ${job.updateTarget}` : ''}.`;
   if (job.initiator === 'schedule') return `Automatic backup finished${at}.`;
   return `Backup finished${at}${job.note ? `, with your note "${job.note}"` : ''}.`;
 }
 
-// What is left over after a restore that worked. A restore onto new hardware
-// finishes with the suite reachable and some of its owner's world still
-// pointing at the machine they came from, and a screen that answers "done" to
-// that is the failure this reports around: the phone apps keep saying error
-// while the browser says everything is fine.
+// What a restore that worked has left its owner to finish: a suite whose phones
+// and laptops still ask for another server is not done, however fine the browser looks.
 type RestoreAftermath = {
-  // The name the backup carried, set aside and offered back under Settings.
   domain: string | null;
   routesDetail: string | null;
   routesLive: boolean;
@@ -663,12 +607,8 @@ export function restoreAftermath(job: BackupJob | null | undefined): RestoreAfte
   return { domain, routesDetail: job.controlPlane?.detail || null, routesLive };
 }
 
-// The kit is text the browser saves, not a file the server serves: it holds the
-// recovery key, and a URL that returns one is a URL that can be requested again.
-
-// What a rotation reached, and what it could not. A copy that was not attached
-// is not a failure: it carries the previous key until it is next plugged in,
-// and MOS finishes the change itself at that moment.
+// What a rotation reached. A copy that was not attached carries the previous key
+// until it is next plugged in, when MOS finishes the change itself.
 export type RotationResult = {
   destinations: Array<{ id: string; label: string; state: 'foreign' | 'pending' | 'rotated' }>;
   ok?: boolean;

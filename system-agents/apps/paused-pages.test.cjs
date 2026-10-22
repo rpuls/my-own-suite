@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { PausedPages, appHosts, pausedByDrives } = require('./paused-pages.cjs');
+const { PausedPages, pausedByDrives } = require('./paused-pages.cjs');
 
 const ROUTES = `# mos-app-route:start jellyfin
 https://jellyfin.home.example {
@@ -21,13 +21,6 @@ https://radicale.home.example {
 # mos-app-route:end radicale
 `;
 
-test('every address an app answers on is read from its own routes block', () => {
-  assert.deepEqual([...appHosts(ROUTES)], [
-    ['jellyfin', ['jellyfin.home.example', 'jellyfin.192-168-30-12.local.myownsuite.org']],
-    ['radicale', ['radicale.home.example']],
-  ]);
-});
-
 test('only apps whose drive is out are paused, and only while it is', () => {
   const drives = [
     { apps: ['jellyfin'], name: 'Movies drive', state: 'ejected' },
@@ -36,6 +29,8 @@ test('only apps whose drive is out are paused, and only while it is', () => {
   assert.deepEqual([...pausedByDrives(drives)], [['jellyfin', { driveName: 'Movies drive', state: 'ejected' }]]);
 });
 
+// Every address an app answers on, read from its own routes block, gets the page;
+// an app on another drive gets none.
 test("a paused app's addresses get its page, and the page goes when the drive is back", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-paused-'));
   const routesPath = path.join(root, 'routes.caddy');

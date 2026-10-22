@@ -267,7 +267,7 @@ class BackupAgentCore {
   // for a backup, and refusing it because leftover data could not be collected
   // would turn a housekeeping problem into a lost backup.
   async collectUncollectedData(destination, jobFile) {
-    const destinationId = destination?.containerId;
+    const destinationId = destination?.placeId;
     if (!destinationId || !this.readUncollectedData().includes(String(destinationId))) return false;
     this.jobs.stage(jobFile, 'Reclaiming space from an interrupted backup');
     try {
@@ -532,7 +532,7 @@ class BackupAgentCore {
     // Nothing to forget does not mean nothing was written: a backup that failed
     // before its first snapshot was recorded still left packs behind, and only a
     // maintenance pass can tell that they are referenced by nothing.
-    if (!snapshotIds.length) this.noteUncollectedData(destination?.containerId);
+    if (!snapshotIds.length) this.noteUncollectedData(destination?.placeId);
     if (snapshotIds.length) {
       try {
         await this.engine.forgetSnapshots({ repository, snapshotIds });
@@ -868,12 +868,11 @@ class BackupAgentCore {
       // own key for the disk and a borrowed one for the archive.
       if (address.foreign) {
         const assumed = await this.identity.assumeArchiveKey(repository.destinationId);
-        // Three outcomes, and each is said in full. `true` is the adoption; a
-        // refusal names what stopped it and what still works, because the
-        // restore itself succeeded and the owner must not read a key problem as
-        // lost data; `null` is a machine that had no key to adopt.
-        if (assumed === true) {
+        // Said in full either way: a refusal names what stopped it and what still
+        // works, so the owner never reads a key problem as lost data.
+        if (assumed === true || assumed?.ok === true) {
           jobs.log(jobFile, 'This server now uses the recovery key of the server it restored from. One key opens this disk and these backups from here on, and the key this server made when it was installed no longer opens anything.');
+          if (assumed?.unclaimed) jobs.log(jobFile, `The place these backups are kept is not yet one of this server's backup places: ${assumed.unclaimed} Pick it under Backups when you are ready.`);
         } else if (assumed && assumed.ok === false) {
           jobs.log(jobFile, `${KEY_ADOPTION_REFUSALS[assumed.reason] || KEY_ADOPTION_REFUSALS.default} Your restore is complete and nothing is lost: these backups still open with the key you entered, and this server still opens its own disk with the key it was installed with.`);
         }

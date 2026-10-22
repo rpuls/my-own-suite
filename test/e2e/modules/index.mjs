@@ -1,8 +1,8 @@
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
-import { backup, cleanup, driveFound, restore, takeover } from './backups.mjs';
+import { backup, cleanup, driveFound, eraseOtherArchive, forgetDrive, renameStorage, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
-import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall } from './drive.mjs';
+import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall, useAgain } from './drive.mjs';
 import { files, filesLeftovers, filesLive, filesReadOnly } from './files.mjs';
 import { homepage, homepageCheck } from './homepage.mjs';
 import { dns01 } from './https.mjs';
@@ -31,6 +31,8 @@ export const MODULES = {
   'drive-found': driveFound,
   'drive-files-live': filesLive,
   'drive-files-read-only': filesReadOnly,
+  'erase-other-archive': eraseOtherArchive,
+  'forget-drive': forgetDrive,
   homepage,
   'homepage-check': homepageCheck,
   install,
@@ -42,6 +44,7 @@ export const MODULES = {
   'platform-update': platformUpdate,
   'power-cut': powerCut,
   reboot,
+  'rename-storage': renameStorage,
   reset,
   restore,
   routes,
@@ -49,5 +52,6 @@ export const MODULES = {
   tiles,
   uninstall,
   update,
+  'use-again': useAgain,
   verify,
 };

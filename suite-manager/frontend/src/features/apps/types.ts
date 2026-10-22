@@ -65,9 +65,8 @@ export type UnmetRequirement = { id: string; reason: string };
 // installed without one.
 export type AppStorage = { description: string | null; folders: Array<{ name: string; service: string }>; label: string | null; required: boolean };
 
-// A drive as the app agent sees it, by filesystem identity. `usable` is false for one
-// that cannot take a new app's folders now, with `reason` saying why.
-export type DriveStep = ProgressStep & { id: 'check' | 'eject' | 'use' };
+// One job on one drive, read back with the storage list; `format` is an install stick's.
+export type DriveStep = ProgressStep & { id: 'check' | 'eject' | 'format' | 'use' };
 
 export type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the

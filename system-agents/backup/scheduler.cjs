@@ -142,7 +142,7 @@ class BackupScheduler {
     // run stays owed and starts the moment it is back, up until the next
     // occurrence replaces it.
     if (!destination) return this.recordWaiting(schedule, occurrence, isObjectDestinationId(chosen.destinationId) ? STORAGE_UNREACHABLE : DRIVE_ABSENT);
-    if (destination.refusal) return this.recordWaiting(schedule, occurrence, destination.refusal);
+    if (destination.reason) return this.recordWaiting(schedule, occurrence, destination.reason);
     let job = null;
     try {
       job = this.createJob('backup', { destinationId: destination.id, initiator: 'schedule' });

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-// Started by udev, through mos-storage-attach@<uuid>.service, for every drive
-// that appears with a filesystem app folders can live on.
+// Started by udev, through mos-storage-attach@<uuid>.service, for every drive that
+// appears with a filesystem MOS can mount. Each is mounted on sight; only a
+// remembered drive has containers to restart onto the fresh mount.
 const { SystemAppAdapter } = require('./system-adapter.cjs');
 
 const driveId = process.argv[2];
