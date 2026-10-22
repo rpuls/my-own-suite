@@ -1,8 +1,14 @@
 # MOS Easy Door authoritative nameserver.
 #
-# Answers A queries for names of the form <labels>.<a>-<b>-<c>-<d>.local.myownsuite.org
-# with the encoded address, but only when that address is in RFC1918 space. Everything
-# else under the zone is NXDOMAIN, and everything outside the zone is REFUSED.
+# Answers A queries for names of the form <labels>.<address>-<id>.local.myownsuite.org
+# with the encoded address, but only when that address is in RFC1918 space. The
+# address is `c-d` for 192.168.c.d and all four numbers for 10/8 and 172.16/12; the
+# id is six letters from a-z without i, l and o, and is ignored here. Everything else
+# under the zone is NXDOMAIN, and everything outside the zone is REFUSED.
+#
+# Until 1.0 the pre-0.23 names, <a>-<b>-<c>-<d> with no id, are answered too, so a
+# server still on one keeps its door and its renewals (roadmap H12). Each block
+# lists them last, after the line that says so.
 #
 # Stateless: there is no database, no API, and nothing ever writes here.
 
@@ -18,21 +24,28 @@ local.myownsuite.org.:53 {
     prometheus 127.0.0.1:9153
 
     # The DNS-01 challenge name for a box's wildcard certificate points into the
-    # ACME responder's zone. Every query type, and first: the A template below
+    # ACME responder's zone. Every query type, and first: the A templates below
     # would otherwise answer here, and a name carrying a CNAME may hold nothing else.
     template IN ANY local.myownsuite.org {
-        match "^_acme-challenge\.(?P<ip>10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
-        match "^_acme-challenge\.(?P<ip>172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
-        match "^_acme-challenge\.(?P<ip>192-168-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
-        answer "{{ .Name }} 60 IN CNAME {{ .Group.ip }}.acme.myownsuite.org."
+        match "^_acme-challenge\.(?P<label>10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6})\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<label>172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6})\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<label>(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6})\.local\.myownsuite\.org\.$"
+        # Pre-0.23 names, until 1.0.
+        match "^_acme-challenge\.(?P<label>10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<label>172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        match "^_acme-challenge\.(?P<label>192-168-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))\.local\.myownsuite\.org\.$"
+        answer "{{ .Name }} 60 IN CNAME {{ .Group.label }}.acme.myownsuite.org."
         fallthrough
     }
 
-    # The three RFC1918 ranges, each capturing its four octets as a/b/c/d.
-    # A public address matches none of them and falls through to NXDOMAIN below.
-    # That restriction is the anti-phishing control: without it the zone is an
-    # open redirector that lends the myownsuite.org name to an attacker's host.
+    # The forms that carry all four numbers, captured as a/b/c/d. A public address
+    # matches none of them and falls through to NXDOMAIN below. That restriction is
+    # the anti-phishing control: without it the zone is an open redirector that
+    # lends the myownsuite.org name to an attacker's host.
     template IN A local.myownsuite.org {
+        match "^(?:[^.]+\.)*(?P<a>10)-(?P<b>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*(?P<a>172)-(?P<b>1[6-9]|2[0-9]|3[01])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        # Pre-0.23 names, until 1.0.
         match "^(?:[^.]+\.)*(?P<a>10)-(?P<b>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
         match "^(?:[^.]+\.)*(?P<a>172)-(?P<b>1[6-9]|2[0-9]|3[01])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
         match "^(?:[^.]+\.)*(?P<a>192)-(?P<b>168)-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
@@ -40,9 +53,20 @@ local.myownsuite.org.:53 {
         fallthrough
     }
 
+    # 192.168.c.d, written with its last two numbers only.
+    template IN A local.myownsuite.org {
+        match "^(?:[^.]+\.)*(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        answer "{{ .Name }} 60 IN A 192.168.{{ .Group.c }}.{{ .Group.d }}"
+        fallthrough
+    }
+
     # Same names, every other type: NODATA, not NXDOMAIN. A stub resolver that asks
     # for AAAA alongside A must not be told the name does not exist.
     template IN ANY local.myownsuite.org {
+        match "^(?:[^.]+\.)*10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-[a-hjkmnp-z]{6}\.local\.myownsuite\.org\.$"
+        # Pre-0.23 names, until 1.0.
         match "^(?:[^.]+\.)*10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
         match "^(?:[^.]+\.)*172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
         match "^(?:[^.]+\.)*192-168-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"

@@ -20,10 +20,14 @@ const { ZoneStore, createServer, sourceOf } = require('../../infrastructure/acme
 const token = (seed) => String(seed).padEnd(43, 'x').slice(0, 43);
 
 test('the responder holds tokens only for the private addresses the Easy Door names', () => {
-  for (const subdomain of ['192-168-68-123', '10-0-0-5', '172-16-0-1', '172-31-255-254']) {
+  for (const subdomain of ['68-123-kqmzrt', '10-0-0-5-kqmzrt', '172-16-0-1-abcdef', '172-31-255-254-zyxwvu']) {
     assert.deepEqual(parseUpdate({ subdomain, txt: token('a') }), { subdomain, txt: token('a') });
   }
-  for (const subdomain of ['203-0-113-9', '172-32-0-1', '192-168-1-256', 'home.192-168-1-5', '192-168-1-5.example.com', '', 'x']) {
+  // Pre-0.23 names, until 1.0.
+  for (const subdomain of ['192-168-68-123', '10-0-0-5', '172-16-0-1']) {
+    assert.deepEqual(parseUpdate({ subdomain, txt: token('a') }), { subdomain, txt: token('a') });
+  }
+  for (const subdomain of ['203-0-113-9', '203-0-113-9-kqmzrt', '172-32-0-1-kqmzrt', '192-168-1-5-kqmzrt', '1-5-kqmzrl', '1-5-kqmzr', '1-5', '192-168-1-256', 'home.1-5-kqmzrt', '1-5-kqmzrt.example.com', '', 'x']) {
     assert.throws(() => parseUpdate({ subdomain, txt: token('a') }), { code: 'INVALID_SUBDOMAIN', statusCode: 400 });
   }
 });

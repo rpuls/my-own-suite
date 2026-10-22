@@ -250,6 +250,9 @@ stage 'Removing machine identity'
 rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
+# The bake VM sits on a private address, so anything that named its Easy Door
+# made an id; left in, every machine flashed from this image would share one name.
+rm -rf /var/lib/mos-easy-door
 
 stage 'Checking no vault was created during the bake'
 # A vault created in here would be written to every machine that downloads this

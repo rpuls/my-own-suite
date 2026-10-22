@@ -78,8 +78,12 @@ export function HomeServerAddress({ status, suite }: { status: AddressStatus; su
 
   const notices = [
     !outcome && !applying && address.kind === 'domain' && address.resolvesHere === false ? <Notice key="dns" title={`${address.host} does not point at this server`} variant="warning"><LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} /></Notice> : null,
-    status.drifted && !applying ? <Notice key="drifted" title="This server's address changed" variant="warning">
+    status.drifted && !applying && status.drifted.addressMoved ? <Notice key="drifted" title="This server's address changed" variant="warning">
       <p>Your suite was set up on <strong>{status.drifted.from}</strong>, but this server now answers on <strong>{status.drifted.to}</strong>. Your apps still name the old address until the suite follows. A fixed address for this server on your router prevents this.</p>
+      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void startChange({ kind: 'easy-door' })} type="button">{busy === 'change' ? 'Moving...' : `Move to ${status.drifted.to}`}</button>
+    </Notice> : null,
+    status.drifted && !applying && !status.drifted.addressMoved ? <Notice key="renamed" title="This server's Easy Door name changed" variant="info">
+      <p>Your suite is published on <strong>{status.drifted.from}</strong>, and this server&apos;s own name is now <strong>{status.drifted.to}</strong>. Everything keeps working on the old name until you move; after that, phone apps and bookmarks set up with the old name need the new one.</p>
       <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void startChange({ kind: 'easy-door' })} type="button">{busy === 'change' ? 'Moving...' : `Move to ${status.drifted.to}`}</button>
     </Notice> : null,
     status.offered && !applying ? <Notice key="offered" title={`This backup was set up for ${status.offered.baseDomain}`} variant="info">

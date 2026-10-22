@@ -16,6 +16,7 @@ const { createServices } = require('../src/server/services.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
+const EASY_DOOR_ID = 'kqmzrt';
 
 async function tempStateDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'mos-http-'));
@@ -61,6 +62,7 @@ async function withServer(fn, options = {}) {
   const services = createServices({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
+    readEasyDoorId: () => EASY_DOOR_ID,
     stateDir: await tempStateDir(),
     // The recorded address lives beside the state a restore replaces, so each
     // server under test gets its own directory for it.
@@ -1842,7 +1844,7 @@ test('onboarding records the Easy Door, and an offered domain is adopted with it
   // The Easy Door is derived from this machine's live LAN address, the same
   // way the host gate derives it; a machine with no private address has no
   // door and nothing to test.
-  const liveEasyDoor = easyDoorHomeHost(detectServerAddress());
+  const liveEasyDoor = easyDoorHomeHost(detectServerAddress(), EASY_DOOR_ID);
   if (!liveEasyDoor) { t.skip('no private LAN address on this machine'); return; }
   const { agent: httpsAgent, calls } = fakeHttpsAgent();
   const homepageAgent = {
@@ -2061,7 +2063,7 @@ test('a password change says nothing about the chip on a machine that opens itse
 // The console banner keeps printing the HTTP address; the redirect is what puts
 // the owner on HTTPS, so onboarding records the door they really came through.
 test('once the Easy Door certificate is held, its pages redirect to HTTPS and its API answers where it is', async () => {
-  const host = 'home.192-168-30-104.local.myownsuite.org';
+  const host = 'home.30-104-kqmzrt.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
   await withServer(async (baseUrl, services) => {
     services.addressService.watchEasyDoor();
@@ -2082,7 +2084,7 @@ test('once the Easy Door certificate is held, its pages redirect to HTTPS and it
 });
 
 test('an Easy Door without a certificate yet is served over HTTP as before', async () => {
-  const host = 'home.192-168-30-104.local.myownsuite.org';
+  const host = 'home.30-104-kqmzrt.local.myownsuite.org';
   const { agent } = fakeHttpsAgent();
   await withServer(async (baseUrl, services) => {
     services.addressService.watchEasyDoor();

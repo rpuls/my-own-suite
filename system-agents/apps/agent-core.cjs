@@ -1,6 +1,6 @@
 const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorBaseDomain, easyDoorId } = require('../../shared/easy-door.cjs');
 const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
 
 // The Easy Door base app routes are aliased on, or null. Apps are
@@ -8,9 +8,9 @@ const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
 // recorded address is one; until then it follows the machine's live address,
 // which is what the door itself does. Decided from the recorded address rather
 // than from the live Caddyfile because every LAN Caddyfile carries the door now.
-function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), serverAddress = detectServerAddress() } = {}) {
+function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), id = easyDoorId, serverAddress = detectServerAddress() } = {}) {
   if (address?.kind === 'domain') return null;
-  return easyDoorBaseDomain(serverAddress);
+  return easyDoorBaseDomain(serverAddress, id);
 }
 
 class AppRuntimeError extends Error {

@@ -10,7 +10,7 @@ import { runOnLab } from '../support/lab-shell.mjs';
 import { appRunning, installedPackages, waitForRunning } from '../support/packages.mjs';
 import { followAddress } from './owner.mjs';
 
-const { easyDoorAddressOf, easyDoorHomeHost } = createRequire(import.meta.url)('../../../shared/easy-door.cjs');
+const { easyDoorHomeHost, parseEasyDoorHost } = createRequire(import.meta.url)('../../../shared/easy-door.cjs');
 
 // A disk image on a loop device, which MOS treats like any drive plugged in. Kept
 // between runs, so a later run finds the files an earlier one left on it.
@@ -182,11 +182,12 @@ async function suiteAnswers(ctx, minutes) {
 // Door name follows the address: the run follows too, asking Hyper-V where it went.
 async function labMoved(ctx) {
   const { env } = ctx;
-  const was = env.labVm ? easyDoorAddressOf(new URL(ctx.homeUrl).hostname) : null;
+  const door = env.labVm ? parseEasyDoorHost(new URL(ctx.homeUrl).hostname) : null;
+  const was = door?.address;
   const now = was ? await vmAddress(env.labVm) : null;
   if (!now || now === was) return false;
   console.log(`[restart] the lab moved from ${was} to ${now}; the run follows it`);
-  const follow = (url) => url.replace(easyDoorHomeHost(was), easyDoorHomeHost(now));
+  const follow = (url) => url.replace(easyDoorHomeHost(was, door.id), easyDoorHomeHost(now, door.id));
   ctx.homeUrl = follow(ctx.homeUrl);
   env.baseURL = follow(env.baseURL);
   if (env.labShell) env.labShell.target = env.labShell.target.replace(/@.*$/u, `@${now}`);

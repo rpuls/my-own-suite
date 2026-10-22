@@ -3,7 +3,15 @@ const test = require('node:test');
 
 const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
+const { AppAgentCore: MachineAppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
+
+// Without an Easy Door unless a test gives it one: the default reads this
+// machine's own address and id, which a test must not depend on or create.
+class AppAgentCore extends MachineAppAgentCore {
+  constructor(adapter, options = {}) {
+    super(adapter, { easyDoorBase: () => null, ...options });
+  }
+}
 
 const request = {
   appHost: 'example-tool.mos.home',
@@ -571,13 +579,13 @@ const twoRoutes = {
 };
 
 test('every app route gets a second site on the Easy Door name', async () => {
-  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('123-45-kqmzrt.local.myownsuite.org');
 
   await core.apply(twoRoutes);
 
   assert.match(calls[0].caddyRoutes, /^http:\/\/example-tool\.mos\.home \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
   assert.equal((calls[0].caddyRoutes.match(/reverse_proxy http:\/\/127\.0\.0\.1:18123/gu) || []).length, 2);
 });
 
@@ -596,13 +604,14 @@ test('no Easy Door means no alias, so a public or DNS-01 install serves one site
 // door on every other kind — the live Caddyfile carries the door either way.
 test('the Easy Door alias follows the recorded address, not the live Caddyfile', async () => {
   const serverAddress = '192.168.123.45';
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }), null);
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.192-168-123-45.local.myownsuite.org', kind: 'easy-door', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  const id = 'kqmzrt';
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, id, serverAddress }), null);
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.123-45-kqmzrt.local.myownsuite.org', kind: 'easy-door', scheme: 'http' }, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
   // No recorded address yet is a fresh machine, which is exactly where the door matters.
-  assert.equal(aliasedEasyDoorBase({ address: null, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  assert.equal(aliasedEasyDoorBase({ address: null, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
   // A public address never gets the door, whatever is recorded.
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress: '203.0.113.9' }), null);
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, id, serverAddress: '203.0.113.9' }), null);
 
   const calls = [];
   const core = new AppAgentCore({
@@ -610,7 +619,7 @@ test('the Easy Door alias follows the recorded address, not the live Caddyfile',
       calls.push(input);
       return { steps: ['built'] };
     },
-  }, { easyDoorBase: () => aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }) });
+  }, { easyDoorBase: () => aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, id, serverAddress }) });
 
   await core.apply({
     ...request,
@@ -624,12 +633,12 @@ test('the Easy Door alias follows the recorded address, not the live Caddyfile',
 test('installing while already on the Easy Door does not emit the same site twice', async () => {
   // Caddy refuses a duplicate site address, so an owner who installs an app from
   // the Easy Door must not get the alias they are already standing on.
-  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('123-45-kqmzrt.local.myownsuite.org');
 
   await core.apply({
     ...request,
-    appHost: 'example-tool.192-168-123-45.local.myownsuite.org',
-    publicUrl: 'http://example-tool.192-168-123-45.local.myownsuite.org/',
+    appHost: 'example-tool.123-45-kqmzrt.local.myownsuite.org',
+    publicUrl: 'http://example-tool.123-45-kqmzrt.local.myownsuite.org/',
   });
 
   assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 1);
@@ -656,9 +665,9 @@ test('the Easy Door alias follows an app through an update activation and its ro
 test('renderAppRoutes keeps the primary site first so the Stealth door stays the canonical address', () => {
   const rendered = renderAppRoutes({
     appHost: 'example-tool.mos.home',
-    easyDoorBase: '192-168-123-45.local.myownsuite.org',
+    easyDoorBase: '123-45-kqmzrt.local.myownsuite.org',
     routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }],
   });
 
-  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
 });

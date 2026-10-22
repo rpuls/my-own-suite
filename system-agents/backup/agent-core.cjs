@@ -801,8 +801,9 @@ class BackupAgentCore {
         // A target with a parked path is carried but never installed, so the
         // restore cannot change what the machine is serving by writing a file.
         const destination = target.parkedPath || target.path;
-        await system.removeTree(destination);
         const staged = path.join(stagedState, target.stagePath);
+        if (!fs.existsSync(staged) && target.keptWhenAbsent) continue;
+        await system.removeTree(destination);
         if (fs.existsSync(staged)) await system.copyTree(staged, destination, { excludeNames: [] });
         else jobs.log(jobFile, `The backup does not contain ${target.id}; it is left absent.`);
       }

@@ -87,7 +87,7 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   load-bearing for the whole own-hardware path, because without the listing one install's suite can
   set cookies another install's suite reads, and every Easy Door certificate draws on Let's Encrypt's
   fifty-certificates-per-registered-domain budget for all of `myownsuite.org`; the listing makes that
-  budget per LAN address. The entry is a pull request against `publicsuffix/list`
+  budget per install. The entry is a pull request against `publicsuffix/list`
   that then waits on browser release cycles, so the lead time is months and it has to start early —
   and the PSL guidelines decline beta-stage projects, so the submission needs the project to look
   like something first. The remaining non-PSL work is disclosure: MOS receives the queries, and the
@@ -201,6 +201,12 @@ on its own: machines that install but will not boot, and reaching the suite once
   gate can install onto a blank disk, boot it without the stick and require Suite Manager to answer,
   then install again over that machine, the reinstall case `AGENTS.md` rule 8 guards. Real hardware
   stays the release's last check, for firmware quirks no VM reproduces. *(Medium)*
+- **H12 — Stop answering Easy Door names without an install id, at 1.0.** Since 0.23.0 every server's
+  name carries its own id (`docs/decisions.md`, 2026-10-23), and the nameserver and ACME responder
+  still answer the shared names 0.22 servers were given, so a server that has not updated keeps its door
+  and its renewals. At 1.0 the Corefile's pre-0.23 templates and the responder's `PRE_ID_LABEL` go,
+  `TOKENS_PER_NAME` drops to two, and Let's Encrypt is told the shared names are gone. A suite still
+  published on an old name loses it then, so the 1.0 notes say to press Move first. *(Small)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.

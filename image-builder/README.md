@@ -218,14 +218,17 @@ neither — they are aliases for the same Suite Manager.
 - `http://home.mos.home` needs one wildcard `*.mos.home` rule in the owner's own
   Pi-hole, AdGuard, Unbound or OpenWRT, or a hosts-file line on the computer they
   browse from. Nothing leaves the house, and it does not depend on MOS.
-- `http://home.<lan-ip-with-dashes>.local.myownsuite.org` needs nothing at all.
-  The MOS-operated nameserver in `infrastructure/nameserver/` answers it with the
-  encoded address, so a phone on the same wifi opens the suite with no
-  configuration by anyone. `192.168.123.45` becomes `192-168-123-45`, and every
-  installed app gets the same treatment: `seafile.192-168-123-45.local.myownsuite.org`.
+- `http://home.<lan-ip-with-dashes>-<id>.local.myownsuite.org` needs nothing at
+  all. The MOS-operated nameserver in `infrastructure/nameserver/` answers it with
+  the encoded address, so a phone on the same wifi opens the suite with no
+  configuration by anyone. `192.168.123.45` becomes `123-45` followed by the six
+  letters this install picked for itself, and every installed app gets the same
+  treatment: `seafile.123-45-kqmzrt.local.myownsuite.org`. The letters live in
+  `/var/lib/mos-easy-door/id`, made on first boot; `mos-image-finalize` removes
+  any the bake made, so no two machines flashed from one image share a name.
 
 The Caddyfile baked into this image matches the second name by pattern rather than
-naming a host, because a disk image cannot know the address the machine it boots
+naming a host, because a disk image cannot know the address or the id the machine it boots
 on will be given.
 
 Both doors close in favour of a real domain: applying one with DNS-01 in Suite

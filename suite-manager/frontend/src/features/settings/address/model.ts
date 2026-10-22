@@ -50,7 +50,7 @@ export type AddressStatus = {
   bootstrapUrl: string;
   // The recorded Easy Door name no longer matches the live one: the machine's
   // address moved under it.
-  drifted: { from: string; to: string } | null;
+  drifted: { addressMoved: boolean; from: string; to: string } | null;
   // The trusted certificate for the Easy Door. `log` is Caddy's own lines about
   // it while it has not arrived, for the technical panel only.
   easyDoorCertificate: { host: string | null; log: string[]; notAfter: string | null; state: 'held' | 'not-applicable' | 'pending' };

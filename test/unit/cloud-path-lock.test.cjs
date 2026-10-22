@@ -133,6 +133,9 @@ const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-cont
 // Moved again the same day, all four: every site's error handler first serves the
 // page the app agent writes for an app it paused, so an app whose drive was ejected
 // says so at its own address. Caddyfile only; no `echo` line changed.
+//
+// Moved 2026-10-23, the default SSH bootstrap only: the Easy Door matcher names the
+// label with its install id. One Caddyfile line; the fifteen `echo` lines are unchanged.
 
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -160,9 +163,9 @@ const lockedRenderings = [
   {
     // The only locked rendering that writes `renderCaddyfile()` rather than
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
-    // here and nowhere else in this list. Moved once, for the Easy Door site
-    // block; nothing the installer prints changed.
-    digest: '9ad6ac9ae2ea52ab6597502a81e1f63a774922ea4c35dacda28bb7044fd8db0c',
+    // here and nowhere else in this list. Moved for the Easy Door site block
+    // and for its install id; nothing the installer prints changed either time.
+    digest: '9ad744a13ad6f6202460642651d79345fb97ed52fc3881f6cd3bc1805cf4f92b',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

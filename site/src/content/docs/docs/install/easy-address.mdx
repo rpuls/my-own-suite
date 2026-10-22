@@ -6,10 +6,10 @@ description: My Own Suite gives every server a working web address without you b
 Your suite has an address that looks a bit odd:
 
 ```
-https://home.192-168-20-175.local.myownsuite.org/
+https://home.20-175-kqmzrt.local.myownsuite.org/
 ```
 
-Those numbers are your server's own address on your network, with dashes instead of dots. This page explains why, what it means for your privacy, and what to do if it stops working.
+The numbers are your server's own address on your network, `192.168.20.175`, with dashes instead of dots; on a `192.168` network, the most common kind, the first two numbers are left off. The six letters are your server's own: it picked them when it was installed, so no other household's server ever has the same address, even one on the same numbers. Your server's screen and Suite Manager always show the whole address. This page explains why, what it means for your privacy, and what to do if it stops working.
 
 You do not need to read this to use your suite. It is here for the moment you look at that address and think *hang on, what is that?*
 
@@ -41,7 +41,7 @@ What the lock gives you:
 - **Apps that need a secure connection work.** Browsers hold back parts of their security features from `http://` addresses, and password managers will not run without them.
 - **No warnings.** The certificate comes from Let's Encrypt, the same free certificate authority most of the web uses.
 
-What it does not prove is that the server is *yours*. Every household whose server got the same address on its own network, `192.168.1.100` say, gets a valid certificate for the same name. Someone on your own network who also runs My Own Suite could therefore present a valid certificate for your address. They would still need to redirect your traffic to their machine first, which they could already do against plain `http://`. So this is strictly better than no lock, but it is not the proof of identity that [your own domain](/docs/guides/https-domain/) gives.
+What it does not prove is that the server is *yours*. The letters in your address keep it apart from every other server's, but they are not a password: the address is in public certificate logs, and anyone who copies it can get a valid certificate for it too. To use one against you they would still need to redirect your traffic on your own network to their machine first, which they could already do against plain `http://`. So this is strictly better than no lock, but it is not the proof of identity that [your own domain](/docs/guides/https-domain/) gives.
 
 If the lock does not arrive, nothing else changes: your suite keeps working over `http://`, and **Settings → Suite address** says the certificate is on its way. Your server keeps asking for it, and the switch happens by itself when it comes.
 
@@ -49,7 +49,7 @@ If the lock does not arrive, nothing else changes: your suite keeps working over
 
 Two things, and it is worth being precise about both.
 
-When a device on your network opens `photos.192-168-20-175.local.myownsuite.org`, it first has to ask *what address is that?* That question — and only that question — goes out to a nameserver My Own Suite operates. The answer comes back: `192.168.20.175`. Your device then connects to your own server directly, and everything after that stays inside your house.
+When a device on your network opens `photos.20-175-kqmzrt.local.myownsuite.org`, it first has to ask *what address is that?* That question — and only that question — goes out to a nameserver My Own Suite operates. The answer comes back: `192.168.20.175`. Your device then connects to your own server directly, and everything after that stays inside your house.
 
 What that means in practice:
 
@@ -60,7 +60,7 @@ What that means in practice:
 
 What is technically visible to whoever runs that nameserver is *which app names get asked about* — that `photos.` and `documents.` were looked up by someone. That is a property of how naming works on the internet generally, not something specific to us, and it is why the other option below exists.
 
-The second is the certificate. A few times a year your server asks Let's Encrypt for a fresh one. To prove it may have it, your server leaves a short-lived code with a second small service My Own Suite runs, and Let's Encrypt checks that code. That service sees your home's public internet address and the code, keeps neither, and is told nothing else: no email address, no account, nothing about your apps. Let's Encrypt sees your home's public address for the same reason, and publishes every certificate it issues in public logs, so those logs show that *some* server used your private address. Nothing more.
+The second is the certificate. A few times a year your server asks Let's Encrypt for a fresh one. To prove it may have it, your server leaves a short-lived code with a second small service My Own Suite runs, and Let's Encrypt checks that code. That service sees your home's public internet address and the code, keeps neither, and is told nothing else: no email address, no account, nothing about your apps. Let's Encrypt sees your home's public address for the same reason, and publishes every certificate it issues in public logs, so those logs show your server's address, letters included, and when its certificate was renewed. They say that a My Own Suite server is behind it, not whose it is or where.
 
 ## If you would rather your devices asked no one
 
@@ -72,7 +72,7 @@ Both addresses work at the same time. You can start with the generated one and s
 
 ## If it stops working
 
-**The address contains your server's IP, so if that changes, the address changes.** Home routers hand out addresses on a lease and can hand out a different one after a power cut or a reboot. Give your server a fixed address in your router — usually called a **DHCP reservation** — and this cannot happen. It is worth doing on the day you install, not the day it breaks.
+**The address contains your server's IP, so if that changes, the address changes**, though the letters stay the same. Home routers hand out addresses on a lease and can hand out a different one after a power cut or a reboot. Give your server a fixed address in your router — usually called a **DHCP reservation** — and this cannot happen. It is worth doing on the day you install, not the day it breaks.
 
 If the address has already changed, your server's screen shows the current one. Plug in a monitor and read it there.
 
@@ -96,7 +96,7 @@ https://home.203-0-113-9.sslip.io/
 Same idea — your server's address, in the name, so it works immediately with no domain to buy. Three differences:
 
 - **The address is public**, because a rented server has a public address. Your suite is reachable from anywhere, which is what you are paying for.
-- **HTTPS is automatic here too**, and proves more. The address is publicly reachable and belongs to your server alone, so the certificate is yours, not one shared with anyone else on the same private address.
+- **HTTPS is automatic here too**, and proves more. The address is publicly reachable, so Let's Encrypt checks your server itself rather than a code it left with us.
 - **The naming service is [sslip.io](https://sslip.io/)**, a long-running public utility, not something we run.
 
 ## Using your own domain

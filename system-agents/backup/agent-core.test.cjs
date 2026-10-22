@@ -219,6 +219,7 @@ class FakeWorld {
     this.paths = {
       agentStateDir: path.join(root, 'agent-state'),
       caddyDir: path.join(root, 'etc-caddy').split(path.sep).join('/'),
+      easyDoorIdFile: path.join(root, 'easy-door', 'id'),
       secretsDir: path.join(root, 'etc-secrets').split(path.sep).join('/'),
       stateDir: path.join(root, 'state-root', 'suite-manager'),
       stateRoot: path.join(root, 'state-root'),
@@ -946,7 +947,7 @@ test('a restore offers the carried domain and never reaches the address this mac
   // the state tree the restore replaces, and the engine has no code for it.
   const addressDir = path.join(w.paths.stateRoot, 'suite-address');
   ensureDir(addressDir);
-  fs.writeFileSync(path.join(addressDir, 'address.json'), '{"host":"home.192-168-30-104.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
+  fs.writeFileSync(path.join(addressDir, 'address.json'), '{"host":"home.30-104-kqmzrt.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
 
   const offers = [];
   const standby = w.core({
@@ -959,7 +960,7 @@ test('a restore offers the carried domain and never reaches the address this mac
   assert.equal(restored.status, 'succeeded');
   assert.deepEqual(restored.address, { domain: 'mos.example.com' });
   assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-of-the-standby\n');
-  assert.equal(fs.readFileSync(path.join(addressDir, 'address.json'), 'utf8'), '{"host":"home.192-168-30-104.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
+  assert.equal(fs.readFileSync(path.join(addressDir, 'address.json'), 'utf8'), '{"host":"home.30-104-kqmzrt.local.myownsuite.org","kind":"easy-door","scheme":"http"}\n');
   // The live token is what Caddy read when it started, so the restore carries
   // the backup's alongside it rather than over it.
   assert.equal(fs.readFileSync(path.join(w.root, 'etc-secrets', 'caddy-cloudflare.env'), 'utf8'), 'CF_TOKEN=of-the-standby\n');
@@ -976,6 +977,32 @@ test('a restore offers the carried domain and never reaches the address this mac
   assert.deepEqual(home.address, { domain: null });
   assert.equal(offers.length, 1);
   assert.ok(!home.logs.some((entry) => /aside/u.test(entry.message)));
+});
+
+// The id is what lets a restored suite take its old Easy Door name back. A
+// backup from a server with no door has none, and must not cost this one its own.
+test('a restore brings back the Easy Door id it was backed up with, and a backup without one keeps this machine\'s', async () => {
+  const w = await world();
+  w.writeDb([]);
+  const idFile = w.paths.easyDoorIdFile;
+  ensureDir(path.dirname(idFile));
+  fs.writeFileSync(idFile, 'kqmzrt\n');
+  const withId = w.createJob('backup', { destinationId: w.driveId });
+  await w.core().backup(withId);
+  fs.rmSync(idFile);
+  const withoutId = w.createJob('backup', { destinationId: w.driveId });
+  await w.core().backup(withoutId);
+
+  fs.writeFileSync(idFile, 'wbtnhd\n');
+  const kept = w.createJob('restore', { backupPath: restorePointOf(withoutId) });
+  await w.core().restore(kept);
+  assert.equal(readJson(kept).status, 'succeeded');
+  assert.equal(fs.readFileSync(idFile, 'utf8'), 'wbtnhd\n');
+
+  const carried = w.createJob('restore', { backupPath: restorePointOf(withId) });
+  await w.core().restore(carried);
+  assert.equal(readJson(carried).status, 'succeeded');
+  assert.equal(fs.readFileSync(idFile, 'utf8'), 'kqmzrt\n');
 });
 
 // The route fragments are projections of the restored database and Homepage

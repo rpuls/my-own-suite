@@ -6,9 +6,10 @@ const {
   EASY_DOOR_CADDY_MARKER,
   EASY_DOOR_HOME_HOST_REGEXP,
   EASY_DOOR_ZONE,
-  easyDoorAddressOf,
   easyDoorBaseDomain,
+  easyDoorId,
 } = require('../shared/easy-door.cjs');
+const { baseHostOf } = require('../shared/suite-address.cjs');
 
 const HOMEPAGE_IMAGE = 'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c7734353701ccbaa24ed02dacb0d119114e50e4251e2005f3990a';
 const HOMEPAGE_PORT = 3200;
@@ -428,13 +429,12 @@ ${unavailableHandler()}
 }`;
 }
 
-// Trusted HTTPS on the Easy Door for one concrete LAN address: one wildcard,
-// proved through the ACME responder, so every app alias under it shares it and
-// none is ever ordered on its own. The named HTTP site is what keeps Caddy from
-// redirecting the home name to HTTPS before the certificate exists, or forever
-// when it never arrives. No ACME email of its own: the box has none at first boot.
-function easyDoorTlsSites(address, suiteManagerPort) {
-  const base = easyDoorBaseDomain(address);
+// Trusted HTTPS on one concrete Easy Door name: one wildcard, proved through the
+// ACME responder, so every app alias under it shares it and none is ever ordered
+// on its own. The named HTTP site is what keeps Caddy from redirecting the home
+// name to HTTPS before the certificate exists, or forever when it never arrives.
+// No ACME email of its own: the box has none at first boot.
+function easyDoorTlsSites(base, suiteManagerPort) {
   const homeHost = `home.${base}`;
   return `http://${homeHost} {
 ${statusRoutes()}
@@ -464,10 +464,10 @@ ${unavailableHandler()}
 }
 
 // Every Caddyfile MOS writes, as one function of the machine's facts. The
-// installer bakes it with no Easy Door address, because the image cannot know
-// the one it will get; the HTTPS agent re-renders it with the live address (and
-// the Easy Door address still recorded, until the owner moves), and with the
-// recorded domain when there is one.
+// installer bakes it with no Easy Door name, because the image cannot know the
+// one it will get; the HTTPS agent re-renders it with the live name (and the
+// Easy Door name still recorded, until the owner moves), and with the recorded
+// domain when there is one.
 //
 // The install-time name and the Easy Door stay open for Suite Manager beside a
 // domain: an owner who applied HTTPS from either door keeps a working page while
@@ -475,7 +475,7 @@ ${unavailableHandler()}
 function renderCaddyfile({
   bootstrapHost = '$MOS_HOME_HOST',
   domain = null,
-  easyDoorAddresses = [],
+  easyDoorBases = [],
   publicCloud = false,
   suiteManagerPort = '$MOS_SUITE_MANAGER_PORT',
 } = {}) {
@@ -484,9 +484,7 @@ function renderCaddyfile({
     sites.push(suiteManagerSite(`https://${bootstrapHost}`, suiteManagerPort));
   } else {
     sites.push(easyDoorSiteBlock(suiteManagerPort));
-    for (const address of new Set(easyDoorAddresses.filter((address) => easyDoorBaseDomain(address)))) {
-      sites.push(easyDoorTlsSites(address, suiteManagerPort));
-    }
+    for (const base of new Set(easyDoorBases.filter(Boolean))) sites.push(easyDoorTlsSites(base, suiteManagerPort));
   }
   if (domain) {
     const homeHost = `home.${domain.baseDomain}`;
@@ -505,22 +503,24 @@ import /etc/caddy/mos-app-routes.caddy
 }
 
 // An installed machine's Caddyfile from where its facts live: the install
-// contract, the recorded address and the live LAN address. Both writers render
-// through here, the update path on every managed update and the HTTPS agent
-// whenever they change, so neither can leave the file behind the other.
+// contract, the recorded address, the live LAN address and the install's Easy
+// Door id. Both writers render through here, the update path on every managed
+// update and the HTTPS agent whenever they change, so neither can leave the file
+// behind the other.
 //
-// The certificate follows the live address. The recorded Easy Door address
-// keeps its own until the owner moves the suite, because its app routes are
-// still served under it. `domain` is passed only by an apply that has not
-// recorded the domain yet.
-function renderMachineCaddyfile({ bootstrapHost, domain, frontDoor, liveAddress, recorded, suiteManagerPort }) {
+// The certificate follows the live name. The recorded Easy Door name keeps its
+// own until the owner moves the suite, because its app routes are still served
+// under it; that is also what carries a suite recorded on a name of an earlier
+// shape. `domain` is passed only by an apply that has not recorded the domain yet.
+function renderMachineCaddyfile({ bootstrapHost, domain, easyDoorId: id = easyDoorId, frontDoor, liveAddress, recorded, suiteManagerPort }) {
+  const publicCloud = hostingTrack(frontDoor) === 'public-server';
   const recordedDomain = recorded?.kind === 'domain' ? { acmeEmail: recorded.acmeEmail, baseDomain: recorded.baseDomain } : null;
-  const recordedEasyDoor = recorded?.kind === 'easy-door' ? easyDoorAddressOf(recorded.host) : null;
+  const recordedEasyDoor = recorded?.kind === 'easy-door' ? baseHostOf(recorded) : null;
   return renderCaddyfile({
     bootstrapHost,
     domain: domain === undefined ? recordedDomain : domain,
-    easyDoorAddresses: [liveAddress, recordedEasyDoor].filter(Boolean),
-    publicCloud: hostingTrack(frontDoor) === 'public-server',
+    easyDoorBases: publicCloud ? [] : [easyDoorBaseDomain(liveAddress, id), recordedEasyDoor],
+    publicCloud,
     suiteManagerPort,
   });
 }
