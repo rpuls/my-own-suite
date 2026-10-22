@@ -131,4 +131,4 @@ function isRememberedDrive(entry) {
   return Boolean(entry && (entry.apps?.length || entry.backups === true || entry.keepOpen === true));
 }
 
-module.exports = { MAX_NAME_LENGTH, RECORD_VERSION, StorageRegistry, isRememberedDrive, normalizeName, publicBucket };
+module.exports = { StorageRegistry, isRememberedDrive, publicBucket };

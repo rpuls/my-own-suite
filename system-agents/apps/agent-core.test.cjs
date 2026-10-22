@@ -47,6 +47,23 @@ test('app agent answers for the architecture of the host it builds on', async ()
   assert.ok(status.hostArchitecture === null || ['amd64', 'arm64'].includes(status.hostArchitecture));
 });
 
+// Suite Manager polls the inventory every few seconds while a storage page is
+// open; only a drive changing state is worth rewriting Caddy's paused pages for.
+test('reading the storage inventory writes paused pages only when a drive\'s state changed', async () => {
+  const synced = [];
+  let drives = [{ apps: ['jellyfin'], id: '1A2B-3C4D', state: 'ready' }, { apps: [], id: 'e1e1-0000', state: 'available' }];
+  const core = new AppAgentCore({ storage: { inventory: async () => ({ drives }) }, syncPausedPages: async (seen) => { synced.push(seen.map((drive) => drive.state)); } });
+
+  await core.storageInventory();
+  await core.storageInventory();
+  assert.deepEqual(synced, [['ready', 'available']], 'the first look syncs, the same answer does not');
+
+  drives = [{ ...drives[0], state: 'away' }, drives[1]];
+  assert.deepEqual((await core.storageInventory()).drives[0].state, 'away');
+  await core.storageInventory();
+  assert.deepEqual(synced, [['ready', 'available'], ['away', 'available']], 'a pulled drive is told within one read');
+});
+
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
   const calls = [];
   const core = new AppAgentCore({ async promoteAppPackageUpdate(input) { calls.push(input); return { snapshotPath: '/state/installed' }; } });

@@ -18,14 +18,14 @@ export function usageSegments(entry: StorageEntry, usage: StorageUsage | null): 
   const used = Math.max(0, entry.sizeBytes - entry.availableBytes);
   const byApp = new Map<string, number>();
   for (const folder of usage?.folders.filter((item) => item.driveId === entry.id) || []) byApp.set(folder.appName, (byApp.get(folder.appName) || 0) + folder.bytes);
-  const apps = [...byApp].map(([label, bytes], index): UsageSegment => ({ bytes, label, tone: APP_TONES[index % APP_TONES.length] as Tone }));
+  const apps = [...byApp].map(([label, bytes], index): UsageSegment => ({ bytes, label, tone: APP_TONES[index % APP_TONES.length] ?? 'accent' }));
   const backups = usage?.backups.find((item) => item.driveId === entry.id)?.bytes || 0;
   const known = apps.reduce((sum, segment) => sum + segment.bytes, 0) + backups;
-  return [
-    ...apps,
-    ...(backups ? [{ bytes: backups, label: 'Backups', tone: 'warning' as Tone }] : []),
-    { bytes: Math.max(0, used - known), label: entry.kind === 'system' ? 'MOS and your apps' : 'Other files', tone: (entry.kind === 'system' ? 'info' : 'muted') as Tone },
-  ].filter((segment) => segment.bytes > 0);
+  const rest: UsageSegment = entry.kind === 'system'
+    ? { bytes: Math.max(0, used - known), label: 'MOS and your apps', tone: 'info' }
+    : { bytes: Math.max(0, used - known), label: 'Other files', tone: 'muted' };
+  const segments: UsageSegment[] = [...apps, ...(backups ? [{ bytes: backups, label: 'Backups', tone: 'warning' as const }] : []), rest];
+  return segments.filter((segment) => segment.bytes > 0);
 }
 
 function share(bytes: number, total: number) {
@@ -36,7 +36,7 @@ export function UsageBar({ entry, segments, variant }: { entry: StorageEntry; se
   const total = entry.sizeBytes;
   if (total === null || entry.availableBytes === null) return null;
   const used = total - entry.availableBytes;
-  const drawn = segments.length ? segments : [{ bytes: used, label: 'Used', tone: 'accent' as Tone }];
+  const drawn: UsageSegment[] = segments.length ? segments : [{ bytes: used, label: 'Used', tone: 'accent' }];
   const track = <div aria-label={`${formatBytes(used)} of ${formatBytes(total)} used`} className="mos-usage-track" role="img">
     {drawn.map((segment) => <span className={`mos-usage-segment is-${segment.tone}`} key={segment.label} style={{ width: share(segment.bytes, total) }} />)}
   </div>;

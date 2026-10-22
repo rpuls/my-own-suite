@@ -1,22 +1,19 @@
 import { useState } from 'react';
 
-import { Dialog, Icon, Notice, Spinner, TextInput } from '../../components/ui';
+import { ChoiceRow, Dialog, Notice, Panel, PanelItem, PanelList, Spinner, TextInput } from '../../components/ui';
 import { postJson } from '../../lib/api';
 import { EMPTY_BUCKET_DRAFT, type BucketDraft, type ConnectionTest } from './model';
 
 type Step = 'choose' | 'drive' | 'online';
 
-// Reachable and empty, and reachable but holding another server's backups, are
-// both connections that worked. Only the second needs a recovery key later, and
-// that is a thing to do on the backup destination, not a reason to refuse it here.
+// Reachable and holding another server's backups is a connection that worked;
+// the recovery key is asked for later, on the backup destination.
 function connected(result: ConnectionTest) {
   return Boolean(result && (result.ok || result.locked));
 }
 
-// Adding storage, from Settings → Storage or from any picker that offers it. A
-// drive needs no form: MOS finds it when it is plugged in. Connecting a bucket
-// stores how to reach it and nothing else; backups go there only once it is
-// picked as a backup destination.
+// Adding storage, from Settings → Storage or from any picker. A drive needs no
+// form; connecting storage online stores how to reach it and nothing else.
 export function AddStorageDialog({ editing = null, initialStep = 'choose', onClose, onConnected }: {
   editing?: BucketDraft | null;
   initialStep?: Step;
@@ -47,8 +44,7 @@ export function AddStorageDialog({ editing = null, initialStep = 'choose', onClo
     }
   }
 
-  // Connecting tries the storage first, so a wrong key is caught here and not by
-  // a backup at three in the morning.
+  // Tried first, so a wrong key is caught here and not by a backup at three in the morning.
   async function connect() {
     const result = connected(test) ? test : await tryIt();
     if (!connected(result)) return;
@@ -73,20 +69,28 @@ export function AddStorageDialog({ editing = null, initialStep = 'choose', onClo
   return <Dialog footer={footer} onClose={() => { if (!busy) onClose(); }} title={title}>
     {step === 'choose' ? <>
       <p className="suite-meta">Added storage appears everywhere storage is picked — for apps and for backups.</p>
-      <div className="suite-bk-kinds">
-        <button className="suite-bk-kind-card" onClick={() => setStep('drive')} type="button">
-          <span><Icon name="usb-drive" /><strong>Use a drive</strong></span>
-          <span>Plug a USB drive into this server — it appears here by itself, nothing to set up.</span>
-        </button>
-        <button className="suite-bk-kind-card" onClick={() => setStep('online')} type="button">
-          <span><Icon name="cloud-storage" /><strong>Connect storage online</strong><span className="suite-bk-chip">S3-compatible</span></span>
-          <span>A bucket you rent from a provider such as Backblaze B2, Wasabi or Cloudflare R2. Survives a fire or a theft at home.</span>
-        </button>
-        <button className="suite-bk-kind-card" disabled type="button">
-          <span><Icon name="network-drive" /><strong>A folder on another machine</strong><span className="suite-bk-chip">Later</span></span>
-          <span>A shared folder on a NAS or another computer at home.</span>
-        </button>
-      </div>
+      <Panel density="tight">
+        <PanelList>
+          <PanelItem flush>
+            <ChoiceRow icon="usb-drive" onPick={() => setStep('drive')}>
+              <strong>Use a drive</strong>
+              <span className="suite-meta">Plug a USB drive into this server — it appears here by itself, nothing to set up.</span>
+            </ChoiceRow>
+          </PanelItem>
+          <PanelItem flush>
+            <ChoiceRow icon="cloud-storage" onPick={() => setStep('online')}>
+              <strong>Connect storage online <span className="mos-chip">S3-compatible</span></strong>
+              <span className="suite-meta">Storage you rent from a provider such as Backblaze B2, Wasabi or Cloudflare R2. Survives a fire or a theft at home.</span>
+            </ChoiceRow>
+          </PanelItem>
+          <PanelItem flush quiet>
+            <ChoiceRow disabled icon="network-drive" onPick={() => undefined}>
+              <strong>A folder on another computer <span className="mos-chip">Later</span></strong>
+              <span className="suite-meta">A shared folder on a NAS or another computer at home.</span>
+            </ChoiceRow>
+          </PanelItem>
+        </PanelList>
+      </Panel>
     </> : null}
 
     {step === 'drive' ? <>
@@ -95,14 +99,14 @@ export function AddStorageDialog({ editing = null, initialStep = 'choose', onClo
     </> : null}
 
     {step === 'online' ? <>
-      <p className="suite-meta">Any S3-compatible storage works. Your provider gives you these when you create the bucket. Copy them across exactly; MOS tries them before it connects.</p>
+      <p className="suite-meta">Any S3-compatible storage works. Your provider gives you these when you create the storage. Copy them across exactly; MOS tries them before it connects.</p>
       <div className="suite-form-grid">
         <TextInput disabled={Boolean(busy)} helperText="The name you will see for it in MOS." label="Name" onChange={field('label')} placeholder="Family backups" value={draft.label} />
         <TextInput disabled={Boolean(busy)} helperText="Your provider's S3 address, for example https://s3.eu-central-003.backblazeb2.com." label="Endpoint" onChange={field('endpoint')} placeholder="https://s3.example.com" value={draft.endpoint} />
         <TextInput disabled={Boolean(busy)} helperText="A bucket that already exists. MOS does not create one." label="Bucket" onChange={field('bucket')} placeholder="my-backups" value={draft.bucket} />
-        <TextInput disabled={Boolean(busy)} helperText="Optional. Lets one bucket hold the backups of more than one server." label="Folder (optional)" onChange={field('folder')} placeholder="home-server" value={draft.folder} />
+        <TextInput disabled={Boolean(busy)} helperText="Optional. Lets the same storage hold the backups of more than one server." label="Folder (optional)" onChange={field('folder')} placeholder="home-server" value={draft.folder} />
         <TextInput disabled={Boolean(busy)} helperText="Optional. Some providers need it; leave it empty if yours does not." label="Region (optional)" onChange={field('region')} placeholder="eu-central-1" value={draft.region} />
-        <TextInput disabled={Boolean(busy)} helperText="Use a key that can only reach this bucket." label="Access key ID" onChange={field('accessKeyId')} placeholder="AKIA…" value={draft.accessKeyId} />
+        <TextInput disabled={Boolean(busy)} helperText="Use a key that can only reach this storage." label="Access key ID" onChange={field('accessKeyId')} placeholder="AKIA…" value={draft.accessKeyId} />
         <TextInput disabled={Boolean(busy)} helperText={editing ? 'Leave empty to keep the key already saved.' : 'Stored on this server only, readable by root.'} label="Secret access key" onChange={field('secretAccessKey')} placeholder={editing ? 'Unchanged' : '••••••••'} type="password" value={draft.secretAccessKey} />
       </div>
       {test && connected(test) ? <Notice title={test.locked ? 'It works, and it already holds backups' : 'It works'} variant={test.locked ? 'info' : 'success'}><p>{test.message}</p></Notice> : null}

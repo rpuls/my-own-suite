@@ -1,6 +1,6 @@
 ---
 title: Your files on a drive
-description: Apps like Jellyfin keep their library on a drive you plug into the server. What goes on the drive, what goes in your backups, and how both come back on a new machine.
+description: Apps like Jellyfin keep their library on a drive you plug into the server. What goes on the drive, what goes in your backups, and how both come back on a new server.
 ---
 
 Some apps work on files you already have: the films Jellyfin plays, the photos Immich can show from a folder. MOS keeps those on a drive you plug into the server, not on the server's own disk. You fill the drive from any computer, and the app finds what you put there.
@@ -13,7 +13,7 @@ Your server holds two kinds of things, and MOS protects them differently.
 
 **The files you already had** — the films, the photo folders — live on your drive. They are not in your backups: the drive is their home, and the copy of it you keep somewhere else is their backup. [Keeping copies](/docs/guides/keeping-copies/) explains why one copy is never enough.
 
-Together, this is what lets a server be replaced. Install MOS on a new machine, restore the backup, plug in the drive, and the app is back with its settings and its library. The drive is not tied to one server: any MOS server you plug it into reads its files.
+Together, this is what lets a server be replaced. Install MOS on a new server, restore the backup, plug in the drive, and the app is back with its settings and its library. The drive is not tied to one server: any MOS server you plug it into reads its files.
 
 ## Which drives
 
@@ -29,7 +29,7 @@ Open **Settings → Storage** to see every drive plugged in and the storage you 
 
 Copy files into those folders from any computer: plug the drive into your laptop, copy, plug it back into the server. MOS mounts it again and the app picks up what is new.
 
-Or add files from your browser. **Browse files** on the drive in Settings → Storage shows everything on it — what MOS manages in color, the rest greyed to look at and download. Drag files onto the page to add them, make folders, rename, move within the drive, and delete. Big files arrive a piece at a time, so a dropped connection or a closed tab carries on where it stopped, and nothing half-added is left behind.
+Or add files from your browser. **Browse files** on the drive in Settings → Storage shows everything on it — what MOS manages in color, the rest greyed to look at and download. Open `MOS-files`, then drag files onto the page to add them, make folders, rename, move within the drive, and delete. Big files arrive a piece at a time, so nothing half-added is ever left behind: after a dropped connection or a reload, drop the same file again and MOS asks the drive how far it got and carries on from there. Leaving the page while files are still arriving stops them, and MOS asks first.
 
 ## Unplugging it
 

@@ -11,7 +11,7 @@ const test = require('node:test');
 
 const { maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
 const { generate } = require('../recovery-key.cjs');
-const { assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
+const { archiveNames, assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositorySidecarPath, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
 const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
 
@@ -60,6 +60,36 @@ test('repositoryUsage reports the store size and restore point count without an 
   fs.writeFileSync(path.join(pointsDir, 'job-2.json'), '{}');
 
   assert.deepEqual(repositoryUsage(root), { engineName: 'restic', restorePoints: 1, storedBytes: 1500 });
+});
+
+function fullRepository(root) {
+  fs.mkdirSync(path.join(root, 'repository'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'repository', 'config'), '{"id":"abc"}');
+}
+
+// A torn write on exFAT or NTFS is the normal failure, so the descriptor lands
+// whole or not at all, and a full repository is listed whatever its descriptor says.
+test('the descriptor is written atomically, and an archive is listed by its repository as well as its descriptor', async () => {
+  const mountPath = await scratch();
+  const archives = path.join(mountPath, 'MOS-backups');
+  writeRepositoryDescriptor(path.join(archives, 'archive-00000001'), { engineName: 'restic', repositoryId: 'r1' });
+  assert.deepEqual(fs.readdirSync(path.join(archives, 'archive-00000001')), ['MOS-REPOSITORY.json'], 'no staged file is left beside the descriptor');
+
+  // Torn descriptor over a full repository: listed, descriptor read as null, usage still measured.
+  fullRepository(path.join(archives, 'archive-00000002'));
+  fs.writeFileSync(repositorySidecarPath(path.join(archives, 'archive-00000002')), '{"engineName":"res');
+  // Missing descriptor over a full repository: listed.
+  fullRepository(path.join(archives, 'archive-00000003'));
+  // Neither: a folder with the right name and nothing in it is not an archive.
+  fs.mkdirSync(path.join(archives, 'archive-00000004'));
+  fs.mkdirSync(path.join(archives, 'Holiday photos'));
+
+  assert.deepEqual(archiveNames(mountPath), ['archive-00000001', 'archive-00000002', 'archive-00000003']);
+  assert.equal(readRepositoryDescriptor(path.join(archives, 'archive-00000002')), null);
+  assert.deepEqual(repositoryUsage(path.join(archives, 'archive-00000002')), { engineName: null, restorePoints: 0, storedBytes: 12 });
+  assert.deepEqual(repositoryUsage(path.join(archives, 'archive-00000003')), { engineName: null, restorePoints: 0, storedBytes: 12 });
+  // The first-backup moment: described, repository not yet created.
+  assert.deepEqual(repositoryUsage(path.join(archives, 'archive-00000001')), { engineName: 'restic', restorePoints: 0, storedBytes: 0 });
 });
 
 // A key inside a backup would be circular: the backup could not be read

@@ -9,6 +9,7 @@ import { appSourceLabel } from '../../lib/app-sources';
 import { AppCard } from './AppCard';
 import { AppDetail } from './AppDetail';
 import { ExternalAppCard, ExternalAppDetail } from './ExternalApp';
+import { useStorage } from '../storage/model';
 import { catalogFacts, categoryLabel, hasHomepageContribution, installJobError, installJobSteps, isCompanionApp, primaryCategory, repoUrlFromQuery, withMinimumInstallStep } from './model';
 import type { AppPackageSummary, CatalogStatus, ExternalCard, ExternalResolveResponse, ExternalSourceCoordinates, InstallStep } from './types';
 
@@ -34,6 +35,8 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalInstallError, setExternalInstallError] = useState('');
   const [externalAdding, setExternalAdding] = useState(false);
   const [externalAddError, setExternalAddError] = useState('');
+  // One reading of storage for every card, so a paused app says so in the list too.
+  const { storage } = useStorage();
 
   // Silent loads run in the background: they never flash the loading state and
   // never replace a working catalog view with a transient fetch error. A silent
@@ -386,13 +389,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       {standaloneApps.length ? <section className="suite-app-catalog-section">
         <div className="suite-app-section-heading"><h2>Apps</h2></div>
         <div className="suite-app-grid">
-          {standaloneApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+          {standaloneApps.map((app) => <AppCard app={app} key={app.id} storage={storage} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
         </div>
       </section> : null}
       {companionApps.length ? <section className="suite-app-catalog-section">
         <div className="suite-app-section-heading"><h2>Companion apps</h2></div>
         <div className="suite-app-grid">
-          {companionApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+          {companionApps.map((app) => <AppCard app={app} key={app.id} storage={storage} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
         </div>
       </section> : null}
       {sourceSections.map((section) => <section className="suite-app-catalog-section" key={section.repository}>
@@ -401,7 +404,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
           <p className="suite-meta">A source you added. MOS has not reviewed these apps. Manage it in Settings.</p>
         </div>
         <div className="suite-app-grid">
-          {section.apps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+          {section.apps.map((app) => <AppCard app={app} key={app.id} storage={storage} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
         </div>
       </section>)}
     </div> : null}

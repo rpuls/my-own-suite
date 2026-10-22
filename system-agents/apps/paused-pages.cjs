@@ -108,4 +108,4 @@ function pausedByDrives(drives) {
   return paused;
 }
 
-module.exports = { PausedPages, appHosts, pausedByDrives, pausedPage };
+module.exports = { PausedPages, pausedByDrives };

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { restoreGuaranteeFor } = require('../src/backups/restore-guarantee.cjs');
+const { restoreGuarantee } = require('../src/backups/restore-guarantee.cjs');
 const { withRoutes } = require('./support/route-harness.cjs');
 
 const OWNER_PASSWORD = 'correct horse battery';
@@ -18,7 +18,7 @@ test('backup status merges the agent, the inventory and the restore guarantee', 
     assert.equal(status.json().serviceAvailable, true);
     assert.equal(status.json().destinations[0].label, 'Backup Drive');
     assert.deepEqual(status.json().inventory, inventory);
-    assert.deepEqual(status.json().restoreGuarantee, restoreGuaranteeFor({ backups: [] }).restoreGuarantee);
+    assert.deepEqual(status.json().restoreGuarantee, restoreGuarantee().restoreGuarantee);
   });
 });
 
@@ -34,7 +34,7 @@ test('backup status says the agent is unavailable rather than failing the screen
     assert.equal(status.json().serviceAvailable, false);
     assert.equal(status.json().error, 'Backup system agent is unavailable.');
     assert.deepEqual(status.json().inventory, inventory);
-    assert.deepEqual(status.json().restoreGuarantee, restoreGuaranteeFor(null).restoreGuarantee);
+    assert.deepEqual(status.json().restoreGuarantee, restoreGuarantee().restoreGuarantee);
     assert.deepEqual(warnings, ['backup-agent-unavailable']);
   });
 });

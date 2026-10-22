@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 
-// Host wiring for the MOS backup agent: destination discovery, the job store,
-// the unix-socket API, and the worker process entry. The backup/restore
-// engine itself lives in agent-core.cjs behind injected adapters so its
-// guarantees (rescue copy, absence reconciliation, journal, verification)
-// are covered by unit tests instead of only Hyper-V drills.
+// Host wiring for the MOS backup agent: destinations, the job store, the
+// unix-socket API and the worker entry. The backup/restore engine itself lives
+// in agent-core.cjs behind injected adapters, where unit tests can reach it.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawn } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, sha256, validatePackagePayloads } = require('./agent-core.cjs');
 const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../shared/suite-address.cjs');
@@ -22,7 +20,7 @@ const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSen
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 const { PrimaryDestination } = require('./primary.cjs');
-const { DestinationResolver, OTHER_SERVERS_BUCKET, parseObjectLocator } = require('./destinations.cjs');
+const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
 const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, repositoryUsage } = require('./engines/engine.cjs');
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
@@ -31,13 +29,14 @@ const { recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
 const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');
 const { rotateRecoveryKey: rotateKey } = require('./key-rotation.cjs');
 const { LastBackups } = require('./last-backups.cjs');
+const { CarryOver } = require('./carry-over.cjs');
 const { machineHasVault, readVaultDescriptor, vaultAsksForPassword } = require('../../shared/vault-contract.cjs');
 const { VaultAgentClient } = require('../../suite-manager/backend/src/settings/vault-agent-client.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
-const { STORAGE_MOUNT_ROOT, STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
+const { BACKUPS_DIR, STORAGE_MOUNT_ROOT, STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
@@ -51,28 +50,30 @@ const agentStateDir = process.env.MOS_BACKUP_AGENT_STATE_DIR || path.join(stateR
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const installIdPath = path.join(agentStateDir, 'install-id');
-// The suite's one recorded address: read for the manifest and for the address
-// apps are rebuilt on, written only to offer a domain a restore carried.
+// Read for the manifest and for the address apps are rebuilt on; written only to
+// offer a domain a restore carried.
 const suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRoot) });
-// Where Caddy serves the busy page from, which is where the progress file
-// goes: the one place an owner can still read while Suite Manager is down.
+// Where Caddy serves the busy page from: the one place an owner can still read
+// while Suite Manager is down, so the progress file goes there too.
 const statusDir = process.env.MOS_STATUS_DIR || UNAVAILABLE_PAGE_ROOT;
-// Build times the app agent recorded on this machine, for what a rebuild of
-// each app is going to cost.
 const buildTimingsPath = path.join(stateRoot, BUILD_TIMINGS_FILENAME);
 const DRIVE_ID_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
+const ERASING_PATTERN = /^archive-[0-9a-f]{8}\.erasing-\d+$/u;
+const STORAGE_UNREACHABLE_REASON = 'MOS could not read your storage right now.';
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 function writeJson(file, value) { ensureDir(path.dirname(file)); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function directoryNames(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
 const readBody = bodyReader(128 * 1024);
 
-function command(file, args, options = {}) {
-  return execFileSync(file, args, { cwd: options.cwd || repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: options.timeout || 120_000 }).trim();
-}
-// The drives the storage module knows, as it sees them now: it mounts them,
-// names them and records what claims them. Null when it cannot say, which
-// lists no drives rather than calling every one of them away.
+// The drives as the storage module sees them now, or null when it cannot be asked.
 async function storageDrives() {
   try {
     return (await appAgent.storageInventory())?.drives || [];
@@ -81,26 +82,27 @@ async function storageDrives() {
   }
 }
 
-// Why this server cannot back up to a drive right now, or null. Said here once,
-// in the words every screen and the schedule repeat.
-function driveRefusal(drive) {
-  if (!drive.connected) return 'This drive is not plugged in.';
-  if (drive.state === 'ejected') return 'This drive was ejected. Use it again in Settings → Storage.';
-  if (drive.state === 'read-only') return 'MOS can read this drive but cannot save to it until it is checked in Settings → Storage.';
-  if (!drive.mountPath || drive.state !== 'ready') return drive.reason || 'MOS could not open this drive.';
-  return null;
+// The drive destinations this agent knows from its own record when the storage
+// module cannot be asked: a state the screen and the schedule show, not an empty list.
+function unreachableDriveDestinations() {
+  const chosen = primary.read();
+  return Object.keys(lastBackups.read()).filter((id) => DRIVE_ID_PATTERN.test(id)).map((id) => ({
+    availableBytes: null,
+    holdsAppFiles: false,
+    id,
+    kind: 'disk',
+    label: chosen?.destinationId === id && chosen.label ? chosen.label : id,
+    reason: STORAGE_UNREACHABLE_REASON,
+    sizeBytes: null,
+    state: 'unreachable',
+    storageKind: null,
+    transport: null,
+  }));
 }
 
-function driveCondition(drive) {
-  if (!drive.connected) return 'away';
-  if (drive.state === 'ejected' || drive.state === 'read-only') return drive.state;
-  return drive.mountPath && drive.state === 'ready' ? 'ready' : 'not-open';
-}
-
-// Whose an archive is, said outright: the screen renders this and never works
-// it out again. An archive this server's key opens is this server's, whoever
-// made it — a takeover restore makes another server's archive this one's.
-async function describeArchive(archive, containerLabel, health) {
+// Whose an archive is, said outright so the screen never works it out again. An
+// archive this server's key opens is this server's, whoever made it.
+async function describeArchive(archive, placeLabel, health) {
   const { keyState, reason = null, usage = null } = health || await archive.health();
   if (!keyState || keyState === 'empty') return null;
   const points = keyState === 'locked' && archive.kind === 'object' ? [] : await archive.points.summaries().catch(() => []);
@@ -111,13 +113,13 @@ async function describeArchive(archive, containerLabel, health) {
     : newest ? { hostname: newest.sourceHostname || null, installId: newest.sourceInstallId || null } : null;
   const stored = archive.kind === 'disk' ? repositoryUsage(archive.root) : usage;
   return {
-    containerId: archive.containerId,
-    containerKind: archive.kind,
-    containerLabel,
     id: archive.id,
     keyState,
     newestAt: newest?.createdAt || null,
     owner: keyState === 'own' ? 'this' : 'other',
+    placeId: archive.placeId,
+    placeKind: archive.kind,
+    placeLabel,
     reason: keyState === 'locked' ? reason : null,
     restorePoints: keyState === 'locked' ? null : stored?.restorePoints ?? points.length,
     storedBytes: stored?.storedBytes ?? null,
@@ -125,16 +127,13 @@ async function describeArchive(archive, containerLabel, health) {
   };
 }
 
-// Everything the backups screen and the schedule ask about: the places this
-// server backs up to, and every archive MOS can see, this server's and other
-// servers'. A drive is a place once the owner made it one in the storage
-// picker; its archives are listed whatever claims the drive, because a drive
-// plugged in for an app can still carry another server's backups.
+// The places this server backs up to and every archive MOS can see. A drive's
+// state and reason are the storage module's own words, passed through untouched.
 async function survey() {
-  const drives = await storageDrives() || [];
-  const destinations = [];
+  const drives = await carryOver.onSight(await storageDrives(), storageDrives);
+  const destinations = drives ? [] : unreachableDriveDestinations();
   const archives = [];
-  for (const drive of drives) {
+  for (const drive of drives || []) {
     const label = drive.name || drive.label;
     if (drive.connected && drive.mountPath && drive.holdsBackupsFormat) {
       for (const archive of destinationResolver.archivesOn(drive.id)) {
@@ -143,17 +142,15 @@ async function survey() {
       }
     }
     if (!drive.backups) continue;
-    const refusal = driveRefusal(drive);
     destinations.push({
       availableBytes: drive.connected ? drive.availableBytes ?? null : null,
-      condition: driveCondition(drive),
-      earlierBackups: drive.holdsEarlierBackups === true,
       holdsAppFiles: (drive.apps || []).length > 0,
       id: drive.id,
       kind: 'disk',
       label,
-      refusal,
+      reason: drive.state === 'ready' ? null : drive.reason || null,
       sizeBytes: drive.sizeBytes ?? null,
+      state: drive.state,
       storageKind: drive.transport === 'usb' || drive.removable ? 'external' : 'local',
       transport: drive.transport || null,
     });
@@ -162,37 +159,31 @@ async function survey() {
     const health = await bucket.health().catch(() => ({ keyState: null, ready: false, reason: 'MOS could not reach this storage.', usage: null }));
     const described = await describeArchive(bucket, bucket.label, health);
     if (described) archives.push(described);
-    // A connection holds one archive, so one another server made leaves the
-    // connection no room for this server's: it is listed as that archive only.
+    // A connection holds one archive, so one another server made is listed as that archive only.
     if (described?.owner === 'other') continue;
     destinations.push({
       ...publicObjectDestination(bucket.record),
       availableBytes: null,
       checkedAt: health.checkedAt || null,
-      condition: health.ready ? 'ready' : 'unreachable',
       kind: 'object',
-      refusal: health.ready ? null : health.reason || 'MOS could not reach this storage.',
+      reason: health.ready ? null : health.reason || 'MOS could not reach this storage.',
       sizeBytes: null,
+      state: health.ready ? 'ready' : 'unreachable',
       storageKind: 'object',
     });
   }
   for (const destination of destinations) {
-    const own = archives.filter((archive) => archive.containerId === destination.id && archive.owner === 'this')
+    const own = archives.filter((archive) => archive.placeId === destination.id && archive.owner === 'this')
       .sort((left, right) => String(right.newestAt || '').localeCompare(String(left.newestAt || '')))[0] || null;
     destination.ownArchive = own ? { id: own.id, restorePoints: own.restorePoints, storedBytes: own.storedBytes } : null;
     if (own?.newestAt) lastBackups.note(destination.id, own.newestAt);
     destination.lastBackupAt = own?.newestAt || lastBackups.of(destination.id);
-    // Without the engine binary nothing can be written anywhere, so it is the
-    // destination that is unusable, not the backup that failed. Said last so a
-    // drive that is also unplugged still says the thing the owner can fix.
-    if (!engine.installed() && !destination.refusal) Object.assign(destination, { condition: 'no-engine', refusal: ENGINE_MISSING_MESSAGE });
   }
   return { archives, destinations };
 }
 
-// Answers three different things an owner needs told apart: MOS reached the
-// bucket and it already holds backups, MOS reached it and it is empty, or MOS
-// could not get in and here is what the provider said.
+// Three answers an owner needs told apart: the bucket holds backups, it is
+// reachable and empty, or MOS could not get in and here is what the provider said.
 async function testObjectDestination(input) {
   const record = normalizeObjectDestination(input, input.id ? objectRegistry.get(String(input.id)) : null);
   const spec = objectRepositorySpec(record);
@@ -200,13 +191,12 @@ async function testObjectDestination(input) {
   if (probe.state === 'unreachable') return { message: probe.message, ok: false };
   if (probe.state === 'locked') return { locked: true, message: `${probe.message} Connect this bucket, then choose Enter recovery key on it.`, ok: false };
   if (probe.state === 'absent') return { message: 'Connected. This bucket holds no MOS backups yet; the first backup creates the encrypted store in it.', ok: true, restorePoints: 0 };
-  // Counted without touching the stored index, because this may be a
-  // connection that has not been saved and must leave nothing behind.
+  // Counted without touching the stored index: this connection may not be saved.
   let restorePoints = null;
   try {
     const snapshots = await engine.listSnapshots({ repository: { engineName: engine.name, localPath: null, ...spec } });
     restorePoints = snapshots.filter((snapshot) => (snapshot.tags || []).includes('mosrole:manifest')).length;
-  } catch {}
+  } catch { /* the count is a courtesy; the connection itself answered */ }
   return {
     message: restorePoints === null
       ? 'Connected. This bucket already holds a MOS backup store.'
@@ -215,10 +205,10 @@ async function testObjectDestination(input) {
     restorePoints,
   };
 }
-// Anything that backs up without being asked names this instead of a place:
-// only this agent knows where automatic backups go right now.
+
+// Anything that backs up without being asked names this instead of a place.
 const PRIMARY_DESTINATION = 'primary';
-async function primaryBackupDestinationId() {
+async function primaryDestination() {
   const chosen = primary.read();
   if (!chosen) {
     throw Object.assign(new Error('No destination is set for automatic backups, so there is nowhere to write this backup.'), { code: 'NO_PRIMARY_DESTINATION' });
@@ -226,8 +216,8 @@ async function primaryBackupDestinationId() {
   const destination = primary.resolve((await survey()).destinations);
   const absentCode = isObjectDestinationId(chosen.destinationId) ? 'DESTINATION_UNREACHABLE' : 'DESTINATION_ABSENT';
   if (!destination) throw Object.assign(new Error('The destination automatic backups are written to is not available right now.'), { code: absentCode });
-  if (destination.refusal) throw Object.assign(new Error(destination.refusal), { code: absentCode });
-  return destination.id;
+  if (destination.reason) throw Object.assign(new Error(destination.reason), { code: absentCode });
+  return destination;
 }
 // A destination is a configured bucket or a drive's filesystem UUID; whether it
 // is one this server backs up to is the survey's to say.
@@ -252,31 +242,29 @@ function listJobFiles() {
   return fs.readdirSync(jobsDir).filter((name) => name.endsWith('.json')).map((name) => path.join(jobsDir, name));
 }
 function readCurrentJob() { try { return fs.existsSync(currentJobPath) ? readJson(currentJobPath) : null; } catch { return null; } }
-function workerAlive(jobFile) {
+function commandLineOf(pid) {
   try {
-    for (const entry of fs.readdirSync('/proc')) {
-      if (!/^\d+$/u.test(entry) || Number(entry) === process.pid) continue;
-      try {
-        const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf8');
-        if (cmdline.includes('--worker') && cmdline.includes(jobFile)) return true;
-      } catch {}
-    }
-  } catch {}
-  return false;
+    return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+  } catch {
+    return '';
+  }
 }
-// A job's worker is a detached process, so a power loss or kill can leave
-// current-job.json claiming an active job forever. Reconcile against the
-// actual worker process before trusting it; the grace period covers the
-// window between job creation and the worker's exec.
+function workerAlive(jobFile) {
+  return directoryNames('/proc').some((entry) => {
+    if (!/^\d+$/u.test(entry) || Number(entry) === process.pid) return false;
+    const cmdline = commandLineOf(entry);
+    return cmdline.includes('--worker') && cmdline.includes(jobFile);
+  });
+}
+// A worker is a detached process, so a power loss can leave current-job.json
+// claiming an active job forever; the grace period covers the worker's exec.
 function reconcileCurrentJob() {
   const job = readCurrentJob();
   if (!isActive(job)) return job;
   const startedMs = new Date(job.createdAt || 0).getTime();
   if (Date.now() - startedMs < 15_000) return job;
   if (workerAlive(jobPath(job.id))) return job;
-  // A killed worker ran none of its own cleanup, so whatever it had already
-  // written to the repository is referenced by nothing. Record the destination
-  // so the next job for it collects the space.
+  // A killed worker ran no cleanup: whatever it wrote is referenced by nothing.
   if (job.kind === 'backup') core.noteUncollectedData(job.destinationId);
   return updateJob(jobPath(job.id), (entry) => {
     entry.error = `The ${entry.kind || 'backup'} stopped during "${entry.stage || 'an unknown step'}" because the backup worker is no longer running (for example after a power loss or restart).`;
@@ -288,9 +276,7 @@ function latestJob() {
   return listJobFiles().map((file) => { try { const job = readJson(file); return { job, time: new Date(job.updatedAt || job.createdAt || 0).getTime() }; } catch { return null; } })
     .filter(Boolean).sort((left, right) => right.time - left.time)[0]?.job || null;
 }
-// The last handful of jobs, newest first, for the activity list. Only what a
-// sentence about a finished job needs: the logs and validation of a job that is
-// over belong to the job itself, not to a summary of five of them.
+// The last handful of jobs, newest first, with only what a sentence about each needs.
 function recentJobs(limit = 6) {
   return listJobFiles().map((file) => { try { return readJson(file); } catch { return null; } })
     .filter(Boolean)
@@ -303,8 +289,6 @@ function recentJobs(limit = 6) {
       initiator: job.initiator || null,
       kind: job.kind || null,
       note: job.note || null,
-      // The owner's words for where a running job is; a finished job is a
-      // sentence about what happened, and needs none.
       sentence: isActive(job) ? job.progress?.sentence || stageSentence(job.stage) : null,
       stage: job.stage || null,
       status: job.status || null,
@@ -314,15 +298,13 @@ function recentJobs(limit = 6) {
       updateTarget: job.updateTarget || null,
     }));
 }
-// Every finished job with a timeline: what this machine's own estimates are
-// read off. Failed jobs are left out — a check that stopped after a second
-// says nothing about how long one takes.
+// Every finished job with a timeline, which is what this machine's estimates are
+// read off; a failed job says nothing about how long one takes.
 function jobHistory() {
   return listJobFiles().map((file) => { try { return readJson(file); } catch { return null; } })
     .filter((job) => job && job.status === 'succeeded' && Array.isArray(job.timeline));
 }
-// The name an app is shown under, from the catalog package in this checkout;
-// a package this checkout does not carry is named by its id.
+// The name an app is shown under, from the catalog package in this checkout.
 const displayNames = new Map();
 function displayNameOf(packageId) {
   const id = String(packageId || '');
@@ -336,7 +318,7 @@ function displayNameOf(packageId) {
       const manifest = readJson(manifestPath);
       if (typeof manifest.name === 'string' && manifest.name.trim()) name = manifest.name.trim();
     }
-  } catch {}
+  } catch { /* not a package in this checkout: named by its id */ }
   displayNames.set(id, name);
   return name;
 }
@@ -352,14 +334,14 @@ function summarizeJob(job) {
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
+// Refused before anything is written when it could not run: the code on a busy
+// refusal lets the checkpoint before an update wait rather than report.
 function createJob(kind, payload) {
-  // The code travels so a caller that can simply wait — the checkpoint before
-  // an update — can tell "busy right now" from a refusal it has to report.
+  engine.assertInstalled();
   if (isActive(reconcileCurrentJob())) throw Object.assign(new Error('A backup or restore job is already running.'), { code: 'JOB_ACTIVE' });
   const interrupted = core.interruptedRestore();
   // Validation never touches the running suite, so it stays available while an
-  // interrupted restore blocks destructive work — checking whether a backup is
-  // restorable is part of recovery.
+  // interrupted restore blocks destructive work.
   if (interrupted && kind !== 'validate') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -377,15 +359,9 @@ function createJob(kind, payload) {
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
   return job;
 }
-// A locator names one restore point. On a drive it is the manifest file inside
-// its archive's restore-points folder, on a drive mounted where the storage
-// module mounts drives; in a bucket it is the storage connection and the
-// point's id. Either way it must resolve to something this machine has, which
-// is what stops a locator from the wire naming anything else.
-//
-// The field is still called backupPath on the wire and in job records: those
-// records and the restore journal exist on installed machines, and renaming
-// what they contain would be a migration with nothing to show for it.
+// A locator names one restore point: a manifest file under the storage mount
+// root, or a storage connection and a point id. It must resolve to something this
+// machine has. Still called backupPath on the wire and in job records.
 function normalizeBackupLocator(candidate) {
   const value = String(candidate || '');
   const object = parseObjectLocator(value);
@@ -394,13 +370,9 @@ function normalizeBackupLocator(candidate) {
   if (!resolved.startsWith(`${STORAGE_MOUNT_ROOT}${path.sep}`) || !isRestorePointPath(resolved)) return null;
   return fs.existsSync(resolved) && fs.existsSync(`${resolved}.sha256`) ? resolved : null;
 }
-// Restore points of every archive MOS can open, this server's and the ones
-// another server's key was entered for. A locked archive lists none: MOS
-// cannot say what is in it.
+// Restore points of every archive MOS can open; a locked archive lists none.
 async function listBackups(archives) {
   const backups = [];
-  // Read once for the whole listing: every restore point's estimate is drawn
-  // from the same history and the same build timings.
   const history = jobHistory();
   const buildTimings = readBuildTimings(buildTimingsPath);
   const cpus = os.cpus().length;
@@ -413,39 +385,32 @@ async function listBackups(archives) {
       continue;
     }
     const descriptor = archive.kind === 'disk' ? archive.descriptor() : null;
-    // An archive that will not answer contributes nothing rather than failing
-    // the whole listing: one unreachable bucket must not hide the backups on a
-    // drive that is plugged in right now.
     let points = [];
     try {
       points = await archive.points.summaries();
-    } catch {}
+    } catch { /* an archive that will not answer hides nothing else */ }
     for (const point of points) {
       backups.push({
         ...point,
         archiveId: entry.id,
-        containerId: entry.containerId,
-        containerLabel: entry.containerLabel,
         encrypted: true,
         engineName: point.engineName || descriptor?.engineName || ENGINE_NAME,
-        // What checking or restoring this point will take on this machine,
-        // said in the owner's words before either is started.
         expect: {
           check: checkExpectation({ history, sizeBytes: point.sizeBytes }),
           restore: restoreExpectation({ apps: appsWithNames(point.apps), buildTimings, cpus, history, sizeBytes: point.sizeBytes }),
         },
         owner: entry.owner,
         path: point.locator,
+        placeId: entry.placeId,
+        placeLabel: entry.placeLabel,
         repositoryId: descriptor?.repositoryId || null,
       });
     }
   }
   return backups.sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime());
 }
-// Every change to a job goes through here, so the progress record on it and
-// the public file the busy page polls are always what the job record says. An
-// active job publishes; a job that is over — however it ended, and in
-// whichever process noticed — takes the file with it.
+// Every change to a job goes through here, so the progress record and the public
+// file the busy page polls always say what the job record says.
 function updateJob(file, mutator, { count } = {}) {
   const job = readJson(file);
   mutator(job);
@@ -463,15 +428,12 @@ function refreshProgress(job, now, count) {
     closeTimeline(job, now);
     return;
   }
-  // Said once the job knows what it is working on, and kept from then on — a
-  // null is kept too, so a kind with no expectation is not re-read for one on
-  // every log line.
+  // Kept once known, a null too, so a kind with no expectation is not re-read per log line.
   if (job.expect === undefined && job.subject) {
     try { job.expect = runningExpectation(job.kind, expectationInputs(job.subject)) || null; } catch { job.expect = null; }
   }
   const next = progressFor(job, { count: count ?? null, now });
-  // A count belongs to the stage it was reported in: kept through that stage's
-  // log lines, dropped the moment the stage moves on.
+  // A count belongs to the stage it was reported in.
   if (count === undefined && job.progress?.stage === job.stage && job.progress.count) next.count = job.progress.count;
   job.progress = next;
 }
@@ -480,17 +442,12 @@ function stage(file, name) {
   updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.substage = null; job.status = 'running'; }, { count: null });
   log(file, name);
 }
-// Which part of a long stage is running. It is not a stage: it opens no
-// timeline entry, because the estimates are read off whole stages and a stage
-// that suddenly measures as three would make this machine's history
-// unreadable.
+// Not a stage: it opens no timeline entry, since estimates are read off whole stages.
 function substage(file, name) {
   updateJob(file, (job) => { job.substage = name; });
   log(file, name);
 }
-// Which item of how many the current stage is on. The engine names the app by
-// package id; the name shown, and what that app usually costs here, are added
-// on this side because only the host has the catalog and the timings.
+// Which item of how many the stage is on; the host adds the app's name and usual cost.
 function progress(file, count) {
   const displayName = count.displayName || displayNameOf(count.packageId);
   updateJob(file, () => {}, {
@@ -534,7 +491,7 @@ function installedAppInstances() {
   }
 }
 // The address apps are rebuilt on during a restore: this machine's recorded
-// address, whatever the backup was written on. Nothing here derives it.
+// address, whatever the backup was written on.
 function restoreBaseUrl() {
   const address = suiteAddress.read();
   return { homeHost: address.host, scheme: address.scheme };
@@ -543,41 +500,25 @@ function recordedDomain() {
   const address = suiteAddress.readOrNull();
   return address?.kind === 'domain' ? address : null;
 }
-// Generated once, on this machine's first agent start, and kept beside the
-// engine key where nothing backs it up: the one fact a restore point can carry
-// that says which machine wrote it, whatever the machine was called.
+// Generated on this machine's first start and kept beside the engine key where
+// nothing backs it up: the one fact a restore point carries that says which machine wrote it.
 function installId() {
   try {
     const existing = fs.readFileSync(installIdPath, 'utf8').trim();
     if (existing) return existing;
-  } catch {}
+  } catch { /* first start: no id yet */ }
   const id = crypto.randomUUID();
   ensureDir(agentStateDir);
   fs.writeFileSync(installIdPath, `${id}\n`, 'utf8');
   return id;
 }
-// Who this machine is, and what a restore does about the address: nothing. The
-// address lives in a machine-local file the restore never touches, so the apps
-// come back on whatever door the owner came in through — the Easy Door, the
-// install-time name, or a domain this machine was already serving. The name the
-// backup carried becomes an offer in Settings instead, and serving it is the
-// domain module's job and happens nowhere else. A restore that wrote its own
-// TLS config was how a machine came back serving a name its own Suite Manager
-// refused.
+// Who this machine is. A restore never touches the address: the name a backup
+// carried becomes an offer in Settings, and serving it is the domain module's job.
 const identity = {
   acmeEmail: () => recordedDomain()?.acmeEmail || null,
-  // A restore that takes another machine's place makes that machine's key this
-  // machine's own, and the borrowed copy is dropped: the two are now one server
-  // with one key. Nothing is written to the archive to do it — adding this
-  // machine's key there instead would leave every test restore's key able to
-  // open it for good.
-  //
-  // On a machine with a vault that means the disk too, and the disk goes first.
-  // Adopting the key for the backups alone would leave an owner holding a card
-  // that opens their archive and not their server, and they would find out at
-  // the one moment they need it. A rekey that fails therefore abandons the
-  // whole adoption: the archive stays readable with the borrowed key, which is
-  // a state the screen already explains.
+  // A takeover restore makes the other machine's key this machine's own, disk
+  // first: a rekey that fails abandons the whole adoption, and the archive stays
+  // readable with the borrowed key, which the screen already explains.
   assumeArchiveKey: async (archiveId) => {
     const key = guestKeys.keyFor(archiveId);
     if (!key) return false;
@@ -593,15 +534,15 @@ const identity = {
     keyStore.adopt(recoveryKeyFingerprint(key));
     guestKeys.forget(archiveId);
     destinationResolver.forgetAll();
-    // The archive is this server's now, so where it is becomes one of this
-    // server's backup places. Asked of the storage module, which owns drive
-    // claims; a refusal leaves the archive this server's and the place for the
-    // owner to pick, which the screen already offers.
-    const containerId = destinationResolver.resolve(archiveId).containerId;
+    // The archive is this server's now, so its place becomes one of this server's
+    // backup places; the storage module owns drive claims and is asked.
+    const placeId = destinationResolver.resolve(archiveId).placeId;
     try {
-      if (isObjectDestinationId(containerId)) objectRegistry.holdBackups(containerId, true);
-      else await appAgent.holdBackups({ drive: containerId, held: true });
-    } catch {}
+      if (isObjectDestinationId(placeId)) objectRegistry.holdBackups(placeId, true);
+      else await appAgent.holdBackups({ drive: placeId, held: true });
+    } catch (error) {
+      return { ok: true, unclaimed: error?.message || 'MOS could not reach the storage module.' };
+    }
     return true;
   },
   domain: () => recordedDomain()?.baseDomain || null,
@@ -622,8 +563,7 @@ function restoreRequestContext(packageId) {
   };
 }
 // Homepage's services projection and its Caddy routes, re-rendered from the
-// restored config on this machine's address. The managed app tiles need their
-// widget endpoints re-derived the same way an address change does it.
+// restored config on this machine's address.
 async function rebuildRestoredHomepage(logMessage) {
   const store = new SuiteManagerStore(stateDir);
   try {
@@ -661,15 +601,12 @@ async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
 }
 
 const RECOVERY_KEY_UNACKNOWLEDGED = 'Save your recovery key first. It is the only thing that can open these backups on a replacement server, and MOS shows it once before the first backup.';
-// Only what would create a backup is gated: a backup now, or a schedule that is
-// enabled. Mounting a drive, connecting or testing a bucket, listing, validating,
-// restoring and switching a schedule off all stay available while the key is
-// unsaved — none of them write a backup, and a replacement machine in the middle
+// Only what would create a backup is gated: a replacement machine in the middle
 // of recovering must not be blocked by a dialog about its own future backups.
 const RECOVERY_KEY_GATED_ROUTES = Object.freeze(['/v1/backups', '/v1/schedule']);
 
-// Enforced by the agent as well as by the screen, so a page left open from
-// before the key existed cannot get past it.
+// Enforced here as well as by the screen, so a page left open from before the
+// key existed cannot get past it.
 function assertRecoveryKeyAcknowledged(pathname, body = {}) {
   if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || keyStore.acknowledged()) return;
   if (pathname === '/v1/schedule' && body.enabled !== true) return;
@@ -681,37 +618,26 @@ function recoveryKeyStatus() {
   return {
     acknowledged: Boolean(record.acknowledgedAt),
     acknowledgedAt: record.acknowledgedAt,
-    // Set when this key was typed off another server's kit rather than made
-    // here, which is the difference between "your key" and "their key".
+    // Set when this key was typed off another server's kit rather than made here.
     adoptedAt: record.adoptedAt,
-    // Read from the key itself rather than from the record, so the screen shows
-    // what this machine actually holds even before it has been acknowledged.
+    // From the key itself, so the screen shows what this machine holds before it is acknowledged.
     fingerprint: recoveryKeyFingerprint(engine.recoveryKey()),
     keyFile: engine.keyFile,
   };
 }
 
-// The address the kit tells an owner to come back to. Read from the restored
-// identity rules rather than from install-time env alone, so an applied HTTPS
-// domain is what gets printed.
+// The address the kit tells an owner to come back to.
 function homeAddress() {
-  let store = null;
   try {
-    store = new SuiteManagerStore(stateDir);
-  } catch {}
-  try {
-    const { homeHost, scheme } = restoreBaseUrl(store);
+    const { homeHost, scheme } = restoreBaseUrl();
     return `${scheme}://${homeHost}/`;
   } catch {
     return null;
-  } finally {
-    try { store?.close(); } catch {}
   }
 }
 
-// Built in the agent because only the agent can see the destinations — and it
-// composes the kit out of what a provider's console cannot tell an owner
-// afterwards, never out of the credentials it holds for them.
+// Composed out of what a provider's console cannot tell an owner afterwards,
+// never out of the credentials it holds for them.
 async function recoveryKit(key) {
   const destinations = [
     ...(await survey()).destinations.filter((entry) => entry.kind === 'disk').map((entry) => ({ kind: 'drive', label: entry.label })),
@@ -720,10 +646,8 @@ async function recoveryKit(key) {
   const hostname = os.hostname();
   const now = new Date();
   return {
-    // Read from the descriptor rather than asked of the vault agent: this runs
-    // while composing a kit an owner may be printing because their machine is in
-    // trouble, and one more socket that can be down is one more way for the
-    // sheet to come out wrong.
+    // The vault descriptor is read rather than the vault agent asked: one more
+    // socket that can be down is one more way for a printed sheet to come out wrong.
     kit: recoveryKitText({
       asksForPassword: vaultAsksForPassword(readVaultDescriptor()),
       destinations,
@@ -742,17 +666,14 @@ async function revealRecoveryKey() {
   return { key, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(key) };
 }
 
-// What a rotation can reach right now: this server's own archives on the
-// drives that are plugged in and in the buckets that are connected. A drive in
-// a drawer is deliberately not here — it is the reason a rotation reports what
-// it could not finish, rather than claiming a key change that a copy in a
-// drawer knows nothing about. Other servers' archives are never rekeyed.
+// What a rotation can reach right now: this server's own archives on connected
+// drives and buckets. A drive in a drawer is the reason a rotation reports what
+// it could not finish; other servers' archives are never rekeyed.
 async function attachedDestinations() {
   return (await survey()).archives.filter((archive) => archive.owner === 'this').map((archive) => destinationResolver.resolve(archive.id));
 }
 
-// Replacing this machine's recovery key with a new one. The disk half is the
-// vault agent's, over the same socket a takeover uses, and it goes first so a
+// The disk half goes first, over the same vault socket a takeover uses, so a
 // vault that will not follow stops the whole thing before anything moves.
 async function rotateRecoveryKey() {
   const rotated = await rotateKey({
@@ -773,13 +694,9 @@ async function rotateRecoveryKey() {
   return { ...rotated, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(rotated.key) };
 }
 
-// Opening backups another server wrote, without changing them. The entered key
-// is checked against the archive and then kept on this machine, against that
-// archive, and handed to the engine for every command aimed at it. Nothing is
-// written into the archive — not its contents and not its key list: it belongs
-// to the server that made it, and connecting to something is not a reason to
-// alter it. Becoming that server is a separate act, and it happens at restore,
-// where the owner has said this machine is taking the other one's place.
+// Opening backups another server wrote without changing them: the entered key is
+// checked against the archive and kept here, against that archive. Becoming that
+// server is a separate act, at restore.
 async function unlockArchive(body) {
   const normalized = normalizeRecoveryKey(body.recoveryKey);
   if (normalized.error) throw Object.assign(new Error(normalized.error), { code: 'RECOVERY_KEY_MISTYPED' });
@@ -798,13 +715,8 @@ async function unlockArchive(body) {
   };
 }
 
-// Which keys open an archive, and taking one back out.
-//
-// An owner is entitled to know who can read their backups and to end that
-// access, and MOS is the only place that can tell them without a terminal.
-// Both need a key that already opens the archive, because restic will not
-// list or change a key list for anyone who cannot already open it — which is
-// also what stops this from being a way to lock someone else out.
+// Which keys open an archive, and taking one back out. Both need a key that
+// already opens it, which is also what stops this being a way to lock someone out.
 async function archiveKeys(body) {
   const { archive, key, repository } = await openWithEnteredKey(body);
   const entries = engine.keyList({ password: key, repository });
@@ -827,8 +739,7 @@ async function removeArchiveKey(body) {
   const entries = engine.keyList({ password: key, repository });
   const target = entries.find((entry) => entry.id === keyId);
   if (!target) throw new Error('That key is not on this archive anymore.');
-  // Two refusals that exist so this cannot end in an archive nobody opens: the
-  // key doing the removing stays, and the last one standing stays.
+  // So this cannot end in an archive nobody opens: the removing key stays, and the last one stays.
   if (target.current === true) throw new Error('That is the key you entered, so it cannot remove itself. Enter another key that opens this archive to remove this one.');
   if (entries.length < 2) throw new Error('This is the only key that opens these backups, so removing it would make them unreadable.');
   engine.keyRemove({ keyId, password: key, repository });
@@ -845,15 +756,13 @@ async function openWithEnteredKey(body) {
   return { archive, key: normalized.key, repository: { engineName: engine.name, ...spec, password: undefined } };
 }
 
-// A note or a deletion changes an archive, so neither is made in one that is
-// not this server's own: it belongs to the server whose key made it.
+// A note or a deletion changes an archive, so neither is made in another server's.
 async function assertOwnRestorePoint(locator) {
   const { destination } = core.resolveBackup(locator);
   if (destination.guestKey() || (await destination.health()).keyState !== 'own') throw new Error('These backups belong to another server, so MOS does not change them.');
 }
 
-// Forgetting a borrowed key. The archive is untouched by this too: the key
-// stops being on this machine, and the archive goes back to needing it.
+// The archive is untouched: the key stops being on this machine.
 function forgetGuestKey(body) {
   const archiveId = String(body.archiveId || '');
   const forgotten = guestKeys.forget(archiveId);
@@ -861,14 +770,12 @@ function forgetGuestKey(body) {
   return { forgotten };
 }
 
-// Erasing one archive another server made, on a drive. Never this server's
-// own: those go one restore point at a time, from the list where each one is
-// named. The folder is moved aside first, so the space is the owner's the
-// moment this answers and the slow delete of a large archive runs behind it.
+// Erasing one archive another server made, on a drive. The folder is moved aside
+// first, so the space is the owner's the moment this answers.
 async function eraseOtherServersArchive(body) {
   if (body.confirmation !== 'ERASE') throw new Error('Confirm that these backups are to be erased.');
   const listed = await knownArchive(body.archiveId);
-  if (listed.containerKind !== 'disk') throw new Error('MOS erases backups only on a drive. Remove them in the storage provider\'s own console.');
+  if (listed.placeKind !== 'disk') throw new Error('MOS erases backups only on a drive. Remove them in the storage provider\'s own console.');
   if (listed.owner === 'this') throw new Error('These are this server\'s own backups. Delete them one restore point at a time in the list of backups.');
   if (isActive(reconcileCurrentJob())) throw new Error('A backup or restore is running. Erase these once it has finished.');
   const archive = destinationResolver.resolve(listed.id);
@@ -879,16 +786,29 @@ async function eraseOtherServersArchive(body) {
     if (error.code === 'EROFS') throw new Error('MOS can read this drive but cannot change it until it is checked in Settings → Storage.');
     throw error;
   }
-  void fs.promises.rm(doomed, { force: true, recursive: true }).catch((error) => process.stderr.write(`[mos-backup-agent] ${doomed} was not fully erased: ${error.message}\n`));
+  eraseBehind(doomed);
   guestKeys.forget(listed.id);
   destinationResolver.forget(listed.id);
   return { erased: true };
 }
 
-// What the schedule needs to know about a destination's restore points: when
-// each was taken and whether the schedule itself took it. Asked of the
-// destination rather than taken from listBackups, because retention must not
-// depend on which drives happen to be mounted.
+function eraseBehind(doomed) {
+  void fs.promises.rm(doomed, { force: true, recursive: true }).catch((error) => process.stderr.write(`[mos-backup-agent] ${doomed} was not fully erased: ${error.message}\n`));
+}
+
+// An erase cut off by a crash leaves its folder aside, invisible and holding the
+// space; the next start finishes it on every drive mounted then.
+function sweepInterruptedErases() {
+  for (const driveId of directoryNames(STORAGE_MOUNT_ROOT)) {
+    const backups = path.join(STORAGE_MOUNT_ROOT, driveId, BACKUPS_DIR);
+    for (const name of directoryNames(backups)) {
+      if (ERASING_PATTERN.test(name)) eraseBehind(path.join(backups, name));
+    }
+  }
+}
+
+// What retention needs about a destination's restore points, asked of the
+// destination so it does not depend on which drives happen to be mounted.
 async function scheduledRestorePoints(destinationId) {
   const points = await (await destinationResolver.target(destinationId)).points.summaries();
   return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, initiator: point.initiator, path: point.locator }));
@@ -902,20 +822,14 @@ const engine = createEngine({ agentStateDir, keys: keyStore, onKeyUsed: () => ke
 const objectRegistry = new ObjectDestinationRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const guestKeys = new GuestKeyStore({ agentStateDir });
-// Only ever asked to rekey the disk at the end of a takeover restore. A machine
-// with no vault answers that there was nothing to do.
+// Only ever asked to rekey the disk at the end of a takeover restore.
 const vaultAgent = new VaultAgentClient({ socketPath: process.env.MOS_VAULT_AGENT_SOCKET || '/run/mos-vault-agent/agent.sock' });
-// Every archive this server creates says which machine made it, readable
-// without its key, so another server can name it before anyone unlocks it.
+// Every archive this server creates says which machine made it, readable without its key.
 const destinationResolver = new DestinationResolver({ agentStateDir, createdBy: () => ({ hostname: os.hostname(), installId: installId() }), engine, guestKeys, objectRegistry, system: backupSystem });
-// Both agents run as root under the same unit template, so this agent can ask
-// the update agent what it is doing over its socket the way Suite Manager does.
 const updateAgent = new UpdateAgentClient();
 
-// Whether a platform update is running. An update restarts this agent partway
-// through, so a backup that started underneath one would be cut off mid-write.
-// An update agent that does not answer is not an update in progress: a backup
-// refused because a socket was missing would be a backup that never happened.
+// An update restarts this agent partway through, so a backup started underneath
+// one would be cut off; an update agent that does not answer is not an update.
 async function updateInProgress() {
   try {
     const summary = await updateAgent.summary();
@@ -926,16 +840,18 @@ async function updateInProgress() {
 }
 
 const primary = new PrimaryDestination({ agentStateDir });
+const logLine = (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`);
+// What a server updated from MOS 0.22 left behind, made today's on sight.
+const carryOver = new CarryOver({ agentStateDir, appAgent, lastBackups, log: logLine, primary, registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) });
 
 const scheduler = new BackupScheduler({
   agentStateDir,
   createJob: (kind, payload) => createJob(kind, payload),
   destinations: async () => (await survey()).destinations,
-  log: (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`),
+  log: logLine,
   primary,
-  // Reconciled first: a worker killed by a power loss leaves its job file
-  // saying "running" until something checks, and the scheduler must not wait
-  // on that forever just because nobody had the Backups screen open.
+  // Reconciled first, so a worker killed by a power loss does not keep the
+  // scheduler waiting until somebody opens the Backups screen.
   readJob: (id) => { reconcileCurrentJob(); try { return readJson(jobPath(id)); } catch { return null; } },
   restorePoints: scheduledRestorePoints,
   updateInProgress,
@@ -971,13 +887,13 @@ if (require.main === module && process.argv[2] === '--worker') {
 } else if (require.main === module) {
   ensureDir(agentStateDir);
   ensureDir(jobsDir);
-  // Before anything can ask for it: the screen has to be able to show an owner
-  // their recovery key before a backup exists.
+  // The screen has to be able to show an owner their recovery key before a backup exists.
   engine.recoveryKey();
   installId();
-  // A worker that died with the machine never cleared the file the busy page
-  // reads; the next agent start is the first moment anything can.
+  // A worker that died with the machine never cleared the file the busy page reads.
   if (!isActive(reconcileCurrentJob())) progressPublisher.clear();
+  sweepInterruptedErases();
+  carryOver.atStart();
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -990,12 +906,13 @@ if (require.main === module && process.argv[2] === '--worker') {
           capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'primary'], archives: ['erase', 'forget-key', 'keys', 'unlock'], recoveryKey: ['acknowledge', 'reveal', 'rotate'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'archives' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
+          // Without the engine binary nothing can be written anywhere; said once here, not per destination.
+          engine: { installed: engine.installed(), reason: engine.installed() ? null : ENGINE_MISSING_MESSAGE },
           hostname: os.hostname(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
           recentJobs: recentJobs(),
-          // Where everything that backs up on its own writes: the schedule, and
-          // the checkpoint before a MOS update.
+          // Where everything that backs up on its own writes.
           primaryDestination: primary.state(),
           recoveryKey: recoveryKeyStatus(),
           schedule: scheduler.state(),
@@ -1003,9 +920,8 @@ if (require.main === module && process.argv[2] === '--worker') {
         });
         return;
       }
-      // The cheap read. A full status lists every drive and reaches every
-      // connected bucket, which is far too much for the two questions another
-      // agent asks often: is a job running, and where do unattended backups go.
+      // The cheap read for the two questions another agent asks often: is a job
+      // running, and where do unattended backups go.
       if (request.method === 'GET' && url.pathname === '/v1/summary') {
         respond(response, 200, {
           currentJob: summarizeJob(reconcileCurrentJob()),
@@ -1015,13 +931,12 @@ if (require.main === module && process.argv[2] === '--worker') {
         });
         return;
       }
-      // One job by id, for a caller waiting on the backup it asked for: the
-      // current job may already be someone else's by the time it looks.
+      // One job by id: the current job may already be someone else's by the time a caller looks.
       if (request.method === 'GET' && url.pathname.startsWith('/v1/jobs/')) {
         const id = path.basename(url.pathname);
         reconcileCurrentJob();
         let job = null;
-        try { job = readJson(jobPath(id)); } catch {}
+        try { job = readJson(jobPath(id)); } catch { /* no such job: 404 below */ }
         if (!job) { respond(response, 404, { code: 'NOT_FOUND', error: 'Job was not found.' }); return; }
         respond(response, 200, { job: summarizeJob(job) });
         return;
@@ -1033,32 +948,24 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, { primaryDestination: primary.save({ destinationId: known.id, label: known.label }) });
         return;
       }
-      // Reaching the bucket before anything is stored is the whole point of the
-      // test: an owner who mistyped a key finds out here, from the provider's
-      // own answer, rather than from a backup that fails at three in the
-      // morning. Nothing is written — a repository is created by the first
-      // backup, not by connecting.
+      // Nothing is written by a test: a repository is created by the first backup, not by connecting.
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/test') {
         respond(response, 200, { result: await testObjectDestination(await readBody(request)) });
         return;
       }
-      // Asked on its own so Suite Manager can decide whether this showing needs
-      // the owner password without paying for a full status, which lists drives
-      // and reaches every connected bucket.
+      // Asked on its own so Suite Manager can decide whether showing the key needs
+      // the owner password without paying for a full status.
       if (request.method === 'GET' && url.pathname === '/v1/recovery-key') {
         respond(response, 200, { recoveryKey: recoveryKeyStatus() });
         return;
       }
-      // Shown before it is needed, and shown again to a signed-in owner who asks:
-      // Suite Manager decides whether a password was required, because it is the
-      // component that holds the owner's account.
+      // Suite Manager decides whether a password was required: it holds the owner's account.
       if (request.method === 'POST' && url.pathname === '/v1/recovery-key/reveal') {
         respond(response, 200, await revealRecoveryKey());
         return;
       }
-      // Answered 200 with `ok: false` when the vault refused, because a
-      // rotation that stopped early is a state to explain rather than a
-      // failure: the key the owner already has still opens everything.
+      // 200 with `ok: false` when the vault refused: a rotation that stopped early
+      // is a state to explain, and the key the owner has still opens everything.
       if (request.method === 'POST' && url.pathname === '/v1/recovery-key/rotate') {
         respond(response, 200, await rotateRecoveryKey());
         return;
@@ -1105,11 +1012,9 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, { destination: publicObjectDestination(record) });
         return;
       }
+      // Disconnecting forgets how to reach the bucket and never deletes what is in it.
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/remove') {
         const body = await readBody(request);
-        // Disconnecting forgets how to reach the bucket. It never deletes what
-        // is in it: the backups stay, and reconnecting the same bucket lists
-        // them again.
         if (primary.read()?.destinationId === body.destinationId) {
           throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
         }
@@ -1121,17 +1026,17 @@ if (require.main === module && process.argv[2] === '--worker') {
       if (request.method === 'POST' && url.pathname === '/v1/backups') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
-        const requested = body.destinationId === PRIMARY_DESTINATION ? await primaryBackupDestinationId() : (await knownDestination(body.destinationId)).id;
-        await (await destinationResolver.target(requested)).assertAvailable();
-        respond(response, 202, { job: createJob('backup', { ...body, destinationId: requested }) });
+        const destination = body.destinationId === PRIMARY_DESTINATION ? await primaryDestination() : await knownDestination(body.destinationId);
+        if (destination.reason) throw new Error(destination.reason);
+        await (await destinationResolver.target(destination.id)).assertAvailable();
+        respond(response, 202, { job: createJob('backup', { ...body, destinationId: destination.id }) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/schedule') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
-        // Where the backups go is the primary's, not the schedule's, so a
-        // schedule cannot be turned on before one is chosen.
+        // Where the backups go is the primary's, so a schedule cannot be turned on before one is chosen.
         if (body.enabled === true && !primary.read()) throw new Error('Choose the destination automatic backups go to before turning them on.');
         respond(response, 200, { schedule: scheduler.save(body) });
         return;
@@ -1147,13 +1052,9 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, { note: note || null });
         return;
       }
+      // Deleting rewrites the shared repository, so it runs as a queued job: the
+      // one-at-a-time pipeline is what keeps it clear of every backup, check and restore.
       if (request.method === 'POST' && url.pathname === '/v1/backups/delete') {
-        // Deleting a restore point rewrites the shared repository with the
-        // engine's concurrency safety off, so it runs as a queued job: the
-        // one-at-a-time pipeline is what guarantees no backup, check, or
-        // restore overlaps the rewrite in either direction. createJob also
-        // refuses it while a restore sits interrupted — the backups on the
-        // drive may be the only recovery material there is.
         const body = await readBody(request);
         const locator = normalizeBackupLocator(body.backupPath);
         if (locator) await assertOwnRestorePoint(locator);
@@ -1167,16 +1068,14 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
     } catch (error) {
-      // The code travels, because the screen has to tell a refusal it can act on
-      // — an unsaved recovery key, a mistyped one — from a failure it can only
-      // report.
+      // The code travels, so the screen can tell a refusal it can act on from a failure.
       respond(response, 409, { code: error?.code || 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
   serveOnSocket(server, {
     name: 'mos-backup-agent',
-    // A machine that was off through its backup window owes a run; the early
-    // tick is what makes it happen shortly after boot rather than a day later.
+    // A machine that was off through its backup window owes a run; the early tick
+    // makes it happen shortly after boot rather than a day later.
     onReady() {
       setTimeout(() => { void scheduler.tick().catch(() => {}); }, 10_000).unref();
       scheduler.start();
@@ -1186,4 +1085,4 @@ if (require.main === module && process.argv[2] === '--worker') {
   });
 }
 
-module.exports = { RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, packageBackupInventory, sha256, validatePackagePayloads };
+module.exports = { RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, packageBackupInventory, sha256, survey, validatePackagePayloads };

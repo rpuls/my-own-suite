@@ -389,7 +389,7 @@ class ResticEngine {
   }
 
   keyList({ password, repository }) {
-    const output = this.runAs(repository, password, ['key', 'list', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }).trim();
+    const output = this.runAs(repository, password, ['key', 'list', '--no-lock', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }).trim();
     try {
       const parsed = JSON.parse(output || '[]');
       return Array.isArray(parsed) ? parsed : [parsed];
@@ -415,23 +415,9 @@ class ResticEngine {
     this.runAs(repository, password, ['key', 'remove', keyId, ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 });
   }
 
-  /**
-   * One repository's catch-up onto this machine's current key, run the first
-   * time probing it answers `locked` while a key it used to have is still here:
-   * one the owner has since rotated away from.
-   *
-   * Adding the current key and removing the old one is a metadata write. restic
-   * wraps a single data key with any number of passwords, so nothing stored is
-   * re-encrypted and every earlier backup stays exactly as valid as it was —
-   * and, for the same reason, nothing that was readable with the old key stops
-   * being readable to someone who kept both that key and a copy of the data.
-   * That is restic's model, not a shortcut taken here, and the rotation screen
-   * says so in those words.
-   *
-   * The old key id is removed while authenticated with the new one, because
-   * restic refuses to remove the password it is authenticated with; a failure
-   * there leaves both valid, which is untidy rather than harmful.
-   */
+  // A repository still on a key the owner rotated away from is re-wrapped onto the
+  // current one: a metadata write, nothing stored is re-encrypted. The old key is
+  // removed under the new one because restic will not remove the key it holds.
   async migrateRepositoryKey({ env = {}, localPath = null, location, secrets = [] }) {
     const repository = { engineName: this.name, env, localPath, location, secrets };
     for (const previous of this.rotatedKeys()) {
@@ -446,16 +432,9 @@ class ResticEngine {
     return false;
   }
 
-  // Whether a repository opens, wherever it lives. A drive with no config file
-  // is absent without asking the engine; a `locked` answer is retried once
-  // through the keys a rotation replaced, the single place a repository that
-  // fell behind gets re-keyed — so health checks, preflights and opens all
-  // re-key, not only the open.
-  //
-  // `password` is the key of the server that owns the repository, for a
-  // destination this machine only borrows. It also stops the migration, which
-  // writes: nothing this machine does to another server's archive may change
-  // it, and there is nothing here of ours to migrate anyway.
+  // Whether a repository opens. A `locked` answer is retried once through the keys
+  // a rotation replaced: the one write a status poll can make (key add/remove),
+  // never with `password`, which names another server's archive.
   async probe({ env = {}, localPath = null, location, password = null, secrets = [] }) {
     if (localPath && !this.repositoryInitialized(localPath)) return { cause: 'absent', state: 'absent' };
     const noun = localPath ? 'drive' : 'bucket';
@@ -465,8 +444,7 @@ class ResticEngine {
     return this.probeRepository({ env, location, noun, secrets });
   }
 
-  // The listing is polled, so two probes of one repository can overlap; the
-  // second waits for the first's migration rather than adding the key twice.
+  // Two overlapping probes share one migration rather than adding the key twice.
   migrateOnce(spec) {
     this.migrations ||= new Map();
     const pending = this.migrations.get(spec.location) || this.migrateRepositoryKey(spec).finally(() => this.migrations.delete(spec.location));
@@ -474,14 +452,12 @@ class ResticEngine {
     return pending;
   }
 
-  // A local repository's stored size is measured from its directory: the CLI
-  // reports it in a form not worth a version-sensitive parser when the truth is
-  // on disk. A bucket has no directory to walk, so there the engine is asked —
-  // one call, and the only place its stats output is parsed.
+  // A local repository is measured from its directory; a bucket has none, so the
+  // engine is asked, lock-free so a running check or prune does not fail the refresh.
   async repositoryStats({ repository }) {
     if (repository.localPath) return { storedBytes: treeBytes(repository.localPath) };
     try {
-      const parsed = JSON.parse(this.runFor(repository, ['stats', '--mode', 'raw-data', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }) || '{}');
+      const parsed = JSON.parse(this.runFor(repository, ['stats', '--no-lock', '--mode', 'raw-data', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }) || '{}');
       return { storedBytes: Number.isFinite(parsed.total_size) ? parsed.total_size : null };
     } catch {
       return { storedBytes: null };

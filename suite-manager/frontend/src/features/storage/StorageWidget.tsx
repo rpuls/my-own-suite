@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 import { Icon, Panel, PanelHead, PanelItem, PanelList } from '../../components/ui';
-import { whenWords } from '../backups/model';
-import { freeLine, isAttention, stateLabel, storageIcon, useAppNames, useStorage, type StorageEntry } from './model';
+import { whenWords } from '../../lib/dates';
+import { appNamesFor, freeLine, isAttention, kindFact, stateLabel, storageIcon, useStorage, type StorageEntry } from './model';
 import { CheckDialog } from './StorageDialogs';
 import { UsageBar } from './UsageBar';
 
@@ -13,14 +13,13 @@ function kept(entry: StorageEntry) {
 
 function glanceLine(entry: StorageEntry) {
   if (entry.state !== 'ready' && entry.state !== 'available') return stateLabel(entry);
-  if (entry.kind === 'bucket') return entry.backups?.lastBackupAt ? `Cloud · backed up ${whenWords(entry.backups.lastBackupAt).toLowerCase()}` : 'Cloud · no backups yet';
+  if (entry.kind === 'bucket') return entry.backups?.lastBackupAt ? `${kindFact(entry)} · backed up ${whenWords(entry.backups.lastBackupAt).toLowerCase()}` : `${kindFact(entry)} · no backups yet`;
   return freeLine(entry);
 }
 
 // So a drive that came back read-only or is unplugged is seen without looking for it.
 export function StorageWidget({ onManage }: { onManage: () => void }) {
-  const { act, reload, storage } = useStorage();
-  const names = useAppNames();
+  const { act, names, reload, storage } = useStorage();
   const [checking, setChecking] = useState('');
   const shown = (storage || []).filter(kept);
   const checked = storage?.find((entry) => entry.id === checking);
@@ -35,9 +34,9 @@ export function StorageWidget({ onManage }: { onManage: () => void }) {
           {entry.kind === 'drive' ? <UsageBar entry={entry} segments={[]} variant="compact" /> : null}
           <span className={isAttention(entry) ? 'suite-storage-warning' : 'suite-meta'}>{glanceLine(entry)}</span>
         </div>
-        {entry.capabilities.checkable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setChecking(entry.id)} type="button">Check</button> : null}
+        {entry.capabilities.checkable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setChecking(entry.id)} type="button">Check drive</button> : null}
       </PanelItem>)}
     </PanelList>
-    {checked ? <CheckDialog act={act} appNames={checked.apps.map((app) => names.get(app) || app)} entry={checked} onClose={() => { setChecking(''); void reload(); }} /> : null}
+    {checked ? <CheckDialog act={act} appNames={appNamesFor(checked, names)} entry={checked} onClose={() => { setChecking(''); void reload(); }} /> : null}
   </Panel>;
 }

@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { APP_FOLDER_FILESYSTEMS, BACKUPS_DIR, BACKUP_FILESYSTEMS, FILES_DIR, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
+const { APP_FOLDER_FILESYSTEMS, ARCHIVE_DIR_PATTERN, BACKUPS_DIR, BACKUP_FILESYSTEMS, FILES_DIR, FORMATTED_DRIVE_LABEL, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const { LSBLK_ARGS, directorySize, holdsSystem, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
 const { StorageRegistry, isRememberedDrive, publicBucket } = require('../lib/storage-registry.cjs');
 
@@ -33,7 +33,6 @@ const EFI_PARTITION_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b';
 // The file the image builder writes on the stick's EFI partition, which is how the
 // stick knows itself. A disk this does not prove is never offered for formatting.
 const INSTALLER_IMAGE_ID = 'mos-image.json';
-const FORMATTED_LABEL = 'MOS STORAGE';
 
 class StorageError extends Error {
   constructor(message) {
@@ -131,6 +130,38 @@ function stateReason(state, claim) {
   return null;
 }
 
+// Backups are on a drive once one archive folder is, or once the owner picked it for them.
+function holdsArchive(roots) {
+  return roots.some((root) => readDirectoryNames(path.join(root, BACKUPS_DIR)).some((name) => ARCHIVE_DIR_PATTERN.test(name)));
+}
+
+function awayDrive(id, claim) {
+  const state = driveState({ claim, connected: false });
+  return {
+    apps: claim.apps || [],
+    availableBytes: null,
+    backups: claim.backups === true,
+    connected: false,
+    detail: null,
+    devicePath: null,
+    fileSystem: claim.fileSystem || null,
+    holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem),
+    holdsBackups: claim.backups === true,
+    holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem),
+    id,
+    label: claim.label || id,
+    model: claim.model || null,
+    mountPath: null,
+    name: claim.name || null,
+    reason: stateReason(state, claim),
+    sizeBytes: claim.sizeBytes || null,
+    state,
+    transport: claim.transport || null,
+    usable: false,
+    usableForBackups: false,
+  };
+}
+
 class AppStorage {
   constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, registryPath }) {
     this.registry = new StorageRegistry({ registryPath });
@@ -159,6 +190,8 @@ class AppStorage {
 
   // Every drive plugged in, plus remembered ones that are away. A remembered drive
   // nothing claims any more is still mounted while connected, for what is left on it.
+  // The state's reason comes first; a format limitation is said only when the
+  // state has nothing to say.
   async drives() {
     const claims = this.registry.read().drives;
     const listed = [];
@@ -179,16 +212,14 @@ class AppStorage {
         devicePath: drive.devicePath,
         fileSystem: drive.fileSystem,
         holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
-        holdsBackups: roots.some((root) => fs.existsSync(path.join(root, BACKUPS_DIR))),
-        // The one-store layout of MOS before 0.23.0, which the owner moves into an archive folder by hand.
-        holdsEarlierBackups: roots.some((root) => fs.existsSync(path.join(root, BACKUPS_DIR, 'repository'))),
+        holdsBackups: claim?.backups === true || holdsArchive(roots),
         holdsBackupsFormat: drive.holdsBackupsFormat,
         id: drive.id,
         label: drive.label,
         model: drive.model,
         mountPath: mount ? target : null,
         name: claim?.name || null,
-        reason: drive.reason || stateReason(state, claim),
+        reason: stateReason(state, claim) || drive.reason,
         removable: drive.removable,
         sizeBytes: drive.sizeBytes,
         state,
@@ -198,14 +229,11 @@ class AppStorage {
       });
     }
     for (const [id, claim] of Object.entries(claims)) {
-      if (listed.some((drive) => drive.id === id) || !isRememberedDrive(claim)) continue;
-      const state = driveState({ claim, connected: false });
-      listed.push({ apps: claim.apps || [], availableBytes: null, backups: claim.backups === true, connected: false, detail: null, devicePath: null, fileSystem: claim.fileSystem || null, holdsAppFoldersFormat: APP_FOLDER_FILESYSTEMS.includes(claim.fileSystem), holdsBackups: false, holdsBackupsFormat: BACKUP_FILESYSTEMS.includes(claim.fileSystem), holdsEarlierBackups: false, id, label: claim.label || id, model: claim.model || null, mountPath: null, name: claim.name || null, reason: stateReason(state, claim), sizeBytes: claim.sizeBytes || null, state, transport: claim.transport || null, usable: false, usableForBackups: false });
+      if (!listed.some((drive) => drive.id === id) && isRememberedDrive(claim)) listed.push(awayDrive(id, claim));
     }
     return listed;
   }
 
-  // The disk MOS runs from, which holds every app's own data.
   // The disk MOS runs from, as the owner needs it: what MOS itself takes, what the
   // apps and their data take, and what is left for them. On a machine with a vault
   // the apps live there, so the system partition's own free space is not theirs.
@@ -285,7 +313,7 @@ class AppStorage {
     await this.execute('udevadm', ['settle'], { timeoutMs: 60_000 }).catch(() => {});
     const partition = (await this.blockDevices()).find((device) => (device.path || `/dev/${device.name}`) === devicePath)?.children?.[0];
     if (!partition) throw new StorageError('The stick was erased, but MOS could not make a drive on it. Unplug it and plug it back in.');
-    await this.execute('mkfs.exfat', ['-L', FORMATTED_LABEL, partition.path || `/dev/${partition.name}`], { timeoutMs: 10 * 60_000 });
+    await this.execute('mkfs.exfat', ['-L', FORMATTED_DRIVE_LABEL, partition.path || `/dev/${partition.name}`], { timeoutMs: 10 * 60_000 });
     await this.execute('udevadm', ['settle'], { timeoutMs: 60_000 }).catch(() => {});
   }
 
@@ -457,8 +485,10 @@ class AppStorage {
     this.registry.update(({ drives }) => { this.remember(drives, driveId, drive).backups = true; });
   }
 
+  // Letting go of backups keeps the drive open, like an app letting go of its folders:
+  // forgetting is only ever the owner's own action.
   releaseBackups(driveId) {
-    this.registry.recordDrive(driveId, { backups: undefined });
+    this.registry.recordDrive(driveId, { backups: undefined, keepOpen: true });
   }
 
   // An app lets go of every drive it no longer mounts; its folders stay on them, and
@@ -524,7 +554,6 @@ module.exports = {
   StorageError,
   appFolderPath,
   driveMountPath,
-  looksLikeInstallerStick,
   storageCandidates,
   systemSpaces,
 };

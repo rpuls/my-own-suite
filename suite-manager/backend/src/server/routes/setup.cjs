@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 
 const { resolveClientAddress } = require('../../auth/login-throttle.cjs');
-const { KNOWN_BROWSER_COOKIE, clearSessionCookie, knownBrowserCookie, sessionCookie } = require('../cookies.cjs');
+const { clearSessionCookies, knownBrowserCookie, knownBrowserTokenFrom, sessionCookie } = require('../cookies.cjs');
 const { frontendBuildId } = require('../frontend.cjs');
 const { jsonResponse } = require('../responses.cjs');
 
@@ -76,7 +76,7 @@ function setupRoutes({ addressService, frontendDistDir, handover, logger, ownerC
       path: '/auth/login',
       handler: async ({ body, cookies, request, response, secure }) => {
         const input = await body();
-        const result = await signIn.signIn({ credentials: input, ip: resolveClientAddress(request), knownBrowserToken: cookies[KNOWN_BROWSER_COOKIE] });
+        const result = await signIn.signIn({ credentials: input, ip: resolveClientAddress(request), knownBrowserToken: knownBrowserTokenFrom(cookies, secure) });
         const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
         if (result.knownBrowserToken) cookiesToSet.push(knownBrowserCookie(result.knownBrowserToken, secure));
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, { 'Set-Cookie': cookiesToSet });
@@ -115,7 +115,7 @@ function setupRoutes({ addressService, frontendDistDir, handover, logger, ownerC
       handler: async ({ response, secure, sessionToken }) => {
         const result = setup.logout(sessionToken);
         jsonResponse(response, 200, result, {
-          'Set-Cookie': clearSessionCookie(secure),
+          'Set-Cookie': clearSessionCookies(secure),
         });
       },
     },

@@ -171,15 +171,33 @@ test('a disconnected drive holds the run open instead of failing it', async () =
   assert.equal(scheduler.state().waiting, null);
 });
 
-test('a drive that is here but refuses backups waits with its own reason, not as unplugged', async () => {
-  const refusal = 'This drive holds backups another server made, so this server cannot back up to it.';
-  const { created, scheduler, state } = harness({ destinations: [{ id: '/media/backup', label: 'Backup drive', refusal, writable: true }] });
+// The destination's reason is the storage module's own sentence, repeated verbatim.
+test('a drive that is here but cannot take backups waits with the storage module\'s reason, not as unplugged', async () => {
+  const reason = 'Your apps can read this drive, but nothing can be saved to it until it is checked. It was unplugged or lost power without being ejected.';
+  const { created, scheduler, state } = harness({ destinations: [{ id: '/media/backup', label: 'Backup drive', reason, state: 'read-only' }] });
   scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
 
   await scheduler.tick();
   assert.equal(created.length, 0);
-  assert.equal(scheduler.state().waiting.reason, refusal);
+  assert.equal(scheduler.state().waiting.reason, reason);
+});
+
+test('storage that could not be read holds the run with that reason, never as a drive that was not connected', async () => {
+  const unreachable = { id: '/media/backup', label: 'Backup drive', reason: 'MOS could not read your storage right now.', state: 'unreachable' };
+  const { created, scheduler, state } = harness({ destinations: [unreachable] });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  state.clock = new Date('2026-09-07T01:00:30.000Z');
+
+  await scheduler.tick();
+  assert.equal(created.length, 0);
+  assert.equal(scheduler.state().waiting.reason, 'MOS could not read your storage right now.');
+  assert.equal(scheduler.state().lastResult, null);
+
+  state.destinations = [{ ...unreachable, reason: null, state: 'ready' }];
+  state.clock = new Date('2026-09-07T01:01:30.000Z');
+  await scheduler.tick();
+  assert.equal(created.length, 1, 'the owed run starts as soon as storage answers again');
 });
 
 test('a failed automatic backup is reported and waits for the next window', async () => {

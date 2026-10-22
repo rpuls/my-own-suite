@@ -12,8 +12,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { DestinationResolver, DiskArchive, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
-const { writeRepositoryDescriptor } = require('./engines/engine.cjs');
+const { DestinationResolver, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
+const { repositorySidecarPath, writeRepositoryDescriptor } = require('./engines/engine.cjs');
 const { normalizeObjectDestination, objectRepositorySpec } = require('./object-destinations.cjs');
 
 const CONNECTION = Object.freeze({
@@ -332,15 +332,32 @@ test('a bucket written by another server is reported locked, not unreachable', a
   assert.equal(unlocked.ready, true);
 });
 
+const DRIVE = 'TEST-DRIVE-0001';
+
 function drives() {
   const mountRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-media-'));
-  return { mountRoot, mountPath: path.join(mountRoot, 'TEST-DRIVE-0001') };
+  return { mountRoot, mountPath: path.join(mountRoot, DRIVE) };
+}
+
+function fullRepository(root) {
+  fs.mkdirSync(path.join(root, 'repository'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'repository', 'config'), '{"id":"abc"}');
+}
+
+function describedRepository(root, repositoryId = 'r1') {
+  writeRepositoryDescriptor(root, { engineName: 'restic', repositoryId });
+  fullRepository(root);
+}
+
+// An archive the way the agent reaches one: through the resolver, by its id.
+function diskArchive({ engine, guest = () => null, mountRoot }) {
+  return new DestinationResolver({ engine, guestKeys: { keyFor: guest }, mountRoot }).resolve(`${DRIVE}/archive-0000beef`);
 }
 
 // Whose key opens an archive on a drive is asked the only way it can be: by
 // trying this machine's key against the repository there.
 test('an archive on a drive another server made is reported locked, at most once per interval', async () => {
-  const { mountPath } = drives();
+  const { mountRoot } = drives();
   const probes = [];
   const engine = {
     name: 'restic',
@@ -349,18 +366,17 @@ test('an archive on a drive another server made is reported locked, at most once
       return { message: "This drive holds MOS backups written by another server. Enter that server's recovery key to use them here.", state: 'locked' };
     },
   };
-  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, mountPath, name: 'archive-0000beef' });
+  const archive = diskArchive({ engine, mountRoot });
 
   // An archive with nothing written yet costs nothing to judge.
   assert.deepEqual(await archive.health(), { keyState: 'empty' });
   assert.equal(probes.length, 0);
 
-  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  describedRepository(archive.root);
   const health = await archive.health();
   assert.equal(health.keyState, 'locked');
   assert.match(health.reason, /written by another server/u);
-  // The listing is polled, so the answer is held rather than spawning a
-  // process per archive per look.
+  // The listing is polled, so the answer is held rather than spawning a process per archive per look.
   await archive.health();
   assert.equal(probes.length, 1);
   assert.equal(probes[0].localPath, probes[0].location);
@@ -368,13 +384,13 @@ test('an archive on a drive another server made is reported locked, at most once
 });
 
 test('a key adopted or dropped by another process is not answered from the held key state', async () => {
-  const { mountPath } = drives();
-  const keyFile = path.join(mountPath, '..', 'engine-key');
+  const { mountRoot } = drives();
+  const keyFile = path.join(mountRoot, 'engine-key');
   fs.writeFileSync(keyFile, 'MOS-OLD');
   let guest = 'MOS-BORROWED';
   const engine = { keyFile, name: 'restic', async probe() { return { state: 'open' }; } };
-  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, guestKey: () => guest, mountPath, name: 'archive-0000beef' });
-  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  const archive = diskArchive({ engine, guest: () => guest, mountRoot });
+  describedRepository(archive.root);
   assert.equal((await archive.health()).keyState, 'borrowed');
 
   guest = null;
@@ -383,21 +399,54 @@ test('a key adopted or dropped by another process is not answered from the held 
   assert.equal((await archive.health()).keyState, 'own');
 });
 
-test('an archive seen between its descriptor and its repository is asked again on the next look', async () => {
-  const { mountPath } = drives();
-  const states = ['absent', 'open'];
-  const engine = { name: 'restic', async probe() { return { state: states.shift() || 'open' }; } };
-  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, mountPath, name: 'archive-0000beef' });
+// A first backup writes the descriptor before the repository, so a poll in
+// between sees an archive with nothing to open yet: a moment, not an answer to hold.
+test('an archive seen between its descriptor and its repository is empty, and asked again once the repository is there', async () => {
+  const { mountRoot } = drives();
+  const probes = [];
+  const engine = { name: 'restic', async probe() { probes.push(1); return { state: 'open' }; } };
+  const archive = diskArchive({ engine, mountRoot });
   writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
   assert.equal((await archive.health()).keyState, 'empty');
+  assert.equal(probes.length, 0, 'nothing to probe yet');
+  fullRepository(archive.root);
   assert.equal((await archive.health()).keyState, 'own');
 });
 
-test('an archive opened with another server\'s key is read from but never backed up into', async () => {
-  const { mountPath } = drives();
+// A descriptor torn by a pulled drive must neither hide the repository behind it
+// nor let the next backup start a second archive beside it.
+test('a torn or missing descriptor over a full repository is a stated fact, not an empty archive', async () => {
+  const { mountRoot, mountPath } = drives();
   const engine = { name: 'restic', async probe() { return { state: 'open' }; } };
-  const archive = new DiskArchive({ containerId: 'TEST-DRIVE-0001', engine, guestKey: () => 'MOS-BORROWED', mountPath, name: 'archive-0000beef' });
-  writeRepositoryDescriptor(archive.root, { engineName: 'restic', repositoryId: 'r1' });
+  const resolver = new DestinationResolver({ engine, mountRoot });
+  const torn = path.join(mountPath, 'MOS-backups', 'archive-00000001');
+  fullRepository(torn);
+  fs.writeFileSync(repositorySidecarPath(torn), '{"engineName":"res');
+
+  assert.deepEqual(resolver.archivesOn(DRIVE).map((archive) => archive.name), ['archive-00000001']);
+  const archive = resolver.resolve(`${DRIVE}/archive-00000001`);
+  assert.equal(archive.descriptor(), null);
+  assert.equal((await archive.health()).keyState, 'own');
+  assert.equal((await resolver.target(DRIVE)).id, `${DRIVE}/archive-00000001`, 'the next backup goes into the archive this key opens');
+});
+
+test('an undescribed archive this server\'s key does not open stops a new archive being made beside it', async () => {
+  const { mountRoot, mountPath } = drives();
+  const engine = { name: 'restic', async probe() { return { message: 'locked', state: 'locked' }; } };
+  const resolver = new DestinationResolver({ engine, mountRoot });
+  fullRepository(path.join(mountPath, 'MOS-backups', 'archive-00000001'));
+  await assert.rejects(() => resolver.target(DRIVE), { code: 'DESTINATION_UNDESCRIBED_ARCHIVE', message: /archive-00000001 .*lost its description/u });
+
+  // Described and locked is simply another server's: this server writes beside it.
+  writeRepositoryDescriptor(path.join(mountPath, 'MOS-backups', 'archive-00000001'), { engineName: 'restic', repositoryId: 'theirs' });
+  assert.match((await resolver.target(DRIVE)).name, /^archive-[0-9a-f]{8}$/u);
+});
+
+test('an archive opened with another server\'s key is read from but never backed up into', async () => {
+  const { mountRoot } = drives();
+  const engine = { name: 'restic', async probe() { return { state: 'open' }; } };
+  const archive = diskArchive({ engine, guest: () => 'MOS-BORROWED', mountRoot });
+  describedRepository(archive.root);
   assert.equal((await archive.health()).keyState, 'borrowed');
   await assert.rejects(() => archive.assertAvailable(), { code: 'DESTINATION_FOREIGN' });
 
@@ -413,14 +462,14 @@ test('this server backs up into its own archive on a drive, beside other servers
   const owners = { 'archive-00000001': 'locked', 'archive-00000002': 'open' };
   const engine = { name: 'restic', async probe({ localPath }) { return { state: owners[path.basename(path.dirname(localPath))] }; } };
   const resolver = new DestinationResolver({ engine, mountRoot });
-  assert.match((await resolver.target('TEST-DRIVE-0001')).name, /^archive-[0-9a-f]{8}$/u, 'a drive with nothing on it gets a new archive');
+  assert.match((await resolver.target(DRIVE)).name, /^archive-[0-9a-f]{8}$/u, 'a drive with nothing on it gets a new archive');
 
-  for (const name of Object.keys(owners)) writeRepositoryDescriptor(path.join(mountPath, 'MOS-backups', name), { engineName: 'restic', repositoryId: name });
+  for (const name of Object.keys(owners)) describedRepository(path.join(mountPath, 'MOS-backups', name), name);
   fs.mkdirSync(path.join(mountPath, 'MOS-backups', 'Not an archive'), { recursive: true });
-  assert.deepEqual(resolver.archivesOn('TEST-DRIVE-0001').map((archive) => archive.name), ['archive-00000001', 'archive-00000002']);
-  assert.equal((await resolver.target('TEST-DRIVE-0001')).id, 'TEST-DRIVE-0001/archive-00000002');
+  assert.deepEqual(resolver.archivesOn(DRIVE).map((archive) => archive.name), ['archive-00000001', 'archive-00000002']);
+  assert.equal((await resolver.target(DRIVE)).id, `${DRIVE}/archive-00000002`);
   const point = path.join(mountPath, 'MOS-backups', 'archive-00000001', 'restore-points', 'job-1.json');
-  assert.equal(resolver.archiveAt(path.dirname(path.dirname(point))).id, 'TEST-DRIVE-0001/archive-00000001');
-  assert.throws(() => resolver.resolve('TEST-DRIVE-0001/../etc'), /Choose a backup/u);
+  assert.equal(resolver.archiveAt(path.dirname(path.dirname(point))).id, `${DRIVE}/archive-00000001`);
+  assert.throws(() => resolver.resolve(`${DRIVE}/../etc`), /Choose a backup/u);
   assert.throws(() => resolver.archiveAt(path.join(mountRoot, '..')), /connected destination/u);
 });

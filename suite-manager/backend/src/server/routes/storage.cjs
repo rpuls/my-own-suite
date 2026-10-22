@@ -1,4 +1,4 @@
-const { DRIVE_ACTIONS } = require('../../apps/drive-jobs.cjs');
+const { DRIVE_ACTIONS, STICK_ACTION, stickJobId } = require('../../apps/drive-jobs.cjs');
 const { jsonResponse } = require('../responses.cjs');
 
 const VIEW = 'Sign in to see your storage.';
@@ -109,7 +109,8 @@ function storageRoutes({ backupAgent, driveJobs, storage }) {
         jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String((await body()).id || '') }));
       },
     },
-    // Erases the stick into an ordinary drive; the screen asked for a confirmation first.
+    // Erases the stick into an ordinary drive, as a job the page reads back with the
+    // storage list; the screen asked for a confirmation first.
     {
       method: 'POST',
       path: '/storage/installer-stick/format',
@@ -121,7 +122,7 @@ function storageRoutes({ backupAgent, driveJobs, storage }) {
           jsonResponse(response, 400, { code: 'CONFIRMATION_REQUIRED', error: 'Confirm that the installer on the stick may be erased.' });
           return;
         }
-        jsonResponse(response, 200, await storage.formatInstallerStick(String(input.devicePath || '')));
+        jsonResponse(response, 202, { job: driveJobs.begin(stickJobId(String(input.devicePath || '')), { action: STICK_ACTION }) });
       },
     },
     {

@@ -1224,7 +1224,7 @@ test('owner creation API signs in and changes setup status', async () => {
 
     assert.equal(createResponse.status, 201);
     assert.equal(created.status, 'signed-in');
-    assert.match(cookie, /mos_session=/);
+    assert.match(cookie, /mos_session_http=/);
 
     const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },
@@ -1261,7 +1261,7 @@ test('login and logout transition session state', async () => {
 
     assert.equal(loginResponse.status, 200);
     assert.equal(login.status, 'signed-in');
-    assert.match(cookie, /mos_session=/);
+    assert.match(cookie, /mos_session_http=/);
 
     const signedInResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },
@@ -1454,9 +1454,9 @@ test('a browser that has signed in before gets past an account-wide backoff, and
     // The owner's laptop signs in and is remembered.
     const laptop = await login(baseUrl, { ip: '198.51.100.7' });
     assert.equal(laptop.status, 200);
-    const known = cookieNamed(laptop, 'mos_known_browser');
+    const known = cookieNamed(laptop, 'mos_known_browser_http');
     assert.ok(known, 'a successful sign-in must remember the browser');
-    assert.match(laptop.headers.getSetCookie().find((entry) => entry.startsWith('mos_known_browser=')), /HttpOnly; SameSite=Lax; Path=\/; Max-Age=31536000/u);
+    assert.match(laptop.headers.getSetCookie().find((entry) => entry.startsWith('mos_known_browser_http=')), /HttpOnly; SameSite=Lax; Path=\/; Max-Age=31536000/u);
 
     // Two addresses guess the owner's email and raise the account bucket.
     assert.equal((await login(baseUrl, { ip: '203.0.113.1', password: 'wrong' })).status, 401);
@@ -1468,21 +1468,21 @@ test('a browser that has signed in before gets past an account-wide backoff, and
     // The laptop does not, and is not remembered twice.
     const again = await login(baseUrl, { cookie: known, ip: '198.51.100.9' });
     assert.equal(again.status, 200);
-    assert.equal(cookieNamed(again, 'mos_known_browser'), null);
+    assert.equal(cookieNamed(again, 'mos_known_browser_http'), null);
     // Skipping the account bucket is not skipping the password.
     assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'wrong' })).status, 401);
     // A cookie that was never issued is a stranger.
-    assert.equal((await login(baseUrl, { cookie: 'mos_known_browser=made-up', ip: '198.51.100.9' })).status, 429);
+    assert.equal((await login(baseUrl, { cookie: 'mos_known_browser_http=made-up', ip: '198.51.100.9' })).status, 429);
 
     // Changing the password forgets the laptop and remembers only the browser that changed it.
-    const session = cookieNamed(again, 'mos_session');
+    const session = cookieNamed(again, 'mos_session_http');
     const changed = await fetch(`${baseUrl}/suite-manager/api/settings/owner/password`, {
       body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a different passphrase' }),
       headers: { 'Content-Type': 'application/json', Cookie: session },
       method: 'POST',
     });
     assert.equal(changed.status, 200);
-    const reissued = cookieNamed(changed, 'mos_known_browser');
+    const reissued = cookieNamed(changed, 'mos_known_browser_http');
     assert.ok(reissued && reissued !== known);
     assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'a different passphrase' })).status, 429);
     assert.equal((await login(baseUrl, { cookie: reissued, ip: '198.51.100.9', password: 'a different passphrase' })).status, 200);

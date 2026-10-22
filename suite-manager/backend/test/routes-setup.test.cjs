@@ -115,7 +115,7 @@ test('the session cookie expires when the longest-lived session would', async ()
 
   await withRoutes({ signIn }, async (call) => {
     const signedIn = await call('POST', '/auth/login', { body: { email: OWNER.email }, signedIn: false });
-    assert.equal(signedIn.headers['set-cookie'][0], `mos_session=session; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_MS / 1_000}`);
+    assert.equal(signedIn.headers['set-cookie'][0], `mos_session_http=session; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_MS / 1_000}`);
   });
 });
 
@@ -132,10 +132,10 @@ test('a sign-in sets the session, remembers a new browser, and passes on the cli
     const fresh = await call('POST', '/auth/login', { body: { email: OWNER.email, password: 'pw' }, headers: { 'X-Forwarded-For': '203.0.113.9' }, signedIn: false });
     assert.equal(fresh.status, 200);
     assert.deepEqual(fresh.json(), { owner: OWNER, status: 'signed-in' });
-    assert.deepEqual(fresh.headers['set-cookie'].map((cookie) => cookie.split('=')[0]), ['mos_session', 'mos_known_browser']);
+    assert.deepEqual(fresh.headers['set-cookie'].map((cookie) => cookie.split('=')[0]), ['mos_session_http', 'mos_known_browser_http']);
 
-    const known = await call('POST', '/auth/login', { body: { email: OWNER.email, password: 'pw' }, headers: { Cookie: 'mos_known_browser=known' }, signedIn: false });
-    assert.deepEqual(known.headers['set-cookie'].map((cookie) => cookie.split('=')[0]), ['mos_session']);
+    const known = await call('POST', '/auth/login', { body: { email: OWNER.email, password: 'pw' }, headers: { Cookie: 'mos_known_browser_http=known' }, signedIn: false });
+    assert.deepEqual(known.headers['set-cookie'].map((cookie) => cookie.split('=')[0]), ['mos_session_http']);
   });
 
   assert.deepEqual(asked.map(({ credentials, knownBrowserToken }) => [credentials.email, knownBrowserToken]), [[OWNER.email, undefined], [OWNER.email, 'known']]);
@@ -160,6 +160,33 @@ test('logging out clears the session cookie', async () => {
 
     assert.equal(logout.status, 200);
     assert.equal(logout.json().status, 'signed-out');
-    assert.match(logout.headers['set-cookie'][0], /^mos_session=; .*Max-Age=0/u);
+    assert.match(logout.headers['set-cookie'][0], /^mos_session_http=; .*Max-Age=0/u);
+  });
+});
+
+test('the sign-in cookies have one name per transport, and an http session carries over to https', async () => {
+  const signIn = { signIn: async () => ({ knownBrowserToken: 'browser', owner: OWNER, sessionToken: 'session', status: 'signed-in' }) };
+
+  const handover = { state: async () => ({ login: 'done', recoveryKey: 'done' }) };
+
+  await withRoutes({ handover, signIn, setup: ownerSetup() }, async (call) => {
+    const overHttp = await call('POST', '/auth/login', { body: { email: OWNER.email }, signedIn: false });
+    assert.deepEqual(overHttp.headers['set-cookie'].map((cookie) => cookie.split(';')[0]), ['mos_session_http=session', 'mos_known_browser_http=browser']);
+    assert.ok(overHttp.headers['set-cookie'].every((cookie) => !cookie.includes('Secure')));
+
+    const overHttps = await call('POST', '/auth/login', { body: { email: OWNER.email }, headers: { 'X-Forwarded-Proto': 'https' }, signedIn: false });
+    assert.deepEqual(overHttps.headers['set-cookie'].map((cookie) => cookie.split(';')[0]), ['mos_session=session', 'mos_known_browser=browser']);
+    assert.ok(overHttps.headers['set-cookie'].every((cookie) => cookie.endsWith('; Secure')));
+
+    const carriedOver = await call('GET', '/setup/status', { headers: { Cookie: 'mos_session_http=owner-session', 'X-Forwarded-Proto': 'https' }, signedIn: false });
+    assert.equal(carriedOver.json().status, 'signed-in');
+
+    const eitherName = await call('GET', '/setup/status', { headers: { Cookie: 'mos_session=owner-session' }, signedIn: false });
+    assert.equal(eitherName.json().status, 'signed-in');
+
+    const logoutHttps = await call('POST', '/auth/logout', { headers: { 'X-Forwarded-Proto': 'https' } });
+    assert.deepEqual(logoutHttps.headers['set-cookie'].map((cookie) => cookie.split(';')[0]), ['mos_session=', 'mos_session_http=']);
+    const logoutHttp = await call('POST', '/auth/logout');
+    assert.deepEqual(logoutHttp.headers['set-cookie'].map((cookie) => cookie.split(';')[0]), ['mos_session_http=']);
   });
 });

@@ -1,6 +1,7 @@
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 
 import { Drawer, Icon } from '../../components/ui';
+import { navigateTo } from '../../lib/navigation';
 import { AppsScreen } from '../apps/AppsScreen';
 import { BackupsScreen } from '../backups/BackupsScreen';
 import { DashboardScreen } from '../dashboard/DashboardScreen';
@@ -60,9 +61,10 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
     return () => window.removeEventListener('popstate', update);
   }, []);
 
-  function navigate(nextRoute: Route, path: string) {
-    window.history.pushState({}, '', path);
-    setRoute(nextRoute);
+  // The popstate the shell listens for sets the route, as it does for every
+  // screen that navigates on its own.
+  function navigate(_nextRoute: Route, path: string) {
+    navigateTo(path);
     closeMenu();
   }
 

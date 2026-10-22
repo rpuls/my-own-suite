@@ -7,7 +7,29 @@ const test = require('node:test');
 
 const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, sha256, validatePackagePayloads } = require('./agent.cjs');
+
+// The agent reads its state roots at load, so they point at scratch before it is
+// required; its app-agent socket does not exist here, which is the case under test.
+const scratchRoot = fsSync.mkdtempSync(path.join(os.tmpdir(), 'mos-backup-agent-'));
+process.env.MOS_STATE_ROOT = scratchRoot;
+process.env.MOS_BACKUP_AGENT_STATE_DIR = path.join(scratchRoot, 'backup-agent');
+process.env.MOS_APP_AGENT_SOCKET = path.join(scratchRoot, 'no-such-agent.sock');
+const { RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, sha256, survey, validatePackagePayloads } = require('./agent.cjs');
+
+// The app agent restarts during every platform update. Its drives must not
+// vanish from the Backups screen then, and the schedule must not call a drive
+// "not connected" when the truth is that storage could not be read.
+test('the drive destinations the agent knows stay listed as unreachable while the storage module cannot be asked', async () => {
+  fsSync.mkdirSync(process.env.MOS_BACKUP_AGENT_STATE_DIR, { recursive: true });
+  fsSync.writeFileSync(path.join(process.env.MOS_BACKUP_AGENT_STATE_DIR, 'last-backups.json'), JSON.stringify({ '1A2B-3C4D': '2026-10-20T03:00:00.000Z', 'object:0123456789ab': '2026-10-21T03:00:00.000Z' }));
+  fsSync.writeFileSync(path.join(process.env.MOS_BACKUP_AGENT_STATE_DIR, 'primary-destination.json'), JSON.stringify({ destinationId: '1A2B-3C4D', label: 'Backup drive', setAt: '2026-10-01T00:00:00.000Z' }));
+
+  const { archives, destinations } = await survey();
+  assert.deepEqual(archives, []);
+  assert.deepEqual(destinations.map((entry) => [entry.id, entry.kind, entry.state, entry.reason, entry.label, entry.lastBackupAt, entry.ownArchive]), [
+    ['1A2B-3C4D', 'disk', 'unreachable', 'MOS could not read your storage right now.', 'Backup drive', '2026-10-20T03:00:00.000Z', null],
+  ]);
+});
 
 // The gate exists so nobody ends up with backups only a machine they no longer
 // have can open. It must not reach any further than that: a machine in the

@@ -3,7 +3,7 @@
 
 import { jsonResponse, postJson } from '../../lib/api';
 import { formatBytes } from '../../lib/bytes';
-import type { StorageEntry } from '../storage/model';
+import { filesPath, navigateTo } from '../../lib/navigation';
 
 export type AppState = 'elsewhere' | 'not-installed' | null;
 
@@ -26,7 +26,7 @@ export type FileEntry = {
 export type FilesListing = {
   addRefusal: string | null;
   app: { id: string; name: string; readsDrive: boolean; state: AppState } | null;
-  drive: { availableBytes: number | null; id: string; name: string; state: string; writable: boolean };
+  drive: { availableBytes: number | null; id: string; name: string };
   entries: FileEntry[];
   managed: boolean;
   path: string;
@@ -34,7 +34,8 @@ export type FilesListing = {
   totals: { bytes: number | null; items: number };
 };
 
-export type Destination = { label: string; path: string };
+// A folder files can be moved to, on the same drive.
+export type MoveTarget = { label: string; path: string };
 
 const FILES_ROUTE = /^\/suite-manager\/storage\/([^/]+)\/files\/?$/u;
 
@@ -43,18 +44,13 @@ export function filesLocation() {
   return match ? { driveId: decodeURIComponent(match[1]!), path: new URLSearchParams(window.location.search).get('path') || '' } : null;
 }
 
-export function filesHref(driveId: string, path = '') {
-  return `/suite-manager/storage/${encodeURIComponent(driveId)}/files${path ? `?path=${encodeURIComponent(path)}` : ''}`;
-}
-
 export function isFilesPath(pathname: string) {
   return FILES_ROUTE.test(pathname);
 }
 
 // A folder is a page of its own, so Back goes up a folder.
 export function openFiles(driveId: string, path = '', { replace = false } = {}) {
-  window.history[replace ? 'replaceState' : 'pushState']({}, '', filesHref(driveId, path));
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  navigateTo(filesPath(driveId, path), { replace });
 }
 
 function api(driveId: string, suffix = '') {
@@ -72,8 +68,8 @@ export async function listFiles(driveId: string, path: string) {
   return jsonResponse<FilesListing>(response, 'The files on this drive could not be listed.');
 }
 
-export async function listDestinations(driveId: string) {
-  return (await jsonResponse<{ destinations: Destination[] }>(await fetch(api(driveId, '/destinations')), 'The folders on this drive could not be listed.')).destinations;
+export async function listMoveTargets(driveId: string) {
+  return (await jsonResponse<{ destinations: MoveTarget[] }>(await fetch(api(driveId, '/destinations')), 'The folders on this drive could not be listed.')).destinations;
 }
 
 export const createFolder = (driveId: string, path: string, name: string) => postJson<{ path: string }>(api(driveId, '/folder'), { name, path }, 'The folder was not made.');
@@ -90,14 +86,6 @@ export function uploadsApi(driveId: string) {
   };
 }
 
-export const BACKUPS_PATH = '/suite-manager/backups';
-
-export function openBackups(event: { preventDefault: () => void }) {
-  event.preventDefault();
-  window.history.pushState({}, '', BACKUPS_PATH);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-
 export function appStateLabel(state: AppState) {
   return state === 'elsewhere' ? 'Uses another drive' : 'Not installed';
 }
@@ -106,14 +94,8 @@ export function joinPath(segments: string[], name?: string) {
   return [...segments, ...(name ? [name] : [])].join('/');
 }
 
-// Why Browse files is not offered for a drive right now, or '' when it is.
-export function browseReason(entry: StorageEntry) {
-  if (entry.capabilities.browsable) return '';
-  switch (entry.state) {
-    case 'away': return 'Plug the drive in to browse its files.';
-    case 'ejected': return entry.connected ? 'Use the drive again to browse its files.' : 'Plug the drive back in to browse its files.';
-    default: return entry.reason || 'MOS could not open this drive.';
-  }
+export function canSelect(entry: FileEntry, readOnly: boolean) {
+  return !readOnly && !entry.refusals.delete;
 }
 
 export function itemsLabel(count: number) {

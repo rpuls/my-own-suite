@@ -8,6 +8,7 @@ import { runOnLab } from '../support/lab-shell.mjs';
 import { openSuiteManager } from '../support/navigation.mjs';
 import { installedPackages } from '../support/packages.mjs';
 import { capturePageShot } from '../support/screenshots.mjs';
+import { renameInSettings } from './drive.mjs';
 import { followAddress } from './owner.mjs';
 
 const { BACKUPS_DIR, STORAGE_MOUNT_ROOT } = createRequire(import.meta.url)('../../../shared/storage-contract.cjs');
@@ -81,7 +82,7 @@ async function storageEntries(page) {
 async function backupDriveDestination(ctx) {
   const { page } = ctx;
   const status = await apiJson(page, STATUS);
-  const ready = (status.destinations || []).find((item) => item.kind !== 'object' && item.condition === 'ready');
+  const ready = (status.destinations || []).find((item) => item.kind !== 'object' && item.state === 'ready');
   if (ready) return ready;
   const drive = (await storageEntries(page)).find((item) => item.kind === 'drive' && item.capabilities.holdsBackups && !item.apps.length && ['available', 'ready'].includes(item.state));
   const reasons = (await storageEntries(page)).map((item) => `${item.name}: ${item.state}`).join('; ');
@@ -89,7 +90,7 @@ async function backupDriveDestination(ctx) {
   await useForBackups(page, await openDestinationPicker(page), drive.id);
   let found = null;
   await expect.poll(async () => {
-    found = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === drive.id && item.condition === 'ready');
+    found = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === drive.id && item.state === 'ready');
     return Boolean(found);
   }, { message: 'the picked drive should become a ready backup destination', timeout: 60000 }).toBe(true);
   return found;
@@ -102,7 +103,7 @@ async function backupToDisk(ctx) {
   expect(status.serviceAvailable, 'The backup agent should be available').toBe(true);
   const destination = await backupDriveDestination(ctx);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { exact: true, name: `Use ${destination.label} for backups` }).click();
+  await page.getByRole('radio', { exact: true, name: `Use ${destination.label} for backups` }).check();
 
   // MOS refuses to back up until the owner confirms the recovery key is saved;
   // save it the way an owner does rather than reaching past the rule.
@@ -124,7 +125,7 @@ async function backupToDisk(ctx) {
   expect(done.lastJob?.status, `The backup should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
   await expect(page.getByText(/Your backups are up to date/iu)).toBeVisible({ timeout: 60000 });
   await capturePageShot(page, 'backups', { fullPage: true });
-  const point = (done.backups || []).filter((item) => item.containerId === destination.id && item.owner === 'this')[0];
+  const point = (done.backups || []).filter((item) => item.placeId === destination.id && item.owner === 'this')[0];
   expect(point, 'The new restore point should be listed').toBeTruthy();
   ctx.backups.push({ apps, createdAt: point.createdAt, destination: 'local', destinationId: destination.id, path: point.path, runId: ctx.runId });
 }
@@ -179,9 +180,15 @@ async function waitForDestination(page, destinationId, accept) {
     last = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === destinationId);
     expect(last && accept(last)).toBeTruthy();
   }).toPass({ intervals: [3000], timeout: 120000 }).catch(() => {
-    throw new Error(`The bucket destination did not reach the expected state. Last: ${JSON.stringify(last).slice(0, 300)}`);
+    throw new Error(`The destination did not reach the expected state. Last: ${JSON.stringify(last).slice(0, 300)}`);
   });
   return last;
+}
+
+function latestBackup(ctx, destination, step) {
+  const record = [...ctx.backups].reverse().find((item) => item.destination === destination);
+  if (!record) throw new Error(`${step} needs an earlier backup to the backup disk in this run.`);
+  return record;
 }
 
 async function backupToBucket(ctx) {
@@ -189,14 +196,14 @@ async function backupToBucket(ctx) {
   await openSuiteManager(page, 'Backup', ctx.url('/'));
   const folder = `e2e-${ctx.runId}`.toLowerCase();
   const destinationId = await connectBucket(ctx, folder);
-  await waitForDestination(page, destinationId, (item) => item.condition === 'ready');
+  await waitForDestination(page, destinationId, (item) => item.state === 'ready');
   await rememberRecoveryKey(ctx);
 
   const apps = await installedIds(page);
   await post(page, 'start', { destinationId, note: `E2E ${ctx.runId}` });
   const done = await waitForJobToEnd(ctx, 25);
   expect(done.lastJob?.status, `The bucket backup should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
-  const point = (done.backups || []).find((item) => item.containerId === destinationId && item.owner === 'this');
+  const point = (done.backups || []).find((item) => item.placeId === destinationId && item.owner === 'this');
   expect(point, 'The bucket restore point should be listed').toBeTruthy();
   ctx.backups.push({ apps, createdAt: point.createdAt, destination: 'bucket', destinationId, folder, path: point.path, runId: ctx.runId });
 }
@@ -208,10 +215,10 @@ export async function backup(ctx, destination) {
 
 // The archive in a bucket, once MOS has heard back from it: this server's, or
 // another server's locked or opened with its key.
-async function waitForArchive(page, containerId, accept) {
+async function waitForArchive(page, placeId, accept) {
   let last = null;
   await expect(async () => {
-    last = ((await apiJson(page, STATUS)).archives || []).find((item) => item.containerId === containerId);
+    last = ((await apiJson(page, STATUS)).archives || []).find((item) => item.placeId === placeId);
     expect(last && accept(last)).toBeTruthy();
   }).toPass({ intervals: [3000], timeout: 120000 }).catch(() => {
     throw new Error(`The bucket's backups did not reach the expected state. Last: ${JSON.stringify(last).slice(0, 300)}`);
@@ -240,7 +247,7 @@ async function reconnectBucket(ctx, record) {
     await post(page, 'archives/unlock', { archiveId: found.id, recoveryKey: ctx.recoveryKey });
     await waitForArchive(page, destinationId, (item) => item.keyState === 'borrowed');
   }
-  const point = ((await apiJson(page, STATUS)).backups || []).find((item) => item.containerId === destinationId && item.createdAt === record.createdAt);
+  const point = ((await apiJson(page, STATUS)).backups || []).find((item) => item.placeId === destinationId && item.createdAt === record.createdAt);
   expect(point, 'The bucket restore point should be listed after reconnecting').toBeTruthy();
   return { destinationId, path: point.path };
 }
@@ -331,8 +338,7 @@ async function archiveIn(page, archiveId) {
 // with its key and the drive.
 export async function takeover(ctx) {
   const { page } = ctx;
-  const record = [...ctx.backups].reverse().find((item) => item.destination === 'local');
-  if (!record) throw new Error('takeover needs an earlier backup to the backup disk in this run.');
+  const record = latestBackup(ctx, 'local', 'takeover');
   const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path)));
   const archiveId = `${record.destinationId}/${made.name}`;
   try {
@@ -341,7 +347,7 @@ export async function takeover(ctx) {
     await expect.poll(async () => { archive = await archiveIn(page, archiveId); return archive?.keyState; }, { message: "the other server's archive should be listed, locked", timeout: 60000 }).toBe('locked');
     expect([archive.owner, archive.writtenBy?.hostname], 'It should be listed as the other server\'s').toEqual(['other', OTHER_SERVER]);
     const destination = ((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === record.destinationId);
-    expect(destination?.condition, 'The drive should stay ready for this server\'s own backups').toBe('ready');
+    expect(destination?.state, 'The drive should stay ready for this server\'s own backups').toBe('ready');
     await capturePageShot(page, 'backups-other-server', { fullPage: true });
 
     await post(page, 'archives/unlock', { archiveId, recoveryKey: made.key });
@@ -355,7 +361,7 @@ export async function takeover(ctx) {
     const status = await apiJson(page, STATUS);
     const taken = (status.archives || []).find((item) => item.id === archiveId);
     expect([taken?.owner, taken?.keyState], 'The restore should make the archive this server\'s').toEqual(['this', 'own']);
-    expect((status.destinations || []).find((item) => item.id === record.destinationId)?.condition, 'The drive should still be this server\'s backup place').toBe('ready');
+    expect((status.destinations || []).find((item) => item.id === record.destinationId)?.state, 'The drive should still be this server\'s backup place').toBe('ready');
     await rememberRecoveryKey(ctx);
     expect(ctx.recoveryKey, 'This server should now use the other server\'s recovery key').toBe(made.key);
   } finally {
@@ -366,17 +372,27 @@ export async function takeover(ctx) {
 // A drive MOS was never told about, holding backups another server left on it,
 // is opened on sight when plugged in: Storage says what it holds and Backups
 // lists them, with no claim made on the drive.
-export async function driveFound(ctx) {
+// A connected drive no app or backup uses, apart from the one given. A lab with no
+// drive to spare stops using a second backup drive, as its owner would.
+async function spareDrive(ctx, except) {
   const { page } = ctx;
-  const record = [...ctx.backups].reverse().find((item) => item.destination === 'local');
-  if (!record) throw new Error('drive-found needs an earlier backup to the backup disk in this run.');
-  const free = (entry) => entry.kind === 'drive' && entry.connected && entry.capabilities.holdsBackups && !entry.apps.length && entry.id !== record.destinationId;
-  // A lab with no drive to spare stops using a second backup drive, as its owner would.
+  const free = (entry) => entry.kind === 'drive' && entry.connected && entry.capabilities.holdsBackups && !entry.apps.length && entry.id !== except;
   const extra = (await storageEntries(page)).find((entry) => free(entry) && entry.backups?.destination && !entry.backups.primary);
   if (extra) await post(page, 'destinations/release', { storageId: extra.id });
   const spare = (await storageEntries(page)).find((entry) => free(entry) && !entry.backups?.destination);
   const listed = (await storageEntries(page)).map((item) => `${item.name}: ${item.state}${item.apps.length ? ', apps' : ''}${item.backups?.destination ? ', backups' : ''}`).join('; ');
   expect(spare, `A connected drive no app or backup uses is needed (${listed || 'none listed'})`).toBeTruthy();
+  return spare;
+}
+
+async function entryOf(page, storageId) {
+  return (await storageEntries(page)).find((item) => item.id === storageId) || null;
+}
+
+export async function driveFound(ctx) {
+  const { page } = ctx;
+  const record = latestBackup(ctx, 'local', 'drive-found');
+  const spare = await spareDrive(ctx, record.destinationId);
   const backupsDir = `${STORAGE_MOUNT_ROOT}/${spare.id}/${BACKUPS_DIR}`;
   if (spare.state !== 'ready') await runOnLab(ctx.env.labShell, `systemctl start mos-storage-attach@${spare.id}.service`);
   const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path, backupsDir)));
@@ -396,13 +412,97 @@ export async function driveFound(ctx) {
   }
 }
 
+// Another server's archive erased from Backups: it goes from the list and from the
+// drive, while this server's own archive beside it, and the drive's place, stay.
+export async function eraseOtherArchive(ctx) {
+  const { page } = ctx;
+  const record = latestBackup(ctx, 'local', 'erase-other-archive');
+  const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path)));
+  const archiveId = `${record.destinationId}/${made.name}`;
+  const folder = `$(dirname "$(dirname ${JSON.stringify(record.path)})")/../${made.name}`;
+  try {
+    await openSuiteManager(page, 'Backup', ctx.url('/'));
+    let archive = null;
+    await expect.poll(async () => { archive = await archiveIn(page, archiveId); return archive?.owner; }, { message: "the other server's archive should be listed", timeout: 60000 }).toBe('other');
+    const row = page.locator('.suite-bk-row.is-other-server').filter({ hasText: `From ${OTHER_SERVER}` }).first();
+    await row.getByRole('button', { name: `More for ${archive.placeLabel}` }).click();
+    await page.getByRole('menuitem', { name: /^Erase these backups/u }).click();
+    const dialog = page.getByRole('dialog', { name: /^Erase another server's backups/u });
+    await dialog.getByRole('checkbox').check();
+    await dialog.getByRole('button', { exact: true, name: 'Erase these backups' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60000 });
+    await expect.poll(() => archiveIn(page, archiveId), { message: 'the erased archive should leave the list', timeout: 60000 }).toBeNull();
+    expect((await runOnLab(ctx.env.labShell, `[ -e "${folder}" ] && echo kept || echo gone`)).trim(), 'The archive folder should be gone from the drive').toBe('gone');
+    const status = await apiJson(page, STATUS);
+    expect((status.destinations || []).find((item) => item.id === record.destinationId)?.state, 'The drive should still be this server\'s backup place').toBe('ready');
+    expect((status.backups || []).some((item) => item.placeId === record.destinationId && item.owner === 'this'), 'This server\'s own restore points on the drive should be untouched').toBe(true);
+  } finally {
+    await runOnLab(ctx.env.labShell, `rm -rf "${folder}" "${folder}".erasing-*`);
+  }
+}
+
+// A backup drive that is not plugged in is forgotten only when the owner asks: it
+// leaves Storage and Backups, and plugged back in it is listed again with no claim.
+export async function forgetDrive(ctx) {
+  const { page } = ctx;
+  const record = latestBackup(ctx, 'local', 'forget-drive');
+  const spare = await spareDrive(ctx, record.destinationId);
+  await openSuiteManager(page, 'Backup', ctx.url('/'));
+  await useForBackups(page, await openDestinationPicker(page), spare.id);
+  await waitForDestination(page, spare.id, (item) => item.state === 'ready');
+  expect((await apiJson(page, STATUS)).primaryDestination?.destinationId, 'A second destination should not take over automatic backups').not.toBe(spare.id);
+  try {
+    await pullDrive(ctx, spare.id);
+    await expect.poll(async () => (await entryOf(page, spare.id))?.state, { intervals: [3000], message: 'the pulled drive should be listed as not connected', timeout: 120000 }).toBe('away');
+    await openSuiteManager(page, 'Backup', ctx.url('/'));
+    const row = page.locator('.suite-bk-row:not(.is-other-server)').filter({ hasText: spare.name });
+    await row.getByRole('button', { name: `More for ${spare.name}` }).click();
+    await page.getByRole('menuitem', { name: 'Forget this drive' }).click();
+    await expect.poll(async () => Boolean(await entryOf(page, spare.id)), { intervals: [3000], message: 'the forgotten drive should leave Storage', timeout: 60000 }).toBe(false);
+    expect(((await apiJson(page, STATUS)).destinations || []).some((item) => item.id === spare.id), 'The forgotten drive should leave Backups').toBe(false);
+  } finally {
+    await plugDrive(ctx, spare.id);
+  }
+  await expect.poll(async () => {
+    const back = await entryOf(page, spare.id);
+    return back ? `${back.state}${back.backups?.destination ? ', claimed' : ''}` : 'absent';
+  }, { intervals: [3000], message: 'plugged back in, the drive should open on sight with no claim', timeout: 180000 }).toBe('ready');
+}
+
+// Renamed in Settings → Storage, the backup drive carries its name into Backups and
+// a spare drive into the picker; an empty name gives a drive its own label back.
+export async function renameStorage(ctx) {
+  const { page } = ctx;
+  const record = latestBackup(ctx, 'local', 'rename-storage');
+  const spare = await spareDrive(ctx, record.destinationId);
+  const backupDrive = await entryOf(page, record.destinationId);
+  const names = { backup: 'Backups E2E', spare: 'Spare E2E' };
+  const ownName = (entry) => (entry.named ? entry.name : '');
+  try {
+    await renameInSettings(ctx, record.destinationId, names.backup);
+    await renameInSettings(ctx, spare.id, names.spare);
+    expect([(await entryOf(page, record.destinationId)).name, (await entryOf(page, spare.id)).name], 'Storage should list the new names').toEqual([names.backup, names.spare]);
+    await openSuiteManager(page, 'Backup', ctx.url('/'));
+    await expect(page.locator('.suite-bk-row:not(.is-other-server)').filter({ hasText: names.backup })).toBeVisible({ timeout: 30000 });
+    expect(((await apiJson(page, STATUS)).destinations || []).find((item) => item.id === record.destinationId)?.label, 'Backups should call the drive by its new name').toBe(names.backup);
+    const picker = await openDestinationPicker(page);
+    await expect(picker.getByText(names.spare).first()).toBeVisible();
+    await picker.getByRole('button', { exact: true, name: 'Cancel' }).click();
+    await renameInSettings(ctx, spare.id, '');
+    expect((await entryOf(page, spare.id)).name, 'An empty name should give the drive its own label back').toBe(spare.label);
+  } finally {
+    await renameInSettings(ctx, record.destinationId, ownName(backupDrive)).catch(() => undefined);
+    await renameInSettings(ctx, spare.id, ownName(spare)).catch(() => undefined);
+  }
+}
+
 export async function cleanup(ctx) {
   const { page } = ctx;
   await page.goto(ctx.url('/suite-manager/'), { waitUntil: 'domcontentloaded' });
   const status = await apiJson(page, STATUS);
   const failures = [];
   for (const record of ctx.backups) {
-    const point = (status.backups || []).find((item) => item.path === record.path || (item.containerId === record.destinationId && item.createdAt === record.createdAt));
+    const point = (status.backups || []).find((item) => item.path === record.path || (item.placeId === record.destinationId && item.createdAt === record.createdAt));
     if (!point) continue;
     try {
       await post(page, 'delete', { backupPath: point.path });

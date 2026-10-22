@@ -15,9 +15,11 @@ const test = require('node:test');
 
 const backupsDir = path.join(__dirname, '..', '..', 'suite-manager', 'frontend', 'src', 'features', 'backups');
 const read = (file) => fs.readFileSync(path.join(backupsDir, file), 'utf8');
+// The screen and the hook that polls for it are one surface.
+const readScreen = () => read('BackupsScreen.tsx') + read('useBackupStatus.ts');
 
 test('the status poll tells the screen how it failed instead of swallowing it', () => {
-  const screen = read('BackupsScreen.tsx');
+  const screen = readScreen();
   // A running MOS refusing this address is an answer, not a wait.
   assert.match(screen, /response\.status === 421/u);
   assert.match(screen, /wrong-address/u);
@@ -29,7 +31,7 @@ test('the status poll tells the screen how it failed instead of swallowing it', 
 });
 
 test('a restore panel that cannot reach MOS reads the file Caddy serves, never its last good poll', () => {
-  const screen = read('BackupsScreen.tsx');
+  const screen = readScreen();
   assert.match(screen, /\/mos-status\/progress\.json/u);
   // The choice itself: stale contact must not fall back to the job record the
   // page happens to be holding.
@@ -52,7 +54,7 @@ test('the restore dialog states what happens to a carried domain and asks nothin
 test('what a restore left undone is on the page, not inside the activity list', () => {
   const screen = read('BackupsScreen.tsx');
   const aftermath = screen.indexOf('aftermath ? <Notice');
-  const activity = screen.indexOf('suite-bk-activity-head');
+  const activity = screen.indexOf('<strong>Recent activity</strong>');
   assert.ok(aftermath > 0, 'the aftermath notice is rendered');
   assert.ok(activity > 0, 'the activity list is rendered');
   assert.ok(aftermath < activity, 'the outstanding work comes before the collapsed history');

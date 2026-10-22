@@ -86,22 +86,54 @@ export async function drivePull(ctx) {
   await appsRunAgain(ctx, apps);
 }
 
-// The owner's own path: the row in Settings → Storage, then the flow dialog it opens.
-async function driveAction(ctx, driveId, button) {
+// The row for one drive or bucket in Settings → Storage, as the owner reaches it.
+export async function storageRow(ctx, storageId) {
   const { page } = ctx;
-  const name = (await listDrives(page)).find((item) => item.id === driveId)?.name;
+  const name = ((await apiJson(page, STORAGE).catch(() => ({ storage: [] }))).storage || []).find((item) => item.id === storageId)?.name;
   const settings = ctx.url('/suite-manager/settings#set-storage');
   await page.goto(settings, { waitUntil: 'domcontentloaded' });
   // A restart can put the lab's handover gate back in front of Suite Manager.
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 30000 });
   if (await saveHandoverIfPending(page)) await page.goto(settings, { waitUntil: 'domcontentloaded' });
   const item = page.locator('#set-storage .mos-panel-item').filter({ hasText: name });
-  const action = item.getByRole('button', { exact: true, name: button });
-  if (!await action.isVisible().catch(() => false)) await item.getByRole('button', { name: `Show details for ${name}` }).click();
+  await expect(item).toBeVisible({ timeout: 30000 });
+  return { item, name };
+}
+
+async function expandRow({ item, name }) {
+  const details = item.getByRole('button', { name: `Show details for ${name}` });
+  if (await details.isVisible().catch(() => false)) await details.click();
+}
+
+// The owner's own path: the row in Settings → Storage, then the flow dialog it opens.
+async function driveAction(ctx, driveId, button) {
+  const row = await storageRow(ctx, driveId);
+  const action = row.item.getByRole('button', { exact: true, name: button });
+  if (!await action.isVisible().catch(() => false)) await expandRow(row);
   await action.click();
-  const dialog = page.getByRole('dialog');
+  const dialog = ctx.page.getByRole('dialog');
   await dialog.getByRole('button', { exact: true, name: button }).click();
   return dialog;
+}
+
+// Renamed from the row's More menu. An empty name gives a drive its own label back.
+export async function renameInSettings(ctx, storageId, name) {
+  const row = await storageRow(ctx, storageId);
+  await expandRow(row);
+  await row.item.getByRole('button', { name: `More actions for ${row.name}` }).click();
+  await ctx.page.getByRole('menuitem', { name: 'Rename' }).click();
+  const dialog = ctx.page.getByRole('dialog', { name: `Rename ${row.name}` });
+  await dialog.getByLabel('Name').fill(name);
+  await dialog.getByRole('button', { exact: true, name: 'Save' }).click();
+  await expect(dialog).toBeHidden({ timeout: 30000 });
+}
+
+async function ejectFromSettings(ctx, driveId) {
+  const dialog = await driveAction(ctx, driveId, 'Eject');
+  await driveReaches(ctx, driveId, ['ejected'], { minutes: 6 });
+  await expect(dialog).toContainText('Safe to unplug', { timeout: 30000 });
+  await dialog.getByRole('button', { exact: true, name: 'Done' }).click();
+  expect(await mountOptions(ctx, driveId)).toEqual([]);
 }
 
 export async function driveCheck(ctx) {
@@ -117,14 +149,23 @@ export async function driveCheck(ctx) {
 export async function driveEject(ctx) {
   const { apps, driveId } = await appDriveOf(ctx);
   await driveReaches(ctx, driveId, ['ready']);
-  const dialog = await driveAction(ctx, driveId, 'Eject');
-  await driveReaches(ctx, driveId, ['ejected'], { minutes: 6 });
-  await expect(dialog).toContainText('Safe to unplug', { timeout: 30000 });
-  await dialog.getByRole('button', { exact: true, name: 'Done' }).click();
-  expect(await mountOptions(ctx, driveId)).toEqual([]);
+  await ejectFromSettings(ctx, driveId);
   await pullDrive(ctx, driveId);
   await plugDrive(ctx, driveId);
   await driveReaches(ctx, driveId, ['ready']);
+  await appsRunAgain(ctx, apps);
+}
+
+// Ejected, then brought back from its row with no cable touched: the drive is
+// ready read-write and its apps run on it again.
+export async function useAgain(ctx) {
+  const { apps, driveId } = await appDriveOf(ctx);
+  await driveReaches(ctx, driveId, ['ready']);
+  await ejectFromSettings(ctx, driveId);
+  const { item } = await storageRow(ctx, driveId);
+  await item.getByRole('button', { exact: true, name: 'Use it again' }).click();
+  await driveReaches(ctx, driveId, ['ready'], { minutes: 6 });
+  expect(await mountOptions(ctx, driveId)).toContain('rw');
   await appsRunAgain(ctx, apps);
 }
 

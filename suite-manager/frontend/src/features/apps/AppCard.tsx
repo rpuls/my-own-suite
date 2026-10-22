@@ -1,5 +1,6 @@
 import { useId } from 'react';
 
+import { pausedByDrive, type StorageEntry } from '../storage/model';
 import { appIconSrc, categoryLabel, initialsFor, primaryCategory, statusFor, summaryFor } from './model';
 import type { AppPackageSummary } from './types';
 
@@ -26,7 +27,7 @@ export function AppIcon({ app, large = false }: { app: AppPackageSummary; large?
   </span>;
 }
 
-export function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void }) {
+export function AppCard({ app, onOpen, storage }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void; storage: StorageEntry[] | null }) {
   return <article className={`suite-app-card${app.external ? ' is-external' : ''}`}>
     <button className="suite-app-card-main" onClick={() => onOpen(app)} type="button">
       <AppIcon app={app} />
@@ -45,7 +46,7 @@ export function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app:
       </span>
     </button>
     <div className="suite-app-card-actions">
-      <AppHealthIndicator app={app} ledVariant />
+      <AppHealthIndicator app={app} ledVariant paused={Boolean(pausedByDrive(app.id, storage))} />
       <button className="mos-btn mos-btn-primary" onClick={() => onOpen(app)} type="button">View</button>
     </div>
   </article>;

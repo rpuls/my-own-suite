@@ -161,6 +161,63 @@ export function ProgressBar({ label, value }: { label: string; value: number }) 
   return <div aria-label={label} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className="mos-progress" role="progressbar"><span className="mos-progress-fill" style={{ width: `${percent}%` }} /></div>;
 }
 
+// One of several, standing on its own in a row that also holds buttons. Its look
+// is .mos-radio in the branding stylesheet, the same mark ChoiceRow draws.
+export function Radio({ label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  return <label className="mos-radio"><input aria-label={label} className="mos-radio-input" type="radio" {...props} /><span aria-hidden="true" className="mos-radio-mark" /></label>;
+}
+
+type ChoiceRowProps = {
+  accent?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  icon: IconName;
+} & (
+  | { onPick: () => void; radio?: undefined }
+  | { onPick?: undefined; radio: { checked: boolean; name: string; onChange: () => void; value: string } }
+);
+
+// One choice among several, as a row: the icon, then the title and its facts.
+// With `radio` the choice is kept until something submits it; with `onPick` it
+// acts at once. Its look is .mos-choice-row in the branding stylesheet.
+export function ChoiceRow({ accent = false, children, disabled = false, icon, onPick, radio }: ChoiceRowProps) {
+  const body = <><span className="mos-choice-icon"><Icon name={icon} /></span><span className="mos-choice-body">{children}</span></>;
+  const className = `mos-choice-row${accent ? ' is-accent' : ''}`;
+  if (radio) {
+    return <label className={`${className}${disabled ? ' is-disabled' : ''}`}>
+      <input checked={radio.checked} className="mos-radio-input" disabled={disabled} name={radio.name} onChange={radio.onChange} type="radio" value={radio.value} />
+      <span aria-hidden="true" className="mos-radio-mark" />
+      {body}
+    </label>;
+  }
+  return <button className={`${className} is-action`} disabled={disabled} onClick={onPick} type="button">{body}</button>;
+}
+
+// A row that opens to more. The head is one button with the chevron first;
+// anything that acts on the row goes in `trailing`, beside the button rather
+// than inside it. Its look is .mos-disclosure in the branding stylesheet.
+export function DisclosureRow({ aside, children, disabled = false, expanded, icon, label, onToggle, trailing }: {
+  aside?: ReactNode;
+  children: ReactNode;
+  disabled?: boolean;
+  expanded: boolean;
+  icon?: IconName;
+  // The button's accessible name where its content does not say what it opens.
+  label?: string;
+  onToggle: () => void;
+  trailing?: ReactNode;
+}) {
+  return <div className="mos-disclosure">
+    <button aria-expanded={expanded} aria-label={label} className="mos-disclosure-head" disabled={disabled} onClick={onToggle} type="button">
+      <span className="mos-disclosure-chevron"><Icon name="chevron-right" /></span>
+      {icon ? <span className="mos-disclosure-icon"><Icon name={icon} /></span> : null}
+      <span className="mos-disclosure-body">{children}</span>
+      {aside ? <span className="mos-disclosure-aside">{aside}</span> : null}
+    </button>
+    {trailing ? <div className="mos-disclosure-trailing">{trailing}</div> : null}
+  </div>;
+}
+
 // The shared setting switch: label and optional description on the left, the
 // switch on the right, the whole row a hit target. Use it for a preference that
 // takes effect the moment it is flipped.

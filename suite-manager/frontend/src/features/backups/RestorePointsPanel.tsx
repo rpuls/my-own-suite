@@ -1,12 +1,13 @@
 import { useState } from 'react';
 
-import { Icon, Panel, PanelHead, PanelItem, PanelList, Spinner, type IconName } from '../../components/ui';
+import { DisclosureRow, Icon, Panel, PanelHead, PanelItem, PanelList, Spinner, type IconName } from '../../components/ui';
+import { formatBytes } from '../../lib/bytes';
+import { whenWords } from '../../lib/dates';
 import {
   backupDescription,
   checkpointLabel,
   destinationIconName,
-  formatBytes,
-  whenWords,
+  placeOf,
   writtenElsewhere,
   type Archive,
   type BackupEntry,
@@ -32,13 +33,11 @@ function groupSummary(archive: Archive, points: BackupEntry[]) {
   if (archive.keyState === 'locked') return 'Locked — enter the other server’s recovery key to see what is kept here.';
   if (!points.length) return 'Nothing here yet. Your next backup lands here.';
   const size = archive.storedBytes ? ` · ${formatBytes(archive.storedBytes)} in all` : '';
-  return `${points.length} backup${points.length === 1 ? '' : 's'} · newest ${whenWords(points[0]?.createdAt || null)}${size}`;
+  return `${points.length} restore point${points.length === 1 ? '' : 's'} · newest ${whenWords(points[0]?.createdAt || null)}${size}`;
 }
 
-// What you can go back to, one group per archive: this server's first, the one
-// automatic backups go to at the top, then archives other servers made. A
-// place of this server's that is unplugged is listed too, so a copy in a
-// drawer is never forgotten.
+// One group per archive: this server's first, the one automatic backups go to at
+// the top, then other servers'. An unplugged place of this server's is listed too.
 function groupsOf(status: BackupStatus, views: DestinationView[]): Group[] {
   const primaryId = status.primaryDestination?.destinationId || '';
   const archiveGroups = (status.archives || []).map((archive): Group => {
@@ -46,11 +45,11 @@ function groupsOf(status: BackupStatus, views: DestinationView[]): Group[] {
     const from = archive.writtenBy?.hostname || 'another server';
     return {
       archive,
-      icon: destinationIconName({ kind: archive.containerKind === 'object' ? 'object' : 'disk', storageKind: 'external' }),
+      icon: destinationIconName(placeOf(archive.placeKind)),
       id: archive.id,
-      inUse: archive.owner === 'this' && archive.containerId === primaryId,
+      inUse: archive.owner === 'this' && archive.placeId === primaryId,
       keyLine: archive.keyState === 'own' ? 'Opens with your key' : archive.keyState === 'borrowed' ? `Opens with ${from}'s key, kept here` : '',
-      label: archive.owner === 'this' ? archive.containerLabel : `${archive.containerLabel} · from ${from}`,
+      label: archive.owner === 'this' ? archive.placeLabel : `${archive.placeLabel} · from ${from}`,
       points,
       readable: archive.keyState !== 'locked',
       summary: groupSummary(archive, points),
@@ -71,10 +70,8 @@ function groupsOf(status: BackupStatus, views: DestinationView[]): Group[] {
   return [...archiveGroups, ...awayGroups].sort((left, right) => rank(left) - rank(right));
 }
 
-// What you can go back to. Grouped by archive rather than thrown into one
-// list, because "which of my places holds this" is the question the owner asks
-// second and a flat list answers last. A group opens to its own points; a point
-// opens to what it contains and what can be done with it.
+// What you can go back to, grouped by the place it is kept: "which of my places
+// holds this" is the owner's second question, and a flat list answers it last.
 export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNote, onRestore, running, status, views }: {
   busy: string;
   checking: string;
@@ -114,24 +111,19 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
         const visible = group.points.slice(0, limit);
         const isOpen = group.readable && Boolean(open[group.id]);
         return <PanelItem flush key={group.id} quiet={!group.readable}>
-          <button
-            aria-expanded={isOpen}
-            className="suite-bk-group-head"
+          <DisclosureRow
+            aside={group.keyLine || undefined}
             disabled={!group.readable}
-            onClick={() => setOpen((current) => ({ ...current, [group.id]: !current[group.id] }))}
-            type="button"
+            expanded={isOpen}
+            icon={group.icon}
+            onToggle={() => setOpen((current) => ({ ...current, [group.id]: !current[group.id] }))}
           >
-            <span className={`suite-bk-chevron${isOpen ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
-            <span className="suite-bk-row-icon"><Icon name={group.icon} /></span>
-            <span className="suite-bk-group-name">
-              <span>
-                <strong>{group.label}</strong>
-                {group.inUse ? <span className="suite-bk-chip">In use</span> : null}
-              </span>
-              <span className="suite-bk-detail">{group.summary}</span>
+            <span className="suite-bk-group-title">
+              <strong>{group.label}</strong>
+              {group.inUse ? <span className="mos-chip">In use</span> : null}
             </span>
-            {group.keyLine ? <span className="suite-bk-group-key">{group.keyLine}</span> : null}
-          </button>
+            <span className="suite-bk-detail">{group.summary}</span>
+          </DisclosureRow>
 
           {isOpen ? <div className="suite-bk-points">
             {visible.map((backup) => <PointRow
@@ -159,9 +151,8 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
   </Panel>;
 }
 
-// A restore point says what it is on one line and everything else when opened.
-// One in another server's archive can be checked and restored from, but its
-// notes and its restore points are that server's, so nothing here changes them.
+// A restore point says what it is on one line and everything else when opened. One
+// in another server's archive can be verified and restored from, never changed.
 function PointRow({ backup, busy, checking, locked, onCheck, onDelete, onEditNote, onRestore, onToggle, open }: {
   backup: BackupEntry;
   busy: string;
@@ -187,19 +178,19 @@ function PointRow({ backup, busy, checking, locked, onCheck, onDelete, onEditNot
       <span className={`suite-bk-dot is-${checkpoint ? 'info' : backup.initiator === 'owner' ? 'ready' : 'auto'}`} />
       <span className="suite-bk-point-when">{whenWords(backup.createdAt)}</span>
       <span className="suite-bk-point-label">{label}</span>
-      {elsewhere ? <span className="suite-bk-chip is-guest">Made by {elsewhere}</span> : null}
+      {elsewhere ? <span className="mos-chip mos-chip-info">Made by {elsewhere}</span> : null}
       <span className="suite-bk-point-size">{size}</span>
       <span className={`suite-bk-chevron${open ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
     </button>
 
     {open ? <div className="suite-bk-point-body">
       <p className="suite-bk-detail">{backupDescription(backup)} · Encrypted</p>
-      {elsewhere ? <p className="suite-bk-detail">Made by another server. Restoring it makes this machine that server.</p> : null}
+      {elsewhere ? <p className="suite-bk-detail">Made by another server. Restoring it makes this server that server.</p> : null}
 
       <div className="suite-bk-point-actions">
-        {checking ? <span className="suite-bk-working"><Spinner />Checking this backup. {backup.expect ? `${backup.expect.check.sentence} ${backup.expect.check.note || ''}` : 'You can leave the page; the check carries on.'}</span> : <>
+        {checking ? <span className="suite-bk-working"><Spinner />Verifying this restore point. {backup.expect ? `${backup.expect.check.sentence} ${backup.expect.check.note || ''}` : 'You can leave the page; the check carries on.'}</span> : <>
           <button className="mos-btn mos-btn-primary mos-btn-sm" disabled={locked} onClick={onRestore} type="button">Restore</button>
-          <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onCheck} type="button">Check it</button>
+          <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onCheck} type="button">Verify</button>
           {elsewhere ? null : <>
             <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onEditNote} type="button">{backup.note ? 'Edit the note' : 'Add a note'}</button>
             <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onDelete} type="button">

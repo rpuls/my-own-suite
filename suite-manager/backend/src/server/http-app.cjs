@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { SESSION_COOKIE, parseCookies } = require('./cookies.cjs');
+const { parseCookies, sessionTokenFrom } = require('./cookies.cjs');
 const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset, serveHomeIcon } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost } = require('./request.cjs');
 const { jsonResponse, respondError } = require('./responses.cjs');
@@ -23,7 +23,7 @@ function createRequestHandler(services) {
     const url = new URL(request.url || '/', 'http://localhost');
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
-    const sessionToken = cookies[SESSION_COOKIE] || '';
+    const sessionToken = sessionTokenFrom(cookies, isHttpsRequest(request));
 
     try {
       if (!addressService.allowedHosts().has(requestHost)) {
@@ -117,7 +117,7 @@ function createUpgradeHandler({ addressService, homepage, setup }) {
     const url = new URL(request.url || '/', 'http://localhost');
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
-    const sessionToken = cookies[SESSION_COOKIE] || '';
+    const sessionToken = sessionTokenFrom(cookies, isHttpsRequest(request));
 
     if (!addressService.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');

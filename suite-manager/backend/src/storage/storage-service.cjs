@@ -2,6 +2,9 @@
 // what claims each; the backup agent knows what the backups there amount to. Both
 // are merged here by identity, and every screen and picker reads this list.
 
+const { FORMATTED_DRIVE_LABEL } = require('../../../../shared/storage-contract.cjs');
+const { STICK_ACTION, stickDevicePath, stickJobId } = require('../apps/drive-jobs.cjs');
+
 const SYSTEM_ID = 'system';
 // lsblk and one findmnt per drive: cheap enough to ask every few seconds while a
 // page is open, and quick enough that an unplug shows before the owner looks away.
@@ -31,14 +34,14 @@ function capabilitiesOf(entry) {
 // it. Null when neither.
 function backupFacts(storageId, status, { held }) {
   const destination = (status?.destinations || []).find((item) => item.id === storageId) || null;
-  const others = (status?.archives || []).filter((archive) => archive.containerId === storageId && archive.owner === 'other');
+  const others = (status?.archives || []).filter((archive) => archive.placeId === storageId && archive.owner === 'other');
   if (!destination && !held && !others.length) return null;
   return {
     destination: Boolean(destination || (held && !others.length)),
     lastBackupAt: destination?.lastBackupAt || null,
-    otherServers: others.map(({ id, keyState, writtenBy }) => ({ id, keyState, writtenBy })),
+    otherServers: others.map(({ id, keyState, newestAt, restorePoints, writtenBy }) => ({ id, keyState, newestAt: newestAt || null, restorePoints: restorePoints ?? null, writtenBy })),
     primary: storageId === (status?.primaryDestination?.destinationId || null),
-    ready: destination?.condition === 'ready',
+    ready: destination?.state === 'ready',
     restorePoints: destination?.ownArchive?.restorePoints ?? 0,
     storedBytes: destination?.ownArchive?.storedBytes ?? null,
   };
@@ -55,7 +58,6 @@ function driveEntry(drive, status) {
     fileSystem: drive.fileSystem || null,
     holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
     holdsBackupsFormat: drive.holdsBackupsFormat,
-    holdsEarlierBackups: drive.holdsEarlierBackups === true,
     id: drive.id,
     kind: 'drive',
     label: drive.label,
@@ -76,21 +78,21 @@ function driveEntry(drive, status) {
 // only as that archive; so is one MOS has not heard back from yet.
 function bucketEntry(bucket, status) {
   const destination = (status?.destinations || []).find((item) => item.id === bucket.id);
-  const archive = (status?.archives || []).find((item) => item.containerId === bucket.id);
-  const reachable = destination ? destination.condition === 'ready' : archive ? true : null;
+  const archive = (status?.archives || []).find((item) => item.placeId === bucket.id);
+  const reachable = destination ? destination.state === 'ready' : archive ? true : null;
   const entry = {
     apps: [],
     availableBytes: null,
     backups: backupFacts(bucket.id, status, { held: bucket.backups }),
     bucket: { accessKeyId: bucket.accessKeyId, bucket: bucket.bucket, endpoint: bucket.endpoint, folder: bucket.folder || '', region: bucket.region || '' },
     connected: true,
-    detail: destination?.refusal || null,
+    detail: destination?.reason || null,
     id: bucket.id,
     kind: 'bucket',
     label: bucket.label,
     name: bucket.label,
     named: true,
-    reason: reachable === false ? destination.refusal || 'MOS could not reach this storage.' : null,
+    reason: reachable === false ? destination.reason || 'MOS could not reach this storage.' : null,
     sizeBytes: null,
     state: reachable === false ? 'unreachable' : 'ready',
   };
@@ -184,7 +186,13 @@ class StorageService {
       ...(found.drives || []).map((drive) => driveEntry(drive, status)),
       ...(found.buckets || []).map((bucket) => bucketEntry(bucket, status)),
     ].map((entry) => ({ ...entry, job: this.driveJobs?.get(entry.id) || null }));
-    return { backupsKnown: Boolean(status), installerSticks: found.installerSticks || [], storage };
+    return {
+      appNames: Object.fromEntries([...this.names()].map(([packageId, { name }]) => [packageId, name])),
+      backupsKnown: Boolean(status),
+      formattedLabel: FORMATTED_DRIVE_LABEL,
+      installerSticks: (found.installerSticks || []).map((stick) => ({ ...stick, job: this.driveJobs?.get(stickJobId(stick.devicePath)) || null })),
+      storage,
+    };
   }
 
   async entry(id) {
@@ -215,12 +223,13 @@ class StorageService {
     return this.appAgent.renameStorage({ id, name: String(name ?? '') });
   }
 
-  // Check, Eject, or "use it again" after Eject. The agent stops and starts the
-  // apps reading the drive itself.
-  driveAction(driveId, action) {
-    if (action === 'check') return this.appAgent.checkDrive({ drive: driveId });
-    if (action === 'eject') return this.appAgent.ejectDrive({ drive: driveId });
-    return this.appAgent.useDrive({ drive: driveId });
+  // What a drive job does: Check, Eject, "use it again" after Eject, or formatting
+  // the install stick. The agent stops and starts the apps reading the drive itself.
+  driveAction(id, action) {
+    if (action === STICK_ACTION) return this.formatInstallerStick(stickDevicePath(id));
+    if (action === 'check') return this.appAgent.checkDrive({ drive: id });
+    if (action === 'eject') return this.appAgent.ejectDrive({ drive: id });
+    return this.appAgent.useDrive({ drive: id });
   }
 
   // Making storage a backup destination is a claim the storage module records;
@@ -264,4 +273,4 @@ class StorageService {
   }
 }
 
-module.exports = { SYSTEM_ID, StorageService, capabilitiesOf };
+module.exports = { StorageService, capabilitiesOf };

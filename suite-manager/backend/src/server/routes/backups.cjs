@@ -1,4 +1,4 @@
-const { restoreGuaranteeFor } = require('../../backups/restore-guarantee.cjs');
+const { restoreGuarantee } = require('../../backups/restore-guarantee.cjs');
 const { jsonResponse } = require('../responses.cjs');
 
 const MANAGE = 'Sign in to manage backups.';
@@ -98,7 +98,7 @@ function backupRoutes(services) {
           jsonResponse(response, 200, {
             ...agentStatus,
             inventory: backupInventory.inventory(),
-            ...restoreGuaranteeFor(agentStatus),
+            ...restoreGuarantee(),
             serviceAvailable: true,
           });
         } catch (error) {
@@ -114,7 +114,7 @@ function backupRoutes(services) {
             inventory: backupInventory.inventory(),
             lastJob: null,
             recoveryKey: null,
-            ...restoreGuaranteeFor(null),
+            ...restoreGuarantee(),
             serviceAvailable: false,
           });
         }

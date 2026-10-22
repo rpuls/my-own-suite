@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 
 import { AddStorageDialog } from '../storage/AddStorageDialog';
-import { pickerOffers, useAppNames, useStorage, type StorageEntry } from '../storage/model';
+import { pickerOffers, useStorage, type AppNames, type StorageEntry } from '../storage/model';
 import { StoragePicker } from '../storage/StoragePicker';
 import type { AppStorage } from './types';
 
@@ -28,18 +28,19 @@ export function folderList(folders: Array<{ name: string }>) {
 
 // The storage the server has, and the drive picked. Null storage means still asking.
 export function useDriveChoice(storage: AppStorage | null, enabled: boolean) {
-  const { reload, storage: entries } = useStorage(enabled);
-  const names = useAppNames();
+  const { inventory, names, reload, storage: entries } = useStorage(enabled);
+  const backupsKnown = inventory?.backupsKnown === true;
   const [drive, setDrive] = useState('');
   const [chosen, setChosen] = useState(false);
   const required = storage?.required === true;
 
   useEffect(() => {
     if (!entries || chosen || !required) return;
-    setDrive(pickerOffers(entries, 'apps', names).find((offer) => offer.selectable)?.entry.id || '');
-  }, [chosen, entries, names, required]);
+    setDrive(pickerOffers(entries, 'apps', { backupsKnown, names }).find((offer) => offer.selectable)?.entry.id || '');
+  }, [backupsKnown, chosen, entries, names, required]);
 
   return {
+    backupsKnown,
     drive,
     entries,
     missing: enabled && required && !drive,
@@ -49,12 +50,13 @@ export function useDriveChoice(storage: AppStorage | null, enabled: boolean) {
   };
 }
 
-export function DriveChoice({ appName, busy, drive, entries, names, onChange, onReload, storage }: {
+export function DriveChoice({ appName, backupsKnown, busy, drive, entries, names, onChange, onReload, storage }: {
   appName: string;
+  backupsKnown: boolean;
   busy: boolean;
   drive: string;
   entries: StorageEntry[] | null;
-  names: Map<string, string>;
+  names: AppNames;
   onChange: (drive: string) => void;
   onReload: () => Promise<unknown>;
   storage: AppStorage;
@@ -64,7 +66,8 @@ export function DriveChoice({ appName, busy, drive, entries, names, onChange, on
   const several = storage.folders.length > 1;
   return <>
     <StoragePicker
-      addHint="Plug in a drive, or connect cloud storage"
+      addHint="Plug in a drive, or connect storage online"
+      backupsKnown={backupsKnown}
       busy={busy}
       context="apps"
       empty={storage.required ? <>

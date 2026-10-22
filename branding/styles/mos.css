@@ -1462,3 +1462,255 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
     flex-wrap: wrap;
   }
 }
+
+/* Radio: one of several, drawn like the select box so a kept choice reads the
+   same wherever it is asked. Structure contract: a hidden .mos-radio-input
+   immediately followed by the mark, inside .mos-radio or .mos-choice-row. */
+.mos-radio {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  cursor: pointer;
+}
+
+.mos-radio-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mos-radio-input:disabled {
+  cursor: not-allowed;
+}
+
+.mos-radio-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  transition: border-color var(--mos-transition);
+}
+
+.mos-radio-mark::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--mos-radius-pill);
+  background: transparent;
+  transition: background var(--mos-transition);
+}
+
+:is(.mos-radio, .mos-choice-row):hover .mos-radio-input:enabled + .mos-radio-mark {
+  border-color: var(--mos-color-accent-border);
+}
+
+.mos-radio-input:checked + .mos-radio-mark {
+  border-color: var(--mos-color-accent);
+}
+
+.mos-radio-input:checked + .mos-radio-mark::after {
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+}
+
+.mos-radio-input:focus-visible + .mos-radio-mark {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-radio-input:disabled + .mos-radio-mark {
+  opacity: 0.5;
+}
+
+/* Choice row: one choice among several, as a row of a flush panel list: the
+   radio, the icon, then the title and its facts. The same row picks storage, a
+   folder to move to, or a kind of storage to add; one that acts the moment it is
+   picked has no radio. */
+.mos-choice-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mos-space-3);
+  width: 100%;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mos-choice-row.is-action {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.mos-choice-row.is-accent {
+  color: var(--mos-color-accent);
+}
+
+.mos-choice-row.is-disabled,
+.mos-choice-row:disabled {
+  cursor: default;
+}
+
+.mos-choice-row:hover:not(:disabled, .is-disabled) {
+  background: var(--mos-color-surface-muted);
+}
+
+.mos-choice-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.mos-choice-row.is-accent .mos-choice-icon {
+  color: inherit;
+}
+
+.mos-panel-item-quiet .mos-choice-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.mos-choice-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.mos-choice-body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+/* Disclosure: a row that opens to more. The head is one button, chevron first;
+   whatever acts on the row sits beside it in the trailing slot, so a button is
+   never inside a button. */
+.mos-disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.mos-disclosure-head {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+  min-width: 0;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mos-disclosure-head:disabled {
+  cursor: default;
+}
+
+.mos-disclosure-head:hover:not(:disabled) {
+  background: var(--mos-color-surface-muted);
+}
+
+.mos-disclosure-chevron {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-text-muted);
+  transition: transform var(--mos-transition);
+}
+
+.mos-disclosure-head[aria-expanded='true'] .mos-disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+.mos-disclosure-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.mos-panel-item-quiet .mos-disclosure-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.mos-disclosure-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.mos-disclosure-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.mos-disclosure-aside {
+  flex: none;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.mos-disclosure-trailing {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+  padding-right: var(--mos-panel-pad);
+}
+
+/* Chip: a short fact beside a name. Legible on any surface by its blur, border
+   and label, never by a plate behind it. */
+.mos-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  color: var(--mos-color-text-muted);
+  font-size: 0.75rem;
+  font-weight: var(--mos-weight-bold);
+  white-space: nowrap;
+  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
+  backdrop-filter: var(--mos-frost-filter-backdrop);
+}
+
+.mos-chip-info {
+  border-color: var(--mos-color-info-border);
+  color: var(--mos-color-info);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-radio-mark,
+  .mos-radio-mark::after,
+  .mos-disclosure-chevron {
+    transition: none;
+  }
+}
+
+@media (max-width: 34rem) {
+  .mos-disclosure {
+    flex-wrap: wrap;
+  }
+
+  .mos-disclosure-trailing {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    padding: 0 var(--mos-panel-pad) var(--mos-space-3);
+  }
+
+  .mos-disclosure-aside {
+    display: none;
+  }
+}
