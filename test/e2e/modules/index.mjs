@@ -1,5 +1,5 @@
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
-import { backup, cleanup, driveFound, eraseOtherArchive, forgetDrive, renameStorage, restore, takeover } from './backups.mjs';
+import { backup, cleanup, driveAway, driveFound, eraseOtherArchive, renameStorage, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
 import { diagnostics } from './diagnostics.mjs';
 import { drive, driveCheck, driveEject, drivePull, powerCut, reboot, uninstall, useAgain } from './drive.mjs';
@@ -32,7 +32,7 @@ export const MODULES = {
   'drive-files-live': filesLive,
   'drive-files-read-only': filesReadOnly,
   'erase-other-archive': eraseOtherArchive,
-  'forget-drive': forgetDrive,
+  'drive-away': driveAway,
   homepage,
   'homepage-check': homepageCheck,
   install,

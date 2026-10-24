@@ -8,7 +8,7 @@ import { UsageBar } from './UsageBar';
 
 // Storage MOS keeps something on, plus anything that needs the owner.
 function kept(entry: StorageEntry) {
-  return entry.kind !== 'system' && (entry.apps.length > 0 || entry.backups?.destination === true || isAttention(entry));
+  return entry.kind !== 'system' && (entry.apps.length > 0 || entry.backups?.ours === true || isAttention(entry));
 }
 
 function glanceLine(entry: StorageEntry) {

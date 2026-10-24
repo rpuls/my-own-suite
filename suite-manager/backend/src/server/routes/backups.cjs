@@ -108,11 +108,11 @@ function backupRoutes(services) {
             archives: [],
             backups: [],
             currentJob: null,
-            destinations: [],
             error: error.message || 'Backup agent is unavailable.',
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
+            places: [],
             recoveryKey: null,
             ...restoreGuarantee(),
             serviceAvailable: false,
@@ -129,7 +129,7 @@ function backupRoutes(services) {
       bodyLimit: 8 * 1024,
       handler: async ({ body, response }) => {
         const input = await body();
-        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), note: String(input.note || '') }));
+        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), makePrimary: input.makePrimary === true, note: String(input.note || '') }));
       },
     },
     {
@@ -140,6 +140,7 @@ function backupRoutes(services) {
       handler: async ({ body, response }) => {
         const input = await body();
         jsonResponse(response, 200, await backupAgent.setSchedule({
+          ...(input.destinationId ? { destinationId: String(input.destinationId) } : {}),
           enabled: input.enabled === true,
           frequency: String(input.frequency || ''),
           hour: Number(input.hour),

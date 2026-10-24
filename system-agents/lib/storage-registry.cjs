@@ -113,7 +113,6 @@ class StorageRegistry {
 function publicBucket(record) {
   return {
     accessKeyId: record.accessKeyId,
-    backups: record.backups === true,
     bucket: record.bucket,
     createdAt: record.createdAt || null,
     endpoint: record.endpoint,
@@ -124,11 +123,10 @@ function publicBucket(record) {
   };
 }
 
-// A drive MOS opens whenever it is plugged in: an app reads it, backups go to it,
-// or it is kept open for its files — browsed once, or left holding an
-// uninstalled app's folders.
+// A drive MOS lists while it is away: an app reads it, or it is kept open for
+// its files — browsed once, or left holding an uninstalled app's folders.
 function isRememberedDrive(entry) {
-  return Boolean(entry && (entry.apps?.length || entry.backups === true || entry.keepOpen === true));
+  return Boolean(entry && (entry.apps?.length || entry.keepOpen === true));
 }
 
 module.exports = { StorageRegistry, isRememberedDrive, publicBucket };

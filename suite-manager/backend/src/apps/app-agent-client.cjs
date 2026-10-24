@@ -46,7 +46,6 @@ class AppAgentClient {
   forgetDrive(input) { return this.request('POST', '/v1/storage/forget', input); }
   openDrive(input) { return this.request('POST', '/v1/storage/open', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   renameStorage(input) { return this.request('POST', '/v1/storage/rename', input); }
-  holdBackups(input) { return this.request('POST', '/v1/storage/backups', input); }
   formatInstallerStick(input) { return this.request('POST', '/v1/storage/format-installer', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   filesCreateFolder(input) { return this.request('POST', '/v1/files/folder', input); }
   filesRename(input) { return this.request('POST', '/v1/files/rename', input); }

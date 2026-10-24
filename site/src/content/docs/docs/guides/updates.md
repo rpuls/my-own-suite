@@ -70,7 +70,7 @@ It fetches the new code, rebuilds what needs rebuilding, and refreshes **all** o
 
 ## Before you update
 
-**A MOS update backs your whole suite up first.** Before it fetches anything it takes a full [backup](/docs/guides/backup-restore/) to wherever your automatic backups go. If that drive or bucket is not connected the update waits and starts by itself when it is back, and offers **Cancel update** or **Update without a backup** meanwhile; if the backup cannot be taken at all the update stops before changing anything. With no destination set for automatic backups there is nowhere to put one and the screen says so. **App updates are not covered by this** — take one yourself before an app update that migrates data, which the update summary will warn you about.
+**A MOS update backs your whole suite up first.** Before it fetches anything it takes a full [backup](/docs/guides/backup-restore/) to wherever your automatic backups go. If that drive or bucket is not connected the update waits and starts by itself when it is back, and offers **Cancel update** or **Update without a backup** meanwhile; if the backup cannot be taken at all the update stops before changing anything. With no default backup destination set there is nowhere to put one and the screen says so. **App updates are not covered by this** — take one yourself before an app update that migrates data, which the update summary will warn you about.
 
 If the screen reports the updater itself as unavailable, see [Host agents](/docs/reference/host-agents/) for how the platform services are laid out and restarted.
 

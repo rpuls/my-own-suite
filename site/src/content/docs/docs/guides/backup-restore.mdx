@@ -41,7 +41,7 @@ Restore requires a working MOS installation. A backup is not a bare-metal instal
 
 ### Own hardware
 
-Connect a writable USB disk or other external drive directly to the server. MOS lists every drive you plug in under **Settings → Storage**, opens it on sight so you can see what it holds, and opens the one you pick for backups whenever it is plugged back in. A drive formatted as exFAT, NTFS or FAT32 can hold backups and app files; one formatted for Linux (ext4) can hold backups only.
+Connect a writable USB disk or other external drive directly to the server. MOS lists every drive you plug in under **Settings → Storage** and opens it on sight, so Backup & Restore can back up to it and see what it holds. A drive formatted as exFAT, NTFS or FAT32 can hold backups and app files; one formatted for Linux (ext4) can hold backups only.
 
 Do not save the only backup on the server's System drive: a disk failure could take out both the suite and its backup.
 
@@ -57,23 +57,23 @@ Provider snapshots are outside MOS either way: they may be useful as an addition
 
 1. Plug in the drive, or connect storage online under **Settings → Storage → Add storage**.
 
-2. Open **Suite Manager → Backup & Restore**, choose **Add destination**, pick the drive or the storage online, and keep **Send automatic backups here from now on** ticked. It appears under **This server's backups**; the selected one is where automatic backups go.
+2. Open **Suite Manager → Backup & Restore** and click **Back up now**. The first time, MOS shows your recovery key and asks you to confirm you have saved it before it goes on.
 
-3. Click **Back up now**. The first time, MOS shows your recovery key and asks you to confirm you have saved it before it will start. Apps pause while their data is captured and start again when the job finishes.
+3. Pick the drive or the storage online the backup goes to. The first time, keep **Also make this the default backup destination** ticked: automatic backups go there from then on. Apps pause while their data is captured and start again when the job finishes; the place is then listed under **This server's backups**.
 
 4. Keep the drive itself on access-controlled storage. There is no separate file to download—this server's archive on the drive is the copy you keep, and moving a backup to another server means taking the drive there.
 
 </Steps>
 
-Backups are written under `MOS-backups/` on the destination, into this server's **archive**: one encrypted store per server, shared by every restore point that server writes there. A drive can hold the archives of several servers side by side, and this server only ever backs up into its own. An archive is a [restic](https://restic.net/) repository. MOS has no backup format of its own: restic — an open-source backup program in wide use since 2014 — does the encryption, the chunking, the deduplication and the integrity checking, and MOS drives it rather than replacing it. Because the archive is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the archive's integrity and re-verifies every app package before a restore changes running services.
+Backups are written under `MOS-backups/` on the drive or in the bucket, into this server's **archive**: one encrypted store per server, shared by every restore point that server writes there. A drive or a bucket can hold the archives of several servers side by side, and this server only ever backs up into its own. An archive is a [restic](https://restic.net/) repository. MOS has no backup format of its own: restic — an open-source backup program in wide use since 2014 — does the encryption, the chunking, the deduplication and the integrity checking, and MOS drives it rather than replacing it. Because the archive is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the archive's integrity and re-verifies every app package before a restore changes running services.
 
-Archives other servers left on a drive are listed under **Backups from another server**, apart from **This server's backups**. You can unlock one with that server's recovery key and restore from it, but this server never changes it; **Erase these backups** on such an archive gives back the space it takes and leaves the rest of the drive alone.
+Backup & Restore looks in every drive and every storage online connected to this server, and lists what it finds in two groups: **This server's backups**, and **Backups from another server**. You can unlock another server's archive with that server's recovery key and restore from it, but this server never changes it; on a drive, **Erase these backups** gives back the space it takes and leaves the rest of the drive alone.
 
 ## Backing up somewhere else
 
-A drive in the same room as the server survives a failed disk. It does not survive a fire, a flood, or someone walking off with both. **Settings → Storage → Add storage → Connect storage online** connects MOS to storage at a provider — anything S3-compatible, such as Backblaze B2, Wasabi, Cloudflare R2, Tigris, or a MinIO server of your own — and **Add destination** on the Backup & Restore screen then makes it a place backups go.
+A drive in the same room as the server survives a failed disk. It does not survive a fire, a flood, or someone walking off with both. **Settings → Storage → Add storage → Connect storage online** connects MOS to storage at a provider — anything S3-compatible, such as Backblaze B2, Wasabi, Cloudflare R2, Tigris, or a MinIO server of your own — and from then on you can back up to it like a drive.
 
-You need four things from your provider: the endpoint address, a bucket that already exists, and an access key with its secret. A folder is optional and lets the same storage hold the backups of more than one server. **Test connection** tells you whether MOS can reach it *before* it connects, and says which of a wrong key, a missing bucket or an unreachable address it ran into.
+You need four things from your provider: the endpoint address, a bucket that already exists, and an access key with its secret. A folder is optional; several servers can share one bucket and folder, each with an archive of its own beside a small catalog that says which server made which. **Test connection** tells you whether MOS can reach it *before* it connects, and says which of a wrong key, a missing bucket or an unreachable address it ran into.
 
 - **Your backups are encrypted before they leave the server.** The provider stores what it cannot read. restic encrypts every chunk and its metadata with your recovery key, so nothing MOS uploads is readable without it.
 - **Storage online behaves like a drive from there on.** Back up to it by hand or on a schedule, verify a restore point in it, note it, restore from it, delete from it.
@@ -85,10 +85,10 @@ The provider holds data it cannot read. Your recovery key is what opens it, and 
 
 ## Backing up automatically
 
-The most recent backup you have should not be the one you last remembered to take. Select the place your backups should go under **This server's backups**, then under **Automatic backups** on the same screen choose **Change**, turn the schedule on, and pick daily or weekly and a time. The selected place is also where the backup before a MOS update goes; a backup you take yourself goes there too unless you pick another one for that backup, so a drive you keep in a fire safe is still one click.
+The most recent backup you have should not be the one you last remembered to take. Under **Automatic backups** on the Backup & Restore screen choose **Change**, turn the schedule on, pick daily or weekly and a time, and pick the **default backup destination**. That is also where MOS backs up before it updates itself; **Back up now** starts on it too, and you can pick another place for that one backup, so a drive you keep in a fire safe is still one click.
 
 - **Times are yours, not the server's.** The time you pick is read in the time zone of the browser you set the schedule from, so 3am means 3am where you are even when the server runs in UTC. The screen names the zone it is using.
-- **A destination that is not there is not a failure.** If the drive is not connected, or your storage online cannot be reached when the time comes, MOS says it is waiting and backs up as soon as it can reach it again, up until the next scheduled time.
+- **A default destination that is not there is not a failure.** If the drive is not connected, or your storage online cannot be reached when the time comes, MOS says automatic backups are waiting and backs up as soon as it can reach it again, up until the next scheduled time.
 - **A server that was switched off catches up.** It takes one backup shortly after starting again, not one for every window it missed.
 - **Retention prunes automatic backups only.** Keeping the last 7 means the eighth automatic backup removes the oldest, once the new one has succeeded. Backups you took yourself are never removed by retention, whatever it is set to—so a copy you took before a risky change stays until you delete it. The backup MOS takes before it updates itself counts towards the same number, like a scheduled one.
 
@@ -110,7 +110,7 @@ Important boundaries:
 
 - **Restore goes forward, never backward.** Each backup records the MOS version that wrote it, and restores onto that version or any later one. Install the current release; MOS does not need, and cannot install, an older version of itself. The one direction that fails is restoring a newer backup onto an older MOS, which MOS reports and refuses rather than half-applying.
 - **Restore is whole-suite.** Per-app restore is not supported.
-- **The server must already run MOS.** Install MOS first, then plug in or connect the backup destination and restore.
+- **The server must already run MOS.** Install MOS first, then plug in the drive or connect the storage online that holds the backup, and restore.
 - **A replacement server needs the recovery key as well as the storage.** See below; restoring onto the server that made the backup never asks for it, because that server already holds it.
 - **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
 
@@ -122,9 +122,9 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 1. Install MOS on the replacement server — the current release, whatever the backup was written by — and create an owner account on it so you can sign in. It can be a throwaway account; the restore replaces it with the one from the backup.
 
-2. Open **Suite Manager → Backup & Restore**, choose **Add destination**, and pick the drive you plugged in. For storage online, choose **Add storage…** at the end of that list and connect it with the same endpoint, bucket and folder, then pick it. Your provider's console holds your access key, and a new key for the same storage works too.
+2. Plug in the drive. For storage online, connect it in **Settings → Storage → Add storage** with the same endpoint, bucket and folder. Your provider's console holds your access key, and a new key for the same storage works too.
 
-3. The backups appear under **Backups from another server**, apart from this server's own. Choose **Enter recovery key** and type the key from your kit. Capitals, spaces and dashes do not matter, and a slip is reported as a typo rather than as a wrong key.
+3. Open **Suite Manager → Backup & Restore**. The backups appear under **Backups from another server**, apart from this server's own. Choose **Enter recovery key** and type the key from your kit. Capitals, spaces and dashes do not matter, and a slip is reported as a typo rather than as a wrong key.
 
 4. The restore points appear, each showing which server wrote it. Pick one and restore it as usual.
 
@@ -154,6 +154,6 @@ The key becomes this server's own when you restore another server's backup onto 
 
 ## Current limitations
 
-Whole-suite restore only · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one destination per schedule, so a drive copy and a copy online are two separate backups.
+Whole-suite restore only · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one default backup destination for the schedule, so a drive copy and a copy online are two separate backups.
 
 If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

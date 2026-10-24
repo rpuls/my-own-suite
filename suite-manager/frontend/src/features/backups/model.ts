@@ -4,13 +4,13 @@
 import type { IconName } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
 import { whenWords } from '../../lib/dates';
-import { stateLabel, stateSentence, type StorageState } from '../storage/model';
+import { type StorageState } from '../storage/model';
 
 type PlaceKind = 'disk' | 'object';
 
-// A place this server backs up to. Its state and reason are the storage module's
-// own words, passed through; the agent adds nothing of its own to them.
-type BackupDestination = {
+// A place a backup can go: every connected drive that can hold backups and every
+// storage connection. Its state and reason are the storage module's own words.
+export type BackupPlace = {
   accessKeyId?: string;
   availableBytes: number | null;
   bucket?: string;
@@ -84,6 +84,7 @@ type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | n
 type BackupJob = {
   // The domain the backup carried and the restore set aside; null when nothing was.
   address?: { domain: string | null } | null;
+  appsNotStarted?: Array<{ displayName: string; packageId: string }>;
   // Whether the restored routes went live: a web server that refused the new
   // config keeps serving the old one.
   controlPlane?: { detail: string | null; routesLive: boolean } | null;
@@ -188,7 +189,6 @@ export type BackupStatus = {
   archives: Archive[];
   backups: BackupEntry[];
   currentJob: BackupJob | null;
-  destinations: BackupDestination[];
   error?: string | null;
   hostname?: string | null;
   interruptedRestore?: InterruptedRestore | null;
@@ -197,6 +197,7 @@ export type BackupStatus = {
     warnings: Array<{ message: string; packageId: string }>;
   };
   lastJob: BackupJob | null;
+  places: BackupPlace[];
   primaryDestination?: PrimaryDestination | null;
   recentJobs?: RecentJob[];
   recoveryKey?: RecoveryKeyState | null;
@@ -300,106 +301,22 @@ export function carriedDomain(backup: BackupEntry) {
   return backup.owner === 'other' ? backup.sourceDomain || null : null;
 }
 
-type DestinationAction = '' | 'restore' | 'retest' | 'unlock';
+// The default backup destination: where scheduled backups and the one before a
+// MOS update go. Named from the agent's record, so a drive in a drawer still is.
+export type AutomaticPlace = { id: string; label: string; place: BackupPlace | null };
 
-// One of this server's places, reduced to the row the design draws: a status line
-// that states the condition once, a detail line under it, and at most one button.
-export type DestinationView = {
-  action: DestinationAction;
-  actionLabel: string;
-  away: boolean;
-  // Why this server cannot back up here, wherever the page says it; empty when it can.
-  blocked: string;
-  detail: string;
-  destination: BackupDestination;
-  id: string;
-  kindLabel: string;
-  label: string;
-  // Whether someone who gets into this server could erase this copy.
-  reachLine: string;
-  selectable: boolean;
-  selected: boolean;
-  spaceLine: string;
-  status: string;
-  tone: Tone;
-};
-
-const PICK_A_PLACE = "Pick a place under This server's backups and MOS starts keeping copies.";
-
-function conditionOf(destination: BackupDestination) {
-  return { connected: destination.state !== 'away', kind: destination.kind === 'object' ? 'bucket' as const : 'drive' as const, reason: destination.reason, state: destination.state };
+export function automaticPlace(status: BackupStatus | null | undefined): AutomaticPlace | null {
+  const chosen = status?.primaryDestination;
+  if (!chosen) return null;
+  const place = (status?.places || []).find((entry) => entry.id === chosen.destinationId) || null;
+  return { id: chosen.destinationId, label: place?.label || chosen.label || 'the place you chose', place };
 }
 
-function storedLine(destination: BackupDestination) {
-  const points = destination.ownArchive?.restorePoints || 0;
-  if (!points) return 'Ready · no restore points yet';
-  const stored = destination.ownArchive?.storedBytes ? ` · ${formatBytes(destination.ownArchive.storedBytes)} stored` : '';
-  return `Ready · ${points} restore point${points === 1 ? '' : 's'}${stored}`;
-}
-
-// How a state reads on a row, in the storage module's words.
-function stateRow(destination: BackupDestination, selected: boolean): Pick<DestinationView, 'action' | 'actionLabel' | 'detail' | 'status' | 'tone'> {
-  const none = { action: '' as DestinationAction, actionLabel: '' };
-  const condition = conditionOf(destination);
-  switch (destination.state) {
-    case 'ready': return {
-      ...none,
-      detail: destination.kind === 'object' ? `At ${(destination.endpoint || '').replace(/^https?:\/\//u, '') || 'your storage provider'}`
-        : destination.holdsAppFiles ? "Also holds your apps' files, which these backups do not include." : '',
-      status: storedLine(destination),
-      tone: 'ready',
-    };
-    // Not a problem to fix: this is the copy that survives what every other copy does not.
-    case 'away': return {
-      ...none,
-      detail: selected ? 'This is still where automatic backups go — MOS waits for it.' : 'Plug it in to bring it up to date.',
-      status: destination.lastBackupAt ? `${stateLabel(condition)} · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : stateLabel(condition),
-      tone: 'muted',
-    };
-    case 'unreachable': return {
-      action: destination.kind === 'object' ? 'retest' : '',
-      actionLabel: destination.kind === 'object' ? 'Try again' : '',
-      detail: stateSentence(condition),
-      status: stateLabel(condition),
-      tone: 'error',
-    };
-    default: return { ...none, detail: stateSentence(condition), status: stateLabel(condition), tone: 'warning' };
-  }
-}
-
-// Ransomware runs with the owner's own credentials, so anything MOS can write to
-// it can delete; only a drive that is not plugged in is out of reach.
-function reachOf(destination: BackupDestination) {
-  if (destination.state === 'away') return 'Not connected, so nothing that gets into this server can reach it.';
-  if (destination.kind === 'object') return 'Anything that gets into this server can erase this copy.';
-  return 'Plugged in, so anything that gets into this server can erase this copy.';
-}
-
-function destinationView(destination: BackupDestination, selectedId: string): DestinationView {
-  const selected = destination.id === selectedId;
-  const ready = destination.state === 'ready';
-  const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
-  return {
-    ...stateRow(destination, selected),
-    away: destination.state === 'away',
-    blocked: ready ? '' : stateSentence(conditionOf(destination)) || 'This place cannot take backups right now.',
-    destination,
-    id: destination.id,
-    kindLabel: destinationKindLabel(destination),
-    label: destination.label,
-    reachLine: reachOf(destination),
-    selectable: ready,
-    selected,
-    spaceLine: destination.kind === 'disk' && ready && spaceKnown ? `${formatBytes(destination.availableBytes)} free of ${formatBytes(destination.sizeBytes)}` : '',
-  };
-}
-
-// This server's places, in the order the page draws them: the selected one first,
-// then whatever is usable, then whatever needs attention, then whatever is away.
-export function destinationViews(status: BackupStatus | null | undefined): DestinationView[] {
-  const selectedId = status?.primaryDestination?.destinationId || '';
-  const rank = (view: DestinationView) => (view.selected ? 0 : view.selectable ? 1 : view.away ? 3 : 2);
-  return (status?.destinations || []).map((destination) => destinationView(destination, selectedId)).sort((left, right) => rank(left) - rank(right));
+// Why a backup cannot go to the default destination right now, or ''.
+function automaticBlocked(auto: AutomaticPlace | null) {
+  if (!auto) return '';
+  if (!auto.place) return `${auto.label} is not connected.`;
+  return auto.place.state === 'ready' ? '' : auto.place.reason || `${auto.label} cannot take backups right now.`;
 }
 
 // Another server's archive, as its row in "Backups from another server".
@@ -458,8 +375,9 @@ type Banner = { detail: string; title: string; tone: Tone };
 
 // The one sentence at the top of the page: am I safe, where does it go, when was
 // the last one. Only this server's own archives count towards "am I safe".
-export function bannerState(status: BackupStatus | null | undefined, views: DestinationView[], busyBackup: boolean): Banner {
-  const selected = views.find((view) => view.selected) || null;
+export function bannerState(status: BackupStatus | null | undefined, busyBackup: boolean): Banner {
+  const auto = automaticPlace(status);
+  const blocked = automaticBlocked(auto);
   const newest = (status?.backups || []).filter((backup) => backup.owner === 'this')
     .slice().sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const schedule = status?.schedule || null;
@@ -467,29 +385,25 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
 
   if (busyBackup) return { detail: 'Your apps pause for a few minutes and come back on their own.', title: 'Backing up now.', tone: 'ready' };
   if (!newest) {
-    if (selected?.blocked) return { detail: selected.blocked, title: 'You have no backups yet.', tone: 'warning' };
-    return selected
-      ? { detail: `Nothing has been backed up yet. The first one goes to ${selected.label}.`, title: 'You have no backups yet.', tone: 'warning' }
-      : { detail: PICK_A_PLACE, title: 'You have no backups yet.', tone: 'warning' };
+    const title = 'No backups of this server yet.';
+    if (!status?.places.length) return { detail: 'Connect a drive or storage online in Settings → Storage, then make the first backup here.', title, tone: 'warning' };
+    if (blocked) return { detail: blocked, title, tone: 'warning' };
+    return { detail: auto ? `Automatic backups go to ${auto.label}.` : 'Back up now to any connected drive or storage online.', title, tone: 'warning' };
   }
   if (schedule?.lastResult?.status === 'failed') {
     return { detail: schedule.lastResult.message, title: 'The last automatic backup did not finish.', tone: 'error' };
   }
   const age = daysSince(newest.createdAt);
-  if (selected?.blocked) {
-    return {
-      detail: selected.blocked,
-      title: age && age > 1 ? `Your last backup was ${age} days ago.` : 'Your backups are up to date.',
-      tone: 'warning',
-    };
+  if (blocked) {
+    return { detail: blocked, title: age && age > 1 ? `Your last backup was ${age} days ago.` : 'Your backups are up to date.', tone: 'warning' };
   }
   if (age !== null && age > 3) {
     return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.placeLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' };
   }
   // A drive just written to that is not where automatic backups go is on its way
   // back to a drawer, and only out of reach once unplugged; said once, now.
-  const writtenTo = views.find((view) => view.id === newest.placeId) || null;
-  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.state === 'ready') {
+  const writtenTo = (status?.places || []).find((place) => place.id === newest.placeId) || null;
+  if (age === 0 && writtenTo && writtenTo.id !== auto?.id && writtenTo.storageKind === 'external' && writtenTo.state === 'ready') {
     return {
       detail: `Backed up to ${writtenTo.label}. Unplug it and keep it somewhere else: a drive that stays plugged in can be erased by anything that gets into this server.`,
       title: 'Your backups are up to date.',
@@ -501,19 +415,16 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
 
 // Why Back up now is not available, in the words of the thing the owner has to
 // go and do. An empty string means it is available.
-export function backupBlockReason(status: BackupStatus | null | undefined, views: DestinationView[], target: DestinationView | null) {
+export function backupBlockReason(status: BackupStatus | null | undefined) {
   if (status?.interruptedRestore) return 'A restore did not finish. Read what happened before backing up again.';
-  if (!status?.recoveryKey?.acknowledged) return 'Save your recovery key first.';
-  if (!views.length) return 'Choose where your backups should go first.';
-  if (!target) return views.find((view) => view.selected)?.blocked || PICK_A_PLACE;
   return '';
 }
 
 // The live line under the schedule summary: what it is doing right now, or what
 // it is waiting for, in that order.
-export function scheduleLive(schedule: BackupSchedule | null | undefined, selected: DestinationView | null): { text: string; tone: Tone } {
+export function scheduleLive(schedule: BackupSchedule | null | undefined, auto: AutomaticPlace | null): { text: string; tone: Tone } {
   if (!schedule) return { text: '', tone: 'muted' };
-  if (!selected) return { text: 'Waiting: no place is chosen yet. Pick one above and automatic backups start on the next run.', tone: 'warning' };
+  if (!auto) return { text: 'No default backup destination yet. Choose one with Change, and automatic backups start on the next run.', tone: 'warning' };
   if (schedule.running) return { text: 'An automatic backup is running now.', tone: 'ready' };
   if (schedule.waiting) return { text: `Waiting: ${schedule.waiting.reason}`, tone: 'warning' };
   if (!schedule.enabled) return { text: 'Off. MOS only backs up when you ask it to, and before it updates itself.', tone: 'muted' };
@@ -522,11 +433,11 @@ export function scheduleLive(schedule: BackupSchedule | null | undefined, select
   return { text: '', tone: 'muted' };
 }
 
-export function scheduleSummary(schedule: BackupSchedule | null | undefined, selected: DestinationView | null) {
-  if (!schedule || !schedule.enabled) return 'No schedule yet.';
+export function scheduleSummary(schedule: BackupSchedule | null | undefined, auto: AutomaticPlace | null) {
+  if (!schedule || !schedule.enabled) return auto ? `No schedule yet · before a MOS update, MOS backs up to ${auto.label}` : 'No schedule yet.';
   const keep = schedule.keepLast ? `keep the last ${schedule.keepLast}` : 'keep all of them';
   const when = schedule.frequency === 'weekly' ? `Every ${WEEKDAY_NAMES[schedule.weekday] || 'Sunday'}` : 'Every day';
-  return `${when} at ${clockValue(schedule)} · ${keep} · to ${selected ? selected.label : 'nowhere yet'}`;
+  return `${when} at ${clockValue(schedule)} · ${keep} · to ${auto ? auto.label : 'nowhere yet'}`;
 }
 
 // The words for a running job are the agent's (system-agents/backup/progress.cjs);
@@ -577,8 +488,8 @@ export function restorePhaseWords(phase: string | null | undefined) {
 }
 
 // One finished job, as one sentence: what happened and where, and for a failure what to do.
-export function activityLine(job: RecentJob, destinations: DestinationView[]) {
-  const place = destinations.find((view) => view.id === job.destinationId)?.label || '';
+export function activityLine(job: RecentJob, places: BackupPlace[]) {
+  const place = places.find((entry) => entry.id === job.destinationId)?.label || '';
   const at = place ? ` on ${place}` : '';
   const kind = job.kind === 'restore' ? 'Restore' : job.kind === 'validate' ? 'Verification' : job.kind === 'delete' ? 'Delete' : 'Backup';
   if (job.status === 'failed') return `${kind} stopped${at}: ${job.error || 'MOS could not say why.'}`;
@@ -594,17 +505,21 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
 // What a restore that worked has left its owner to finish: a suite whose phones
 // and laptops still ask for another server is not done, however fine the browser looks.
 type RestoreAftermath = {
+  appsNotStarted: string[];
   domain: string | null;
+  left: number;
   routesDetail: string | null;
   routesLive: boolean;
 };
 
 export function restoreAftermath(job: BackupJob | null | undefined): RestoreAftermath | null {
   if (job?.kind !== 'restore' || job.status !== 'succeeded') return null;
+  const appsNotStarted = (job.appsNotStarted || []).map((app) => app.displayName);
   const domain = job.address?.domain || null;
   const routesLive = job.controlPlane ? job.controlPlane.routesLive : true;
-  if (!domain && routesLive) return null;
-  return { domain, routesDetail: job.controlPlane?.detail || null, routesLive };
+  const left = [appsNotStarted.length > 0, Boolean(domain), !routesLive].filter(Boolean).length;
+  if (!left) return null;
+  return { appsNotStarted, domain, left, routesDetail: job.controlPlane?.detail || null, routesLive };
 }
 
 // What a rotation reached. A copy that was not attached carries the previous key

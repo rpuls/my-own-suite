@@ -4,9 +4,10 @@ import { ChoiceRow, Panel, PanelItem, PanelList, Spinner } from '../../component
 import { pickerOffers, storageIcon, type AppNames, type PickerContext, type StorageEntry } from './model';
 
 // The one way to choose storage, for an app's files and for backups alike. It shows
-// what cannot be chosen too, with the reason, and always ends on adding more.
-export function StoragePicker({ addHint, backupsKnown, busy = false, context, empty = null, exclude = [], label, names, none = null, onAdd, onChange, question, storage, value, children }: {
-  addHint: string;
+// what cannot be chosen too, with the reason, and ends on adding more where the
+// screen it is on may add storage.
+export function StoragePicker({ addHint = '', backupsKnown, busy = false, context, empty = null, exclude = [], label, names, none = null, onAdd, onChange, question, storage, value, children }: {
+  addHint?: string;
   backupsKnown: boolean;
   busy?: boolean;
   children?: ReactNode;
@@ -18,7 +19,7 @@ export function StoragePicker({ addHint, backupsKnown, busy = false, context, em
   label: string;
   names: AppNames;
   none?: { facts: string; label: string } | null;
-  onAdd: () => void;
+  onAdd?: () => void;
   onChange: (storageId: string) => void;
   question: string;
   storage: StorageEntry[] | null;
@@ -50,12 +51,12 @@ export function StoragePicker({ addHint, backupsKnown, busy = false, context, em
               {offer.warning ? <span className="suite-storage-warning">{offer.warning}</span> : null}
             </ChoiceRow>
           </PanelItem>)}
-          <PanelItem flush>
+          {onAdd ? <PanelItem flush>
             <ChoiceRow accent disabled={busy} icon="plus" onPick={onAdd}>
               <strong>Add storage…</strong>
               <span className="suite-meta">{addHint}</span>
             </ChoiceRow>
-          </PanelItem>
+          </PanelItem> : null}
         </PanelList>
       </div>
     </Panel> : null}

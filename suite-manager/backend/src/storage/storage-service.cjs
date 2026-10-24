@@ -30,20 +30,20 @@ function capabilitiesOf(entry) {
 }
 
 // What backups mean for one piece of storage, as the backup agent states it:
-// whether this server backs up there, and the archives other servers left on
-// it. Null when neither.
-function backupFacts(storageId, status, { held }) {
-  const destination = (status?.destinations || []).find((item) => item.id === storageId) || null;
+// whether this server's backups are kept there, whether automatic backups go
+// there, and the archives other servers left on it. Null when none of these.
+function backupFacts(storageId, status) {
+  const place = (status?.places || []).find((item) => item.id === storageId) || null;
   const others = (status?.archives || []).filter((archive) => archive.placeId === storageId && archive.owner === 'other');
-  if (!destination && !held && !others.length) return null;
+  const primary = storageId === (status?.primaryDestination?.destinationId || null);
+  if (!place?.ownArchive && !primary && !others.length) return null;
   return {
-    destination: Boolean(destination || (held && !others.length)),
-    lastBackupAt: destination?.lastBackupAt || null,
+    lastBackupAt: place?.lastBackupAt || null,
     otherServers: others.map(({ id, keyState, newestAt, restorePoints, writtenBy }) => ({ id, keyState, newestAt: newestAt || null, restorePoints: restorePoints ?? null, writtenBy })),
-    primary: storageId === (status?.primaryDestination?.destinationId || null),
-    ready: destination?.state === 'ready',
-    restorePoints: destination?.ownArchive?.restorePoints ?? 0,
-    storedBytes: destination?.ownArchive?.storedBytes ?? null,
+    ours: Boolean(place?.ownArchive),
+    primary,
+    restorePoints: place?.ownArchive?.restorePoints ?? 0,
+    storedBytes: place?.ownArchive?.storedBytes ?? null,
   };
 }
 
@@ -51,7 +51,7 @@ function driveEntry(drive, status) {
   const entry = {
     apps: drive.apps || [],
     availableBytes: drive.availableBytes,
-    backups: backupFacts(drive.id, status, { held: drive.backups }),
+    backups: backupFacts(drive.id, status),
     connected: drive.connected,
     detail: drive.detail || null,
     devicePath: drive.devicePath || null,
@@ -74,25 +74,24 @@ function driveEntry(drive, status) {
   return { ...entry, capabilities: capabilitiesOf(entry) };
 }
 
-// A connection whose one archive another server made is reachable, and listed
-// only as that archive; so is one MOS has not heard back from yet.
+// A connection MOS has not heard back from yet is listed as ready: the backup
+// agent says so when it is not.
 function bucketEntry(bucket, status) {
-  const destination = (status?.destinations || []).find((item) => item.id === bucket.id);
-  const archive = (status?.archives || []).find((item) => item.placeId === bucket.id);
-  const reachable = destination ? destination.state === 'ready' : archive ? true : null;
+  const place = (status?.places || []).find((item) => item.id === bucket.id);
+  const reachable = place ? place.state === 'ready' : null;
   const entry = {
     apps: [],
     availableBytes: null,
-    backups: backupFacts(bucket.id, status, { held: bucket.backups }),
+    backups: backupFacts(bucket.id, status),
     bucket: { accessKeyId: bucket.accessKeyId, bucket: bucket.bucket, endpoint: bucket.endpoint, folder: bucket.folder || '', region: bucket.region || '' },
     connected: true,
-    detail: destination?.reason || null,
+    detail: place?.reason || null,
     id: bucket.id,
     kind: 'bucket',
     label: bucket.label,
     name: bucket.label,
     named: true,
-    reason: reachable === false ? destination.reason || 'MOS could not reach this storage.' : null,
+    reason: reachable === false ? place.reason || 'MOS could not reach this storage.' : null,
     sizeBytes: null,
     state: reachable === false ? 'unreachable' : 'ready',
   };
@@ -232,32 +231,7 @@ class StorageService {
     return this.appAgent.useDrive({ drive: id });
   }
 
-  // Making storage a backup destination is a claim the storage module records;
-  // this server's archive on it is created by the first backup. Archives other
-  // servers left there stay beside it and never stand in its way.
-  async holdBackups(storageId, { primary = false } = {}) {
-    const entry = await this.entry(storageId);
-    if (!entry) throw Object.assign(new Error('That storage is no longer connected.'), { code: 'STORAGE_NOT_FOUND', statusCode: 404 });
-    if (!entry.capabilities.holdsBackups) throw Object.assign(new Error(entry.reason || 'This storage cannot hold backups.'), { code: 'STORAGE_CANNOT_HOLD_BACKUPS', statusCode: 409 });
-    if (entry.kind === 'bucket') await this.backupAgent.holdObjectBackups({ destinationId: storageId, held: true });
-    else await this.appAgent.holdBackups({ drive: storageId, held: true });
-    const status = await this.backupAgent.status();
-    const destination = (status.destinations || []).find((item) => item.id === storageId) || null;
-    if (primary && destination) await this.backupAgent.setPrimaryDestination({ destinationId: destination.id });
-    return { destination };
-  }
-
-  async releaseBackups(storageId) {
-    const entry = await this.entry(storageId);
-    if (!entry) throw Object.assign(new Error('That storage is no longer connected.'), { code: 'STORAGE_NOT_FOUND', statusCode: 404 });
-    if (entry.backups?.primary) throw Object.assign(new Error('Automatic backups go here. Choose another place for them first.'), { code: 'STORAGE_IS_PRIMARY', statusCode: 409 });
-    if (entry.kind === 'bucket') await this.backupAgent.holdObjectBackups({ destinationId: storageId, held: false });
-    else await this.appAgent.holdBackups({ drive: storageId, held: false });
-    return { released: true };
-  }
-
-  // A drive that is away and that no app reads. Backups going to it are let go
-  // with it, unless automatic backups go there.
+  // A drive that is away and that no app reads, unless automatic backups go there.
   async forgetDrive(driveId) {
     const entry = await this.entry(driveId);
     if (entry?.backups?.primary) throw Object.assign(new Error('Automatic backups go to this drive. Choose another place for them first.'), { code: 'STORAGE_IS_PRIMARY', statusCode: 409 });

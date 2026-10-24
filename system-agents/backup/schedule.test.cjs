@@ -123,7 +123,7 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
       created.push(job);
       return job;
     },
-    destinations: async () => state.destinations,
+    places: async () => state.destinations,
     now: () => state.clock,
     primary,
     readJob: (id) => jobs.get(id) || null,

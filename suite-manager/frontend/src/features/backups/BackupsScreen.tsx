@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 
-import { AdvancedPanel, ChoiceRow, DisclosureRow, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, ProgressBar, Select, Spinner } from '../../components/ui';
+import { AdvancedPanel, DisclosureRow, Notice, Panel, PanelBody, PanelHead, ProgressBar, Spinner } from '../../components/ui';
 import { postJson } from '../../lib/api';
 import { whenWords } from '../../lib/dates';
+import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
 import { fetchRecoveryKey, markRecoveryKeySaved, type RevealedRecoveryKey } from '../../lib/recovery-key';
 import { readVaultView, startupOf, type VaultView } from '../../lib/vault';
 import { EraseBackupsDialog } from '../archives/EraseBackupsDialog';
-import { AddDestinationDialog } from './AddDestinationDialog';
-import { DestinationsPanel, OtherServersPanel } from './DestinationsPanel';
+import { ArchivesPanel } from './ArchivesPanel';
 import { ProgressPlan } from './ProgressPlan';
-import { RestorePointsPanel } from './RestorePointsPanel';
 import {
   ArchiveKeysDialog,
-  BackupDialog,
+  BackupNowDialog,
   DeleteDialog,
   NoteDialog,
   RecoveryKeyDialog,
@@ -23,15 +22,14 @@ import {
 } from './dialogs';
 import {
   activityLine,
+  automaticPlace,
   backupBlockReason,
   bannerState,
   browserTimeZone,
   countShare,
-  destinationViews,
   isRunning,
   jobLine,
   jobWorkingLine,
-  otherArchiveViews,
   restoreAftermath,
   restorePhaseWords,
   scheduleLive,
@@ -41,7 +39,6 @@ import {
   type ArchiveKey,
   type BackupEntry,
   type BackupSchedule,
-  type DestinationView,
   type OtherArchiveView,
   type RotationResult,
 } from './model';
@@ -57,14 +54,11 @@ type Dialog =
   | { kind: 'keys'; archive: ArchiveRef }
   | { kind: 'unlock'; archive: ArchiveRef }
   | { kind: 'erase'; view: OtherArchiveView }
-  | { kind: 'add'; online: boolean }
   | null;
 
 export function BackupsScreen() {
   const { activeJob, contact, error: loadError, load, now, publicProgress, restoreInFlight, running, sessionEnded, setRestoreStarted, silent, status } = useBackupStatus();
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [backupTargetId, setBackupTargetId] = useState('');
-  const [backupNote, setBackupNote] = useState('');
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [activityOpen, setActivityOpen] = useState(false);
   const [error, setError] = useState('');
@@ -80,17 +74,10 @@ export function BackupsScreen() {
   const [vaultView, setVaultView] = useState<VaultView | null>(null);
 
   const backingUp = isRunning(activeJob) && activeJob?.kind !== 'restore' && activeJob?.kind !== 'validate' && activeJob?.kind !== 'delete';
-  const views = destinationViews(status);
-  const otherViews = otherArchiveViews(status);
-  const readyViews = views.filter((view) => view.selectable);
-  const selected = views.find((view) => view.selected) || null;
-  const backupTarget = readyViews.find((view) => view.id === backupTargetId)
-    || (selected && selected.selectable ? selected : null)
-    || readyViews[0]
-    || null;
-  const blockReason = status ? backupBlockReason(status, views, backupTarget) : '';
-  const banner = bannerState(status, views, Boolean(backingUp));
-  const blockNote = blockReason === banner.detail ? '' : blockReason;
+  const auto = automaticPlace(status);
+  const places = status?.places || [];
+  const blockReason = backupBlockReason(status);
+  const banner = bannerState(status, Boolean(backingUp));
   const workingLine = jobWorkingLine(activeJob);
   const recoveryKey = status?.recoveryKey || null;
   // Until the key is saved, taking a backup or enabling a schedule goes through
@@ -248,39 +235,21 @@ export function BackupsScreen() {
     });
   }
 
-  // Stops MOS saying a copy is out there on a drive that is not here; touches nothing on the drive.
-  async function forgetDrive(view: DestinationView) {
-    await runAction(`forget-drive:${view.id}`, async () => {
-      await postJson(`/suite-manager/api/storage/drives/${encodeURIComponent(view.id)}/forget`, {}, 'Unable to forget this drive.');
-    });
-  }
-
-  async function choosePrimaryQuietly(destinationId: string) {
-    await post('primary', { destinationId }, 'Unable to select this destination.');
-  }
-
-  async function choosePrimary(view: DestinationView) {
-    if (view.selected) return;
-    setBackupTargetId('');
-    await runAction(`primary:${view.id}`, () => choosePrimaryQuietly(view.id));
-  }
-
-  async function startBackup() {
-    if (!backupTarget) return;
+  async function startBackup(choice: { destinationId: string; makePrimary: boolean; note: string }) {
     await runAction('backup', async () => {
-      await post('start', { destinationId: backupTarget.id, note: backupNote }, 'Unable to start backup.');
-      setBackupNote('');
+      await post('start', choice, 'Unable to start backup.');
       setDialog(null);
     });
   }
 
   // The stored time zone is kept: opening MOS from a laptop in another country
   // must not move a home server's backup window.
-  async function saveSchedule(next: BackupSchedule) {
+  async function saveSchedule(next: BackupSchedule & { destinationId: string }) {
     const current = status?.schedule;
     if (!current) return;
     await runAction('schedule', async () => {
       await post('schedule', {
+        destinationId: next.destinationId || undefined,
         enabled: next.enabled,
         frequency: next.frequency,
         hour: next.hour,
@@ -290,14 +259,6 @@ export function BackupsScreen() {
         weekday: next.weekday,
       }, 'Unable to save the backup schedule.');
       setDialog(null);
-    });
-  }
-
-  // The storage stays set up in Settings → Storage; only the backups claim on it goes.
-  async function stopUsing(view: DestinationView) {
-    await runAction(`release:${view.id}`, async () => {
-      await post('destinations/release', { storageId: view.id }, 'Unable to stop using this for backups.');
-      if (backupTargetId === view.id) setBackupTargetId('');
     });
   }
 
@@ -356,22 +317,14 @@ export function BackupsScreen() {
     if (mode === 'save') void revealRecoveryKey('');
   }
 
-  function destinationAction(view: DestinationView) {
-    if (view.action === 'retest') void runAction(`retest:${view.id}`, async () => undefined);
-  }
-
   function archiveRef(id: string, label: string): ArchiveRef {
     const archive = status?.archives.find((entry) => entry.id === id);
     return { id, label, placeKind: archive?.placeKind || 'disk' };
   }
 
-  // Unlocking reads another server's archive; restoring from it, newest first,
-  // is the one thing this server can then do with it.
-  function otherArchiveAction(view: OtherArchiveView) {
-    if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', archive: archiveRef(view.id, view.label) }); return; }
-    const newest = (status?.backups || []).filter((backup) => backup.archiveId === view.id)
-      .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0];
-    if (newest) { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup: newest }); }
+  function openUnlock(view: OtherArchiveView) {
+    setUnlockError('');
+    setDialog({ kind: 'unlock', archive: archiveRef(view.id, view.label) });
   }
 
   function openArchiveKeys(archiveId: string, label: string) {
@@ -460,8 +413,9 @@ export function BackupsScreen() {
       {status?.serviceAvailable ? <div className="suite-bk-page" aria-busy={running}>
         {/* What a restore that worked has left undone, at the top rather than in
             the activity list: the browser looking fine is why nobody would look for it. */}
-        {aftermath ? <Notice title={`Your suite is restored — ${aftermath.domain && !aftermath.routesLive ? 'two things are' : 'one thing is'} left`} variant="warning">
-          {aftermath.routesLive ? null : <p><strong>This server is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
+        {aftermath ? <Notice title={`Your suite is restored — ${['', 'one thing is', 'two things are', 'three things are'][aftermath.left]} left`} variant="warning">
+          {aftermath.appsNotStarted.length ? <p><strong>{new Intl.ListFormat('en', { type: 'conjunction' }).format(aftermath.appsNotStarted)} did not start.</strong> {aftermath.appsNotStarted.length > 1 ? 'Their data is' : 'Its data is'} restored, and every other app is running. Open {aftermath.appsNotStarted.length > 1 ? 'each one' : 'it'} under <a className="mos-link" href="/suite-manager/apps">Apps</a> to see why, and choose Restart to try again.</p> : null}
+          {aftermath.routesLive ? null :<p><strong>This server is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
           {aftermath.domain ? <>
             <p>Your suite is running here, on this server&rsquo;s own address, and you are signed in to it. Anything set up against <strong>{aftermath.domain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points at this server, because it still points at the server this restore point came from.</p>
             <p>Settings offers to serve <strong>{aftermath.domain}</strong> from here in one step: MOS kept that domain&rsquo;s credential from the backup, so it needs no token from you. Pointing the name at this server is the part MOS cannot do for you — change it at your DNS provider, and in any override your own network holds for it.</p>
@@ -477,11 +431,11 @@ export function BackupsScreen() {
 
         {/* A block is the answer to "am I safe", so it takes that slot. Never more than one. */}
         {status.interruptedRestore ? <Notice title="A restore did not finish" variant="error">
-          <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this system may not match the restore point it was restoring. Your suite is as it was before it started, and a complete rescue copy of what was in progress is kept on the server. Backups and restores stay paused until you have read this.</p>
+          <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this server may be part way between what it held before and the restore point it was restoring. A complete rescue copy of what it held before is kept on the server. Backups and restores stay paused until you have read this.</p>
           <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">
             {busy === 'acknowledge' ? <><Spinner />Unblocking</> : 'I have read this'}
           </button>
-        </Notice> : views.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
+        </Notice> : <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
           <div className="suite-bk-banner-text">
             <span className={`suite-bk-dot is-${banner.tone}`} />
             <div>
@@ -491,115 +445,75 @@ export function BackupsScreen() {
           </div>
           <div className="suite-bk-banner-action">
             {backingUp ? <p className="suite-bk-working"><Spinner />{jobLine(activeJob)}. Apps come back on their own.</p>
-              : workingLine ? <p className="suite-bk-working"><Spinner />{workingLine}</p> : <>
-              <div className="suite-bk-backup-controls">
-                {readyViews.length > 1 && !blockReason ? <Select
-                  aria-label="Where to back up"
-                  disabled={Boolean(busy) || running}
-                  onChange={(event) => setBackupTargetId(event.currentTarget.value)}
-                  value={backupTarget?.id || ''}
-                >
-                  {readyViews.map((view) => <option key={view.id} value={view.id}>
-                    {view.selected ? `Back up to ${view.label} (the usual place)` : `Back up to ${view.label}`}
-                  </option>)}
-                </Select> : null}
-                <button
-                  className="mos-btn mos-btn-primary"
-                  disabled={Boolean(blockReason) || Boolean(busy) || running}
-                  onClick={() => gateOnRecoveryKey(async () => setDialog({ kind: 'backup' }))}
-                  type="button"
-                >Back up now</button>
-              </div>
-            </>}
+              : workingLine ? <p className="suite-bk-working"><Spinner />{workingLine}</p>
+              : places.length ? <button
+                className="mos-btn mos-btn-primary"
+                disabled={Boolean(blockReason) || Boolean(busy) || running}
+                onClick={() => gateOnRecoveryKey(async () => setDialog({ kind: 'backup' }))}
+                type="button"
+              >Back up now</button>
+              : <a className="mos-btn mos-btn-primary" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Set up storage</a>}
           </div>
-          {!backingUp && !workingLine && (blockNote || (backupTarget && !backupTarget.selected && selected))
-            ? <div className="suite-bk-banner-note">
-              {blockNote ? <p className="suite-bk-detail">{blockNote}</p> : null}
-              {backupTarget && !backupTarget.selected && selected
-                ? <p className="suite-bk-detail">This one backup goes to {backupTarget.label}. Automatic backups still go to {selected ? selected.label : 'the selected place'}.</p>
-                : null}
-            </div>
-            : null}
-        </section> : null}
+          {blockReason && !backingUp && !workingLine ? <div className="suite-bk-banner-note"><p className="suite-bk-detail">{blockReason}</p></div> : null}
+        </section>}
 
-        {otherViews.length ? <OtherServersPanel
-          busy={busy}
-          onAction={otherArchiveAction}
-          onErase={(view) => setDialog({ kind: 'erase', view })}
-          onForgetKey={(view) => void forgetArchiveKey(view)}
-          onKeys={openArchiveKeys}
-          running={running}
-          views={otherViews}
-        /> : null}
-
-        {/* A fresh install shows one question instead of four empty sections. */}
-        {views.length ? null : <Panel>
-          <PanelHead heading="h2" title="You have no backups yet.">
-            <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage online. You can add the other one later.</p>
-          </PanelHead>
-          <PanelList>
-            <PanelItem flush>
-              <ChoiceRow icon="usb-drive" onPick={() => setDialog({ kind: 'add', online: false })}>
-                <strong>Use a drive</strong>
-                <span className="suite-meta">Plug a USB drive into this server. Fastest to restore from.</span>
-              </ChoiceRow>
-            </PanelItem>
-            <PanelItem flush>
-              <ChoiceRow icon="cloud-storage" onPick={() => setDialog({ kind: 'add', online: true })}>
-                <strong>Connect storage online</strong>
-                <span className="suite-meta">Storage you rent from a provider. Survives a fire or a theft at home.</span>
-              </ChoiceRow>
-            </PanelItem>
-          </PanelList>
-        </Panel>}
-
-        {views.length ? <DestinationsPanel
-          busy={busy}
-          onAction={destinationAction}
-          onAdd={() => setDialog({ kind: 'add', online: false })}
-          onForgetDrive={(view) => void forgetDrive(view)}
-          onKeys={openArchiveKeys}
-          onSelect={(view) => void choosePrimary(view)}
-          onStopUsing={(view) => void stopUsing(view)}
-          onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
-          running={running}
-          views={views}
-        /> : null}
-
-        {views.length && status.schedule ? <Panel>
-          <PanelHead
-            actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
-            title="Automatic backups"
-          >
-            <strong>{scheduleSummary(status.schedule, selected)}</strong>
-            <p className={`suite-bk-status is-${scheduleLive(status.schedule, selected).tone}`}>
-              <span className={`suite-bk-dot is-${scheduleLive(status.schedule, selected).tone}`} />
-              {scheduleLive(status.schedule, selected).text}
-            </p>
-          </PanelHead>
-        </Panel> : null}
-
-        {views.length || otherViews.length ? <RestorePointsPanel
+        <ArchivesPanel
           busy={busy}
           checking={checking}
           onCheck={(backup) => void checkBackup(backup)}
           onDelete={(backup) => setDialog({ kind: 'delete', backup })}
           onEditNote={(backup) => setDialog({ kind: 'note', backup, value: backup.note || '' })}
+          onErase={(view) => setDialog({ kind: 'erase', view })}
+          onForgetKey={(view) => void forgetArchiveKey(view)}
+          onKeys={openArchiveKeys}
           onRestore={(backup) => { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup }); }}
+          onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
+          onUnlock={openUnlock}
+          owner="this"
           running={running}
           status={status}
-          views={views}
-        /> : null}
+        />
 
-        {views.length || otherViews.length ? <Panel>
+        <ArchivesPanel
+          busy={busy}
+          checking={checking}
+          onCheck={(backup) => void checkBackup(backup)}
+          onDelete={(backup) => setDialog({ kind: 'delete', backup })}
+          onEditNote={(backup) => setDialog({ kind: 'note', backup, value: backup.note || '' })}
+          onErase={(view) => setDialog({ kind: 'erase', view })}
+          onForgetKey={(view) => void forgetArchiveKey(view)}
+          onKeys={openArchiveKeys}
+          onRestore={(backup) => { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup }); }}
+          onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
+          onUnlock={openUnlock}
+          owner="other"
+          running={running}
+          status={status}
+        />
+
+        {status.schedule ? <Panel>
+          <PanelHead
+            actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
+            heading="h2"
+            title="Automatic backups"
+          >
+            <strong>{scheduleSummary(status.schedule, auto)}</strong>
+            <p className={`suite-bk-status is-${scheduleLive(status.schedule, auto).tone}`}>
+              <span className={`suite-bk-dot is-${scheduleLive(status.schedule, auto).tone}`} />
+              {scheduleLive(status.schedule, auto).text}
+            </p>
+          </PanelHead>
+        </Panel> : null}
+
+        {status.recentJobs?.[0] ? <Panel>
           <DisclosureRow expanded={activityOpen} onToggle={() => setActivityOpen(!activityOpen)}>
             <strong>Recent activity</strong>
-            <span className="suite-bk-detail suite-bk-activity-line">{status.recentJobs?.[0] ? activityLine(status.recentJobs[0], views) : 'Nothing has happened yet.'}</span>
+            <span className="suite-bk-detail suite-bk-activity-line">{activityLine(status.recentJobs[0], places)}</span>
           </DisclosureRow>
           {activityOpen ? <PanelBody className="suite-bk-activity-body">
             {(status.recentJobs || []).map((job) => <p key={job.id}>
               <span className="suite-bk-point-when">{whenWords(job.updatedAt)}</span>
-              <span>{activityLine(job, views)}</span>
+              <span>{activityLine(job, places)}</span>
             </p>)}
             <AdvancedPanel
               facts={[
@@ -619,13 +533,11 @@ export function BackupsScreen() {
         </Panel> : null}
       </div> : null}
 
-      {dialog?.kind === 'backup' && backupTarget ? <BackupDialog
+      {dialog?.kind === 'backup' ? <BackupNowDialog
+        auto={auto}
         busy={busy}
-        note={backupNote}
         onCancel={closeDialog}
-        onChange={setBackupNote}
-        onStart={() => void startBackup()}
-        target={backupTarget}
+        onStart={(choice) => void startBackup(choice)}
       /> : null}
 
       {dialog?.kind === 'key' ? <RecoveryKeyDialog
@@ -669,6 +581,7 @@ export function BackupsScreen() {
       /> : null}
 
       {dialog?.kind === 'schedule' && status?.schedule ? <ScheduleDialog
+        auto={auto}
         busy={busy}
         onCancel={closeDialog}
         onSave={(next) => {
@@ -677,7 +590,6 @@ export function BackupsScreen() {
           else void saveSchedule(merged);
         }}
         schedule={status.schedule}
-        selected={selected}
       /> : null}
 
       {dialog?.kind === 'restore' ? <RestoreDialog
@@ -705,12 +617,6 @@ export function BackupsScreen() {
         value={dialog.value}
       /> : null}
 
-      {dialog?.kind === 'add' ? <AddDestinationDialog
-        firstDestination={!selected}
-        onAdded={() => { closeDialog(); void load(); }}
-        onClose={closeDialog}
-        startOnline={dialog.online}
-      /> : null}
     </div>
   </section>;
 }

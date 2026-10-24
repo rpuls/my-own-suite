@@ -134,7 +134,7 @@ test('a drive MOS was never told about is opened on sight and listed with what i
   assert.equal((await storage.drives())[0].holdsBackups, false);
   fs.mkdirSync(path.join(storage.mountRoot, '1A2B-3C4D', 'MOS-backups', 'archive-0000beef'), { recursive: true });
   const [drive] = await storage.drives();
-  assert.deepEqual([drive.state, drive.apps, drive.backups, drive.holdsBackups], ['ready', [], false, true]);
+  assert.deepEqual([drive.state, drive.apps, drive.holdsBackups], ['ready', [], true]);
   assert.equal(storage.isRemembered('1A2B-3C4D'), false);
 
   const gone = new AppStorage({ registryPath: storage.registry.registryPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
@@ -273,18 +273,15 @@ test('a Linux-formatted drive is refused for app folders in plain words, before 
   assert.deepEqual(host.calls, []);
 });
 
-test('a drive kept for backups is opened with the safety options its format takes, remembered, and listed while away', async () => {
+test('a Linux drive is opened with the safety options its format takes, and holding backups does not make MOS remember it', async () => {
   const host = fakeHost([LINUX_DRIVE]);
   const { root, storage } = await storageFor(host);
-  await storage.holdBackups('e1e1e1e1-0000');
+  await storage.attach('e1e1e1e1-0000');
   assert.deepEqual(host.calls, [['mount', '-t', 'ext4', '-o', 'noatime,nodev,nosuid,noexec', '/dev/sdc', path.posix.join(path.join(root, 'media'), 'e1e1e1e1-0000')]]);
-  assert.equal(storage.isRemembered('e1e1e1e1-0000'), true);
+  fs.mkdirSync(path.join(storage.mountRoot, 'e1e1e1e1-0000', 'MOS-backups', 'archive-0000beef'), { recursive: true });
+  assert.equal((await storage.drives())[0].holdsBackups, true);
+  assert.equal(storage.isRemembered('e1e1e1e1-0000'), false);
   const away = new AppStorage({ registryPath: storage.registry.registryPath, execute: host.execute, executeCapture: fakeHost([]).executeCapture, mountRoot: storage.mountRoot });
-  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.backups, drive.holdsBackups, drive.reason]), [['e1e1e1e1-0000', 'away', true, true, 'This drive is not connected.']]);
-  // Letting go of the backups keeps the drive, like an app letting go of its folders; only Forget lets it go.
-  storage.releaseBackups('e1e1e1e1-0000');
-  assert.deepEqual((await away.drives()).map((drive) => [drive.id, drive.state, drive.backups, drive.holdsBackups]), [['e1e1e1e1-0000', 'away', false, false]]);
-  await away.forget('e1e1e1e1-0000');
   assert.deepEqual(await away.drives(), []);
 });
 
@@ -293,7 +290,8 @@ test('a drive kept for backups is opened with the safety options its format take
 test('a drive that failed to open gives the failure as its reason, and only a working one its format note', async () => {
   const host = fakeHost([LINUX_DRIVE]);
   const { storage } = await storageFor(host);
-  await storage.holdBackups('e1e1e1e1-0000');
+  await storage.attach('e1e1e1e1-0000');
+  storage.claim('e1e1e1e1-0000', 'jellyfin', { fileSystem: 'ext4', label: 'LINUX' });
   assert.match((await storage.drives())[0].reason, /can hold backups but not app files/u);
   const failing = new AppStorage({ registryPath: storage.registry.registryPath, execute: async (file) => { if (file === 'mount') throw new Error('COMMAND_FAILED'); return { stdout: '' }; }, executeCapture: fakeHost([LINUX_DRIVE]).executeCapture, mountRoot: storage.mountRoot });
   await assert.rejects(failing.attach('e1e1e1e1-0000'), /COMMAND_FAILED/u);
@@ -385,6 +383,31 @@ test('formatting erases only the proven stick, into one exFAT drive', async () =
   const erasing = host.calls.filter(([file]) => ['wipefs', 'sh', 'mkfs.exfat'].includes(file));
   assert.deepEqual(erasing[0], ['wipefs', '--all', '--force', '/dev/sdd']);
   assert.deepEqual(erasing.at(-1), ['mkfs.exfat', '-L', 'MOS STORAGE', '/dev/sdd1']);
+});
+
+function openStick(mountpoint) {
+  return { ...INSTALL_STICK, children: [INSTALL_STICK.children[0], { ...INSTALL_STICK.children[1], mountpoints: [mountpoint] }] };
+}
+
+test('a stick that is already half open is still the stick, never a drive', async () => {
+  const { storage } = await storageFor(stickHost([openStick('/tmp/elsewhere')]));
+  const inventory = await storage.inventory();
+  assert.deepEqual(inventory.installerSticks.map((stick) => stick.devicePath), ['/dev/sdd']);
+  assert.ok(!inventory.drives.some((drive) => drive.devicePath?.startsWith('/dev/sdd')));
+});
+
+test('formatting closes what MOS opened on the stick first, and refuses one held open by anything else', async () => {
+  const held = stickHost([openStick('/tmp/elsewhere')]);
+  await assert.rejects((await storageFor(held)).storage.formatInstallerStick('/dev/sdd'), /has the stick open/u);
+  assert.ok(!held.calls.some(([file]) => file === 'wipefs'));
+
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-storage-'));
+  const mountRoot = path.join(root, 'media');
+  const host = stickHost([openStick(`${mountRoot}/723ed40b-0000`)]);
+  const storage = new AppStorage({ registryPath: path.join(root, 'storage.json'), execute: host.execute, executeCapture: host.executeCapture, mountRoot });
+  await storage.formatInstallerStick('/dev/sdd');
+  const order = host.calls.map(([file, ...args]) => (file === 'umount' ? `umount ${args.at(-1)}` : file)).filter((call) => call === 'wipefs' || call.startsWith(`umount ${mountRoot}`));
+  assert.deepEqual(order, [`umount ${mountRoot}/723ed40b-0000`, 'wipefs']);
 });
 
 test('the system disk is measured per filesystem, so the vault that holds the apps is told apart from MOS itself', () => {

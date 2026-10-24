@@ -227,6 +227,7 @@ class FakeWorld {
     this.system = new FakeSystem(root);
     this.engine = new FakeEngine();
     this.reconcileRuns = [];
+    this.appsNotStarted = [];
     this.progressCalls = [];
     this.jobsDir = path.join(root, 'jobs');
     for (const dir of [this.paths.agentStateDir, this.paths.stateDir, this.jobsDir, this.destination()]) ensureDir(dir);
@@ -299,6 +300,7 @@ class FakeWorld {
               }
             }
           }
+          return this.appsNotStarted;
         },
       },
       destinations: new DestinationResolver({
@@ -455,6 +457,22 @@ test('full restore reconciles absence: post-backup app volumes cannot survive or
   await w.system.createVolume(name, appVolumeLabels({ instanceId: reinstallInstance, name, packageId: 'seafile' }));
   assert.deepEqual(fs.readdirSync(w.system.volumeDir(name)), []);
   assert.equal(w.system.volumes.get(name)[OWNERSHIP_LABELS.instance], reinstallInstance);
+});
+
+test('an app that does not start after a restore is named, and the restore still completes', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.driveId });
+  await core.backup(backupJob);
+
+  w.appsNotStarted = [{ displayName: 'Stirling PDF', packageId: 'stirling-pdf' }];
+  const restoreJob = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await core.restore(restoreJob);
+  const finished = readJson(restoreJob);
+  assert.equal(finished.status, 'succeeded');
+  assert.deepEqual(finished.appsNotStarted, [{ displayName: 'Stirling PDF', packageId: 'stirling-pdf' }]);
+  assert.equal(core.interruptedRestore(), null);
 });
 
 test('an interrupted restore is detected, blocks new work, and requires explicit acknowledgment', async () => {
@@ -1271,4 +1289,11 @@ test('a takeover whose disk rekey fails adopts nothing and says what still opens
   assert.match(refusal, /nothing is lost/u, 'and that the restore itself is complete');
   assert.match(refusal, /still open with the key you entered/u);
   assert.equal(readJson(takeoverJob).status, 'succeeded', 'the restore is not failed by a key it could not change');
+});
+
+test('a restore point in a bucket is found through its archive, not through the bucket connection', () => {
+  const resolved = [];
+  const core = new BackupAgentCore({ destinations: { resolve: (id) => { resolved.push(id); return { id }; } }, paths: { agentStateDir: os.tmpdir(), stateDir: os.tmpdir(), stateRoot: os.tmpdir() } });
+  const { destination, pointId } = core.resolveBackup('object:0123456789ab/archive-0000beef#job-1');
+  assert.deepEqual([destination.id, pointId, resolved], ['object:0123456789ab/archive-0000beef', 'job-1', ['object:0123456789ab/archive-0000beef']]);
 });

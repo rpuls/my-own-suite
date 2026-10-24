@@ -65,7 +65,7 @@ function contentsLine(entry: StorageEntry, usage: StorageUsage | null, backupsKn
     byApp.set(app, [...(byApp.get(app) || []), folder.name]);
   }
   const parts = [...byApp].map(([app, folders]) => `${app} — ${folders.join(', ')}`);
-  if ((backupsKnown && entry.backups?.destination) || usage?.backups.some((item) => item.driveId === entry.id)) parts.push('MOS backup archive');
+  if ((backupsKnown && entry.backups?.ours) || usage?.backups.some((item) => item.driveId === entry.id)) parts.push('MOS backup archive');
   return parts.join(' · ');
 }
 
@@ -89,7 +89,7 @@ function RowDetails({ backupsKnown, entry, onRename, usage }: { backupsKnown: bo
     {entry.kind === 'drive' && contents ? <p className="suite-meta">On this drive: <span className="suite-storage-contents">{contents}</span></p> : null}
     {entry.kind === 'drive' && !contents && entry.connected && backupsKnown ? <p className="suite-meta">Nothing MOS keeps is on this drive yet. Pick it when you install an app that keeps files on a drive, or as a place for backups.</p> : null}
     {entry.kind !== 'system' && !backupsKnown ? <p className="suite-storage-warning">{BACKUPS_UNKNOWN_LINE}</p> : null}
-    {entry.kind === 'bucket' && backupsKnown && !entry.backups?.destination ? <p className="suite-meta">Backups go here once you pick it in Backups, under This server&apos;s backups.</p> : null}
+    {entry.kind === 'bucket' && backupsKnown && !entry.backups?.ours ? <p className="suite-meta">This server&apos;s backups go here once you back up to it from Backup &amp; Restore.</p> : null}
     {entry.kind === 'drive' ? <p className="suite-storage-note">
       {entry.apps.length ? 'App files here are not part of MOS backups · ' : ''}{portable}
       {entry.capabilities.renamable ? <> · <button className="mos-link suite-link-button" onClick={onRename} type="button">Rename</button></> : null}

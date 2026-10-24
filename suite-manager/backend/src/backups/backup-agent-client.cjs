@@ -31,7 +31,6 @@ class BackupAgentClient {
   connectObjectDestination(input) { return this.request('POST', '/v1/destinations/object', input); }
   disconnectObjectDestination(input) { return this.request('POST', '/v1/destinations/object/remove', input); }
   testObjectDestination(input) { return this.request('POST', '/v1/destinations/object/test', input); }
-  holdObjectBackups(input) { return this.request('POST', '/v1/destinations/object/backups', input); }
   startBackup(input) { return this.request('POST', '/v1/backups', input); }
   validateBackup(input) { return this.request('POST', '/v1/backups/validate', input); }
   deleteBackup(input) { return this.request('POST', '/v1/backups/delete', input); }

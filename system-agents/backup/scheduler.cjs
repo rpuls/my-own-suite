@@ -34,9 +34,9 @@ const NO_PRIMARY = 'No destination is set for automatic backups, so this backup 
 function isActive(job) { return Boolean(job && (job.status === 'queued' || job.status === 'running')); }
 
 class BackupScheduler {
-  constructor({ agentStateDir, createJob, destinations, log = () => {}, now = () => new Date(), primary, readJob, restorePoints, updateInProgress = async () => false }) {
+  constructor({ agentStateDir, createJob, log = () => {}, now = () => new Date(), places, primary, readJob, restorePoints, updateInProgress = async () => false }) {
     this.createJob = createJob;
-    this.destinations = destinations;
+    this.places = places;
     this.log = log;
     this.now = now;
     this.primary = primary;
@@ -136,7 +136,7 @@ class BackupScheduler {
     if (await this.updateInProgress()) return this.recordWaiting(schedule, occurrence, UPDATE_IN_PROGRESS);
     const chosen = this.primary.read();
     if (!chosen) return this.recordWaiting(schedule, occurrence, NO_PRIMARY);
-    const destination = this.primary.resolve(await this.destinations());
+    const destination = this.primary.resolve(await this.places());
     // A destination that is not there is the ordinary case — a backup disk
     // lives in a drawer, a home connection drops — rather than a failure: the
     // run stays owed and starts the moment it is back, up until the next

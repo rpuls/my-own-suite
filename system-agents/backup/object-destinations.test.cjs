@@ -15,6 +15,7 @@ const {
   isObjectDestinationId,
   MAX_OBJECT_DESTINATIONS,
   normalizeObjectDestination,
+  objectCatalogSpec,
   ObjectDestinationRegistry,
   objectRepositorySpec,
   publicObjectDestination,
@@ -67,24 +68,29 @@ test('an edit keeps the stored secret when none is typed, and replaces it when o
   assert.throws(() => normalizeObjectDestination({ ...VALID, secretAccessKey: '' }), /secret access key/iu);
 });
 
-test('the repository address is built from the fields, and the credentials never appear in it', () => {
-  const spec = objectRepositorySpec(normalizeObjectDestination(VALID));
-  assert.equal(spec.location, 's3:https://s3.eu-central-1.amazonaws.com/mos-backups/home-server/MOS-backups/repository');
+test('every archive in a bucket sits under MOS-backups beside the catalog, and the credentials never appear in an address', () => {
+  const record = normalizeObjectDestination(VALID);
+  const spec = objectRepositorySpec(record, 'archive-0000beef');
+  assert.equal(spec.location, 's3:https://s3.eu-central-1.amazonaws.com/mos-backups/home-server/MOS-backups/archive-0000beef/repository');
+  assert.equal(objectCatalogSpec(record).location, 's3:https://s3.eu-central-1.amazonaws.com/mos-backups/home-server/MOS-backups/catalog');
+  // MOS 0.22's one archive is read where it lies.
+  assert.equal(objectRepositorySpec(record, 'repository').location, 's3:https://s3.eu-central-1.amazonaws.com/mos-backups/home-server/MOS-backups/repository');
   assert.equal(spec.env.AWS_ACCESS_KEY_ID, VALID.accessKeyId);
   assert.equal(spec.env.AWS_SECRET_ACCESS_KEY, VALID.secretAccessKey);
   assert.equal(spec.env.AWS_DEFAULT_REGION, VALID.region);
-  assert.ok(!spec.location.includes(VALID.secretAccessKey));
-  assert.ok(!spec.location.includes(VALID.accessKeyId));
+  for (const location of [spec.location, objectCatalogSpec(record).location]) {
+    assert.ok(!location.includes(VALID.secretAccessKey));
+    assert.ok(!location.includes(VALID.accessKeyId));
+  }
   // The engine masks these out of anything it captured before it leaves root.
   assert.ok(spec.secrets.includes(VALID.secretAccessKey));
-  // Without a folder the repository sits at the top of the bucket, still under
-  // the same names a drive uses.
+  // Without a folder the archives sit at the top of the bucket, under the same names a drive uses.
   assert.equal(
-    objectRepositorySpec(normalizeObjectDestination({ ...VALID, folder: '' })).location,
-    's3:https://s3.eu-central-1.amazonaws.com/mos-backups/MOS-backups/repository',
+    objectRepositorySpec(normalizeObjectDestination({ ...VALID, folder: '' }), 'archive-0000beef').location,
+    's3:https://s3.eu-central-1.amazonaws.com/mos-backups/MOS-backups/archive-0000beef/repository',
   );
   // A provider that needs no region is not given an empty one.
-  assert.equal(objectRepositorySpec(normalizeObjectDestination({ ...VALID, region: '' })).env.AWS_DEFAULT_REGION, undefined);
+  assert.equal(objectRepositorySpec(normalizeObjectDestination({ ...VALID, region: '' }), 'archive-0000beef').env.AWS_DEFAULT_REGION, undefined);
 });
 
 test('what leaves the agent describes the connection without the secret', () => {
@@ -113,16 +119,7 @@ test('a stored connection is root-only, survives a reread, and cannot be added t
   assert.throws(() => store.remove(other.id), /no longer exists/iu);
 });
 
-test('a connected bucket holds no backups until the owner makes it a destination, and an edit keeps that', async () => {
-  const { registry: store } = await registry();
-  const saved = store.save(VALID);
-  assert.equal(saved.backups, undefined);
-  assert.equal(store.holdBackups(saved.id, true).backups, true);
-  assert.equal(store.save({ ...VALID, id: saved.id, label: 'Offsite', secretAccessKey: '' }).backups, true);
-  assert.equal(store.holdBackups(saved.id, false).backups, undefined);
-});
-
-test('the number of connections is capped so the destination list stays a choice', async () => {
+test('the number of connections is capped so the list of places stays a choice', async () => {
   const { registry: store } = await registry();
   for (let index = 0; index < MAX_OBJECT_DESTINATIONS; index += 1) store.save({ ...VALID, folder: `server-${index}` });
   assert.throws(() => store.save({ ...VALID, folder: 'one-too-many' }), /up to \d+ storage connections/iu);
