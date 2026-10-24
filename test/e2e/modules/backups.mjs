@@ -270,8 +270,9 @@ const OTHER_SERVER = 'e2e-old-server';
 // Beside the archive a disk backup went to, or in another drive's backups folder,
 // a copy as another server would have left it: its restore points name another
 // install, and only a fresh key, which that server holds, opens it. Prints the
-// copy's folder name and that key.
-function otherServerArchive(pointPath, intoDir = null) {
+// copy's folder name and that key. With `rekey: false` the copy keeps the source's
+// key, for a source the current key no longer opens.
+function otherServerArchive(pointPath, intoDir = null, { rekey = true } = {}) {
   return `set -euo pipefail
 src=$(dirname "$(dirname ${JSON.stringify(pointPath)})")
 name=archive-$(head -c4 /dev/urandom | od -An -tx1 | tr -dc 0-9a-f)
@@ -282,6 +283,8 @@ cp -a "$src" "$dst" 2>/dev/null || { rm -rf "$dst"; cp -r "$src" "$dst"; }
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export HOME=$work
+key=
+if [ ${rekey ? 1 : 0} = 1 ]; then
 key=$(node -e 'process.stdout.write(require("/opt/mos/repo/system-agents/backup/recovery-key.cjs").generate().key)')
 printf %s "$key" > "$work/key"
 restic() { /usr/local/libexec/mos/restic --no-cache --quiet -r "$dst/repository" "$@"; }
@@ -289,6 +292,7 @@ RESTIC_PASSWORD_FILE=/var/lib/mos/backup-agent/engine-key restic key add --new-p
 for id in $(RESTIC_PASSWORD_FILE="$work/key" restic key list --json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{for(const k of JSON.parse(s))if(!k.current)console.log(k.id)})'); do
   RESTIC_PASSWORD_FILE="$work/key" restic key remove "$id"
 done
+fi
 node - "$dst" ${OTHER_SERVER} <<'JS'
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -389,11 +393,12 @@ export async function driveFound(ctx) {
 }
 
 // Another server's archive erased from Backups: it goes from the list and from the
-// drive, while this server's own archive beside it, and the drive's place, stay.
+// drive, while the archive it was copied from, and the drive's place, stay. Erasing
+// needs no key, and after a takeover this server's key no longer opens the source.
 export async function eraseOtherArchive(ctx) {
   const { page } = ctx;
   const record = latestBackup(ctx, 'local', 'erase-other-archive');
-  const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path)));
+  const made = JSON.parse(await runOnLab(ctx.env.labShell, otherServerArchive(record.path, null, { rekey: false })));
   const archiveId = `${record.destinationId}/${made.name}`;
   const folder = `$(dirname "$(dirname ${JSON.stringify(record.path)})")/../${made.name}`;
   try {
@@ -401,9 +406,13 @@ export async function eraseOtherArchive(ctx) {
     let archive = null;
     await expect.poll(async () => { archive = await archiveIn(page, archiveId); return archive?.owner; }, { message: "the other server's archive should be listed", timeout: 60000 }).toBe('other');
     const row = page.locator('.suite-bk-archives.is-other .mos-panel-item').filter({ hasText: `From ${OTHER_SERVER}` }).first();
-    await row.getByRole('button', { name: `More for ${archive.placeLabel}` }).click();
-    await page.getByRole('menuitem', { name: /^Erase these backups/u }).click();
-    const dialog = page.getByRole('dialog', { name: /^Erase another server's backups/u });
+    // The menu closes on any scroll, and the list may still be growing as places are read.
+    const erase = page.getByRole('menuitem', { name: /^Erase these backups/u });
+    await expect(async () => {
+      if (!(await erase.isVisible())) await row.getByRole('button', { name: `More for ${archive.placeLabel}` }).click();
+      await erase.click({ timeout: 3000 });
+    }).toPass({ timeout: 45000 });
+    const dialog = page.getByRole('dialog', { name: "Erase another server's backups on" });
     await dialog.getByRole('checkbox').check();
     await dialog.getByRole('button', { exact: true, name: 'Erase these backups' }).click();
     await expect(dialog).toBeHidden({ timeout: 60000 });
@@ -411,7 +420,8 @@ export async function eraseOtherArchive(ctx) {
     expect((await runOnLab(ctx.env.labShell, `[ -e "${folder}" ] && echo kept || echo gone`)).trim(), 'The archive folder should be gone from the drive').toBe('gone');
     const status = await apiJson(page, STATUS);
     expect((status.places || []).find((item) => item.id === record.destinationId)?.state, 'The drive should still take this server\'s backups').toBe('ready');
-    expect((status.backups || []).some((item) => item.placeId === record.destinationId && item.owner === 'this'), 'This server\'s own restore points on the drive should be untouched').toBe(true);
+    const source = `${record.destinationId}/${record.path.split('/').at(-3)}`;
+    expect((status.archives || []).some((item) => item.id === source), 'The archive beside it should be untouched').toBe(true);
   } finally {
     await runOnLab(ctx.env.labShell, `rm -rf "${folder}" "${folder}".erasing-*`);
   }
@@ -419,33 +429,34 @@ export async function eraseOtherArchive(ctx) {
 
 // A drive holding this server's backups is a place like any other: pulled, it and
 // its backups leave Storage and Backups, and plugged back in they are listed
-// again as this server's, with nothing for the owner to do.
+// again as this server's, with nothing for the owner to do. The backup is taken
+// here, on a spare drive picked in Back up now, since after a takeover this server
+// owns no earlier archive.
 export async function driveAway(ctx) {
   const { page } = ctx;
   const record = latestBackup(ctx, 'local', 'drive-away');
   const spare = await spareDrive(ctx, record.destinationId);
   if (spare.state !== 'ready') await runOnLab(ctx.env.labShell, `systemctl start mos-storage-attach@${spare.id}.service`);
-  const into = `${STORAGE_MOUNT_ROOT}/${spare.id}/${BACKUPS_DIR}`;
-  const name = (await runOnLab(ctx.env.labShell, `set -euo pipefail
-src=$(dirname "$(dirname ${JSON.stringify(record.path)})")
-name=archive-$(head -c4 /dev/urandom | od -An -tx1 | tr -dc 0-9a-f)
-mkdir -p ${JSON.stringify(into)}
-cp -r "$src" ${JSON.stringify(into)}/"$name"
-printf %s "$name"`)).trim();
-  const archiveId = `${spare.id}/${name}`;
+  await waitForPlace(page, spare.id, (item) => item.state === 'ready');
+  await openSuiteManager(page, 'Backup', ctx.url('/'));
+  await backUpNow(ctx, spare.id);
+  const done = await waitForJobToEnd(ctx, 20);
+  expect(done.lastJob?.status, `The backup to the spare drive should succeed (${done.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
+  const archiveId = (done.archives || []).find((item) => item.placeId === spare.id && item.owner === 'this')?.id;
+  expect(archiveId, 'The spare drive should hold this server\'s backups').toBeTruthy();
+  const folder = `${STORAGE_MOUNT_ROOT}/${spare.id}/${BACKUPS_DIR}/${archiveId.split('/').at(-1)}`;
   try {
-    await expect.poll(async () => (await archiveIn(page, archiveId))?.owner, { intervals: [3000], message: 'the copy should be listed as this server\'s backups', timeout: 120000 }).toBe('this');
     await pullDrive(ctx, spare.id);
-    await expect.poll(async () => Boolean(await entryOf(page, spare.id)), { intervals: [3000], message: 'the pulled drive should leave Storage', timeout: 120000 }).toBe(false);
-    expect(await archiveIn(page, archiveId), 'Its backups should leave Backups').toBeNull();
-    expect(((await apiJson(page, STATUS)).places || []).some((item) => item.id === spare.id), 'The pulled drive should not be offered for a backup').toBe(false);
-  } finally {
-    await plugDrive(ctx, spare.id);
-  }
-  try {
+    try {
+      await expect.poll(async () => Boolean(await entryOf(page, spare.id)), { intervals: [3000], message: 'the pulled drive should leave Storage', timeout: 120000 }).toBe(false);
+      expect(await archiveIn(page, archiveId), 'Its backups should leave Backups').toBeNull();
+      expect(((await apiJson(page, STATUS)).places || []).some((item) => item.id === spare.id), 'The pulled drive should not be offered for a backup').toBe(false);
+    } finally {
+      await plugDrive(ctx, spare.id);
+    }
     await expect.poll(async () => (await archiveIn(page, archiveId))?.owner, { intervals: [3000], message: 'plugged back in, its backups should be listed as this server\'s again', timeout: 180000 }).toBe('this');
   } finally {
-    await runOnLab(ctx.env.labShell, `rm -rf ${JSON.stringify(`${into}/${name}`)}`);
+    await runOnLab(ctx.env.labShell, `rm -rf ${JSON.stringify(folder)}`);
   }
 }
 
@@ -463,7 +474,7 @@ export async function renameStorage(ctx) {
     await renameInSettings(ctx, spare.id, names.spare);
     expect([(await entryOf(page, record.destinationId)).name, (await entryOf(page, spare.id)).name], 'Storage should list the new names').toEqual([names.backup, names.spare]);
     await openSuiteManager(page, 'Backup', ctx.url('/'));
-    await expect(page.locator('.suite-bk-archives.is-this .mos-panel-item').filter({ hasText: names.backup })).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.suite-bk-archives .mos-panel-item').filter({ hasText: names.backup }).first()).toBeVisible({ timeout: 30000 });
     expect(((await apiJson(page, STATUS)).places || []).find((item) => item.id === record.destinationId)?.label, 'Backups should call the drive by its new name').toBe(names.backup);
     await page.getByRole('button', { name: /^Back up now$/u }).click();
     const picker = page.getByRole('dialog', { name: 'Back up now' });

@@ -75,7 +75,7 @@ export default {
     await step('sign in as the administrator chosen at install', () => signIn(page, setup));
     await step('the Movies and Series libraries are already there', async () => {
       const libraries = (await api(page, setup, '/Library/VirtualFolders')).body || [];
-      expect(libraries.map((library) => [library.Name, library.Locations])).toEqual([['Movies', ['/media/movies']], ['Series', ['/media/series']]]);
+      expect(libraries.map((library) => [library.Name, library.Locations]).sort(([a], [b]) => a.localeCompare(b))).toEqual([['Movies', ['/media/movies']], ['Series', ['/media/series']]]);
       expect(libraries.every((library) => library.LibraryOptions.SaveSubtitlesWithMedia === false)).toBe(true);
     });
     const title = `MOS E2E Film ${Date.now().toString(36)}`;
