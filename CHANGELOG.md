@@ -39,6 +39,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 ### Fixed
 
 - **Signing in over http:// works in a browser that has used the https:// address.** A browser keeps a secure sign-in cookie from the https:// address and refuses to replace it over http://, so signing in at the http:// address while the certificate was still pending succeeded and then bounced straight back to the sign-in page. MOS now keeps its http:// sign-in under a name of its own, and a sign-in begun over http:// carries over once https:// is available.
+- **A restore starts every app it can, even when one will not.** One app that failed to start stopped the restore there, leaving every app after it down with no web address. Now the others carry on, and Backup & Restore names the apps that did not start, so you can restart them from Apps. An app's download now has as long as it needs, instead of being stopped after five minutes as if its build had hung, which on a fresh server was enough to fail ONLYOFFICE.
 - **Suite Manager restarts in seconds.** It waited for its open pages to disconnect before stopping, so every restart, an update's included, hung for a minute and a half until the system stopped it by force.
 
 ## [0.22.0] - 2026-10-15

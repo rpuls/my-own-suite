@@ -71,12 +71,14 @@ function transportOf(device, disk) {
 
 // Shaped like the image the installer writes: an EFI partition and a Linux system
 // partition on a disk that boots from a port. Proven by reading the stick itself.
+// Whether anything on it is mounted is no part of the shape: plugging a drive in
+// opens each partition at once, so the stick is often half open when first looked at.
 function looksLikeInstallerStick(disk) {
   if (disk.type !== 'disk' || holdsSystem(disk)) return false;
   if (transportOf(disk) !== 'usb' && transportOf(disk) !== 'removable') return false;
   const parts = disk.children || [];
   const efi = parts.filter((part) => String(part.parttype || '').toLowerCase() === EFI_PARTITION_TYPE && part.fstype === 'vfat');
-  return efi.length === 1 && parts.some((part) => part.fstype === 'ext4') && parts.every((part) => !(part.mountpoints || []).some(Boolean));
+  return efi.length === 1 && parts.some((part) => part.fstype === 'ext4');
 }
 
 // Every filesystem lsblk reports off the system disk. Partitions too small or shaped
@@ -302,12 +304,16 @@ class AppStorage {
   }
 
   // Erases the install stick into one exFAT drive that opens on any computer. Only a
-  // disk proven to be the stick right now, with nothing on it mounted, is touched.
+  // disk proven to be the stick right now is touched, after closing what MOS opened on it.
   async formatInstallerStick(devicePath) {
     const devices = await this.blockDevices();
     this.provenSticks.clear();
     const stick = (await this.installerSticks(devices)).find((item) => item.devicePath === devicePath);
     if (!stick) throw new StorageError('That is not the MOS install stick, so nothing was erased.');
+    const disk = devices.find((device) => (device.path || `/dev/${device.name}`) === devicePath);
+    const open = (disk?.children || []).flatMap((part) => (part.mountpoints || []).filter(Boolean));
+    if (open.some((target) => !target.startsWith(`${this.mountRoot}/`))) throw new StorageError('Something on this server has the stick open, so nothing was erased. Unplug it and plug it back in, then try again.');
+    for (const target of open) await this.execute('umount', [target], { timeoutMs: 30_000 });
     await this.execute('wipefs', ['--all', '--force', devicePath], { timeoutMs: 60_000 });
     await this.execute('sh', ['-c', `printf 'type=7\\n' | sfdisk --quiet --label dos ${devicePath}`], { timeoutMs: 60_000 });
     await this.execute('udevadm', ['settle'], { timeoutMs: 60_000 }).catch(() => {});

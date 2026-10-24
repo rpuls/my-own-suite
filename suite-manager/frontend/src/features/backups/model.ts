@@ -84,6 +84,7 @@ type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | n
 type BackupJob = {
   // The domain the backup carried and the restore set aside; null when nothing was.
   address?: { domain: string | null } | null;
+  appsNotStarted?: Array<{ displayName: string; packageId: string }>;
   // Whether the restored routes went live: a web server that refused the new
   // config keeps serving the old one.
   controlPlane?: { detail: string | null; routesLive: boolean } | null;
@@ -594,17 +595,21 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
 // What a restore that worked has left its owner to finish: a suite whose phones
 // and laptops still ask for another server is not done, however fine the browser looks.
 type RestoreAftermath = {
+  appsNotStarted: string[];
   domain: string | null;
+  left: number;
   routesDetail: string | null;
   routesLive: boolean;
 };
 
 export function restoreAftermath(job: BackupJob | null | undefined): RestoreAftermath | null {
   if (job?.kind !== 'restore' || job.status !== 'succeeded') return null;
+  const appsNotStarted = (job.appsNotStarted || []).map((app) => app.displayName);
   const domain = job.address?.domain || null;
   const routesLive = job.controlPlane ? job.controlPlane.routesLive : true;
-  if (!domain && routesLive) return null;
-  return { domain, routesDetail: job.controlPlane?.detail || null, routesLive };
+  const left = [appsNotStarted.length > 0, Boolean(domain), !routesLive].filter(Boolean).length;
+  if (!left) return null;
+  return { appsNotStarted, domain, left, routesDetail: job.controlPlane?.detail || null, routesLive };
 }
 
 // What a rotation reached. A copy that was not attached carries the previous key

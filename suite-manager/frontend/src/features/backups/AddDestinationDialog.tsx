@@ -8,15 +8,14 @@ import { StoragePicker } from '../storage/StoragePicker';
 
 // Making storage a backup destination. Storage is set up in Settings → Storage or
 // from the picker's last row, which on a fresh server is the way to the backups to restore.
-export function AddDestinationDialog({ firstDestination, onAdded, onClose, startOnline = false }: {
+export function AddDestinationDialog({ firstDestination, onAdded, onClose }: {
   firstDestination: boolean;
   onAdded: () => void;
   onClose: () => void;
-  startOnline?: boolean;
 }) {
   const { inventory, names, reload, storage } = useStorage();
   const [picked, setPicked] = useState('');
-  const [adding, setAdding] = useState(startOnline);
+  const [adding, setAdding] = useState(false);
   const [primary, setPrimary] = useState(firstDestination);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -36,8 +35,7 @@ export function AddDestinationDialog({ firstDestination, onAdded, onClose, start
 
   if (adding) {
     return <AddStorageDialog
-      initialStep={startOnline ? 'online' : 'choose'}
-      onClose={() => { setAdding(false); void reload(); if (startOnline) onClose(); }}
+      onClose={() => { setAdding(false); void reload(); }}
       onConnected={(storageId) => { setAdding(false); void reload().then(() => setPicked(storageId)); }}
     />;
   }

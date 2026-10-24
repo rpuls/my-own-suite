@@ -19,7 +19,7 @@
 //   restoreStateOwnership()               sourceInfo() -> { branch, commit, repoDir, version }
 //
 // `packages` = { inventory(), validatePayloads(stagedRoot, apps) }
-// `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log, progress) }
+// `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log, progress) -> [{ displayName, packageId }] not started }
 // `homepage` = { rebuild(log) }: re-renders Homepage's projection and routes from
 //   the restored config, on the address this machine is on.
 // `jobs`     = { log(file, message), stage(file, name), progress(file, count), update(file, mutator) }
@@ -844,7 +844,8 @@ class BackupAgentCore {
       this.advanceJournal('reconciling-apps');
       jobs.stage(jobFile, 'Rebuilding app runtime');
       await system.restoreStateOwnership();
-      await apps.reconcile((message) => jobs.log(jobFile, message), (count) => jobs.progress(jobFile, count));
+      const appsNotStarted = await apps.reconcile((message) => jobs.log(jobFile, message), (count) => jobs.progress(jobFile, count)) || [];
+      jobs.update(jobFile, (job) => { job.appsNotStarted = appsNotStarted; });
       // Homepage's own routes — the home services an owner added — are a
       // projection of the restored config too, and nothing else rebuilds them.
       // A Homepage that cannot be re-rendered is reported, not a failed restore:

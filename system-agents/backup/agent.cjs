@@ -330,7 +330,7 @@ function expectationInputs({ apps, sizeBytes }) {
 }
 function summarizeJob(job) {
   if (!job) return null;
-  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, appsNotStarted: Array.isArray(job.appsNotStarted) ? job.appsNotStarted : [], controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -576,8 +576,11 @@ async function rebuildRestoredHomepage(logMessage) {
     store.close();
   }
 }
+// One app that will not start is reported and the rest carry on: its data is
+// restored either way, and its own page records why and can try again.
 async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
   const store = new SuiteManagerStore(stateDir);
+  const notStarted = [];
   try {
     const appPackages = new AppPackageService({
       agent: new AppAgentClient(),
@@ -585,16 +588,19 @@ async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
       store,
     });
     const instances = store.getAppInstances().filter((instance) => instance.status === 'installed' && instance.enabled);
-    if (!instances.length) {
-      logMessage('No installed app runtimes to restore');
-      return;
-    }
+    if (!instances.length) logMessage('No installed app runtimes to restore');
     for (const [index, instance] of instances.entries()) {
       const displayName = instance.displayNameSnapshot || displayNameOf(instance.packageId);
       onProgress({ displayName, done: index, packageId: instance.packageId, total: instances.length, unit: 'apps' });
       logMessage(`Restoring ${displayName}`);
-      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+      try {
+        await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+      } catch (error) {
+        logMessage(`${displayName} did not start: ${error.message}`);
+        notStarted.push({ displayName, packageId: instance.packageId });
+      }
     }
+    return notStarted;
   } finally {
     store.close();
   }

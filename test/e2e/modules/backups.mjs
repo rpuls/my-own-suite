@@ -60,7 +60,7 @@ async function installedIds(page) {
 // A server with no destination yet shows its first-backup choice instead of the list.
 async function openDestinationPicker(page) {
   const add = page.getByRole('button', { name: /^Add destination$/u });
-  const first = page.getByRole('button', { name: /Use a drive/u });
+  const first = page.getByRole('button', { name: /Select a backup destination for this server/u });
   await expect(add.or(first)).toBeVisible({ timeout: 60000 });
   await (await add.isVisible() ? add : first).click();
   const dialog = page.getByRole('dialog', { name: 'Add a backup destination' });

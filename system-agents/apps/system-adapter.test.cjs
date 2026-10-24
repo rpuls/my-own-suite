@@ -596,6 +596,28 @@ test('system adapter builds an identity-bound update candidate without touching 
   assert.equal(commands.some((command) => command.args.includes('rm') || command.args.includes('run')), false);
 });
 
+test('a missing base image is downloaded before the build and outside its time limit', async () => {
+  const root = await tempDir();
+  await fsp.writeFile(path.join(root, 'Dockerfile'), 'FROM vendor/app@sha256:aaa AS app\nFROM --platform=linux/amd64 vendor/base:1 AS base\nFROM app\nFROM ${BASE}\nFROM scratch\n');
+  const commands = [];
+  const present = new Set(['vendor/base:1']);
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args, options = {}) {
+      commands.push({ args, timeoutMs: options.timeoutMs });
+      if (args[0] === 'image' && !present.has(args.at(-1))) throw new Error('No such image');
+    },
+  });
+  const activities = [];
+  await adapter.buildServiceImage({ dockerfile: 'Dockerfile', id: 'web', imageTag: 'app:test' }, { cwd: root, labels: { package: 'example-tool' } }, (activity) => activities.push(activity));
+
+  assert.deepEqual(commands.filter((command) => command.args[0] !== 'image').map((command) => command.args.slice(0, 2)), [['pull', 'vendor/app@sha256:aaa'], ['build', '--file']]);
+  const [pull, build] = commands.filter((command) => command.args[0] !== 'image');
+  assert.ok(pull.timeoutMs > build.timeoutMs);
+  assert.ok(build.args.includes('mos.package=example-tool'));
+  assert.deepEqual(activities, ['downloading vendor/app@sha256:aaa for service "web"', 'docker build for service "web"']);
+});
+
 test('system adapter restores the installed runtime when an update candidate fails health', async () => {
   const root = await tempDir();
   const appPackageRoot = path.join(root, 'packages');

@@ -33,6 +33,10 @@ const CONTAINER_LOG_ARGS = ['--log-opt', 'max-size=10m', '--log-opt', 'max-file=
 // A running app is waited for, because a first start or an update can run every database
 // migration it has (Paperless-ngx needed 99 s on a CI runner); only one that hangs waits it out.
 const HEALTH_TIMEOUT_MS = 15 * 60_000;
+// Base images are fetched before the build, on a clock of their own: a multi-GB
+// first download on a fresh or restored machine is not a build that hung.
+const BASE_IMAGE_PULL_TIMEOUT_MS = 40 * 60_000;
+const BUILD_TIMEOUT_MS = 5 * 60_000;
 // Docker restarts a crashed container after a delay that doubles from 100 ms, so ten restarts
 // outlast a neighbouring database's first start by far, and a crash loop is told in minutes.
 const CRASH_LOOP_RESTARTS = 10;
@@ -216,6 +220,26 @@ async function readRetainedImageTags(file) {
   } catch {
     return [];
   }
+}
+
+// The registry images a Dockerfile starts from; an earlier stage, scratch, or a
+// name built from an ARG is left for the build to resolve.
+function baseImages(dockerfilePath) {
+  let text = '';
+  try {
+    text = fs.readFileSync(dockerfilePath, 'utf8');
+  } catch {
+    return [];
+  }
+  const stages = new Set(['scratch']);
+  const images = new Set();
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^\s*FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?/iu.exec(line);
+    if (!match) continue;
+    if (!stages.has(match[1].toLowerCase()) && !match[1].includes('$')) images.add(match[1]);
+    if (match[2]) stages.add(match[2].toLowerCase());
+  }
+  return [...images];
 }
 
 function renderAppRouteBlock(packageId, caddyRoutes) {
@@ -706,6 +730,21 @@ class SystemAppAdapter {
     }
   }
 
+  async buildServiceImage(service, { cwd, labels }, onActivity) {
+    for (const image of baseImages(path.join(cwd, service.dockerfile))) {
+      const present = await this.execute(this.dockerBinary, ['image', 'inspect', '--format', '{{.Id}}', image], { timeoutMs: 30000 }).then(() => true, () => false);
+      if (present) continue;
+      onActivity(`downloading ${image} for service "${service.id}"`);
+      await this.execute(this.dockerBinary, ['pull', image], { timeoutMs: BASE_IMAGE_PULL_TIMEOUT_MS });
+    }
+    onActivity(`docker build for service "${service.id}"`);
+    await this.execute(this.dockerBinary, [
+      'build', '--file', service.dockerfile, '--tag', service.imageTag,
+      ...Object.entries(labels).flatMap(([key, value]) => ['--label', `mos.${key}=${value}`]),
+      '.',
+    ], { cwd, timeoutMs: BUILD_TIMEOUT_MS });
+  }
+
   async buildAppPackageUpdate({ candidateDigest, expectedInstalledDigest, instanceId, packageId, packageVersion, services, sourceRevision }) {
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
@@ -714,16 +753,9 @@ class SystemAppAdapter {
     try {
       verifySnapshotIdentity(installed, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: expectedInstalledDigest, packageId });
       verifySnapshotIdentity(candidate, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidateDigest, packageId });
+      const labels = { package: packageId, 'package-version': packageVersion, 'package-digest': candidateDigest, 'source-revision': sourceRevision };
       for (const service of services) {
-        activity = `docker build for service "${service.id}"`;
-        await this.execute(this.dockerBinary, [
-          'build', '--file', service.dockerfile, '--tag', service.imageTag,
-          '--label', `mos.package=${packageId}`,
-          '--label', `mos.package-version=${packageVersion}`,
-          '--label', `mos.package-digest=${candidateDigest}`,
-          '--label', `mos.source-revision=${sourceRevision}`,
-          '.',
-        ], { cwd: candidate, timeoutMs: 300000 });
+        await this.buildServiceImage(service, { cwd: candidate, labels }, (next) => { activity = next; });
       }
       return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'candidate-built'] };
     } catch (error) {
@@ -1055,18 +1087,9 @@ class SystemAppAdapter {
     try {
       verifySnapshotIdentity(packageDir, { errorMessage: 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest: packageDigest, packageId });
       const serviceCount = services.length;
+      const labels = { package: packageId, 'package-version': packageVersion, 'package-digest': packageDigest, 'source-revision': sourceRevision };
       for (const service of services) {
-        activity = `docker build for service "${service.id}"`;
-        await this.execute(this.dockerBinary, [
-          'build',
-          '--file', service.dockerfile,
-          '--tag', service.imageTag,
-          '--label', `mos.package=${packageId}`,
-          '--label', `mos.package-version=${packageVersion}`,
-          '--label', `mos.package-digest=${packageDigest}`,
-          '--label', `mos.source-revision=${sourceRevision}`,
-          '.',
-        ], { cwd: packageDir, timeoutMs: 300000 });
+        await this.buildServiceImage(service, { cwd: packageDir, labels }, (next) => { activity = next; });
       }
       buildSeconds = (this.now() - startedAt) / 1000;
 

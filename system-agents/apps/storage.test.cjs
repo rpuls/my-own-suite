@@ -387,6 +387,31 @@ test('formatting erases only the proven stick, into one exFAT drive', async () =
   assert.deepEqual(erasing.at(-1), ['mkfs.exfat', '-L', 'MOS STORAGE', '/dev/sdd1']);
 });
 
+function openStick(mountpoint) {
+  return { ...INSTALL_STICK, children: [INSTALL_STICK.children[0], { ...INSTALL_STICK.children[1], mountpoints: [mountpoint] }] };
+}
+
+test('a stick that is already half open is still the stick, never a drive', async () => {
+  const { storage } = await storageFor(stickHost([openStick('/tmp/elsewhere')]));
+  const inventory = await storage.inventory();
+  assert.deepEqual(inventory.installerSticks.map((stick) => stick.devicePath), ['/dev/sdd']);
+  assert.ok(!inventory.drives.some((drive) => drive.devicePath?.startsWith('/dev/sdd')));
+});
+
+test('formatting closes what MOS opened on the stick first, and refuses one held open by anything else', async () => {
+  const held = stickHost([openStick('/tmp/elsewhere')]);
+  await assert.rejects((await storageFor(held)).storage.formatInstallerStick('/dev/sdd'), /has the stick open/u);
+  assert.ok(!held.calls.some(([file]) => file === 'wipefs'));
+
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-storage-'));
+  const mountRoot = path.join(root, 'media');
+  const host = stickHost([openStick(`${mountRoot}/723ed40b-0000`)]);
+  const storage = new AppStorage({ registryPath: path.join(root, 'storage.json'), execute: host.execute, executeCapture: host.executeCapture, mountRoot });
+  await storage.formatInstallerStick('/dev/sdd');
+  const order = host.calls.map(([file, ...args]) => (file === 'umount' ? `umount ${args.at(-1)}` : file)).filter((call) => call === 'wipefs' || call.startsWith(`umount ${mountRoot}`));
+  assert.deepEqual(order, [`umount ${mountRoot}/723ed40b-0000`, 'wipefs']);
+});
+
 test('the system disk is measured per filesystem, so the vault that holds the apps is told apart from MOS itself', () => {
   const vaultDisk = {
     children: [

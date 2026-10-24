@@ -57,7 +57,7 @@ type Dialog =
   | { kind: 'keys'; archive: ArchiveRef }
   | { kind: 'unlock'; archive: ArchiveRef }
   | { kind: 'erase'; view: OtherArchiveView }
-  | { kind: 'add'; online: boolean }
+  | { kind: 'add' }
   | null;
 
 export function BackupsScreen() {
@@ -460,8 +460,9 @@ export function BackupsScreen() {
       {status?.serviceAvailable ? <div className="suite-bk-page" aria-busy={running}>
         {/* What a restore that worked has left undone, at the top rather than in
             the activity list: the browser looking fine is why nobody would look for it. */}
-        {aftermath ? <Notice title={`Your suite is restored — ${aftermath.domain && !aftermath.routesLive ? 'two things are' : 'one thing is'} left`} variant="warning">
-          {aftermath.routesLive ? null : <p><strong>This server is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
+        {aftermath ? <Notice title={`Your suite is restored — ${['', 'one thing is', 'two things are', 'three things are'][aftermath.left]} left`} variant="warning">
+          {aftermath.appsNotStarted.length ? <p><strong>{new Intl.ListFormat('en', { type: 'conjunction' }).format(aftermath.appsNotStarted)} did not start.</strong> {aftermath.appsNotStarted.length > 1 ? 'Their data is' : 'Its data is'} restored, and every other app is running. Open {aftermath.appsNotStarted.length > 1 ? 'each one' : 'it'} under <a className="mos-link" href="/suite-manager/apps">Apps</a> to see why, and choose Restart to try again.</p> : null}
+          {aftermath.routesLive ? null :<p><strong>This server is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
           {aftermath.domain ? <>
             <p>Your suite is running here, on this server&rsquo;s own address, and you are signed in to it. Anything set up against <strong>{aftermath.domain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points at this server, because it still points at the server this restore point came from.</p>
             <p>Settings offers to serve <strong>{aftermath.domain}</strong> from here in one step: MOS kept that domain&rsquo;s credential from the backup, so it needs no token from you. Pointing the name at this server is the part MOS cannot do for you — change it at your DNS provider, and in any override your own network holds for it.</p>
@@ -477,7 +478,7 @@ export function BackupsScreen() {
 
         {/* A block is the answer to "am I safe", so it takes that slot. Never more than one. */}
         {status.interruptedRestore ? <Notice title="A restore did not finish" variant="error">
-          <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this system may not match the restore point it was restoring. Your suite is as it was before it started, and a complete rescue copy of what was in progress is kept on the server. Backups and restores stay paused until you have read this.</p>
+          <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this server may be part way between what it held before and the restore point it was restoring. A complete rescue copy of what it held before is kept on the server. Backups and restores stay paused until you have read this.</p>
           <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">
             {busy === 'acknowledge' ? <><Spinner />Unblocking</> : 'I have read this'}
           </button>
@@ -535,19 +536,13 @@ export function BackupsScreen() {
         {/* A fresh install shows one question instead of four empty sections. */}
         {views.length ? null : <Panel>
           <PanelHead heading="h2" title="You have no backups yet.">
-            <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage online. You can add the other one later.</p>
+            <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage online.</p>
           </PanelHead>
           <PanelList>
             <PanelItem flush>
-              <ChoiceRow icon="usb-drive" onPick={() => setDialog({ kind: 'add', online: false })}>
-                <strong>Use a drive</strong>
-                <span className="suite-meta">Plug a USB drive into this server. Fastest to restore from.</span>
-              </ChoiceRow>
-            </PanelItem>
-            <PanelItem flush>
-              <ChoiceRow icon="cloud-storage" onPick={() => setDialog({ kind: 'add', online: true })}>
-                <strong>Connect storage online</strong>
-                <span className="suite-meta">Storage you rent from a provider. Survives a fire or a theft at home.</span>
+              <ChoiceRow icon="backup" onPick={() => setDialog({ kind: 'add' })}>
+                <strong>Select a backup destination for this server</strong>
+                <span className="suite-meta">A drive is fastest to restore from. Storage online survives a fire or a theft at home.</span>
               </ChoiceRow>
             </PanelItem>
           </PanelList>
@@ -556,7 +551,7 @@ export function BackupsScreen() {
         {views.length ? <DestinationsPanel
           busy={busy}
           onAction={destinationAction}
-          onAdd={() => setDialog({ kind: 'add', online: false })}
+          onAdd={() => setDialog({ kind: 'add' })}
           onForgetDrive={(view) => void forgetDrive(view)}
           onKeys={openArchiveKeys}
           onSelect={(view) => void choosePrimary(view)}
@@ -709,7 +704,6 @@ export function BackupsScreen() {
         firstDestination={!selected}
         onAdded={() => { closeDialog(); void load(); }}
         onClose={closeDialog}
-        startOnline={dialog.online}
       /> : null}
     </div>
   </section>;
