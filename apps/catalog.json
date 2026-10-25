@@ -23,10 +23,10 @@
       }
     },
     "jellyfin": {
-      "appVersion": "12.2",
+      "appVersion": "12.3",
       "minimumMosVersion": "0.23.0",
-      "packageDigest": "sha256:e8f0764daf012ed0dd77fb1622db5eaa53ebaac6f9c0b5f95c52e6930cef4d4b",
-      "packageVersion": "0.1.1",
+      "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
+      "packageVersion": "0.1.2",
       "path": "apps/jellyfin",
       "privacy": {
         "posture": "external-dependency",
