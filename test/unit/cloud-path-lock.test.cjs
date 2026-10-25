@@ -136,6 +136,9 @@ const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-cont
 //
 // Moved 2026-10-23, the default SSH bootstrap only: the Easy Door matcher names the
 // label with its install id. One Caddyfile line; the fifteen `echo` lines are unchanged.
+//
+// Moved 2026-10-25, all four: the Caddy module check reads list-modules into a file
+// once, because `grep -q` under pipefail failed it at random. No `echo` line changed.
 
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -143,19 +146,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'bb53b8fb09dd29ca4ac62ac0353e028eea77e4bc110a7622bfd0ace1142ffae1',
+    digest: '3fc6d80caecd75cdb8f45cdd87fc98d99181b7fdf733af1f867dc4ed8c248170',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'a758a61ff55dd870ed2ae711a751ef7c322c4a15893df485e6adc6b9e714194e',
+    digest: 'b57d8d19d5a9cc85774acf8d9b289c8534b45bbf8e5ecdc4283358b1a4ffdb41',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '9976d91a8af6e755b2e8195c310746401a475c083de0a65cfe570273a11e360f',
+    digest: '878230106419e0d4960ff07744e7e418241788679e395278d5873e8ea20f1479',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -165,7 +168,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved for the Easy Door site block
     // and for its install id; nothing the installer prints changed either time.
-    digest: '9ad744a13ad6f6202460642651d79345fb97ed52fc3881f6cd3bc1805cf4f92b',
+    digest: '05a8e66876a05cb53b9ae405e7ba2b8813b9f7d5971cd9db1601540f59589765',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',
