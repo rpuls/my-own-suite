@@ -198,7 +198,7 @@ function createServices({
     suiteAddress,
   });
   addressService.start();
-  const storage = new StorageService({ appAgent, backupAgent, names: () => appPackages.appNames() });
+  const storage = new StorageService({ appAgent, backupAgent, names: () => appPackages.appNames(), onChanged: () => appPackages.forgetDriveFacts() });
   const files = new FilesService({ appAgent, stateDir: setup.store.stateDir, storage });
   const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage });
   externalSourceService = externalSources || new ExternalSourceService({
