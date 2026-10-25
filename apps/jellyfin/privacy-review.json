@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "jellyfin",
-  "reviewedAt": "2026-10-17T08:56:16.000Z",
+  "reviewedAt": "2026-10-25T12:00:00.000Z",
   "expiresAt": "2027-01-17T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.1.1",
-    "packageDigest": "sha256:e8f0764daf012ed0dd77fb1622db5eaa53ebaac6f9c0b5f95c52e6930cef4d4b",
+    "packageVersion": "0.1.2",
+    "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Jellyfin",
-        "version": "12.2",
+        "version": "12.3",
         "artifact": "docker.io/jellyfin/jellyfin",
-        "digest": "sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037"
+        "digest": "sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5"
       }
     ],
     "clientsExcluded": [
@@ -79,6 +79,13 @@
       "claim": "The image bundles the OMDb metadata plugin next to TheMovieDb (the container log shows \"Loaded plugin: OMDb 12.2.0.0\"), and the web client references the Cast sender library by that URL in its scripts. Jellyfin offers no setting that stops its pages loading it.",
       "source": "Jellyfin 12.2 container on the MOS lab: its log and /jellyfin/jellyfin-web/*.js",
       "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "observed",
+      "claim": "Jellyfin 12.3 server and web are bug-fix releases with no new integration, account or telemetry. Its image has the same entrypoint, user, ports, volumes and environment as 12.2 and still bundles the same metadata plugins, including OMDb. Its web client and plugins name the same external URLs as 12.2's, including the Cast sender library.",
+      "source": "Jellyfin v12.3 server and web release notes; package image built from apps/jellyfin and compared with the 12.2 package image under Docker",
+      "url": "https://github.com/jellyfin/jellyfin/releases/tag/v12.3",
+      "retrievedAt": "2026-10-25"
     }
   ],
   "security": [
