@@ -415,6 +415,7 @@ class AppUpdateService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
+        minimumMosMet: candidate.channel === 'checkout' || (instance.sourceKind !== 'external-git' && this.apps.meetsMinimumMos(candidate.manifest?.minimumMosVersion)),
         peers: this.apps.capabilityPeersFor(instance.packageId),
         platformVersion: this.platformVersion,
       });
@@ -479,6 +480,7 @@ class AppUpdateService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
+        minimumMosMet: candidate.channel === 'checkout' || (instance.sourceKind !== 'external-git' && this.apps.meetsMinimumMos(candidate.manifest?.minimumMosVersion)),
         peers: this.apps.capabilityPeersFor(instance.packageId),
         platformVersion: this.platformVersion,
       });

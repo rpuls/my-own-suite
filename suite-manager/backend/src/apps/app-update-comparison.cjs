@@ -107,7 +107,7 @@ function folderChanges(installed, candidateManifest) {
   ].map((summary) => ({ area: 'storage', classification: 'automatically-handled', summary }));
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, peers = null }) {
+function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, minimumMosMet = false, peers = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
@@ -152,7 +152,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   // processor or HTTPS. Refusing here keeps that discovery in the preview
   // instead of in a build that cannot pull its images or an app that cannot work.
   const platformErrors = [
-    ...validatePlatformCompatibility(candidate.manifest, platformVersion),
+    ...(minimumMosMet ? [] : validatePlatformCompatibility(candidate.manifest, platformVersion)),
     ...unmetHostRequirements(declaredHostRequirements(candidate.manifest), host).map((unmet) => unmet.reason),
   ];
   const agentBlocker = describeAgentBlocker(agentContractVersion, candidate.manifest.update?.minimumAppAgentVersion || 1);

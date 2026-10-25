@@ -429,12 +429,18 @@ class OfficialCatalogService {
     }
   }
 
+  // A server on a branch reads that branch's catalog, written for the code it runs, so
+  // there a minimum MOS version names the release that will first carry a package.
+  meetsMinimumMos(minimum) {
+    return Boolean(this.cache?.ref && this.cache.ref !== 'main') || compareSemver(this.platformVersion, minimum || '0.0.0') >= 0;
+  }
+
   updateFor(packageId, instance) {
     const candidate = this.catalog()?.packages?.[packageId] || null;
     if (!candidate) return { available: null, installed: instance ? { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion } : null, status: instance ? 'not-in-catalog' : 'unavailable' };
     const available = {
       ...candidate,
-      compatibility: compareSemver(this.platformVersion, candidate.minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+      compatibility: this.meetsMinimumMos(candidate.minimumMosVersion) ? 'compatible' : 'requires-platform-update',
       // Named because it is no longer the only channel an update can arrive on:
       // a package newer than this in the box's own checkout wins instead, and
       // the owner should never have to guess which one answered.
