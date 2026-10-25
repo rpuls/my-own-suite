@@ -114,9 +114,10 @@ test('storage routes start drive jobs, rename by identity, and refuse an unconfi
   assert.deepEqual(begun, [['20C2CDDCC2CDB676', { action: 'use' }], ['stick:/dev/sdd', { action: 'format' }]]);
 });
 
-test('an open page is told when a drive changes, and the poll stops when the last page goes', async () => {
+test('an open page and the Apps drive count are told when a drive changes, and the poll stops when the last page goes', async () => {
   let drives = [FILMS];
-  const storage = new StorageService({ appAgent: { storageInventory: async () => ({ drives }) }, backupAgent: { status: async () => STATUS }, watchIntervalMs: 60_000 });
+  let forgotten = 0;
+  const storage = new StorageService({ appAgent: { storageInventory: async () => ({ drives }) }, backupAgent: { status: async () => STATUS }, onChanged: () => { forgotten += 1; }, watchIntervalMs: 60_000 });
   let told = 0;
   const unsubscribe = storage.subscribe(() => { told += 1; });
   await storage.watch();
@@ -125,6 +126,7 @@ test('an open page is told when a drive changes, and the poll stops when the las
   drives = [{ ...FILMS, connected: false, state: 'away' }];
   await storage.watch();
   assert.equal(told, 1);
+  assert.equal(forgotten, 1);
   unsubscribe();
   assert.equal(storage.watchTimer, null);
 });
