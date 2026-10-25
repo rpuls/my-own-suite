@@ -618,6 +618,20 @@ test('an app whose address a Homepage link serves is refused before anything is 
   store.close();
 });
 
+test('an installed app names itself on its web address, for keeping Homepage links off it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+
+  assert.deepEqual([...service.appRouteHosts()], [['stirling-pdf', 'Stirling PDF']]);
+  store.close();
+});
+
 test('an external app updates from its own source through the same update transaction, and its access increase needs consent', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));

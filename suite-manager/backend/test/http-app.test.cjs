@@ -908,6 +908,14 @@ test('Installed app packages can be added to Homepage through the existing agent
     const homepageProjection = instance.projections.find((projection) => projection.kind === 'homepage');
     assert.equal(homepageProjection.status, 'applied');
     assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
+
+    const clash = await hostRequest(baseUrl, '/suite-manager/api/customize/home-service-preview', {
+      body: JSON.stringify({ host: '192.168.1.3', port: 8080, protocol: 'http', subdomain: 'stirling-pdf' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(clash.status, 409);
+    assert.match(clash.json().error, /Stirling PDF's address/u);
   }, {
     appAgent: {
       async apply(input) {

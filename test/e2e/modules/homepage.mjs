@@ -37,8 +37,7 @@ export async function homepage(ctx) {
   await page.getByRole('textbox', { name: /^App address/ }).fill('http://192.168.1.20:8080');
   await page.getByRole('button', { name: 'Edit URL subdomain' }).click();
   await page.getByLabel('URL subdomain').fill(serviceSubdomain);
-  await page.getByRole('button', { name: 'Preview route' }).click();
-  await expect(page.getByText(new RegExp(`${serviceSubdomain.replace(/[-/\\^$*+?.()|[\]{}]/gu, '\\$&')}\\.`))).toBeVisible();
+  await expect(page.getByText('MOS will route')).toContainText(`${serviceSubdomain}.`);
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
   await expect(page.getByLabel('Homepage YAML')).toContainText(serviceName);

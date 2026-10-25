@@ -73,8 +73,7 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await page.getByRole('textbox', { name: /^App address/ }).fill('http://192.168.1.20:8080');
   await page.getByRole('button', { name: 'Edit URL subdomain' }).click();
   await page.getByLabel('URL subdomain').fill('test-service');
-  await page.getByRole('button', { name: 'Preview route' }).click();
-  await expect(page.getByText('http://test-service.127.0.0.1.sslip.io/')).toBeVisible();
+  await expect(page.getByText('MOS will route')).toContainText('http://test-service.127.0.0.1.sslip.io/');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
   await expect(page.getByLabel('Homepage YAML')).toContainText('MOS Test Service');

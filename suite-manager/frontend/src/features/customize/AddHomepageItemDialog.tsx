@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Notice, Select, Stepper, TextArea, TextInput } from '../../components/ui';
 
 type AddKind = 'link' | 'service';
@@ -24,22 +24,35 @@ export function AddHomepageItemDialog({ groups, onAdd, onClose, previewHomeServi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [routeError, setRouteError] = useState('');
+  const [checking, setChecking] = useState(false);
   const [customSubdomain, setCustomSubdomain] = useState(false);
   const [form, setForm] = useState({ description: '', group: groups[0] || 'Home services', icon: '', name: '', subdomain: '', upstream: '', url: '' });
   const subdomain = customSubdomain ? form.subdomain : subdomainFromName(form.name);
-  const canSubmit = Boolean(kind && form.name && form.description && form.icon && form.group && (kind === 'link' ? form.url : form.upstream && subdomain));
 
   const parsedUpstream = useMemo(() => {
     try { return form.upstream ? parseUpstream(form.upstream) : null; } catch { return null; }
   }, [form.upstream]);
+  // A home network app can only be added once MOS has accepted its route.
+  const canSubmit = Boolean(kind && form.name && form.description && form.icon && form.group && (kind === 'link' ? form.url : preview));
 
-  async function updatePreview() {
-    setError(''); setPreview(null);
-    try {
-      if (!parsedUpstream || !subdomain) throw new Error('Add an app name and a valid home-network address first.');
-      setPreview(await previewHomeService({ ...parsedUpstream, subdomain }));
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to preview this address.'); }
-  }
+  // Checked as it is typed, so a name an app already serves stops Add before it is pressed.
+  const previewRef = useRef(previewHomeService);
+  previewRef.current = previewHomeService;
+  useEffect(() => {
+    setPreview(null);
+    setRouteError('');
+    if (kind !== 'service' || !subdomain || !parsedUpstream) return undefined;
+    let current = true;
+    setChecking(true);
+    const timer = window.setTimeout(() => {
+      previewRef.current({ ...parsedUpstream, subdomain })
+        .then((result) => { if (current) setPreview(result); })
+        .catch((caught) => { if (current) setRouteError(caught instanceof Error ? caught.message : 'MOS could not check this address.'); })
+        .finally(() => { if (current) setChecking(false); });
+    }, 300);
+    return () => { current = false; window.clearTimeout(timer); setChecking(false); };
+  }, [kind, subdomain, parsedUpstream]);
 
   async function save() {
     if (!kind || !canSubmit) return;
@@ -69,8 +82,12 @@ export function AddHomepageItemDialog({ groups, onAdd, onClose, previewHomeServi
       <TextArea helperText="A short note shown under the name." label="Description" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.currentTarget.value })} />
       <Select label="Placement" value={form.group} onChange={(event) => setForm({ ...form, group: event.currentTarget.value })}>{groups.map((group) => <option key={group}>{group}</option>)}</Select>
     </div> : null}
-    {kind === 'service' ? <><div className="suite-form-grid"><TextInput autoFocus helperText="Use the name you already use for this app." label="Name" placeholder="Home Assistant" value={form.name} onChange={(event) => setForm({ ...form, name: event.currentTarget.value })} /><TextInput helperText="The address you already use at home." label="App address" placeholder="http://192.168.1.20:8123" type="url" value={form.upstream} onChange={(event) => { setForm({ ...form, upstream: event.currentTarget.value }); setPreview(null); }} /></div>
-      <div className={`suite-homepage-address-preview ${subdomain ? '' : 'is-empty'}`}><span className="suite-field-label">App URL</span>{customSubdomain ? <span className="suite-inline-url-editor"><input aria-label="URL subdomain" className="suite-inline-url-input" value={form.subdomain} onChange={(event) => { setForm({ ...form, subdomain: event.currentTarget.value.toLowerCase().replace(/[^a-z0-9-]/gu, '') }); setPreview(null); }} /><span>.your-home-domain</span></span> : <strong>{preview?.publicUrl || (subdomain ? `${subdomain}.your-home-domain` : 'Add a name to preview the URL')}</strong>}<button className="suite-subtle-button" onClick={() => { setCustomSubdomain((current) => !current); if (!customSubdomain) setForm({ ...form, subdomain }); }} type="button">{customSubdomain ? 'Use name' : 'Edit URL subdomain'}</button><button className="mos-btn mos-btn-secondary suite-form-wide" disabled={!parsedUpstream || !subdomain} onClick={() => void updatePreview()} type="button">Preview route</button>{preview ? <p className="suite-meta suite-form-wide">MOS will route <strong>{preview.publicUrl}</strong> to <code>{preview.upstream}</code>.</p> : null}</div>
+    {kind === 'service' ? <><div className="suite-form-grid"><TextInput autoFocus helperText="Use the name you already use for this app." label="Name" placeholder="Home Assistant" value={form.name} onChange={(event) => setForm({ ...form, name: event.currentTarget.value })} /><TextInput helperText="The address you already use at home." label="App address" placeholder="http://192.168.1.20:8123" type="url" value={form.upstream} onChange={(event) => setForm({ ...form, upstream: event.currentTarget.value })} /></div>
+      <div className={`suite-homepage-address-preview ${subdomain ? '' : 'is-empty'}`}><span className="suite-field-label">App URL</span>{customSubdomain ? <span className="suite-inline-url-editor"><input aria-label="URL subdomain" className="suite-inline-url-input" value={form.subdomain} onChange={(event) => setForm({ ...form, subdomain: event.currentTarget.value.toLowerCase().replace(/[^a-z0-9-]/gu, '') })} /><span>.your-home-domain</span></span> : <strong>{preview?.publicUrl || (subdomain ? `${subdomain}.your-home-domain` : 'Add a name to preview the URL')}</strong>}<button className="suite-subtle-button" onClick={() => { setCustomSubdomain((current) => !current); if (!customSubdomain) setForm({ ...form, subdomain }); }} type="button">{customSubdomain ? 'Use name' : 'Edit URL subdomain'}</button>
+        {preview ? <p className="suite-meta suite-form-wide">MOS will route <strong>{preview.publicUrl}</strong> to <code>{preview.upstream}</code>.</p>
+          : routeError ? <p className="suite-form-wide" role="alert">{routeError}</p>
+            : checking ? <p className="suite-meta suite-form-wide">Checking this address…</p>
+              : form.upstream && !parsedUpstream ? <p className="suite-meta suite-form-wide">Enter the app address with http:// or https://, such as http://192.168.1.20:8123.</p> : null}</div>
       <div className="suite-form-grid"><TextInput helperText="Use a Homepage icon name, such as home-assistant." label="Icon" placeholder="home-assistant" value={form.icon} onChange={(event) => setForm({ ...form, icon: event.currentTarget.value })} /><TextArea helperText="A short note shown under the name." label="Description" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.currentTarget.value })} /><Select label="Placement" value={form.group} onChange={(event) => setForm({ ...form, group: event.currentTarget.value })}>{groups.map((group) => <option key={group}>{group}</option>)}</Select></div></> : null}
   </Dialog>;
 }
