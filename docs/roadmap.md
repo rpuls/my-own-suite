@@ -139,11 +139,6 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C9 — Say why a pasted package URL could not be fetched.** When the repository behind a
-  pasted source URL answers 404 or cannot be reached, Suite Manager already has the sentence (the
-  HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
-  server error" and a reference they cannot act on. A fetch failure is the owner's to fix and should
-  be answered in its own words; the reference stays for faults that really are MOS's. *(Small)*
 - **C10 — A stopped app answers honestly at its own address.** An app paused by its drive already
   says so (the per-address page in `/etc/caddy/mos-status/apps/`). Every other down app still gets
   Suite Manager's "busy right now" page: a failed update should say so with the action that fixes
