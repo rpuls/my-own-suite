@@ -65,7 +65,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           cache: npm
-          node-version: 22
+          node-version-file: .node-version
+          check-latest: true
 
       - name: Pin npm
         run: npm install -g npm@11.2.0
@@ -106,7 +107,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
+          check-latest: true
 
       - name: Pin npm
         run: npm install -g npm@11.2.0
