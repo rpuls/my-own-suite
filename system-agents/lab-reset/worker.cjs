@@ -143,10 +143,9 @@ function main() {
     resetDockerRuntime();
     fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
     // The apps are gone, so no drive is theirs any more; the files on the drives stay,
-    // and so do the backup drives and buckets, as the backup agent's own state does.
+    // and so do the buckets, as the backup agent's own state does.
     new StorageRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) }).update((record) => {
-      record.drives = Object.fromEntries(Object.entries(record.drives).filter(([, drive]) => drive.backups === true)
-        .map(([id, drive]) => [id, { backups: true, fileSystem: drive.fileSystem, label: drive.label }]));
+      record.drives = {};
     });
     copyDirectory(homepageSource, homepageConfig);
     tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);

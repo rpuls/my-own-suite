@@ -32,6 +32,50 @@ class HomepageConfigError extends CodedError {
   }
 }
 
+const MAX_GROUP_DEPTH = 2;
+
+function entriesFromServices(value) {
+  if (!Array.isArray(value)) {
+    throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Services must be a list of groups.');
+  }
+  const entries = [];
+  const walkGroup = (group, services, depth) => {
+    if (!group.trim() || !Array.isArray(services)) {
+      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must have a name and service list.');
+    }
+    if (depth > MAX_GROUP_DEPTH) {
+      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Service groups can be nested at most one level deep.');
+    }
+    for (const serviceItem of services) {
+      if (!serviceItem || typeof serviceItem !== 'object' || Array.isArray(serviceItem)) {
+        throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every dashboard service must be a mapping.');
+      }
+      for (const [name, config] of Object.entries(serviceItem)) {
+        if (Array.isArray(config)) walkGroup(name, config, depth + 1);
+        else entries.push({ config, group, name });
+      }
+    }
+  };
+  for (const groupItem of value) {
+    if (!groupItem || typeof groupItem !== 'object' || Array.isArray(groupItem)) {
+      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must be a mapping.');
+    }
+    for (const [group, services] of Object.entries(groupItem)) walkGroup(group, services, 1);
+  }
+  return entries;
+}
+
+// The links that hold an address under the suite, by subdomain. Suite Manager reads
+// them to keep an app off an address one of them already serves.
+function homeServiceHosts(value) {
+  const hosts = new Map();
+  for (const { config, name } of entriesFromServices(value)) {
+    const subdomain = config?.mos?.proxy?.subdomain;
+    if (typeof subdomain === 'string') hosts.set(subdomain.toLowerCase(), name);
+  }
+  return hosts;
+}
+
 function validateProxy(proxy) {
   const keys = Object.keys(proxy && typeof proxy === 'object' && !Array.isArray(proxy) ? proxy : {}).sort();
   if (keys.join(',') !== 'subdomain,upstream') {
@@ -71,8 +115,10 @@ function publicUrlFor(proxy, domainState) {
 }
 
 module.exports = {
+  entriesFromServices,
   HOMEPAGE_FILES,
   HomepageConfigError,
+  homeServiceHosts,
   MANAGED_APP_HREF_PREFIX,
   PROTOCOLS,
   publicUrlFor,

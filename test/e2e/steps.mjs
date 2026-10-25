@@ -18,7 +18,7 @@ export const STEPS = {
   'drive-files-leftovers': { arg: 'none', budgetMinutes: 5, describe: 'The folder an uninstalled app left on a drive is listed last and greyed in the apps folder, and deleting it whole from its row gives the space back.' },
   'drive-found': { arg: 'none', budgetMinutes: 8, describe: "A drive MOS was never told about, holding another server's backups, is opened on sight when plugged in: Storage says what it holds and Backups lists them, with no claim made." },
   'erase-other-archive': { arg: 'none', budgetMinutes: 10, describe: "Plant another server's archive beside this run's disk backup and erase it from Backups: it goes from the list and the drive, and this server's own backups beside it stay." },
-  'forget-drive': { arg: 'none', budgetMinutes: 12, describe: 'Pick a spare drive for backups, pull it and forget it from Backups: it leaves Storage, and plugged back in it is listed again with no claim.' },
+  'drive-away': { arg: 'none', budgetMinutes: 12, describe: "Back up to a spare drive from Back up now and pull it: the drive and its backups leave Storage and Backups, and plugged back in they are listed again as this server's." },
   'rename-storage': { arg: 'none', budgetMinutes: 6, describe: 'Rename the backup drive and a spare drive in Settings → Storage: Backups and the picker use the new names, and an empty name gives a drive its own label back.' },
   'use-again': { arg: 'none', budgetMinutes: 10, describe: "Eject the apps' drive and bring it back with Use it again on its row, no cable touched: it is ready read-write and its apps run." },
   reboot: { arg: 'none', budgetMinutes: 15, describe: "Restart the lab; every drive open before is open again, with the same app folders, uninstalled apps' included." },
@@ -107,7 +107,7 @@ export const NAMED_PATHS = {
   'drive-dr': {
     app: true,
     describe: "The storage story: the app's files on an NTFS drive and its data in a disk backup, a reset lab restored from that backup finds its files on the drive again, a copy of that backup only another server's key opens is taken over, and then another server's archive is erased, a spare backup drive forgotten, drives renamed, and the apps' drive ejected and used again.",
-    build: (app) => ['reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`, 'backup', 'reset', 'owner', 'restore', `verify:${app}`, 'drive-found', 'takeover', 'erase-other-archive', 'forget-drive', 'rename-storage', 'use-again', 'routes', 'network', 'cleanup'],
+    build: (app) => ['reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`, 'backup', 'reset', 'owner', 'restore', `verify:${app}`, 'drive-found', 'takeover', 'erase-other-archive', 'drive-away', 'rename-storage', 'use-again', 'routes', 'network', 'cleanup'],
   },
   update: {
     app: true,

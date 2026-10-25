@@ -146,6 +146,7 @@ function createServices({
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
+    appHosts: () => appPackages.appRouteHosts(),
     store: setup.store,
     suiteAddress,
   });
@@ -168,6 +169,7 @@ function createServices({
     catalogService,
     externalCatalog: () => externalSourceService?.catalogPackages() || [],
     externalClient: externalSourceClient,
+    homeLinks: () => homepageConfig.homeServiceHosts(),
     limiter: appOperationLimiter,
     store: setup.store,
     suiteAddress,

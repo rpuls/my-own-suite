@@ -12,7 +12,7 @@ import type { Owner } from '../setup/types';
 import { jsonResponse, postJson } from '../../lib/api';
 import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 import { AppHealthIndicator, AppIcon } from './AppCard';
-import { appAddress, appAdvancedFacts, appIconSrc, capabilityLabel, categoryLabel, descriptionFor, failureCopy, formatCores, formatMemory, guideStatusLabel, hasGuide, hasHomepageContribution, hasPrimaryAppDestination, isCompanionApp, permissionLabel, primaryCategory, requirementsFor, resolveGuideValue, resourceLabel, runtimeApplied, runtimeRouteApplied, serviceExposed, serviceRoleLabel, shortReplaces, summaryFor, updateHeadline, updateJobSteps, updateNoticeTitle } from './model';
+import { appAddress, appAdvancedFacts, appIconSrc, capabilityLabel, categoryLabel, descriptionFor, failureCopy, formatCores, formatMemory, guideStatusLabel, hasGuide, hasHomepageContribution, hasPrimaryAppDestination, installIncomplete, isCompanionApp, permissionLabel, primaryCategory, requirementsFor, resolveGuideValue, resourceLabel, runtimeApplied, runtimeRouteApplied, serviceExposed, serviceRoleLabel, shortReplaces, summaryFor, updateHeadline, updateJobSteps, updateNoticeTitle } from './model';
 import type { AppJob, AppPackageSummary, InstallStep, UnmetRequirement, UpdateComparison, UpdateStep } from './types';
 
 // The pasted-external install keeps its own boxed setup form: that flow is
@@ -132,8 +132,8 @@ function AppGuidePanel({
   </aside>;
 }
 
-export function InstallButton({ disabled, installing, onClick, unmet = [] }: { disabled: boolean; installing: boolean; onClick: () => void; unmet?: UnmetRequirement[] }) {
-  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : 'Install'}</button>;
+export function InstallButton({ disabled, installing, label = 'Install', onClick, unmet = [] }: { disabled: boolean; installing: boolean; label?: string; onClick: () => void; unmet?: UnmetRequirement[] }) {
+  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : label}</button>;
   return unmet.length ? <Tooltip label={unmet.map((item) => item.reason).join(' ')}>{button}</Tooltip> : button;
 }
 
@@ -196,6 +196,11 @@ export function AppDetail({
   const { storage: serverStorage } = useStorage(placedFolders.length > 0);
   const driveNotice = placedFolders.length ? appDriveNotice(app.name, serverStorage?.find((item) => item.id === placedFolders[0]!.driveId), folderList(placedFolders)) : null;
   const ready = runtimeApplied(app);
+  const incomplete = installIncomplete(app);
+  // A resume keeps the Homepage choice the interrupted install was made with.
+  const resumeHomepage = app.installJob ? app.installJob.steps.some((step) => step.id === 'homepage') : true;
+  // The failure on record explains an interrupted install in the owner's terms, so the stepper only shows where it stopped.
+  const failureOnRecord = Boolean(app.instance?.lastFailure && !app.instance.updateRecovery);
   const requirements = requirementsFor(app);
   const updateRunning = app.updateJob?.status === 'running';
   const updating = startingUpdate || updateRunning;
@@ -373,7 +378,7 @@ export function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading || updateRunning} onClick={() => void prepareUpdate()} type="button">{updateRunning ? 'Updating...' : comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : incomplete ? <InstallButton disabled={installing} installing={installing} label="Finish install" onClick={() => onInstall(app, { showOnHomepage: resumeHomepage })} unmet={app.unmetRequirements} /> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating || updateRunning} items={maintenanceActions} /> : null}
@@ -422,10 +427,8 @@ export function AppDetail({
             never outlive the problem it describes. The plain sentence is the
             whole message for most owners; the code and the agent's own output
             sit in the panel, which is where a bug report copies them from.
-            Suppressed while `installError` is set, because a failed install
-            reloads the app and would otherwise say the same thing twice — once
-            live in the stepper above and once from the record it just wrote. */}
-        {app.instance?.lastFailure && !app.instance.updateRecovery && !installError ? <Notice title={failureCopy(app.instance.lastFailure).title} variant="warning">
+            It is the one explanation: the stepper below then shows only where it stopped. */}
+        {failureOnRecord && app.instance?.lastFailure ? <Notice title={failureCopy(app.instance.lastFailure).title} variant="warning">
           <p>{failureCopy(app.instance.lastFailure).detail}</p>
           <AdvancedPanel
             facts={[
@@ -440,7 +443,7 @@ export function AppDetail({
 
         {driveNotice ? <Notice title={driveNotice.title} variant={driveNotice.variant}><p>{driveNotice.body} <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>{driveNotice.linkLabel}</a>.</p></Notice> : null}
 
-        <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
+        <ProgressSteps error={failureOnRecord ? '' : installError} errorTitle="Install needs attention" steps={installSteps} />
         {app.installJob?.status === 'succeeded' && app.installJob.notice ? <Notice title="Its web address is not open yet" variant="warning">
           <p>{app.installJob.notice.message}</p>
           <AdvancedPanel facts={[{ label: 'Address check', value: app.installJob.notice.detail }]} reveal="technical-mode" />

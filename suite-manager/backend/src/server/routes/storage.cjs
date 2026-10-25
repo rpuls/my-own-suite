@@ -125,25 +125,6 @@ function storageRoutes({ backupAgent, driveJobs, storage }) {
         jsonResponse(response, 202, { job: driveJobs.begin(stickJobId(String(input.devicePath || '')), { action: STICK_ACTION }) });
       },
     },
-    {
-      method: 'POST',
-      path: '/backups/destinations/add',
-      signIn: 'Sign in to manage backups.',
-      bodyLimit: 4 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await storage.holdBackups(String(input.storageId || ''), { primary: input.primary === true }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/release',
-      signIn: 'Sign in to manage backups.',
-      bodyLimit: 4 * 1024,
-      handler: async ({ body, response }) => {
-        jsonResponse(response, 200, await storage.releaseBackups(String((await body()).storageId || '')));
-      },
-    },
   ];
 }
 

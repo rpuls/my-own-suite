@@ -9,14 +9,14 @@ const ownerSetup = { verifyOwnerPassword: async (password) => password === OWNER
 const inventory = { summary: { appCount: 0 } };
 
 test('backup status merges the agent, the inventory and the restore guarantee', async () => {
-  const backupAgent = { status: async () => ({ backups: [], destinations: [{ label: 'Backup Drive' }], recoveryKey: null }) };
+  const backupAgent = { status: async () => ({ backups: [], places: [{ label: 'Backup Drive' }], recoveryKey: null }) };
 
   await withRoutes({ backupAgent, backupInventory: { inventory: () => inventory } }, async (call) => {
     const status = await call('GET', '/backups/status');
 
     assert.equal(status.status, 200);
     assert.equal(status.json().serviceAvailable, true);
-    assert.equal(status.json().destinations[0].label, 'Backup Drive');
+    assert.equal(status.json().places[0].label, 'Backup Drive');
     assert.deepEqual(status.json().inventory, inventory);
     assert.deepEqual(status.json().restoreGuarantee, restoreGuarantee().restoreGuarantee);
   });
@@ -75,7 +75,7 @@ test('backup actions reach the agent field by field', async () => {
   });
 
   assert.deepEqual(calls, [
-    ['backup', { destinationId: '/media/backup', note: '' }],
+    ['backup', { destinationId: '/media/backup', makePrimary: false, note: '' }],
     ['restore', { backupPath, confirmation: 'RESTORE' }],
     ['schedule', { enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
     ['primary', { destinationId: '/media/backup' }],

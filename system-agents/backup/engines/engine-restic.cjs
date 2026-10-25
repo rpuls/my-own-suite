@@ -578,6 +578,25 @@ class ResticEngine {
     return { ...repository, created, repositoryId };
   }
 
+  // A repository whose password is published rather than secret: a bucket's catalog
+  // of the archives in it, which says no more than a drive's plaintext descriptor.
+  // Null when there is none yet and none was asked for. A second server creating
+  // the same catalog at the same moment is answered by opening the one that won.
+  async openPublicRepository({ create = false, env = {}, location, password, secrets = [] }) {
+    const repository = { engineName: this.name, env, localPath: null, location, password, secrets };
+    const probe = await this.probeRepository({ env, location, password, secrets });
+    if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineName: this.name, engineOutput: probe.output || null });
+    if (probe.state === 'locked') throw new Error('The MOS-backups folder in this bucket holds a catalog MOS cannot read.');
+    if (probe.state === 'open') return repository;
+    if (!create) return null;
+    try {
+      this.runAs(repository, password, ['init', ...this.repositoryFlags(repository)], { timeout: 600_000 });
+    } catch (error) {
+      if ((await this.probeRepository({ env, location, password, secrets })).state !== 'open') throw error;
+    }
+    return repository;
+  }
+
   // restic's own repository id, which identifies the store independently of
   // where it is addressed from. A bucket therefore needs no descriptor file of
   // MOS's own to be recognisable after its endpoint or prefix is re-entered.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Host wiring for the MOS backup agent: destinations, the job store, the
+// Host wiring for the MOS backup agent: places and archives, the job store, the
 // unix-socket API and the worker entry. The backup/restore engine itself lives
 // in agent-core.cjs behind injected adapters, where unit tests can reach it.
 
@@ -20,8 +20,8 @@ const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSen
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 const { PrimaryDestination } = require('./primary.cjs');
-const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
-const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
+const { BucketCatalog, DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
+const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, publicObjectDestination } = require('./object-destinations.cjs');
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, repositoryUsage } = require('./engines/engine.cjs');
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
 const { GuestKeyStore } = require('./guest-keys.cjs');
@@ -82,9 +82,9 @@ async function storageDrives() {
   }
 }
 
-// The drive destinations this agent knows from its own record when the storage
-// module cannot be asked: a state the screen and the schedule show, not an empty list.
-function unreachableDriveDestinations() {
+// The drives this agent knows from its own record when the storage module cannot
+// be asked: a state the screen and the schedule show, not an empty list.
+function unreachableDrivePlaces() {
   const chosen = primary.read();
   return Object.keys(lastBackups.read()).filter((id) => DRIVE_ID_PATTERN.test(id)).map((id) => ({
     availableBytes: null,
@@ -107,9 +107,11 @@ async function describeArchive(archive, placeLabel, health) {
   if (!keyState || keyState === 'empty') return null;
   const points = keyState === 'locked' && archive.kind === 'object' ? [] : await archive.points.summaries().catch(() => []);
   const newest = points.slice().sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null;
-  const descriptor = archive.kind === 'disk' ? archive.descriptor() : null;
-  const writtenBy = descriptor?.createdByInstallId || descriptor?.createdByHostname
-    ? { hostname: descriptor.createdByHostname || null, installId: descriptor.createdByInstallId || null }
+  const described = archive.kind === 'disk'
+    ? { hostname: archive.descriptor()?.createdByHostname, installId: archive.descriptor()?.createdByInstallId }
+    : { hostname: archive.entry?.hostname, installId: archive.entry?.installId };
+  const writtenBy = described.installId || described.hostname
+    ? { hostname: described.hostname || null, installId: described.installId || null }
     : newest ? { hostname: newest.sourceHostname || null, installId: newest.sourceInstallId || null } : null;
   const stored = archive.kind === 'disk' ? repositoryUsage(archive.root) : usage;
   return {
@@ -127,83 +129,86 @@ async function describeArchive(archive, placeLabel, health) {
   };
 }
 
-// The places this server backs up to and every archive MOS can see. A drive's
-// state and reason are the storage module's own words, passed through untouched.
+// Every place a backup can go and every archive MOS can see in them, drives and
+// storage online alike: nothing has to be chosen for backups before it is looked
+// in. A drive's state and reason are the storage module's own words.
 async function survey() {
-  const drives = await carryOver.onSight(await storageDrives(), storageDrives);
-  const destinations = drives ? [] : unreachableDriveDestinations();
+  const drives = await carryOver.onSight(await storageDrives());
+  const places = drives ? [] : unreachableDrivePlaces();
   const archives = [];
   for (const drive of drives || []) {
+    if (!drive.connected || !drive.holdsBackupsFormat) continue;
     const label = drive.name || drive.label;
-    if (drive.connected && drive.mountPath && drive.holdsBackupsFormat) {
-      for (const archive of destinationResolver.archivesOn(drive.id)) {
+    if (drive.mountPath) {
+      for (const archive of await destinationResolver.archivesIn(drive.id)) {
         const described = await describeArchive(archive, label);
         if (described) archives.push(described);
       }
     }
-    if (!drive.backups) continue;
-    destinations.push({
-      availableBytes: drive.connected ? drive.availableBytes ?? null : null,
+    const open = drive.state === 'ready' && Boolean(drive.mountPath);
+    places.push({
+      availableBytes: drive.availableBytes ?? null,
       holdsAppFiles: (drive.apps || []).length > 0,
       id: drive.id,
       kind: 'disk',
       label,
-      reason: drive.state === 'ready' ? null : drive.reason || null,
+      reason: open ? null : drive.reason || 'MOS has not opened this drive yet. Unplug it and plug it back in.',
       sizeBytes: drive.sizeBytes ?? null,
-      state: drive.state,
+      state: open ? 'ready' : drive.state,
       storageKind: drive.transport === 'usb' || drive.removable ? 'external' : 'local',
       transport: drive.transport || null,
     });
   }
-  for (const bucket of destinationResolver.objectDestinations()) {
-    const health = await bucket.health().catch(() => ({ keyState: null, ready: false, reason: 'MOS could not reach this storage.', usage: null }));
-    const described = await describeArchive(bucket, bucket.label, health);
-    if (described) archives.push(described);
-    // A connection holds one archive, so one another server made is listed as that archive only.
-    if (described?.owner === 'other') continue;
-    destinations.push({
-      ...publicObjectDestination(bucket.record),
+  for (const record of destinationResolver.bucketRecords()) {
+    let reason = null;
+    try {
+      for (const archive of await destinationResolver.archivesIn(record.id)) {
+        const health = await archive.health().catch(() => ({ keyState: null }));
+        const described = await describeArchive(archive, record.label, health);
+        if (described) archives.push(described);
+      }
+      reason = destinationResolver.catalogProblem(record.id);
+    } catch (error) {
+      reason = error?.message || 'MOS could not reach this storage.';
+    }
+    places.push({
+      ...publicObjectDestination(record),
       availableBytes: null,
-      checkedAt: health.checkedAt || null,
       kind: 'object',
-      reason: health.ready ? null : health.reason || 'MOS could not reach this storage.',
+      reason,
       sizeBytes: null,
-      state: health.ready ? 'ready' : 'unreachable',
+      state: reason ? 'unreachable' : 'ready',
       storageKind: 'object',
     });
   }
-  for (const destination of destinations) {
-    const own = archives.filter((archive) => archive.placeId === destination.id && archive.owner === 'this')
+  for (const place of places) {
+    const own = archives.filter((archive) => archive.placeId === place.id && archive.owner === 'this')
       .sort((left, right) => String(right.newestAt || '').localeCompare(String(left.newestAt || '')))[0] || null;
-    destination.ownArchive = own ? { id: own.id, restorePoints: own.restorePoints, storedBytes: own.storedBytes } : null;
-    if (own?.newestAt) lastBackups.note(destination.id, own.newestAt);
-    destination.lastBackupAt = own?.newestAt || lastBackups.of(destination.id);
+    place.ownArchive = own ? { id: own.id, restorePoints: own.restorePoints, storedBytes: own.storedBytes } : null;
+    if (own?.newestAt) lastBackups.note(place.id, own.newestAt);
+    place.lastBackupAt = own?.newestAt || lastBackups.of(place.id);
   }
-  return { archives, destinations };
+  return { archives, places };
 }
 
-// Three answers an owner needs told apart: the bucket holds backups, it is
-// reachable and empty, or MOS could not get in and here is what the provider said.
+// What a bucket holds before it is connected: nothing yet, MOS backups beside
+// which this server's go, or no answer and the provider's words for why.
 async function testObjectDestination(input) {
   const record = normalizeObjectDestination(input, input.id ? objectRegistry.get(String(input.id)) : null);
-  const spec = objectRepositorySpec(record);
-  const probe = await engine.probe(spec);
-  if (probe.state === 'unreachable') return { message: probe.message, ok: false };
-  if (probe.state === 'locked') return { locked: true, message: `${probe.message} Connect this bucket, then choose Enter recovery key on it.`, ok: false };
-  if (probe.state === 'absent') return { message: 'Connected. This bucket holds no MOS backups yet; the first backup creates the encrypted store in it.', ok: true, restorePoints: 0 };
-  // Counted without touching the stored index: this connection may not be saved.
-  let restorePoints = null;
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-bucket-test-'));
   try {
-    const snapshots = await engine.listSnapshots({ repository: { engineName: engine.name, localPath: null, ...spec } });
-    restorePoints = snapshots.filter((snapshot) => (snapshot.tags || []).includes('mosrole:manifest')).length;
-  } catch { /* the count is a courtesy; the connection itself answered */ }
-  return {
-    message: restorePoints === null
-      ? 'Connected. This bucket already holds a MOS backup store.'
-      : `Connected. This bucket already holds ${restorePoints} MOS restore point${restorePoints === 1 ? '' : 's'}, which will be listed here.`,
-    ok: true,
-    restorePoints,
-  };
+    const archives = await new BucketCatalog({ agentStateDir: scratch, engine, record }).archives({ wait: true });
+    if (!archives.length) return { message: 'Connected. This bucket holds no MOS backups yet; the first backup to it creates them.', ok: true, archives: 0 };
+    return {
+      archives: archives.length,
+      message: `Connected. This bucket already holds MOS backups${archives.length > 1 ? ` from ${archives.length} servers` : ''}, which Backups lists once it is connected.`,
+      ok: true,
+    };
+  } catch (error) {
+    return { message: error?.message || 'MOS could not reach this storage.', ok: false };
+  } finally {
+    fs.rmSync(scratch, { force: true, recursive: true });
+  }
 }
 
 // Anything that backs up without being asked names this instead of a place.
@@ -213,24 +218,24 @@ async function primaryDestination() {
   if (!chosen) {
     throw Object.assign(new Error('No destination is set for automatic backups, so there is nowhere to write this backup.'), { code: 'NO_PRIMARY_DESTINATION' });
   }
-  const destination = primary.resolve((await survey()).destinations);
+  const destination = primary.resolve((await survey()).places);
   const absentCode = isObjectDestinationId(chosen.destinationId) ? 'DESTINATION_UNREACHABLE' : 'DESTINATION_ABSENT';
   if (!destination) throw Object.assign(new Error('The destination automatic backups are written to is not available right now.'), { code: absentCode });
   if (destination.reason) throw Object.assign(new Error(destination.reason), { code: absentCode });
   return destination;
 }
-// A destination is a configured bucket or a drive's filesystem UUID; whether it
-// is one this server backs up to is the survey's to say.
+// A place is a connected bucket or a drive's filesystem UUID; whether a backup
+// can go there right now is the survey's to say.
 function normalizeDestinationId(candidate) {
   const value = String(candidate || '');
   if (isObjectDestinationId(value)) return objectRegistry.get(value) ? value : null;
   return DRIVE_ID_PATTERN.test(value) ? value : null;
 }
-async function knownDestination(candidate) {
+async function knownPlace(candidate) {
   const id = normalizeDestinationId(candidate);
-  const destination = id ? (await survey()).destinations.find((entry) => entry.id === id) : null;
-  if (!destination) throw new Error('Choose one of this server\'s backup places.');
-  return destination;
+  const place = id ? (await survey()).places.find((entry) => entry.id === id) : null;
+  if (!place) throw new Error('That drive or storage is not connected. Choose another place.');
+  return place;
 }
 async function knownArchive(candidate) {
   const archive = (await survey()).archives.find((entry) => entry.id === String(candidate || ''));
@@ -330,7 +335,7 @@ function expectationInputs({ apps, sizeBytes }) {
 }
 function summarizeJob(job) {
   if (!job) return null;
-  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, appsNotStarted: Array.isArray(job.appsNotStarted) ? job.appsNotStarted : [], controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -365,7 +370,7 @@ function createJob(kind, payload) {
 function normalizeBackupLocator(candidate) {
   const value = String(candidate || '');
   const object = parseObjectLocator(value);
-  if (object) return objectRegistry.get(object.destinationId) ? value : null;
+  if (object) return objectRegistry.get(object.placeId) ? value : null;
   const resolved = path.resolve(value);
   if (!resolved.startsWith(`${STORAGE_MOUNT_ROOT}${path.sep}`) || !isRestorePointPath(resolved)) return null;
   return fs.existsSync(resolved) && fs.existsSync(`${resolved}.sha256`) ? resolved : null;
@@ -534,14 +539,11 @@ const identity = {
     keyStore.adopt(recoveryKeyFingerprint(key));
     guestKeys.forget(archiveId);
     destinationResolver.forgetAll();
-    // The archive is this server's now, so its place becomes one of this server's
-    // backup places; the storage module owns drive claims and is asked.
-    const placeId = destinationResolver.resolve(archiveId).placeId;
-    try {
-      if (isObjectDestinationId(placeId)) objectRegistry.holdBackups(placeId, true);
-      else await appAgent.holdBackups({ drive: placeId, held: true });
-    } catch (error) {
-      return { ok: true, unclaimed: error?.message || 'MOS could not reach the storage module.' };
+    // The archive is this server's now; with nowhere chosen for automatic backups
+    // yet, they go on where the suite came from.
+    if (!primary.read()) {
+      const place = (await survey()).places.find((entry) => entry.id === destinationResolver.resolve(archiveId).placeId);
+      if (place) primary.save({ destinationId: place.id, label: place.label });
     }
     return true;
   },
@@ -576,8 +578,11 @@ async function rebuildRestoredHomepage(logMessage) {
     store.close();
   }
 }
+// One app that will not start is reported and the rest carry on: its data is
+// restored either way, and its own page records why and can try again.
 async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
   const store = new SuiteManagerStore(stateDir);
+  const notStarted = [];
   try {
     const appPackages = new AppPackageService({
       agent: new AppAgentClient(),
@@ -585,16 +590,19 @@ async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
       store,
     });
     const instances = store.getAppInstances().filter((instance) => instance.status === 'installed' && instance.enabled);
-    if (!instances.length) {
-      logMessage('No installed app runtimes to restore');
-      return;
-    }
+    if (!instances.length) logMessage('No installed app runtimes to restore');
     for (const [index, instance] of instances.entries()) {
       const displayName = instance.displayNameSnapshot || displayNameOf(instance.packageId);
       onProgress({ displayName, done: index, packageId: instance.packageId, total: instances.length, unit: 'apps' });
       logMessage(`Restoring ${displayName}`);
-      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+      try {
+        await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+      } catch (error) {
+        logMessage(`${displayName} did not start: ${error.message}`);
+        notStarted.push({ displayName, packageId: instance.packageId });
+      }
     }
+    return notStarted;
   } finally {
     store.close();
   }
@@ -639,10 +647,12 @@ function homeAddress() {
 // Composed out of what a provider's console cannot tell an owner afterwards,
 // never out of the credentials it holds for them.
 async function recoveryKit(key) {
-  const destinations = [
-    ...(await survey()).destinations.filter((entry) => entry.kind === 'disk').map((entry) => ({ kind: 'drive', label: entry.label })),
-    ...objectRegistry.list().filter((record) => record.backups === true).map((record) => ({ bucket: record.bucket, endpoint: record.endpoint, folder: record.folder || '', kind: 'bucket', label: record.label, region: record.region || '' })),
-  ];
+  const { archives, places } = await survey();
+  const chosen = primary.read()?.destinationId;
+  const holding = places.filter((place) => place.id === chosen || archives.some((archive) => archive.placeId === place.id && archive.owner === 'this'));
+  const destinations = holding.map((place) => (place.kind === 'disk'
+    ? { kind: 'drive', label: place.label }
+    : { bucket: place.bucket, endpoint: place.endpoint, folder: place.folder || '', kind: 'bucket', label: place.label, region: place.region || '' }));
   const hostname = os.hostname();
   const now = new Date();
   return {
@@ -842,12 +852,12 @@ async function updateInProgress() {
 const primary = new PrimaryDestination({ agentStateDir });
 const logLine = (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`);
 // What a server updated from MOS 0.22 left behind, made today's on sight.
-const carryOver = new CarryOver({ agentStateDir, appAgent, lastBackups, log: logLine, primary, registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) });
+const carryOver = new CarryOver({ agentStateDir, lastBackups, log: logLine, primary, registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) });
 
 const scheduler = new BackupScheduler({
   agentStateDir,
   createJob: (kind, payload) => createJob(kind, payload),
-  destinations: async () => (await survey()).destinations,
+  places: async () => (await survey()).places,
   log: logLine,
   primary,
   // Reconciled first, so a worker killed by a power loss does not keep the
@@ -899,18 +909,18 @@ if (require.main === module && process.argv[2] === '--worker') {
     try {
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/v1/status') {
-        const { archives, destinations } = await survey();
+        const { archives, places } = await survey();
         respond(response, 200, {
           archives,
           backups: await listBackups(archives),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'primary'], archives: ['erase', 'forget-key', 'keys', 'unlock'], recoveryKey: ['acknowledge', 'reveal', 'rotate'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'archives' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], places: ['connect-object', 'list', 'primary'], archives: ['erase', 'forget-key', 'keys', 'unlock'], recoveryKey: ['acknowledge', 'reveal', 'rotate'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'archives' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
-          destinations,
           // Without the engine binary nothing can be written anywhere; said once here, not per destination.
           engine: { installed: engine.installed(), reason: engine.installed() ? null : ENGINE_MISSING_MESSAGE },
           hostname: os.hostname(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
+          places,
           recentJobs: recentJobs(),
           // Where everything that backs up on its own writes.
           primaryDestination: primary.state(),
@@ -944,7 +954,7 @@ if (require.main === module && process.argv[2] === '--worker') {
       if (request.method === 'POST' && url.pathname === '/v1/destinations/primary') {
         const body = await readBody(request);
         if (body.destinationId === null) { respond(response, 200, { primaryDestination: primary.clear() }); return; }
-        const known = await knownDestination(body.destinationId);
+        const known = await knownPlace(body.destinationId);
         respond(response, 200, { primaryDestination: primary.save({ destinationId: known.id, label: known.label }) });
         return;
       }
@@ -1001,24 +1011,12 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, { destination: publicObjectDestination(record) });
         return;
       }
-      if (request.method === 'POST' && url.pathname === '/v1/destinations/object/backups') {
-        const body = await readBody(request);
-        const held = body.held === true;
-        if (!held && primary.read()?.destinationId === body.destinationId) {
-          throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
-        }
-        const record = objectRegistry.holdBackups(String(body.destinationId || ''), held);
-        destinationResolver.forget(record.id);
-        respond(response, 200, { destination: publicObjectDestination(record) });
-        return;
-      }
       // Disconnecting forgets how to reach the bucket and never deletes what is in it.
+      // Automatic backups that went there stop until the owner picks another place.
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/remove') {
         const body = await readBody(request);
-        if (primary.read()?.destinationId === body.destinationId) {
-          throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
-        }
         const removed = objectRegistry.remove(String(body.destinationId || ''));
+        if (primary.read()?.destinationId === removed.id) primary.clear();
         destinationResolver.forget(removed.id);
         respond(response, 200, { destination: publicObjectDestination(removed) });
         return;
@@ -1026,19 +1024,25 @@ if (require.main === module && process.argv[2] === '--worker') {
       if (request.method === 'POST' && url.pathname === '/v1/backups') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
-        const destination = body.destinationId === PRIMARY_DESTINATION ? await primaryDestination() : await knownDestination(body.destinationId);
-        if (destination.reason) throw new Error(destination.reason);
-        await (await destinationResolver.target(destination.id)).assertAvailable();
-        respond(response, 202, { job: createJob('backup', { ...body, destinationId: destination.id }) });
+        const place = body.destinationId === PRIMARY_DESTINATION ? await primaryDestination() : await knownPlace(body.destinationId);
+        if (place.reason) throw new Error(place.reason);
+        await (await destinationResolver.target(place.id)).assertAvailable();
+        const job = createJob('backup', { ...body, destinationId: place.id });
+        if (body.makePrimary === true) primary.save({ destinationId: place.id, label: place.label });
+        respond(response, 202, { job });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/schedule') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
-        // Where the backups go is the primary's, so a schedule cannot be turned on before one is chosen.
-        if (body.enabled === true && !primary.read()) throw new Error('Choose the destination automatic backups go to before turning them on.');
-        respond(response, 200, { schedule: scheduler.save(body) });
+        // Where they go is part of the same choice, so a schedule is never on with nowhere to write.
+        if (body.destinationId) {
+          const place = await knownPlace(body.destinationId);
+          primary.save({ destinationId: place.id, label: place.label });
+        }
+        if (body.enabled === true && !primary.read()) throw new Error('Choose where automatic backups go before turning them on.');
+        respond(response, 200, { primaryDestination: primary.state(), schedule: scheduler.save(body) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/note') {

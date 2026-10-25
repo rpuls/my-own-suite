@@ -5,7 +5,7 @@ const { withRoutes } = require('./support/route-harness.cjs');
 
 const OTHER = { id: '1A2B-3C4D/archive-0000beef', keyState: 'locked', newestAt: '2026-10-20T03:00:00.000Z', owner: 'other', placeId: '1A2B-3C4D', placeKind: 'disk', placeLabel: 'Backup drive', reason: 'Another server\'s key opens these.', restorePoints: null, storedBytes: null, writtenBy: { hostname: 'mos-old', installId: 'old' } };
 const OWN = { ...OTHER, id: '1A2B-3C4D/archive-0000cafe', keyState: 'own', owner: 'this', reason: null, restorePoints: 3, storedBytes: 12e9, writtenBy: { hostname: 'mos-home', installId: 'home' } };
-const DESTINATION = { id: '1A2B-3C4D', kind: 'disk', label: 'Backup drive', reason: null, state: 'ready' };
+const PLACE = { id: '1A2B-3C4D', kind: 'disk', label: 'Backup drive', reason: null, state: 'ready' };
 const KEY = 'mos 7k2f 9xq4';
 const inventory = { summary: { appCount: 0 } };
 
@@ -28,7 +28,7 @@ function agent(calls) {
     },
     forgetArchiveKey: record('forget-key', { result: { forgotten: true } }),
     removeArchiveKey: record('keys-remove', { result: { removed: 'k2' } }),
-    status: async () => ({ archives: [OWN, OTHER], backups: [], destinations: [DESTINATION], recoveryKey: null }),
+    status: async () => ({ archives: [OWN, OTHER], backups: [], places: [PLACE], recoveryKey: null }),
     unlockArchive: record('unlock', { result: { message: 'Unlocked.', recoveryKey: { acknowledged: true } } }),
   };
 }
@@ -39,7 +39,7 @@ test('the status lists every archive and destination as the agent states them, p
 
     assert.equal(status.status, 200);
     assert.deepEqual(status.json().archives, [OWN, OTHER]);
-    assert.deepEqual(status.json().destinations, [DESTINATION]);
+    assert.deepEqual(status.json().places, [PLACE]);
   });
 });
 

@@ -1,5 +1,5 @@
-// Object-storage backup destinations: what an owner types in, what is kept on
-// this machine, and what the storage engine is told.
+// Storage online, an S3-compatible bucket: what an owner types in, what is kept
+// on this machine, and what the storage engine is told.
 //
 // MOS does not speak S3 itself. restic's S3 backend already works across AWS,
 // Backblaze B2, Wasabi, Cloudflare R2, Garage, Ceph and MinIO, and a request
@@ -19,9 +19,18 @@ const crypto = require('node:crypto');
 const { StorageRegistry, publicBucket: publicObjectDestination } = require('../lib/storage-registry.cjs');
 
 const OBJECT_DESTINATION_PREFIX = 'object:';
-const { BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../shared/storage-contract.cjs');
+const { ARCHIVE_DIR_PATTERN, BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../shared/storage-contract.cjs');
 const REPOSITORY_DIRNAME = 'repository';
 const MAX_OBJECT_DESTINATIONS = 8;
+// Which archives a bucket holds, and which server made each, is kept in a small
+// repository of its own beside them. Its password is published on purpose: it
+// says no more than the plaintext descriptor beside an archive on a drive, and
+// every server that can reach the bucket has to be able to read it.
+const CATALOG_DIRNAME = 'catalog';
+const CATALOG_PASSWORD = 'mos-backup-catalog';
+// MOS 0.22 kept a bucket's one archive at MOS-backups/repository; it is read
+// where it lies, under this name, rather than copied object by object.
+const LEGACY_ARCHIVE_NAME = REPOSITORY_DIRNAME;
 
 function isObjectDestinationId(value) {
   return typeof value === 'string' && value.startsWith(OBJECT_DESTINATION_PREFIX) && value.length > OBJECT_DESTINATION_PREFIX.length;
@@ -61,8 +70,7 @@ function normalizeBucket(value) {
   return bucket;
 }
 
-// Optional, and the reason one bucket can hold the backups of several servers
-// without them writing over each other.
+// Optional: lets an owner keep MOS in one corner of a bucket that holds other things too.
 function normalizeFolder(value) {
   const raw = String(value ?? '').trim().replace(/^\/+|\/+$/gu, '');
   if (!raw) return '';
@@ -129,25 +137,38 @@ function normalizeObjectDestination(input = {}, existing = null) {
   };
 }
 
-// The repository lives under the same MOS-backups/repository shape a drive
-// uses, so a bucket an owner opens in a provider's file browser looks like the
-// drive they already know, and the names above it stay free for whatever a
-// later version needs to put beside a repository.
-function objectRepositorySpec(record) {
-  const prefix = [record.folder, BACKUPS_DIRNAME, REPOSITORY_DIRNAME].filter(Boolean).join('/');
+// The archives live under the same MOS-backups/archive-<hex>/repository shape a
+// drive uses, so a bucket an owner opens in a provider's file browser looks like
+// the drive they already know, and several servers' archives sit side by side.
+function placeSpec(record) {
   return {
+    base: `s3:${record.endpoint}/${record.bucket}/${[record.folder, BACKUPS_DIRNAME].filter(Boolean).join('/')}`,
     env: {
       AWS_ACCESS_KEY_ID: record.accessKeyId,
       AWS_SECRET_ACCESS_KEY: record.secretAccessKey,
       ...(record.region ? { AWS_DEFAULT_REGION: record.region } : {}),
     },
-    location: `s3:${record.endpoint}/${record.bucket}/${prefix}`,
     secrets: [record.secretAccessKey, record.accessKeyId],
   };
 }
 
-// The buckets in the storage registry. Connecting one is storage setup and holds
-// nothing yet; `backups` marks the ones the owner made a backup destination.
+function isBucketArchiveName(name) {
+  return name === LEGACY_ARCHIVE_NAME || ARCHIVE_DIR_PATTERN.test(String(name || ''));
+}
+
+function objectRepositorySpec(record, name) {
+  const { base, env, secrets } = placeSpec(record);
+  const location = name === LEGACY_ARCHIVE_NAME ? `${base}/${REPOSITORY_DIRNAME}` : `${base}/${name}/${REPOSITORY_DIRNAME}`;
+  return { env, location, secrets };
+}
+
+function objectCatalogSpec(record) {
+  const { base, env, secrets } = placeSpec(record);
+  return { env, location: `${base}/${CATALOG_DIRNAME}`, password: CATALOG_PASSWORD, secrets };
+}
+
+// The buckets in the storage registry. Connecting one is all there is to it:
+// backups find what is in it, and back up into it when asked.
 class ObjectDestinationRegistry {
   constructor({ registryPath }) {
     this.registry = new StorageRegistry({ registryPath });
@@ -167,7 +188,7 @@ class ObjectDestinationRegistry {
       const existing = input.id ? buckets[input.id] : null;
       if (input.id && !existing) throw new Error('That storage connection no longer exists.');
       if (!existing && destinations.length >= MAX_OBJECT_DESTINATIONS) throw new Error(`MOS holds up to ${MAX_OBJECT_DESTINATIONS} storage connections. Disconnect one you no longer use first.`);
-      const record = { ...normalizeObjectDestination(input, existing), ...(existing?.backups ? { backups: true } : {}) };
+      const record = normalizeObjectDestination(input, existing);
       // Two connections to the same place would each believe they own the
       // repository, and a schedule pointed at one would prune what the other
       // wrote without ever listing it.
@@ -175,15 +196,6 @@ class ObjectDestinationRegistry {
       if (clash) throw new Error(`This bucket and folder are already connected as "${clash.label}".`);
       buckets[record.id] = record;
       return record;
-    });
-  }
-
-  holdBackups(id, held) {
-    return this.registry.update(({ buckets }) => {
-      if (!buckets[id]) throw new Error('That storage connection no longer exists.');
-      if (held) buckets[id].backups = true;
-      else delete buckets[id].backups;
-      return buckets[id];
     });
   }
 
@@ -199,9 +211,11 @@ class ObjectDestinationRegistry {
 
 module.exports = {
   BACKUPS_DIRNAME,
+  isBucketArchiveName,
   isObjectDestinationId,
   MAX_OBJECT_DESTINATIONS,
   normalizeObjectDestination,
+  objectCatalogSpec,
   ObjectDestinationRegistry,
   objectRepositorySpec,
   publicObjectDestination,

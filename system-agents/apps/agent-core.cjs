@@ -486,17 +486,6 @@ class AppAgentCore {
     return this.adapter.storage.rename(input.id, input.name);
   }
 
-  // Held names a drive kept for backups, or one let go; buckets are recorded by the
-  // backup agent, which connects them.
-  async holdBackups(input) {
-    if (!exactKeys(input, ['drive', 'held']) || !FOLDER_DRIVE_PATTERN.test(String(input.drive)) || typeof input.held !== 'boolean') {
-      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A backups request names one drive and whether it holds backups.');
-    }
-    if (input.held) await this.adapter.storage.holdBackups(input.drive);
-    else this.adapter.storage.releaseBackups(input.drive);
-    return { held: input.held, status: 'recorded' };
-  }
-
   async formatInstallerStick(input) {
     if (!exactKeys(input, ['devicePath']) || !/^\/dev\/[a-z0-9]+$/u.test(String(input.devicePath))) {
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A format request names the install stick by its device.');

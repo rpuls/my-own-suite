@@ -23,12 +23,12 @@ export type OtherServerArchive = {
 };
 
 export type StorageBackups = {
-  // This server backs up here.
-  destination: boolean;
   lastBackupAt: string | null;
   otherServers: OtherServerArchive[];
+  // This server's backups are kept here.
+  ours: boolean;
+  // Automatic backups go here.
   primary: boolean;
-  ready: boolean;
   restorePoints: number;
   storedBytes: number | null;
 };
@@ -163,8 +163,8 @@ export function rowLine(entry: StorageEntry, { backupsKnown, names }: RowFacts) 
   if (entry.kind === 'bucket') {
     if (entry.state === 'unreachable') return stateSentence(entry);
     if (!backupsKnown) return BACKUPS_UNKNOWN_LINE;
-    if (entry.backups?.otherServers.length && !entry.backups.destination) return 'Holds backups another server made';
-    if (!entry.backups?.destination) return 'Connected · not holding anything yet';
+    if (entry.backups?.otherServers.length && !entry.backups.ours) return 'Holds backups another server made';
+    if (!entry.backups?.ours) return 'Connected · not holding anything yet';
     return entry.backups.storedBytes ? `Holds your backups · about ${formatBytes(entry.backups.storedBytes)} stored` : 'Holds your backups · none yet';
   }
   const apps = appNamesFor(entry, names);
@@ -173,13 +173,12 @@ export function rowLine(entry: StorageEntry, { backupsKnown, names }: RowFacts) 
     case 'read-only':
     case 'failed': return `${label} — ${stateSentence(entry)}`;
     case 'away':
-      if (entry.backups?.destination && !apps.length) return `${label} — backups wait and catch up when it returns`;
       if (!apps.length) return `${label} — plug it in to use it again`;
       return `${label} — ${joinNames(apps)} ${apps.length === 1 ? 'gets its' : 'get their'} files back when it returns`;
     case 'ejected': return entry.connected
       ? `${label} — ${apps.length ? `${joinNames(apps)} ${apps.length > 1 ? 'are' : 'is'} paused` : 'nothing is using it'} until it is back`
       : `${label} — plug it back in to use it again`;
-    case 'available': return entry.backups?.destination ? hardwareLine(entry) : `${hardwareLine(entry)} · ${entry.reason || 'not opened yet'}`;
+    case 'available': return entry.backups?.ours ? hardwareLine(entry) : `${hardwareLine(entry)} · ${entry.reason || 'not opened yet'}`;
     default: return backupsKnown && entry.backups?.otherServers.length ? `${hardwareLine(entry)} · also holds backups another server made` : hardwareLine(entry);
   }
 }
@@ -238,7 +237,7 @@ export function pickerOffers(storage: StorageEntry[], context: PickerContext, { 
     const blocked = holds(entry) ? stateFact(entry) : incapableFact(entry);
     const selectable = holds(entry) && !blocked;
     const apps = appNamesFor(entry, names);
-    const alsoBackups = context === 'apps' && backupsKnown && entry.backups?.destination ? 'also holds your backups' : '';
+    const alsoBackups = backupsKnown && entry.backups?.ours ? context === 'apps' ? 'also holds your backups' : 'holds your backups' : '';
     const stored = entry.kind === 'bucket' && backupsKnown && entry.backups?.storedBytes ? `about ${formatBytes(entry.backups.storedBytes)} stored` : '';
     const facts = blocked || [kindFact(entry), entry.kind === 'bucket' ? stored : spaceFact(entry), alsoBackups].filter(Boolean).join(' · ');
     // A library's backup on the drive the library lives on fails with it.

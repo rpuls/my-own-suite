@@ -18,7 +18,7 @@ const ATTACH_IMAGE = {
   ntfs: `set -e
 image=/var/lib/mos-lab-drive-ntfs.img
 losetup -j "$image" | grep -q . && exit 0
-[ -f "$image" ] || { truncate -s 2G "$image"; mkfs.ntfs --quick --label LABNTFS "$image" >/dev/null; }
+[ -f "$image" ] || { truncate -s 2G "$image"; mkfs.ntfs --force --quick --label LABNTFS "$image" >/dev/null; }
 losetup --find --show "$image"`,
   vfat: `set -e
 image=/var/lib/mos-lab-drive.img
@@ -123,7 +123,7 @@ export async function renameInSettings(ctx, storageId, name) {
   await row.item.getByRole('button', { name: `More actions for ${row.name}` }).click();
   await ctx.page.getByRole('menuitem', { name: 'Rename' }).click();
   const dialog = ctx.page.getByRole('dialog', { name: `Rename ${row.name}` });
-  await dialog.getByLabel('Name').fill(name);
+  await dialog.getByRole('textbox', { name: /^Name/u }).fill(name);
   await dialog.getByRole('button', { exact: true, name: 'Save' }).click();
   await expect(dialog).toBeHidden({ timeout: 30000 });
 }

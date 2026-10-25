@@ -58,12 +58,13 @@ const {
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
-const { declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
+const { addressTaken, declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
 const {
   inspectAppPackages,
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
+const { baseHostOf } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.cjs');
 
@@ -86,6 +87,8 @@ class AppPackageService {
     // wired to each other rather than one owning the other.
     externalCatalog = () => [],
     externalClient = null,
+    // The Homepage links holding an address under the suite, subdomain to link name.
+    homeLinks = async () => new Map(),
     limiter = new AppOperationLimiter(),
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
@@ -98,6 +101,7 @@ class AppPackageService {
     this.catalogService = catalogService;
     this.externalCatalog = externalCatalog;
     this.externalClient = externalClient;
+    this.homeLinks = homeLinks;
     this.limiter = limiter;
     this.now = now;
     this.officialRepository = officialRepository;
@@ -138,6 +142,8 @@ class AppPackageService {
     // On the Easy Door over HTTP the certificate is on its way and the switch is automatic.
     return {
       architecture: this.hostArchitecture,
+      baseHost: address ? baseHostOf(address) : null,
+      homeLinks: await this.homeLinks().catch(() => null),
       https: address ? address.scheme === 'https' : null,
       httpsPending: address?.kind === 'easy-door' && address.scheme === 'http',
       // A drive that needs a check still opens the install, where the picker says why it waits.
@@ -162,6 +168,22 @@ class AppPackageService {
   appNames() {
     const installed = new Set(this.store.getAppInstances().map((instance) => instance.packageId));
     return new Map(this.listPackages().map((app) => [app.id, { installed: installed.has(app.id), name: app.name }]));
+  }
+
+  // Each installed app's subdomains, to its name, for keeping Homepage links off them.
+  appRouteHosts() {
+    const hosts = new Map();
+    for (const instance of this.store.getAppInstances()) {
+      const caddy = this.store.getAppProjections(instance.id).find((projection) => projection.kind === 'caddy')?.content;
+      for (const route of Array.isArray(caddy?.routes) ? caddy.routes : []) hosts.set(route.host, instance.displayNameSnapshot || instance.packageId);
+    }
+    return hosts;
+  }
+
+  async assertAddressFree(packageId, routes) {
+    const address = this.suiteAddress?.readOrNull();
+    const taken = addressTaken(packageId, routes, { baseHost: address ? baseHostOf(address) : null, homeLinks: await this.homeLinks().catch(() => null) });
+    if (taken) throw new AppPackageServiceError('APP_ROUTE_HOST_TAKEN', taken, 409);
   }
 
   // Refusing up front turns a build that cannot pull its images, or an app that
@@ -261,6 +283,8 @@ class AppPackageService {
   // The install flow's apply runs for minutes, so a second tab or a reload can
   // ask again mid-build. Its own key refuses that without gating stop or uninstall.
   async startPackageRuntime(packageId, requestContext = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (instance) await this.assertAddressFree(packageId, this.installedPackageFor(instance).manifest.routes);
     return this.limiter.runExclusive(`start:${packageId}`, () => this.applyPackageRuntime(packageId, requestContext));
   }
 
@@ -1299,6 +1323,7 @@ class AppPackageService {
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
     await this.assertHostRequirementsMet(manifest, agentStatus);
+    await this.assertAddressFree(packageId, manifest.routes);
     const folders = await this.placeFolders(manifest, input.drive);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);

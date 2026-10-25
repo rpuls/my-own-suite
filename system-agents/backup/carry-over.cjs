@@ -3,7 +3,8 @@
 // The one compatibility bridge MOS carries: a server updated from 0.22 finds its
 // backups, backup drives and storage online with nothing to do. 0.22 kept a drive's
 // archive at the root of MOS-backups, drives and the primary by mount path, and
-// buckets in a file of their own. Acts on sight, idempotent, deleted in a later release.
+// buckets in a file of their own; a bucket's root archive is read where it lies
+// (destinations.cjs). Acts on sight, idempotent, deleted in a later release.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -43,8 +44,7 @@ function unfinishedArchive(backupsRoot) {
 }
 
 class CarryOver {
-  constructor({ agentStateDir, appAgent, lastBackups, log = () => {}, primary, registryPath }) {
-    this.appAgent = appAgent;
+  constructor({ agentStateDir, lastBackups, log = () => {}, primary, registryPath }) {
     this.knownDrivesPath = path.join(agentStateDir, KNOWN_DRIVES_FILENAME);
     this.lastBackups = lastBackups;
     this.log = log;
@@ -58,15 +58,15 @@ class CarryOver {
     this.repointPrimary();
   }
 
-  // Every 0.22 bucket was a backup destination. The old file held the keys and the
-  // registry is their only home now, so it goes once they are in.
+  // The old file held the keys and the registry is their only home now, so it
+  // goes once they are in.
   adoptBuckets() {
     const stored = this.readRecords(this.objectDestinationsPath, 'destinations');
     if (!stored) return;
     const records = stored.filter((record) => isObjectDestinationId(record?.id));
     const added = this.registry.update(({ buckets }) => {
       const fresh = records.filter((record) => !buckets[record.id]);
-      for (const record of fresh) buckets[record.id] = { ...record, backups: true };
+      for (const { backups, ...record } of fresh) buckets[record.id] = record;
       return fresh.length;
     });
     fs.rmSync(this.objectDestinationsPath, { force: true });
@@ -83,16 +83,12 @@ class CarryOver {
     this.log(`automatic backups carried over from ${chosen.destinationId} to drive ${drive.fsUuid}`);
   }
 
-  // Answers with the list to survey from: re-read when a claim mounted a drive, so
-  // the pass that claims a drive also adopts and lists its archive.
-  async onSight(drives, refresh) {
+  // The drives as given, with any 0.22 layout on them moved into an archive first.
+  async onSight(drives) {
     if (!drives) return drives;
     this.adoptLayouts(drives);
-    if (!await this.claimKnownDrives(drives)) return drives;
-    const fresh = await refresh();
-    if (!fresh) return drives;
-    this.adoptLayouts(fresh);
-    return fresh;
+    this.noteKnownDrives(drives);
+    return drives;
   }
 
   adoptLayouts(drives) {
@@ -120,33 +116,16 @@ class CarryOver {
     this.log(`drive ${drive.id}: backups from MOS 0.22 moved into ${name}`);
   }
 
-  // Kept for backups through the storage module once connected and open; a drive in
-  // a drawer, or one refused, waits in the file.
-  async claimKnownDrives(drives) {
+  // When each 0.22 backup drive was last written to, kept until the drive is seen
+  // so Backups can say it; a drive in a drawer waits in the file.
+  noteKnownDrives(drives) {
     const known = this.knownDrives();
-    const kept = [];
-    let mounted = false;
-    for (const entry of known) {
-      const drive = drives.find((item) => item.id === entry.fsUuid && item.connected);
-      const open = drive?.holdsBackupsFormat && ['available', 'ready'].includes(drive.state);
-      if (!drive || (!open && drive.backups !== true)) {
-        kept.push(entry);
-        continue;
-      }
-      if (drive.backups !== true) {
-        try {
-          await this.appAgent.holdBackups({ drive: entry.fsUuid, held: true });
-        } catch {
-          kept.push(entry);
-          continue;
-        }
-        mounted = true;
-        this.log(`drive ${entry.fsUuid}: kept for backups as in MOS 0.22`);
-      }
+    const kept = known.filter((entry) => {
+      if (!drives.some((drive) => drive.id === entry.fsUuid && drive.connected)) return true;
       if (entry.lastBackupAt && !this.lastBackups.of(entry.fsUuid)) this.lastBackups.note(entry.fsUuid, entry.lastBackupAt);
-    }
+      return false;
+    });
     if (kept.length !== known.length) this.writeKnownDrives(kept);
-    return mounted;
   }
 
   knownDrives() {

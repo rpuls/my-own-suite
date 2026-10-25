@@ -12,9 +12,11 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { DestinationResolver, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
+const { DestinationResolver, objectLocator, OBJECT_INDEX_TTL_MS, ObjectArchive, parseObjectLocator } = require('./destinations.cjs');
 const { repositorySidecarPath, writeRepositoryDescriptor } = require('./engines/engine.cjs');
 const { normalizeObjectDestination, objectRepositorySpec } = require('./object-destinations.cjs');
+
+const ARCHIVE = 'archive-0000beef';
 
 const CONNECTION = Object.freeze({
   accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
@@ -24,39 +26,58 @@ const CONNECTION = Object.freeze({
   secretAccessKey: 'wJalrXUtnFEMI-K7MDENG-bPxRfiCYEXAMPLEKEY',
 });
 
-// An in-memory bucket behind the engine surface the destination uses. Snapshots
-// carry tags and a time, documents are addressed by snapshot and filename, and
-// every document read is recorded so the index's re-read behaviour is testable.
+const LOCKED_MESSAGE = "This bucket holds MOS backups written by another server. Enter that server's recovery key to use them here.";
+
+// An in-memory bucket behind the engine surface an archive uses. Snapshots carry
+// tags and a time, documents are addressed by snapshot and filename, and every
+// document read is recorded so the index's re-read behaviour is testable. Each
+// repository remembers the key it was made with, so two engines over one map are
+// two servers sharing a bucket; `locked` turns every key away at once.
 class FakeObjectEngine {
-  constructor() {
+  constructor({ key = 'MOS-THIS', repositories = new Map() } = {}) {
     this.counter = 0;
+    this.key = key;
     this.locked = false;
     this.offline = false;
     this.reads = [];
-    this.repositories = new Map();
+    this.repositories = repositories;
   }
 
   get name() { return 'restic'; }
 
   async probe(spec) { return this.probeRepository(spec); }
 
-  probeRepository({ location }) {
+  probeRepository({ location, password = null }) {
     if (this.offline) return { message: 'MOS could not reach the storage provider.', state: 'unreachable' };
-    if (this.locked) return { message: "This bucket holds MOS backups written by another server. Enter that server's recovery key to use them here.", state: 'locked' };
     const repository = this.repositories.get(location);
-    return repository ? { repositoryId: repository.repositoryId, state: 'open' } : { message: 'unable to open config file', state: 'absent' };
+    if (!repository) return { message: 'unable to open config file', state: 'absent' };
+    if (this.locked || repository.key !== (password || this.key)) return { message: LOCKED_MESSAGE, state: 'locked' };
+    return { repositoryId: repository.repositoryId, state: 'open' };
   }
 
-  async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, secrets = [] }) {
-    const probe = this.probeRepository({ location });
+  async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, password = null, secrets = [] }) {
+    const probe = this.probeRepository({ location, password });
     if (probe.state === 'unreachable') throw new Error(probe.message);
-    if (this.locked) return { created: false, engineName: this.name, env, localPath, location, locked: true, lockedMessage: "This bucket holds MOS backups written by another server. Enter that server's recovery key to use them here.", repositoryId: null, secrets };
+    if (probe.state === 'locked') return { created: false, engineName: this.name, env, localPath, location, locked: true, lockedMessage: LOCKED_MESSAGE, repositoryId: null, secrets };
     const created = probe.state === 'absent';
     if (created) {
-      if (!create) throw Object.assign(new Error(missingMessage || 'no repository'), { repositoryAbsent: true });
-      this.repositories.set(location, { documents: new Map(), repositoryId: `repo-${this.repositories.size + 1}`, snapshots: new Map() });
+      if (!create || password) throw Object.assign(new Error(missingMessage || 'no repository'), { repositoryAbsent: true });
+      this.make(location, this.key);
     }
     return { created, engineName: this.name, env, localPath, location, repositoryId: this.repositories.get(location).repositoryId, secrets };
+  }
+
+  async openPublicRepository({ create = false, env = {}, location, password, secrets = [] }) {
+    if (this.offline) throw new Error('MOS could not reach the storage provider.');
+    if (!this.repositories.has(location)) {
+      if (!create) return null;
+      this.make(location, password);
+    }
+    return { engineName: this.name, env, localPath: null, location, password, secrets };
+  }
+
+  make(location, key) {
+    this.repositories.set(location, { documents: new Map(), key, repositoryId: `repo-${this.repositories.size + 1}`, snapshots: new Map() });
   }
 
   at(repository) {
@@ -71,7 +92,7 @@ class FakeObjectEngine {
 
   async snapshotDocument({ content, filename, repository, tags }) {
     this.counter += 1;
-    const snapshotId = `snap-${String(this.counter).padStart(3, '0')}`;
+    const snapshotId = `snap-${this.key}-${String(this.counter).padStart(3, '0')}`;
     const store = this.at(repository);
     store.snapshots.set(snapshotId, {
       createdAt: new Date(Date.UTC(2026, 0, this.counter)).toISOString(),
@@ -107,19 +128,20 @@ function manifestFor(id, { initiator = 'owner', updateTarget = null } = {}) {
 async function bucket({ engine = new FakeObjectEngine(), stateDir } = {}) {
   const agentStateDir = stateDir || await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-bucket-'));
   const record = normalizeObjectDestination(CONNECTION);
-  return { agentStateDir, destination: new ObjectDestination({ agentStateDir, engine, record }), engine, record };
+  return { agentStateDir, destination: new ObjectArchive({ agentStateDir, engine, name: ARCHIVE, record }), engine, record };
 }
 
-// Reopening the same connection means a new destination object over the same
-// state directory, which is what the agent does across a restart.
+// Reopening the same connection means a new archive object over the same state
+// directory, which is what the agent does across a restart.
 function reopen({ agentStateDir, engine, record }) {
-  return new ObjectDestination({ agentStateDir, engine, record });
+  return new ObjectArchive({ agentStateDir, engine, name: ARCHIVE, record });
 }
 
-test('a locator names a destination and a point, and anything malformed is refused', () => {
-  const locator = objectLocator('object:abc123', '7d0e-4f11');
-  assert.deepEqual(parseObjectLocator(locator), { destinationId: 'object:abc123', pointId: '7d0e-4f11' });
-  for (const bad of ['/media/mos-backup/MOS-backups/restore-points/x.json', 'object:abc123', 'object:#id', 'objectabc#id', '', null, 'object:abc#../escape']) {
+test('a locator names an archive and a point, and anything malformed is refused', () => {
+  const locator = objectLocator(`object:abc123/${ARCHIVE}`, '7d0e-4f11');
+  assert.deepEqual(parseObjectLocator(locator), { archiveId: `object:abc123/${ARCHIVE}`, placeId: 'object:abc123', pointId: '7d0e-4f11' });
+  assert.deepEqual(parseObjectLocator('object:abc123/repository#7d0e'), { archiveId: 'object:abc123/repository', placeId: 'object:abc123', pointId: '7d0e' });
+  for (const bad of ['/media/mos-backup/MOS-backups/restore-points/x.json', 'object:abc123#id', 'object:abc123/catalog#id', 'object:abc123/archive-1#id', `object:/${ARCHIVE}#id`, 'objectabc#id', '', null, `object:abc/${ARCHIVE}#../escape`]) {
     assert.equal(parseObjectLocator(bad), null, `accepted ${bad}`);
   }
 });
@@ -139,7 +161,7 @@ test('a manifest written to a bucket comes back from a listing of the bucket alo
   assert.equal(summaries[0].note, 'Before the upgrade');
   assert.equal(summaries[0].appCount, 1);
   assert.equal(summaries[0].sizeBytes, 3000);
-  assert.equal(summaries[0].locator, objectLocator(world.record.id, 'point-1'));
+  assert.equal(summaries[0].locator, objectLocator(`${world.record.id}/${ARCHIVE}`, 'point-1'));
   assert.equal(summaries[0].sourceDomain, 'mos.example.com');
   assert.equal(summaries[0].sourceHostname, 'mos-home');
   assert.equal(summaries[0].sourceInstallId, 'install-one');
@@ -172,7 +194,7 @@ test('a note is stored apart from the manifest, and only the newest one counts',
   await world.destination.points.writeNote('point-1', 'First note');
   await world.destination.points.writeNote('point-1', 'Second note');
 
-  const location = objectRepositorySpec(world.record).location;
+  const location = objectRepositorySpec(world.record, ARCHIVE).location;
   const noteSnapshots = [...world.engine.repositories.get(location).snapshots.values()].filter((entry) => entry.tags.includes('mosrole:note'));
   assert.equal(noteSnapshots.length, 1, 'the replaced note snapshot was left behind');
 
@@ -321,7 +343,7 @@ test('a bucket written by another server is reported locked, not unreachable', a
   // write with it: a backup aimed here is refused, not met with whatever the
   // engine says about a wrong password.
   await assert.rejects(() => reopened.repository({ create: false }), /written by another server/u);
-  await assert.rejects(() => reopened.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server made/u });
+  await assert.rejects(() => reopened.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server/u });
 
   // And the moment the key is entered it is a normal bucket again — the locked
   // repository is never held on to.
@@ -423,7 +445,7 @@ test('a torn or missing descriptor over a full repository is a stated fact, not 
   fullRepository(torn);
   fs.writeFileSync(repositorySidecarPath(torn), '{"engineName":"res');
 
-  assert.deepEqual(resolver.archivesOn(DRIVE).map((archive) => archive.name), ['archive-00000001']);
+  assert.deepEqual((await resolver.archivesIn(DRIVE)).map((archive) => archive.name), ['archive-00000001']);
   const archive = resolver.resolve(`${DRIVE}/archive-00000001`);
   assert.equal(archive.descriptor(), null);
   assert.equal((await archive.health()).keyState, 'own');
@@ -451,8 +473,8 @@ test('an archive opened with another server\'s key is read from but never backed
   await assert.rejects(() => archive.assertAvailable(), { code: 'DESTINATION_FOREIGN' });
 
   const world = await bucket();
-  const borrowed = new ObjectDestination({ agentStateDir: world.agentStateDir, engine: world.engine, guestKey: () => 'MOS-BORROWED', record: world.record });
-  await assert.rejects(() => borrowed.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another place/u });
+  const borrowed = new ObjectArchive({ agentStateDir: world.agentStateDir, engine: world.engine, guestKey: () => 'MOS-BORROWED', name: ARCHIVE, record: world.record });
+  await assert.rejects(() => borrowed.assertAvailable(), { code: 'DESTINATION_FOREIGN', message: /another server/u });
 });
 
 // One drive can carry this server's archive beside archives other servers
@@ -466,10 +488,90 @@ test('this server backs up into its own archive on a drive, beside other servers
 
   for (const name of Object.keys(owners)) describedRepository(path.join(mountPath, 'MOS-backups', name), name);
   fs.mkdirSync(path.join(mountPath, 'MOS-backups', 'Not an archive'), { recursive: true });
-  assert.deepEqual(resolver.archivesOn(DRIVE).map((archive) => archive.name), ['archive-00000001', 'archive-00000002']);
+  assert.deepEqual((await resolver.archivesIn(DRIVE)).map((archive) => archive.name), ['archive-00000001', 'archive-00000002']);
   assert.equal((await resolver.target(DRIVE)).id, `${DRIVE}/archive-00000002`);
   const point = path.join(mountPath, 'MOS-backups', 'archive-00000001', 'restore-points', 'job-1.json');
   assert.equal(resolver.archiveAt(path.dirname(path.dirname(point))).id, `${DRIVE}/archive-00000001`);
   assert.throws(() => resolver.resolve(`${DRIVE}/../etc`), /Choose a backup/u);
-  assert.throws(() => resolver.archiveAt(path.join(mountRoot, '..')), /connected destination/u);
+  assert.throws(() => resolver.archiveAt(path.join(mountRoot, '..')), /connected storage/u);
+});
+
+// --- Several servers in one bucket -------------------------------------------
+
+// Two servers connected to one bucket: one map of repositories, two keys, two
+// state directories, two registries holding the same connection.
+async function sharedBucket() {
+  const repositories = new Map();
+  const record = normalizeObjectDestination(CONNECTION);
+  const server = async (key, installId) => {
+    const agentStateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-bucket-'));
+    const engine = new FakeObjectEngine({ key, repositories });
+    const resolver = new DestinationResolver({ agentStateDir, createdBy: () => ({ hostname: `${installId}-host`, installId }), engine, objectRegistry: { list: () => [record] } });
+    return { engine, resolver };
+  };
+  return { record, repositories, one: await server('MOS-ONE', 'install-one'), two: await server('MOS-TWO', 'install-two') };
+}
+
+// A catalog is asked again only once its interval has passed.
+function letIntervalPass(server, record) {
+  const catalog = server.resolver.catalogOf(record);
+  catalog.save({ ...catalog.load(), fetchedAt: new Date(0).toISOString(), fetchedAtMs: 0 });
+}
+
+test('a bucket holds each server\'s archive beside the others, and each server finds every one from the catalog', async () => {
+  const { one, record, two } = await sharedBucket();
+  assert.deepEqual(await one.resolver.archivesIn(record.id), [], 'a bucket nothing was written to holds no archives');
+
+  const first = await one.resolver.target(record.id);
+  await first.points.write('point-1', manifestFor('point-1'));
+  assert.match(first.id, new RegExp(`^${record.id}/archive-[0-9a-f]{8}$`, 'u'));
+
+  // The second server sees the first one's archive, locked to it, and backs up beside it.
+  const seen = await two.resolver.archivesIn(record.id, { wait: true });
+  assert.deepEqual(seen.map((archive) => archive.id), [first.id]);
+  assert.equal((await seen[0].health()).keyState, 'locked');
+  assert.deepEqual(seen[0].entry && [seen[0].entry.hostname, seen[0].entry.installId], ['install-one-host', 'install-one']);
+  const second = await two.resolver.target(record.id);
+  assert.notEqual(second.id, first.id);
+  await second.points.write('point-2', manifestFor('point-2'));
+
+  letIntervalPass(one, record);
+  const listed = await one.resolver.archivesIn(record.id, { wait: true });
+  assert.deepEqual(listed.map((archive) => archive.id).sort(), [first.id, second.id].sort());
+  assert.equal((await one.resolver.target(record.id)).id, first.id, 'each server keeps writing into its own');
+});
+
+test('a backup cut off between the catalog and the repository is finished in the same archive, not started again beside it', async () => {
+  const { one, record } = await sharedBucket();
+  const started = await one.resolver.target(record.id);
+  await started.catalog.ensure(started.name, { hostname: 'install-one-host', installId: 'install-one' });
+  const again = await one.resolver.target(record.id);
+  assert.equal(again.id, started.id);
+});
+
+test('the archive MOS 0.22 kept at the root of a bucket is found where it lies', async () => {
+  const { one, record } = await sharedBucket();
+  const legacy = objectRepositorySpec(record, 'repository').location;
+  assert.match(legacy, /\/home\/MOS-backups\/repository$/u);
+  one.engine.make(legacy, 'MOS-ONE');
+
+  const [archive] = await one.resolver.archivesIn(record.id, { wait: true });
+  assert.equal(archive.id, `${record.id}/repository`);
+  assert.equal((await archive.health()).keyState, 'own', 'this server opens it with its own key');
+  assert.equal(one.resolver.resolve(`${record.id}/repository`), archive);
+  await archive.points.write('point-1', manifestFor('point-1'));
+  assert.equal((await one.resolver.target(record.id)).id, archive.id, 'this server goes on writing into its 0.22 archive');
+});
+
+test('a bucket that does not answer is said to be unreachable, and its last list is kept', async () => {
+  const { one, record } = await sharedBucket();
+  const archive = await one.resolver.target(record.id);
+  await archive.points.write('point-1', manifestFor('point-1'));
+  await one.resolver.archivesIn(record.id, { wait: true });
+
+  one.engine.offline = true;
+  letIntervalPass(one, record);
+  await assert.rejects(() => one.resolver.archivesIn(record.id, { wait: true }), /could not reach/u);
+  assert.match(one.resolver.catalogProblem(record.id), /could not reach/u);
+  assert.deepEqual((await one.resolver.archivesIn(record.id)).map((entry) => entry.id), [archive.id]);
 });

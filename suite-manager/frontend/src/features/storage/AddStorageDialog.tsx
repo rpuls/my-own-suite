@@ -7,20 +7,19 @@ import { EMPTY_BUCKET_DRAFT, type BucketDraft, type ConnectionTest } from './mod
 type Step = 'choose' | 'drive' | 'online';
 
 // Reachable and holding another server's backups is a connection that worked;
-// the recovery key is asked for later, on the backup destination.
+// the recovery key is asked for later, under Backups.
 function connected(result: ConnectionTest) {
   return Boolean(result && (result.ok || result.locked));
 }
 
 // Adding storage, from Settings → Storage or from any picker. A drive needs no
 // form; connecting storage online stores how to reach it and nothing else.
-export function AddStorageDialog({ editing = null, initialStep = 'choose', onClose, onConnected }: {
+export function AddStorageDialog({ editing = null, onClose, onConnected }: {
   editing?: BucketDraft | null;
-  initialStep?: Step;
   onClose: () => void;
   onConnected: (storageId: string) => void;
 }) {
-  const [step, setStep] = useState<Step>(editing ? 'online' : initialStep);
+  const [step, setStep] = useState<Step>(editing ? 'online' : 'choose');
   const [draft, setDraft] = useState<BucketDraft>(editing || { ...EMPTY_BUCKET_DRAFT });
   const [test, setTest] = useState<ConnectionTest>(null);
   const [busy, setBusy] = useState<'' | 'save' | 'test'>('');
@@ -61,7 +60,7 @@ export function AddStorageDialog({ editing = null, initialStep = 'choose', onClo
 
   const title = editing ? 'Edit connection' : step === 'online' ? 'Connect storage online' : 'Add storage';
   const footer = step === 'online' ? <>
-    {!editing && initialStep === 'choose' ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setStep('choose')} type="button">Back</button> : null}
+    {!editing ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setStep('choose')} type="button">Back</button> : null}
     <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || !complete} onClick={() => void tryIt()} type="button">{busy === 'test' ? <><Spinner />Trying it</> : test ? 'Test again' : 'Test connection'}</button>
     <button className="mos-btn mos-btn-primary" disabled={Boolean(busy) || !complete} onClick={() => void connect()} type="button">{busy === 'save' ? <><Spinner />Connecting</> : editing ? 'Save' : 'Connect'}</button>
   </> : step === 'drive' ? <button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button> : null;

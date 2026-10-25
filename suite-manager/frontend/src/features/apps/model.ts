@@ -72,6 +72,12 @@ export function runtimeRouteApplied(app: AppPackageSummary) {
   });
 }
 
+// Set up but never brought up, with nothing running to bring it up: the install
+// job resumes from here, skipping the steps it already finished.
+export function installIncomplete(app: AppPackageSummary) {
+  return Boolean(app.instance) && app.instance?.status !== 'disabled' && !runtimeApplied(app) && app.installJob?.status !== 'running';
+}
+
 function healthFailed(app: AppPackageSummary) {
   return app.instance?.projections.some((item) => item.kind === 'health' && item.status === 'failed') === true;
 }
@@ -86,12 +92,12 @@ const FAILURE_COPY: Record<string, { detail: string; title: string }> = {
   APP_AGENT_TIMEOUT: { detail: 'Heavy apps can need around ten minutes the first time they start, so try again before assuming it is broken.', title: 'This app took too long to start' },
   APP_AGENT_UNAVAILABLE: { detail: 'The part of MOS that starts apps is not responding. Restarting the server usually clears this.', title: 'MOS could not reach its own app service' },
   APP_BUILD_FAILED: { detail: 'This is most often the server running out of disk space, or a download that failed part way.', title: 'This app could not be prepared' },
-  APP_CADDY_RELOAD_FAILED: { detail: 'The app itself is running, and other apps are unaffected. Applying it again usually publishes the address.', title: 'This app is running but has no web address' },
+  APP_CADDY_RELOAD_FAILED: { detail: 'The app itself is running, and other apps are unaffected. Trying again usually publishes the address.', title: 'This app is running but has no web address' },
   APP_CADDY_VALIDATION_FAILED: { detail: 'The address came out wrong, so MOS left it unpublished rather than risk the addresses that already work.', title: 'This app is running but has no web address' },
   APP_HEALTH_FAILED: { detail: 'It started but never reported itself ready, which usually means it needs more memory than this server has free.', title: 'This app started but never became ready' },
   APP_NETWORK_CONNECT_FAILED: { detail: 'This app could not be connected to the app it depends on. Check that the other app is running.', title: 'This app could not reach the app it depends on' },
   APP_PACKAGE_SNAPSHOT_FAILED: { detail: 'The app package could not be saved to disk. Check that the server has free space.', title: 'This app could not be saved to disk' },
-  APP_ROUTE_WRITE_FAILED: { detail: 'The app itself is running. Applying it again usually publishes the address.', title: 'This app is running but has no web address' },
+  APP_ROUTE_WRITE_FAILED: { detail: 'The app itself is running. Trying again usually publishes the address.', title: 'This app is running but has no web address' },
   APP_RUNTIME_REMOVE_FAILED: { detail: 'Parts of it may still be on the server. Removing it again is safe.', title: 'This app was not fully removed' },
   APP_RUNTIME_STOP_FAILED: { detail: 'It may still be running. Stopping it again is safe.', title: 'This app did not stop cleanly' },
   APP_RUN_FAILED: { detail: 'It was prepared successfully but would not start.', title: 'This app did not start' },
@@ -173,7 +179,7 @@ export function statusFor(app: AppPackageSummary, { paused = false } = {}) {
   if (app.updateJob?.status === 'running') return { className: 'is-progress', label: 'Updating', tone: 'info' };
   if (runtimeApplied(app) && paused) return { className: 'is-progress', label: 'Paused', tone: 'info' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
-  if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
+  if (installIncomplete(app)) return { className: 'is-attention', label: 'Install incomplete', tone: 'warning' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
 }
 

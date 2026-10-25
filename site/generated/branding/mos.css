@@ -1594,13 +1594,20 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   min-width: 0;
 }
 
-/* Disclosure: a row that opens to more. The head is one button, chevron first;
-   whatever acts on the row sits beside it in the trailing slot, so a button is
-   never inside a button. */
+/* Disclosure: a row that opens to more. Icon first, chevron last, and the
+   whole row one hit target and one hover: the head button's ::after covers the
+   row, and the trailing slot sits above it, passing clicks through everywhere
+   but its own controls, so a button is never inside a button. */
 .mos-disclosure {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--mos-space-2);
+  gap: var(--mos-space-3);
+  padding-right: var(--mos-panel-pad);
+}
+
+.mos-disclosure:not(.is-disabled):hover {
+  background: var(--mos-color-surface-muted);
 }
 
 .mos-disclosure-head {
@@ -1609,7 +1616,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   align-items: center;
   gap: var(--mos-space-3);
   min-width: 0;
-  padding: var(--mos-space-3) var(--mos-panel-pad);
+  padding: var(--mos-space-3) 0 var(--mos-space-3) var(--mos-panel-pad);
   border: 0;
   background: transparent;
   color: inherit;
@@ -1618,22 +1625,25 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   cursor: pointer;
 }
 
-.mos-disclosure-head:disabled {
-  cursor: default;
+.mos-disclosure-head::after {
+  content: '';
+  position: absolute;
+  inset: 0;
 }
 
-.mos-disclosure-head:hover:not(:disabled) {
-  background: var(--mos-color-surface-muted);
+.mos-disclosure-head:disabled {
+  cursor: default;
 }
 
 .mos-disclosure-chevron {
   display: flex;
   flex: none;
   color: var(--mos-color-text-muted);
+  pointer-events: none;
   transition: transform var(--mos-transition);
 }
 
-.mos-disclosure-head[aria-expanded='true'] .mos-disclosure-chevron {
+.mos-disclosure.is-expanded .mos-disclosure-chevron {
   transform: rotate(90deg);
 }
 
@@ -1666,13 +1676,18 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 .mos-disclosure-trailing {
+  position: relative;
   display: flex;
   flex: none;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--mos-space-2);
-  padding-right: var(--mos-panel-pad);
+  pointer-events: none;
+}
+
+.mos-disclosure-trailing :is(a, button, input, select, [tabindex]) {
+  pointer-events: auto;
 }
 
 /* Chip: a short fact beside a name. Legible on any surface by its blur, border
@@ -1710,9 +1725,10 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   }
 
   .mos-disclosure-trailing {
+    order: 1;
     flex: 1 1 100%;
     justify-content: flex-start;
-    padding: 0 var(--mos-panel-pad) var(--mos-space-3);
+    padding: 0 0 var(--mos-space-3) var(--mos-panel-pad);
   }
 
   .mos-disclosure-aside {

@@ -4,7 +4,10 @@ import { AdvancedPanel, Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelL
 import { RecoveryKeySecret, type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
 import { postJson } from '../../lib/api';
 import { whenWords } from '../../lib/dates';
+import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
 import { type VaultStartup } from '../../lib/vault';
+import { pickerOffers, useStorage } from '../storage/model';
+import { StoragePicker } from '../storage/StoragePicker';
 import {
   RETENTION_OPTIONS,
   WEEKDAY_NAMES,
@@ -19,8 +22,8 @@ import {
   type Archive,
   type ArchiveKey,
   type BackupEntry,
+  type AutomaticPlace,
   type BackupSchedule,
-  type DestinationView,
   type RecoveryKeyState,
   type RotationResult,
 } from './model';
@@ -28,34 +31,63 @@ import {
 // The archive a key dialog is about: its id, the place it is on, and which kind of place that is.
 export type ArchiveRef = { id: string; label: string; placeKind: 'disk' | 'object' };
 
-// Taking a backup by hand. The destination was chosen before this opened, so all
-// that is left is the note and the go-ahead.
-export function BackupDialog({ busy, note, onCancel, onChange, onStart, target }: {
+const NO_STORAGE = <><strong>Nothing to back up to yet</strong><p className="suite-meta">Plug in a drive or connect storage online in <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Settings → Storage</a>, and it is listed here.</p></>;
+
+// The place a picker starts on: the default backup destination when it can take
+// a backup now, else the first place that can.
+function startingPlace(storage: ReturnType<typeof useStorage>['storage'], names: ReturnType<typeof useStorage>['names'], preferred: string) {
+  const offers = pickerOffers(storage || [], 'backups', { backupsKnown: true, names }).filter((offer) => offer.selectable);
+  return offers.find((offer) => offer.entry.id === preferred)?.entry.id || offers[0]?.entry.id || '';
+}
+
+// Taking a backup by hand: where it goes, an optional note, and the go-ahead.
+// With no default backup destination yet, the place picked becomes it unless unticked.
+export function BackupNowDialog({ auto, busy, onCancel, onStart }: {
+  auto: AutomaticPlace | null;
   busy: string;
-  note: string;
   onCancel: () => void;
-  onChange: (next: string) => void;
-  onStart: () => void;
-  target: DestinationView;
+  onStart: (choice: { destinationId: string; makePrimary: boolean; note: string }) => void;
 }) {
+  const { inventory, names, storage } = useStorage();
+  const [picked, setPicked] = useState('');
+  const [note, setNote] = useState('');
+  const [makePrimary, setMakePrimary] = useState(!auto);
+  const chosen = picked || startingPlace(storage, names, auto?.id || '');
+  const working = busy === 'backup';
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={onStart} type="button">
-        {busy === 'backup' ? <><Spinner />Starting</> : 'Start backup'}
+      <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={working || !chosen} onClick={() => onStart({ destinationId: chosen, makePrimary: makePrimary && !auto, note })} type="button">
+        {working ? <><Spinner />Starting</> : 'Start backup'}
       </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
-    onClose={() => { if (!busy) onCancel(); }}
+    onClose={() => { if (!working) onCancel(); }}
     title="Back up now"
   >
-    <p>This copies your whole suite to <strong>{target.label}</strong>. Your apps pause for a few minutes and come back on their own.</p>
+    <StoragePicker
+      backupsKnown={inventory?.backupsKnown === true}
+      busy={working}
+      context="backups"
+      empty={NO_STORAGE}
+      label="Where this backup goes"
+      names={names}
+      onChange={setPicked}
+      question="Where should this backup go?"
+      storage={storage}
+      value={chosen}
+    >
+      <p className="suite-meta">A copy of your whole suite, encrypted so only your recovery key opens it. Your apps pause for a few minutes and come back on their own.</p>
+    </StoragePicker>
+    {auto ? null : <Checkbox checked={makePrimary} disabled={working} onChange={(event) => setMakePrimary(event.currentTarget.checked)}>
+      Also make this the default backup destination, for scheduled backups and the one before every MOS update.
+    </Checkbox>}
     <TextArea
       helperText="Shown next to this restore point later, so you can tell them apart."
       label="Add a note (optional)"
       maxLength={200}
-      onChange={(event) => onChange(event.currentTarget.value)}
+      onChange={(event) => setNote(event.currentTarget.value)}
       placeholder="e.g. Before the holiday"
-      rows={3}
+      rows={2}
       value={note}
     />
   </Dialog>;
@@ -277,35 +309,41 @@ export function RecoveryKeyDialog({ archives, busy, error, keyState, mode, onAck
 
 // When automatic backups run and how many are kept. Where they go is the place
 // selected on the page, stated here as a fact.
-export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
+// When automatic backups run, how many they keep, and the default backup
+// destination they go to, which the backup before a MOS update uses too.
+export function ScheduleDialog({ auto, busy, onCancel, onSave, schedule }: {
+  auto: AutomaticPlace | null;
   busy: string;
   onCancel: () => void;
-  onSave: (next: Partial<BackupSchedule>) => void;
+  onSave: (next: Partial<BackupSchedule> & { destinationId: string }) => void;
   schedule: BackupSchedule;
-  selected: DestinationView | null;
 }) {
+  const { inventory, names, storage } = useStorage();
   const [draft, setDraft] = useState<BackupSchedule>(schedule);
+  const [picked, setPicked] = useState('');
   const zone = draft.timeZone || browserTimeZone();
   const change = (next: Partial<BackupSchedule>) => setDraft((current) => ({ ...current, ...next }));
+  // A default that is not connected right now stays chosen until another is picked.
+  const destinationId = picked || (auto && !auto.place ? auto.id : startingPlace(storage, names, auto?.id || ''));
+  const working = busy === 'schedule';
 
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => onSave(draft)} type="button">
-        {busy === 'schedule' ? <><Spinner />Saving</> : 'Save'}
+      <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={working || (draft.enabled && !destinationId)} onClick={() => onSave({ ...draft, destinationId })} type="button">
+        {working ? <><Spinner />Saving</> : 'Save'}
       </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
-    onClose={() => { if (!busy) onCancel(); }}
+    onClose={() => { if (!working) onCancel(); }}
     title="Automatic backups"
   >
-    <Checkbox checked={draft.enabled} disabled={Boolean(busy) || !selected} onChange={(event) => change({ enabled: event.currentTarget.checked })}>
+    <Checkbox checked={draft.enabled} disabled={working} onChange={(event) => change({ enabled: event.currentTarget.checked })}>
       Back up on a schedule
     </Checkbox>
-    {selected ? null : <Notice title="Pick a place first" variant="warning"><p>Choose where backups should go on the page behind this, then turn the schedule on.</p></Notice>}
 
     {draft.enabled ? <>
       <Select
-        disabled={Boolean(busy)}
+        disabled={working}
         label="How often"
         onChange={(event) => change({ frequency: event.currentTarget.value === 'weekly' ? 'weekly' : 'daily' })}
         value={draft.frequency}
@@ -314,7 +352,7 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         <option value="weekly">Once a week</option>
       </Select>
       {draft.frequency === 'weekly' ? <Select
-        disabled={Boolean(busy)}
+        disabled={working}
         label="Day"
         onChange={(event) => change({ weekday: Number(event.currentTarget.value) })}
         value={String(draft.weekday)}
@@ -322,7 +360,7 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         {WEEKDAY_NAMES.map((name, index) => <option key={name} value={String(index)}>{name}</option>)}
       </Select> : null}
       <TextInput
-        disabled={Boolean(busy)}
+        disabled={working}
         helperText={`Times are in ${zone}, the zone of the browser that set this.${browserTimeZone() === zone ? '' : ` This browser is on ${browserTimeZone()} time.`}`}
         label="At"
         onChange={(event) => {
@@ -334,7 +372,7 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         value={clockValue(draft)}
       />
       <Select
-        disabled={Boolean(busy)}
+        disabled={working}
         helperText="Restore points you took yourself are never removed."
         label="Keep"
         onChange={(event) => change({ keepLast: Number(event.currentTarget.value) })}
@@ -342,8 +380,22 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
       >
         {RETENTION_OPTIONS.map((option) => <option key={option.value} value={String(option.value)}>{option.label}</option>)}
       </Select>
-      <p className="suite-meta">They go to {selected ? selected.label : 'nowhere yet'} — the place selected on the page. Change that there, not here.</p>
     </> : null}
+
+    <StoragePicker
+      backupsKnown={inventory?.backupsKnown === true}
+      busy={working}
+      context="backups"
+      empty={NO_STORAGE}
+      label="Default backup destination"
+      names={names}
+      onChange={setPicked}
+      question="Default backup destination"
+      storage={storage}
+      value={destinationId}
+    >
+      <p className="suite-meta">Scheduled backups go here, and so does the one MOS takes before every update.{auto && !auto.place ? ` ${auto.label} is not connected right now; automatic backups wait for it.` : ''}</p>
+    </StoragePicker>
   </Dialog>;
 }
 

@@ -108,9 +108,9 @@ test('forgetting drops a drive no app reads and keeps one an app does', () => {
   assert.equal(store.forgetDrive('DRIVE-0001'), false);
 });
 
-test('a drive is remembered while an app reads it, backups go to it, or it is kept open', () => {
+test('a drive is remembered while an app reads it or it is kept open, and backups alone do not keep it', () => {
   assert.equal(isRememberedDrive({ apps: ['media-app'] }), true);
-  assert.equal(isRememberedDrive({ apps: [], backups: true }), true);
+  assert.equal(isRememberedDrive({ apps: [], backups: true }), false);
   assert.equal(isRememberedDrive({ apps: [], keepOpen: true }), true);
   assert.equal(isRememberedDrive({ apps: [], name: 'Spare' }), false);
   assert.equal(isRememberedDrive(null), false);
@@ -119,5 +119,5 @@ test('a drive is remembered while an app reads it, backups go to it, or it is ke
 test('a bucket leaves the agent with its access key id and without its secret', () => {
   const shown = publicBucket(BUCKET);
   assert.equal('secretAccessKey' in shown, false);
-  assert.deepEqual(shown, { accessKeyId: BUCKET.accessKeyId, backups: true, bucket: 'family', createdAt: BUCKET.createdAt, endpoint: BUCKET.endpoint, folder: 'home', id: BUCKET.id, label: BUCKET.label, region: 'eu-central-1' });
+  assert.deepEqual(shown, { accessKeyId: BUCKET.accessKeyId, bucket: 'family', createdAt: BUCKET.createdAt, endpoint: BUCKET.endpoint, folder: 'home', id: BUCKET.id, label: BUCKET.label, region: 'eu-central-1' });
 });
