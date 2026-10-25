@@ -132,8 +132,8 @@ function AppGuidePanel({
   </aside>;
 }
 
-export function InstallButton({ disabled, installing, onClick, unmet = [] }: { disabled: boolean; installing: boolean; onClick: () => void; unmet?: UnmetRequirement[] }) {
-  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : 'Install'}</button>;
+export function InstallButton({ disabled, installing, label = 'Install', onClick, unmet = [] }: { disabled: boolean; installing: boolean; label?: string; onClick: () => void; unmet?: UnmetRequirement[] }) {
+  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : label}</button>;
   return unmet.length ? <Tooltip label={unmet.map((item) => item.reason).join(' ')}>{button}</Tooltip> : button;
 }
 
@@ -378,7 +378,7 @@ export function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading || updateRunning} onClick={() => void prepareUpdate()} type="button">{updateRunning ? 'Updating...' : comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : incomplete ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onInstall(app, { showOnHomepage: resumeHomepage })} type="button">{installing ? 'Installing...' : 'Finish install'}</button> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : incomplete ? <InstallButton disabled={installing} installing={installing} label="Finish install" onClick={() => onInstall(app, { showOnHomepage: resumeHomepage })} unmet={app.unmetRequirements} /> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating || updateRunning} items={maintenanceActions} /> : null}

@@ -596,6 +596,28 @@ test('the Apps list says why an app cannot be installed on this server, and says
   store.close();
 });
 
+test('an app whose address a Homepage link serves is refused before anything is installed, and the Apps list names the link', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const homeLinks = new Map([['immich', 'NAS photos']]);
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() { throw new Error('should not be called'); },
+      async status() { return agentStatus(); },
+    },
+    appsDir: v2AppsDir,
+    homeLinks: async () => homeLinks,
+    store,
+  });
+  const unmetFor = (id) => service.listPackages({ baseHost: 'mos.example.com', homeLinks }).find((app) => app.id === id).unmetRequirements;
+
+  assert.deepEqual(unmetFor('immich'), [{ id: 'address', reason: 'immich.mos.example.com is used by your Homepage link NAS photos. Rename or remove that link first.' }]);
+  assert.deepEqual(unmetFor('vaultwarden'), []);
+  await assert.rejects(() => service.installPackage('immich'), (error) => error.code === 'APP_ROUTE_HOST_TAKEN' && /NAS photos/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('immich'), null);
+  store.close();
+});
+
 test('an external app updates from its own source through the same update transaction, and its access increase needs consent', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));

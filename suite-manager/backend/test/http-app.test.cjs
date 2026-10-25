@@ -888,6 +888,8 @@ test('Installed app packages can be added to Homepage through the existing agent
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
+    // Installing and applying read the links too, to keep the app off an address one holds.
+    calls.length = 0;
     const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
