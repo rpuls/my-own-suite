@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-10-06T19:10:00.000Z",
+  "reviewedAt": "2026-10-25T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.5",
-    "packageDigest": "sha256:5c09d5db572105b2412f16d520a8f42aeeb36d7a4cff63daf8ff0a51651ba638",
+    "packageVersion": "0.3.6",
+    "packageDigest": "sha256:5cd5002cf6233538bb860d9be380cc5b022e2a3baa01e49ef43d5aa2b5f92c69",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Paperless-ngx",
-        "version": "3.3.0",
+        "version": "3.3.4",
         "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
-        "digest": "sha256:6b94799bc769a063b3340cc5847402e626d4d91d29a295a8e747f8e9bead4207"
+        "digest": "sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969"
       },
       {
         "name": "Valkey",
@@ -156,6 +156,18 @@
       "claim": "A packet capture inside the 3.3.0 package container's network namespace, attached under a second after start, covered first boot with migrations and superuser creation, a document upload, OCR, full-text search and the settings, config, tasks and statistics endpoints, and recorded no connection to any public address. The only external conversations were the reviewer's own deliberate calls: a request to /api/remote_version/, which reached GitHub as RemoteVersionView documents, and a control request to example.org that confirmed the capture saw egress. This was a local docker run with the package's environment rather than the MOS runtime projection, and DNS was not recorded because Docker's resolver forwards outside the container; the MOS E2E network step is the authoritative check.",
       "source": "local tcpdump of the apps/paperless-ngx 0.3.4 Dockerfile build, observed 2026-10-06",
       "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "documented",
+      "claim": "Paperless-ngx 3.3.0 to 3.3.4 adds no outbound endpoint. The set of http(s) hosts in the server's Python source and in the compiled en-US web client is identical in the two pinned images, the changed server files are permission, versioning, search, exporter and settings-parsing fixes, and RemoteVersionView remains the only hardcoded fetch. The suggestions button is no longer tied to AI being enabled, but with AI off /api/documents/<id>/suggestions/ answers from the local classifier. The image's other changes are dependency bumps (Pillow 12.3.0 to 13.0.0, aiohttp 3.14.3 to 3.14.4, certifi 2026.1.4 to 2026.10.19, filelock 3.32.6 to 4.0.12, Python 3.14.8 to 3.14.9) and a newer Debian trixie snapshot whose CA bundle drops the emSign and Comodo AAA roots, which only narrows what owner-configured mail or AI connections will trust.",
+      "source": "diff of /usr/src/paperless/src and /etc between the pinned 3.3.0 (sha256:6b94799bc769a063b3340cc5847402e626d4d91d29a295a8e747f8e9bead4207) and 3.3.4 (sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969) images, and installed package metadata in each",
+      "retrievedAt": "2026-10-25"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture inside the 3.3.4 package container's network namespace, attached about a second after it started on volumes left by 3.3.0, covered the search index rebuild, an upload with Dutch and English OCR, search, the suggestions, thumbnail, preview and download endpoints, and the settings, config, tasks, statistics and status endpoints. The only DNS name it resolved was the internal alias 'broker', and every conversation was with the broker, Docker's resolver or the published port. A control request to example.org from the same container appeared in a second capture, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
+      "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.3.4, observed 2026-10-25",
+      "retrievedAt": "2026-10-25"
     }
   ],
   "outbound": [],
@@ -202,5 +214,14 @@
     "The capture was taken over loopback, so browser requests carried localhost as their origin. A deployment reached through a public domain would send that domain in Referer and Origin headers to any external host it contacted; no external host was contacted, so nothing was observed leaving, but the reasoning is an inference from the absence of destinations rather than a measurement against a domain-based install.",
     "The packet capture attached about three seconds after the containers started. Database migrations, superuser creation and the application's own startup all fall inside the window, since Paperless takes considerably longer than that to answer, but the first few seconds of container life are not covered.",
     "Features an owner can add after installation are outside this result: mail accounts, which would connect to an IMAP server every ten minutes; AI suggestions and document chat through an OpenAI-compatible service or Ollama; remote OCR through Azure AI; and documents deposited into the consume volume by a scanner. MOS configures none of them and exposes none in its install form, and the review deliberately does not disable them."
+  ],
+  "security": [
+    {
+      "type": "documented",
+      "claim": "GHSA-c8f3-pqr2-rr24 (moderate, CVSS 4.3) let an AI classification workflow processing an ownerless document send other users' private document titles and excerpts to the configured AI provider; it is fixed in 3.3.2 and only reachable when an owner has turned AI on, which MOS does not. 3.3.4 also updates Pillow, which reads every uploaded image and builds every thumbnail, and aiohttp for upstream-reported vulnerabilities; this package runs 3.3.4.",
+      "source": "Paperless-ngx security advisories and the v3.3.2 and v3.3.4 release notes",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/security/advisories/GHSA-c8f3-pqr2-rr24",
+      "retrievedAt": "2026-10-25"
+    }
   ]
 }
