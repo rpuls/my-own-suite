@@ -133,7 +133,8 @@ function signatureOf(found) {
 }
 
 class StorageService {
-  constructor({ appAgent, backupAgent, driveJobs = null, names = () => new Map(), watchIntervalMs = WATCH_INTERVAL_MS }) {
+  constructor({ appAgent, backupAgent, driveJobs = null, names = () => new Map(), onChanged = () => {}, watchIntervalMs = WATCH_INTERVAL_MS }) {
+    this.onChanged = onChanged;
     this.appAgent = appAgent;
     this.backupAgent = backupAgent;
     this.driveJobs = driveJobs;
@@ -166,7 +167,10 @@ class StorageService {
       const found = await Promise.resolve(this.appAgent.storageInventory()).catch(() => null);
       if (!found) return;
       const signature = signatureOf(found);
-      if (this.lastSignature !== null && signature !== this.lastSignature) for (const listener of this.listeners) listener();
+      if (this.lastSignature !== null && signature !== this.lastSignature) {
+        this.onChanged();
+        for (const listener of this.listeners) listener();
+      }
       this.lastSignature = signature;
     } finally {
       this.watching = false;
