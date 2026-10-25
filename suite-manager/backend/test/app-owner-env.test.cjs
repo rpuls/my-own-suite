@@ -270,10 +270,7 @@ test('a change that stops the app coming back healthy restores the previous envi
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   t.after(() => store.close());
-  // A clock that advances a minute per read, so the bounded health wait gives up
-  // on its second look instead of sleeping through the real 90-second window.
-  let tick = 0;
-  const now = () => new Date(Date.UTC(2026, 7, 30) + (tick++ * 60_000));
+  const now = minutePerRead();
   const agent = recordingAgent({ fatal: { name: 'BREAKS_STARTUP', value: 'yes' } });
   const { service } = await installedPaperless(root, store, { agent, now });
   const instanceId = store.getAppInstanceByPackageId('paperless-ngx').id;
@@ -447,8 +444,14 @@ const IMMICH_DRIVES = [
   { connected: true, id: '5E6F-7A8B', label: 'SPARE', usable: true },
 ];
 
-async function installedImmich(store, agent) {
-  const service = new AppPackageService({ agent: { ...agent, async storageInventory() { return { drives: IMMICH_DRIVES }; } }, appsDir: v2AppsDir, store });
+// Each read moves a minute on, so the bounded health wait gives up on its second look.
+function minutePerRead() {
+  let tick = 0;
+  return () => new Date(Date.UTC(2026, 7, 30) + (tick++ * 60_000));
+}
+
+async function installedImmich(store, agent, { now } = {}) {
+  const service = new AppPackageService({ agent: { ...agent, async storageInventory() { return { drives: IMMICH_DRIVES }; } }, appsDir: v2AppsDir, now, store });
   await service.installPackage('immich', { config: { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' } });
   await service.applyPackageRuntime('immich', requestContext().publicUrlFor('immich'));
   return service;
@@ -511,7 +514,7 @@ test('a drive added in settings that stops the app is put back with the rest of 
       if ((agent.state.compose?.services || []).some((item) => item.folders?.length)) throw new Error('container exited');
       return { status: 'healthy' };
     },
-  });
+  }, { now: minutePerRead() });
 
   const saved = await service.savePackageEnvironment('immich', { drive: '1A2B-3C4D', entries: [] }, requestContext().publicUrlFor('immich'));
 
