@@ -19,6 +19,7 @@ function homepageConfig(agent, appHosts = () => new Map()) {
 test('a home service cannot take the address an installed app is served at', async () => {
   const config = homepageConfig({ async addHomeService() { throw new Error('should not be called'); } }, () => new Map([['jellyfin', 'Jellyfin']]));
   assert.throws(() => config.add({ entry: { subdomain: 'Jellyfin' } }, true), (error) => error.code === 'DUPLICATE_PUBLIC_HOST' && /Jellyfin's address/u.test(error.message));
+  assert.throws(() => config.previewHomeService({ host: '192.168.1.3', port: 8096, protocol: 'http', subdomain: 'jellyfin' }), { code: 'DUPLICATE_PUBLIC_HOST' });
 });
 
 test('Homepage customization APIs require authentication and pass only structured operations', async () => {
