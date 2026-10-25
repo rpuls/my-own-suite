@@ -1012,12 +1012,11 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       // Disconnecting forgets how to reach the bucket and never deletes what is in it.
+      // Automatic backups that went there stop until the owner picks another place.
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/remove') {
         const body = await readBody(request);
-        if (primary.read()?.destinationId === body.destinationId) {
-          throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
-        }
         const removed = objectRegistry.remove(String(body.destinationId || ''));
+        if (primary.read()?.destinationId === removed.id) primary.clear();
         destinationResolver.forget(removed.id);
         respond(response, 200, { destination: publicObjectDestination(removed) });
         return;

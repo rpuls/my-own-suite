@@ -203,6 +203,7 @@ export function DisconnectDialog({ entry, onClose, onDisconnected }: { entry: St
     title={`Disconnect ${entry.name}?`}
   >
     <p>MOS forgets how to reach this storage. Nothing in it is deleted: connect it again and the backups in it are listed again.</p>
+    {entry.backups?.primary ? <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice> : null}
     {error ? <Notice title="Still connected" variant="error"><p>{error}</p></Notice> : null}
   </Dialog>;
 }

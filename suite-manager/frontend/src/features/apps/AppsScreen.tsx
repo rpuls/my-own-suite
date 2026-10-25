@@ -232,7 +232,8 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
   async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; drive?: string | null; showOnHomepage?: boolean } = {}) {
     const setupConfig = options.config || {};
-    const canInstall = app.validation.valid && !app.packageErrors?.length && !requiredSetupMissing(app, setupConfig);
+    // Resuming an install asks for nothing: its settings were stored the first time.
+    const canInstall = app.validation.valid && !app.packageErrors?.length && (Boolean(app.instance) || !requiredSetupMissing(app, setupConfig));
     if (!canInstall) return;
     const showOnHomepage = hasHomepageContribution(app) && options.showOnHomepage !== false;
     setSelectedId(app.id);

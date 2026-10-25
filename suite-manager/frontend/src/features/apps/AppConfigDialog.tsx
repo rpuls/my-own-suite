@@ -401,7 +401,7 @@ export function AppConfigDialog({
       </button>
       {running
         ? <button className="mos-btn mos-btn-primary" disabled={busy || !unsaved} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
-        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, drive: choosesDrive && drive ? drive : null, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, drive: choosesDrive && drive ? drive : null, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : resuming ? 'Finish install' : 'Install'}</button>}
     </>}
     onClose={() => { if (!busy) onClose(); }}
     title={running ? `${appName} settings` : `Install ${appName}`}
@@ -597,7 +597,7 @@ export function AppConfigDialog({
     </Rows>
 
     {resuming ? <p className="mos-row-help">
-      {appName} was set up but never finished starting. Install it again to pick up where it stopped &mdash;
+      {appName} was set up but never finished starting. Finish install picks up where it stopped &mdash;
       the settings above are already saved and are not asked for twice.
     </p> : null}
     {!canInstall ? <p className="mos-row-help mos-row-help-permanent">
