@@ -242,10 +242,15 @@ docker rm "$caddy_builder_container"
 docker image rm ${CADDY_BUILD_IMAGES.join(' ')} >/dev/null 2>&1 || true
 chmod 0755 /usr/local/libexec/mos/caddy.next
 mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
-${CADDY_REQUIRED_MODULES.map((module) => `if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^${module}$'; then
+# Read once into a file: grep -q quits at its first match, and under pipefail the
+# list-modules it cut off would fail this check at random.
+caddy_modules="$(mktemp)"
+/usr/local/libexec/mos/caddy list-modules > "$caddy_modules"
+${CADDY_REQUIRED_MODULES.map((module) => `if ! grep -qxF '${module}' "$caddy_modules"; then
   echo '[mos] The repo-built Caddy binary is missing ${module}.' >&2
   exit 1
 fi`).join('\n')}
+rm -f "$caddy_modules"
 
 # The backup agent runs the storage engine binary, which lives beside Caddy and
 # is not a package. reconcile-system.cjs installs it on every managed update; a
