@@ -95,6 +95,7 @@ class HomepageService {
   }
 
   previewHomeService(body) {
+    this.assertSubdomainFree(body?.subdomain);
     const proxy = validateProxy({
       subdomain: body?.subdomain,
       upstream: `${body?.protocol}://${body?.host}:${body?.port}`,
