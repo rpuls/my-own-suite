@@ -320,3 +320,14 @@ test('a comparison with no peer facts reports no requirements at all', () => {
   assert.deepEqual(comparison.requirements, []);
   assert.equal(comparison.compatibility, 'compatible');
 });
+
+test('an update needing a newer MOS is refused unless its minimum is already met', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('2.0.0', (manifest) => ({ ...manifest, minimumMosVersion: '0.12.0' }));
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const input = { agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' };
+  const refused = compareAppPackages(input);
+  assert.equal(refused.compatibility, 'unsupported');
+  assert.deepEqual(refused.validation.errors, ['Package requires MOS 0.12.0 or newer; current version is 0.11.0.']);
+  assert.equal(compareAppPackages({ ...input, minimumMosMet: true }).compatibility, 'compatible');
+});

@@ -1013,12 +1013,17 @@ class AppPackageService {
     return candidate;
   }
 
+  // For MOS's own packages; one from an added source is always held to the version.
+  meetsMinimumMos(minimum) {
+    return this.catalogService?.meetsMinimumMos?.(minimum) ?? compareSemver(this.platformVersion, minimum || '0.0.0') >= 0;
+  }
+
   checkoutAvailableFor(packageId, summary) {
     const packageDir = path.join(this.appsDir, packageId);
-    const minimumMosVersion = summary.minimumMosVersion || '0.0.0';
     return {
       appVersion: summary.appVersion,
-      compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+      // Written for the very code this server runs, whatever VERSION says until the release.
+      compatibility: 'compatible',
       minimumMosVersion: summary.minimumMosVersion || '',
       packageDigest: digestAppPackage(packageDir),
       packageVersion: summary.version,
@@ -1079,6 +1084,7 @@ class AppPackageService {
       }
       return {
         ...appPackage,
+        channel: 'checkout',
         cleanup: () => releaseCandidateDir(candidateDir),
         packageDigest,
         // `revision` stands in as the package digest exactly as it does on the

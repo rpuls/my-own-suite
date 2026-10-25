@@ -622,3 +622,13 @@ test('a ref that cannot be resolved refuses the fetch instead of guessing a bran
   await assert.rejects(() => service.refresh(), { code: 'CATALOG_REF_UNRESOLVED' });
   assert.equal(service.catalog(), null);
 });
+
+test('a stable server is held to a package minimum MOS version, a server on a branch is not', () => {
+  const service = catalogService({ platformVersion: '0.22.0', stateDir: tempDir() });
+  assert.equal(service.meetsMinimumMos('0.23.0'), false, 'before any catalog is read');
+  service.cache = { ref: 'main' };
+  assert.equal(service.meetsMinimumMos('0.23.0'), false);
+  assert.equal(service.meetsMinimumMos('0.22.0'), true);
+  service.cache = { ref: 'staging' };
+  assert.equal(service.meetsMinimumMos('0.23.0'), true);
+});
