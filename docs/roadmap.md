@@ -33,8 +33,8 @@ rely on. Those three are contracts now, and the theme stays for what the gate ne
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
 disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path
 (`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the items below, which
-the gate never covered: a backup taken before an update without being asked, and a cleanup story for
-volumes MOS does not own.
+the gate never covered: a cleanup story for volumes MOS does not own, and a replacement machine
+taking the address of the one it replaces.
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
@@ -45,10 +45,6 @@ restore from a real provider (`docs/decisions.md`, 2026-09-06). The owner holds 
 all of it, and a replacement machine can take over a destination the original wrote (`docs/decisions.md`,
 2026-09-07).
 
-- **A4 — Pre-update backups and last-known-good protection.** `#282`. Built and unit-covered
-  (`docs/decisions.md`, 2026-09-09): a MOS update takes a backup of the whole suite first, waits
-  rather than fails when the destination is not connected, and the two queues now refuse each other.
-  Open only until the lab drill confirms it end to end. *(Small)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
@@ -132,7 +128,7 @@ act on.
   cannot run the advertised Seafile + ONLYOFFICE pair. Also rewrites getting-started's overspecific
   "roughly the price of the subscriptions you're replacing" line. Must cover **disk capacity**, not
   only CPU and RAM: nothing in the docs currently says how much storage a plan includes, block storage
-  is billed per GB at every provider, and app data cannot be moved off the root disk today — so a
+  is billed per GB at every provider, and only an app's own folders can move off the root disk — so a
   reader arriving from Google Photos has no way to predict either the size or the bill. This is where
   own hardware is the honest answer for large libraries. *(Small)*
 - **C3 — App-install duration expectations.** `#235`. First installs of heavy apps take up to ~10
@@ -143,12 +139,6 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C8 — Say how long a backup check or restore takes, and show it happening.** `#280`. A check
-  and a restore each run 10–20 minutes on ordinary hardware, the only expectation set is "a long
-  time", and for most of a restore the owner is looking at the static busy page, which knows nothing.
-  The agent already logs every stage with a timestamp; what is missing is an estimate before the
-  owner commits, live stages on the busy page, and a per-phase progress indicator. The measured
-  lesson: restore time is dominated by rebuilding app images, not by gigabytes. *(Medium)*
 - **C9 — Say why a pasted package URL could not be fetched.** When the repository behind a
   pasted source URL answers 404 or cannot be reached, Suite Manager already has the sentence (the
   HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
@@ -173,12 +163,6 @@ theme retires.
 2026-08-16 decision records the contract. What is left in this theme is the part an image cannot fix
 on its own: machines that install but will not boot, and reaching the suite once it is running.
 
-- **H10 — The installer writes no boot entry for the disk it just wrote.** `mos-image-finalize` uses
-  `grub-install --removable`, which is right for a stick and leaves a fixed disk depending on firmware
-  that tries `EFI/BOOT/BOOTX64.EFI` on its own. The ones that do not say *no bootable drive* with the
-  stick out and boot normally with it in — which reads as a failed install and is what the multi-disk
-  picker now makes more likely, since the firmware has more disks to guess between. `mos-self-install`
-  should add an `efibootmgr` entry for the disk it wrote. *(Small)*
 - **H9 — Re-render app routes when the machine's address changes.** The Easy Door name encodes the LAN
   IP. Suite Manager survives a DHCP move because its site block matches any private address, but every
   installed app's route names one exact host and is only re-rendered when that app is next applied — so
@@ -222,18 +206,13 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL2 — Encryption at rest for own-hardware installs.** `#278`. Decided and built
-  (`docs/decisions.md`, 2026-09-18): a plaintext system partition, everything of the owner's in a
-  TPM-sealed LUKS2 vault, the key handed over at setup beside the server login, a page that asks for
-  it when the chip refuses, and an optional switch that makes the chip demand the owner's password
-  after every restart. Open until the lab drills pass: first boot on a machine with a TPM and one
-  without, a power cut in each mode, a wrong key, a wrong password until the chip locks out, a
-  password change in password mode, the disk moved to another machine, a takeover restore onto a
-  machine that has a vault, a firmware setting changed so the chip refuses and the machine re-seals
-  itself after one key entry, the locked page served over HTTPS with a 40-character password accepted
-  end to end, and the two that prove the theft claim — boot a signed live USB, and edit the plaintext
-  root offline and boot it back, in both modes, recording that both succeed in the default one so the
-  claim made there is written from evidence. *(Small)*
+- **AL2 — Finish the vault's lab drills.** The vault shipped in 0.21.0 (`docs/decisions.md`, 2026-09-18)
+  and held through the 2026-10-02 drill on the HP and a production restore onto it. Still owed: first
+  boot on a machine without a TPM, a power cut in each mode, a wrong key, a wrong password until the
+  chip locks out, a password change in password mode, the disk moved to another machine, a takeover
+  restore onto a machine that has a vault, a firmware change the machine re-seals itself after, the
+  locked page over HTTPS with a 40-character password, and the two that prove the theft claim — boot a
+  signed live USB, and edit the plaintext root offline and boot it back, in both modes. *(Small)*
 - **AL13 — The five owner-facing decisions the vault slice left open.** Each one is a small change
   whose shape is a choice rather than a fix, raised by the 2026-09-25 branch review and deliberately
   not built with it. (a) The handover page currently offers Ubuntu recovery mode as the way back
@@ -265,10 +244,11 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-C — Storage
 
-- **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so
-  the system disk is the ceiling and attaching a larger volume does nothing for it. Documented as a
-  manual pre-install mount for now (`cloud-server.mdx`), which does not help an existing install and
-  cannot vary per app. The durable answer is MOS choosing where each app's volumes live. *(Large)*
+- **AL8 — Per-app volume placement.** Since 0.23.0 an app's own folders live on a drive the owner
+  picks (`docs/decisions.md`, 2026-10-17), which is where a media library belongs. Everything else an
+  app keeps, such as its database and configuration, still lives on whichever disk the container
+  runtime uses, so for those the system disk is the ceiling. The durable answer is MOS choosing where
+  each app's volumes live. *(Large)*
 
 ### AL-U — App updates
 
@@ -303,7 +283,7 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
+**B1** human sign-off on privacy reviews · **E3** signed release and installer
 artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers. Alpha is
 where these stop being roadmap and become the bar.
 
@@ -368,15 +348,6 @@ the update or install path requires SSH.
   `--cap-drop`, `--security-opt`, or `--user` is set anywhere today, and single-service apps sit on
   the default bridge. MOS enforces strictly at the gate and not at all at runtime; doing both is
   achievable and unmatched among comparable platforms. *(Large)*
-
-### G. Ops hygiene
-
-**Gate:** the claim-drift class the July 2026 audit found cannot recur silently.
-
-- **G1 — Automated stale-wording checks for active documentation.** `#224`. The audit's core finding
-  was that claims outlived the facts and lived in more places than the facts did. *(Small)*
-- **G2 — Site link, accessibility, and clean-build checks in CI.** `#225`. Clean-build landed with the
-  deployment cutover; links and a11y did not. *(Small)*
 
 ---
 

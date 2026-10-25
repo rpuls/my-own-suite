@@ -20,6 +20,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **Paperless-ngx package 0.3.6 updates Paperless-ngx to 3.3.4, a security update.** It patches Pillow, which reads every image you upload, and aiohttp, stops trusting the withdrawn emSign certificates, and fixes permissions on document versions, combined text and filter searches, and exports whose file names differ only by extension. The first start after the update rebuilds the search index, so a large archive takes a little longer to come back; there are no database migrations, and going back to the previous package stays safe.
 - **Immich package 0.9.0 sets up its administrator for you and can show photos from your own drive.** A new install asks for the administrator's email and password instead of sending you to Immich's sign-up page, and its settings can add a drive whose Photos folder Immich shows as a library, read where it is and never changed. Updating asks once for your current Immich email and password.
 - **Radicale package 0.5.5 updates Radicale to 3.8.3.** Calendar apps that ask when you are busy get busy times without the events' details, as the CalDAV standard asks, and transparent repeating events no longer count as busy. Calendar sharing and groups, which 3.8.2 and 3.8.3 mostly fix, stay off.
+- **Suite Manager runs on React 19.3.1.** A patch release; nothing you see changes.
 
 ### Added
 

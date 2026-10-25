@@ -4,6 +4,26 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-10-25: A Server Off The Stable Track Counts Its Own Branch's Packages As Compatible
+
+Decision: A server whose catalog ref is not `main`, such as staging or a lab branch, counts an official package from that ref, or from its own checkout, as meeting `minimumMosVersion`. A stable server and every third-party source stay strict.
+
+Reason: Staging carries the next release's code under the current version number, so a package raised to the next release's minimum was refused on exactly the servers built to test it, and app updates had to wait for a release.
+
+Consequences:
+
+- **A staging server is not protected by the version check.** A package that really needs code staging lacks fails when it installs rather than being refused.
+
+## 2026-10-25: Stale Claims And Site Accessibility Are Gating Checks, And Site Links Are Reported
+
+Decision: `npm run docs:claims` and the site's accessibility run are entries in `scripts/checks.cjs`, so they gate every push, CI and the release. The site's link check runs in CI and reports to the job summary without gating.
+
+Reason: The July 2026 audit found claims outliving their facts. Gating on links blocked every merge for three days while finding one real broken link, because the check reaches about 110 hosts MOS does not run.
+
+Consequences:
+
+- **A broken link fails nothing.** It shows only in the CI job summary, so someone has to read it there.
+
 ## 2026-10-24: Backups Look In Every Place, And Only The Default Backup Destination Is Chosen
 
 Decision: There is no backup destination any more. Storage lists places, every connected drive in a format that holds backups and every bucket connection, and the backup agent treats them alike: it looks for archives in all of them and sorts what it finds into this server's and other servers'. **Back up now** picks any place; the first backup there creates this server's archive beside whatever other servers keep. The one stored choice is the **default backup destination** (`primary-destination.json`), set from the schedule or with a backup taken by hand, and used by scheduled backups and the backup before a MOS update; when it is not connected they wait and say so. A bucket holds any number of archives as a drive does, at `MOS-backups/archive-<8 hex>/repository`. Because a bucket has no folders to list and MOS speaks no S3 itself, each bucket keeps a catalog beside them, `MOS-backups/catalog`: a restic repository with a published password, holding one tagged snapshot per archive that names the server which made it, written before the archive's repository, as a drive's descriptor is. The archive 0.22 left at `MOS-backups/repository` is read where it lies, as the archive named `repository`. Storage adds and manages places; Backups never sets storage up.
