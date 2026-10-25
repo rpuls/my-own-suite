@@ -9,7 +9,7 @@ import { appSourceLabel } from '../../lib/app-sources';
 import { AppCard } from './AppCard';
 import { AppDetail } from './AppDetail';
 import { ExternalAppCard, ExternalAppDetail } from './ExternalApp';
-import { useStorage } from '../storage/model';
+import { useStorage, useStorageChanges } from '../storage/model';
 import { catalogFacts, categoryLabel, hasHomepageContribution, installJobError, installJobSteps, isCompanionApp, primaryCategory, repoUrlFromQuery, withMinimumInstallStep } from './model';
 import type { AppPackageSummary, CatalogStatus, ExternalCard, ExternalResolveResponse, ExternalSourceCoordinates, InstallStep } from './types';
 
@@ -37,6 +37,8 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalAddError, setExternalAddError] = useState('');
   // One reading of storage for every card, so a paused app says so in the list too.
   const { storage } = useStorage();
+  // A drive plugged in while an app is open can lift its storage requirement.
+  useStorageChanges(() => void load({ silent: true }));
 
   // Silent loads run in the background: they never flash the loading state and
   // never replace a working catalog view with a transient fetch error. A silent
