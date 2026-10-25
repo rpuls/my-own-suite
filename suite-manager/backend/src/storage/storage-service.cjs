@@ -150,7 +150,11 @@ class StorageService {
   // while one is open.
   subscribe(listener) {
     this.listeners.add(listener);
-    this.watchTimer ??= setInterval(() => void this.watch(), this.watchIntervalMs);
+    if (!this.watchTimer) {
+      // Looked at now, so a drive plugged in just after the page opened still counts as a change.
+      void this.watch();
+      this.watchTimer = setInterval(() => void this.watch(), this.watchIntervalMs);
+    }
     return () => {
       this.listeners.delete(listener);
       if (this.listeners.size) return;

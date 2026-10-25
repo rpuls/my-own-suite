@@ -130,3 +130,15 @@ test('an open page and the Apps drive count are told when a drive changes, and t
   unsubscribe();
   assert.equal(storage.watchTimer, null);
 });
+
+test('a drive plugged in just after a page opened is told as a change', async () => {
+  let drives = [];
+  const storage = new StorageService({ appAgent: { storageInventory: async () => ({ drives }) }, backupAgent: { status: async () => STATUS }, watchIntervalMs: 60_000 });
+  let told = 0;
+  const unsubscribe = storage.subscribe(() => { told += 1; });
+  await new Promise((resolve) => setImmediate(resolve));
+  drives = [FILMS];
+  await storage.watch();
+  assert.equal(told, 1);
+  unsubscribe();
+});
