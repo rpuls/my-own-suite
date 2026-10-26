@@ -20,9 +20,9 @@ export function AppHealthIndicator({ app, ledVariant = false, paused = false }: 
   </span>;
 }
 
-export function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
+export function AppIcon({ app, large = false, solid = false }: { app: AppPackageSummary; large?: boolean; solid?: boolean }) {
   const icon = appIconSrc(app);
-  return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
+  return <span className={`mos-app-icon suite-app-icon${large ? ' suite-app-icon-large' : ''}${solid ? ' mos-app-icon-solid' : ''}`} aria-hidden="true">
     {icon ? <img alt="" src={icon} /> : <span>{initialsFor(app.name)}</span>}
   </span>;
 }

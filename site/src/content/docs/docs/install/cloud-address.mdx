@@ -1,0 +1,46 @@
+---
+title: Your address on a cloud server
+description: A rented server gets a working web address and trusted HTTPS the moment it is installed, with no domain to buy. Here is how that works and what is public.
+---
+
+Your suite has an address that looks a bit odd:
+
+```
+https://home.203-0-113-9.sslip.io/
+```
+
+The numbers are your server's public address, `203.0.113.9`, with dashes instead of dots. Suite Manager always shows the whole address. This page explains why it looks like that, what it means, and how it differs from a server at home.
+
+You do not need to read this to use your suite. It is here for the moment you look at that address and think *hang on, what is that?*
+
+## The problem it solves
+
+Your suite is not one website. Every app you install gets its own address — `photos.…`, `files.…`, `documents.…` — because keeping them separate is what stops one app from being able to read another's data. That separation is a real security boundary, not a tidiness preference.
+
+For those addresses to work, something has to know that `photos.<something>` means *that server*. Normally a domain name does that job, and you buy one. Your suite works before you have one, because the address already contains the answer.
+
+## How the name works
+
+[sslip.io](https://sslip.io/) is a long-running public utility: any name that ends in an address plus `.sslip.io` points at that address, and so does every name under it. `home.203-0-113-9.sslip.io` and `photos.203-0-113-9.sslip.io` both point at `203.0.113.9`. There is nothing to set up and nothing to buy.
+
+It is run independently of us. When a device opens your suite, the question *what address is that?* goes to sslip.io's nameservers, which work the answer out from the name alone. Nothing of ours is involved: My Own Suite runs no nameserver and no other service for a rented server, and nothing about this address gives us a way in.
+
+## The lock in the address bar
+
+Your suite gets a certificate from Let's Encrypt, the same free certificate authority most of the web uses, and is served over `https://` from the first start. The first load can take a minute while the certificate is issued; if you see a brief certificate warning, wait and refresh. Certificates renew themselves.
+
+Because your server is reachable from the internet, Let's Encrypt checks it directly: it visits the address and sees your server answer. So the lock proves that the server at this address is the one you are talking to, which is more than the lock on a [home server](/docs/install/easy-address/#the-lock-in-the-address-bar) can prove.
+
+Let's Encrypt publishes every certificate it issues in public logs, so those logs show your server's address and when its certificate was renewed. They say that a server is behind it, not whose it is.
+
+## The address is public
+
+A rented server has a public address, so your suite is reachable from anywhere. That is what you are paying for, and it also means the sign-in page is reachable by anyone who knows or guesses the address. Your owner account is what keeps them out, so give it a password you use nowhere else.
+
+## Using your own domain
+
+You can buy a domain and use it instead. That gives you an address you chose. Point one DNS record at the server and MOS gets the certificates itself; no Cloudflare account is needed on a rented server. See [Use your own domain with HTTPS](/docs/guides/https-domain/#on-a-cloud-server). Your apps are moved across for you; you do not reinstall anything.
+
+## Compared with a server at home
+
+A server on your own hardware gets its address the same way, but the name points at a private address that only your own network can reach, and we run the naming for it. [HTTPS at home, how?](/docs/install/easy-address/) is that page.

@@ -3,6 +3,8 @@ title: Keep your suite up to date
 description: How updates work in My Own Suite — the platform and your apps update separately, nothing happens without your say-so, and a failed update puts things back.
 ---
 
+import UpdateFlowDetailed from '../../../../components/UpdateFlowDetailed.astro'
+
 Updates in My Own Suite come in two kinds, and it's worth knowing which is which:
 
 - **Platform updates** change MOS itself — Suite Manager, the host services, the plumbing. Managed from **Suite Manager → Updates**.
@@ -15,6 +17,10 @@ Neither kind happens on its own. MOS checks for updates in the background and te
 Underneath both sits Ubuntu, and MOS keeps that patched too — automatically, security fixes only, with restarts left to you. See [Keeping the operating system patched](#keeping-the-operating-system-patched) below.
 
 ## App updates
+
+### How an update reaches you
+
+<UpdateFlowDetailed />
 
 Your server periodically checks a signed catalog of app packages — every few hours — and compares what's available against what you actually have installed. When something newer exists, that app gets an **Update available** badge in the Apps screen.
 

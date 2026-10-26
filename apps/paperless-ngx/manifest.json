@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "appVersion": "3.3.4",
   "minimumMosVersion": "0.20.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",

@@ -357,7 +357,7 @@ export function AppDetail({
           <button aria-label="Close app details" className="suite-app-hero-pill is-round" onClick={onClose} type="button"><Icon name="x" /></button>
         </div>
         <div className="suite-app-detail-hero-bottom">
-          <AppIcon app={app} large />
+          <AppIcon app={app} large solid={Boolean(cover)} />
           <div className="suite-app-detail-heading">
             <div className="suite-app-detail-title-row">
               <h2>{app.name}</h2>

@@ -9,7 +9,7 @@ import { externalDescription, initialsFor, permissionLabel } from './model';
 import type { ExternalCard, ExternalSourceCoordinates } from './types';
 
 function ExternalAppIcon({ card, large = false }: { card: ExternalCard; large?: boolean }) {
-  return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
+  return <span className={`mos-app-icon suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
     {card.iconDataUrl ? <img alt="" src={card.iconDataUrl} /> : <span>{initialsFor(card.name)}</span>}
   </span>;
 }

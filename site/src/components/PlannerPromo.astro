@@ -11,24 +11,25 @@ import { PLANNER_PATH } from '../lib/links'
       <div class="planner-promo-copy">
         <div class="section-head" style="margin-bottom:0">
           <span class="mos-eyebrow">Free planning tool</span>
-          <h2 class="mos-section-title" id="planner-promo-title">Plan your digital independence</h2>
+          <h2 class="mos-section-title" id="planner-promo-title">Fair warning: self-hosting is addictive</h2>
           <p class="mos-body-lg planner-promo-intro">
-            Map the Big Tech services you rely on today, pick the open-source apps that will replace
-            them, and watch your journey take shape on a timeline. Then export the graphic and share
-            your plan — or your progress.
+            Ask anyone who does it. The first time you move a piece of your life off a Big Tech
+            service and into something you own, you'll want to do it again. And you'll want to show
+            off your stack. This little tool makes both easy: map what you use today, pick the
+            open-source apps that replace it, and share the plan with friends to compare notes.
           </p>
         </div>
         <ul class="planner-points">
-          <li>No account, nothing to install — it runs entirely in your browser</li>
+          <li>Runs entirely in your browser — no account, nothing to install</li>
           <li>Your plan never leaves your device</li>
-          <li>Export as PNG, WebP, or SVG, or share a link others can remix</li>
+          <li>Export as PNG, WebP or SVG, or share a link others can remix</li>
         </ul>
         <div class="planner-promo-cta">
           <a class="mos-btn mos-btn-primary" href={PLANNER_PATH}>Open the planner</a>
         </div>
       </div>
       <div class="planner-promo-art" aria-hidden="true">
-        {/* Miniature of the roadmap graphic: two lanes trading places at a crossover. */}
+        {/* Miniature of the roadmap graphic: the open-source lane (info) and the Big Tech lane (danger) trade places at a crossover. */}
         <svg viewBox="0 0 360 200" fill="none">
           <path
             d="M 10 60 H 130 C 175 60, 185 140, 230 140 H 350"
@@ -38,13 +39,13 @@ import { PLANNER_PATH } from '../lib/links'
           ></path>
           <path
             d="M 10 140 H 130 C 175 140, 185 60, 230 60 H 350"
-            stroke="var(--mos-color-accent)"
+            stroke="var(--mos-color-danger)"
             stroke-width="4"
             stroke-linecap="round"
           ></path>
           <circle cx="70" cy="60" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-info)" stroke-width="4"></circle>
-          <circle cx="70" cy="140" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-accent)" stroke-width="4"></circle>
-          <circle cx="290" cy="60" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-accent)" stroke-width="4"></circle>
+          <circle cx="70" cy="140" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-danger)" stroke-width="4"></circle>
+          <circle cx="290" cy="60" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-danger)" stroke-width="4"></circle>
           <circle cx="290" cy="140" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-info)" stroke-width="4"></circle>
           <line x1="40" y1="186" x2="320" y2="186" stroke="var(--mos-color-surface-border)" stroke-width="2"></line>
           <circle cx="70" cy="186" r="5" fill="var(--mos-color-accent)"></circle>

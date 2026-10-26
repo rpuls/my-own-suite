@@ -1461,29 +1461,11 @@ a.suite-files-name {
   transform: scale(1.02);
 }
 
+/* Size only: the plate itself is the shared .mos-app-icon. */
 .suite-app-icon {
-  display: inline-flex;
-  place-items: center;
-  justify-content: center;
   width: 5.5rem;
   height: 5.5rem;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border: var(--mos-border-subtle);
-  border-radius: var(--mos-radius-lg);
-  background: var(--mos-color-surface-strong);
-  color: var(--mos-color-text-strong);
-  font-size: var(--mos-text-small);
-  font-weight: 800;
   transition: transform 180ms ease;
-}
-
-.suite-app-icon img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  padding: 0.65rem;
 }
 
 .suite-app-icon-large {
@@ -2129,13 +2111,9 @@ a.suite-files-name {
   background: var(--mos-color-surface-strong);
 }
 
-/* The logo keeps a light tile of its own: package icons are drawn for light
-   backgrounds and would disappear into the screenshot behind them. */
 .suite-app-detail-hero .suite-app-icon-large {
   width: 5.25rem;
   height: 5.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 1.25rem 2.5rem rgba(3, 10, 20, 0.45);
 }
 

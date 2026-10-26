@@ -63,7 +63,8 @@ export default defineConfig({
             'docs/install/cloud-server',
             'docs/install/own-hardware',
             'docs/install/first-start',
-            'docs/install/easy-address'
+            'docs/install/easy-address',
+            'docs/install/cloud-address'
           ]
         },
         {

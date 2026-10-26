@@ -1,5 +1,6 @@
 ---
 import { MOS_VERSION } from '../lib/version'
+import UpdateFlow from './UpdateFlow.astro'
 ---
 
 <section class="band">
@@ -11,40 +12,40 @@ import { MOS_VERSION } from '../lib/version'
     <div class="faq">
       <details open>
         <summary>Do I need to be technical? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p><strong style="color:var(--mos-color-text-strong)">Short answer:</strong> no — if you go with a cloud server.</p>
-        <p><strong style="color:var(--mos-color-text-strong)">Longer answer:</strong> it depends on where MOS lives. A rented cloud server just means following our step-by-step guide, which includes a full video walkthrough of the whole install — no experience needed.</p>
-        <p>Your own hardware needs a little more: download the installer image from our latest release, write it to a USB stick, and boot the machine from it. Writing the stick needs a free utility — <a href="https://rufus.ie/">Rufus</a> on Windows, which is a single file you run without installing, or <a href="https://etcher.balena.io/">balenaEtcher</a> elsewhere. There's nothing else to set up, and no prompts to answer during the install — but you do need a spare machine you're willing to wipe, and you'll be the one plugging in cables. If that sounds like a hassle rather than a Saturday, a cloud server is the easier place to start.</p>
-        <p>Either way, once MOS is running everything happens in the browser and works for anyone.</p>
+        <p><strong style="color:var(--mos-color-text-strong)">Short answer:</strong> a little, for the install. Home servers are notoriously fiddly and MOS removes most of that, but you still have to get it onto a machine. On a cloud server that means following a six-minute video and pasting one command. On your own hardware it means writing the image to a USB stick with a free tool such as <a href="https://rufus.ie/">Rufus</a> or <a href="https://etcher.balena.io/">balenaEtcher</a> and booting a spare machine from it. If you can follow a video guide with a little patience, you can do this.</p>
+        <p>Once you're in, the hard part is over. Everything happens in the browser, and installing an app is pick, Install, open: the settings are chosen for you, the address and the padlock are arranged, and the next backup covers it. <a class="mos-link" href="/docs/getting-started/">How to get started</a> lays out both paths side by side.</p>
       </details>
       <details>
         <summary>Is it really free — what does it actually cost? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>MOS and every app in the catalog are free and open source — no license keys, no subscriptions, no paid tier.</p>
-        <p>The only real cost is the computer it runs on: a little electricity if you use a machine at home, or a small monthly fee for a rented cloud server (about $20–25 a month for the tested reference size). A one-click managed hosting option is coming for people who'd rather pay MOS to run it all for them.</p>
+        <p>MOS and every app in the catalog are free and open source: no license keys, no subscriptions, no paid tier.</p>
+        <p>The only cost is the machine it runs on: a little electricity at home, or about $20–25 a month for a rented cloud server. A managed option, where you pay MOS to run it all for you, is coming for people who'd rather not touch a server at all.</p>
       </details>
       <details>
         <summary>Where does my data actually live? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>On the machine you installed MOS on — your home mini-PC or your cloud server. MOS never routes your data through a MOS-owned cloud, and the platform contains no telemetry at all: no account, no analytics, nothing reporting back to us. We don't know that you installed it.</p>
-        <p>The one exception is this marketing page, which counts anonymous visits using analytics we run ourselves. The docs have none, and your suite has none. The <a class="mos-link" href="/docs/privacy/">privacy policy</a> spells out every connection your server makes.</p>
+        <p>On the machine you installed MOS on. Nothing passes through a MOS-owned cloud, the platform has no telemetry, and there is no sign-up with us: we don't know that you installed it.</p>
+        <p>The one exception is this page, which counts anonymous visits with analytics we host ourselves. Your suite has none. The <a class="mos-link" href="/docs/privacy/">privacy policy</a> lists every connection your server makes.</p>
       </details>
       <details>
         <summary>How do my apps stay up to date? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>Each app updates on its own schedule, independently of MOS itself. Your server periodically checks a signed catalog for newer app versions and shows an <strong style="color:var(--mos-color-text-strong)">Update available</strong> badge — so a security fix for your password manager reaches you without waiting for a MOS release.</p>
-        <p>Nothing updates behind your back. You see what changes — new settings, breaking changes, whether the privacy assessment moved — and you press the button. If an update fails, MOS puts the app back the way it was, or tells you exactly what it couldn't undo.</p>
+        <UpdateFlow />
+        <p>Not on their own: nothing changes on your server until you press the button. Behind the scenes we watch each catalog app's releases. A new version gets its package rebuilt, the releases in between read for breaking changes, its privacy assessment redone, and the result tested on a real server: a fresh install, an update from the version you'd be coming from, and a backup-and-restore drill, with every outside connection the app makes recorded. Only then is it signed into the catalog, and a version that breaks something is held back instead.</p>
+        <p>Your server checks that signed catalog every few hours and shows an <strong style="color:var(--mos-color-text-strong)">Update available</strong> badge, so a fix for your password manager never waits for a MOS release. You see what changes first, including whether the privacy grade moved, then you press the button. MOS builds the new version before stopping the old one, and if the update fails it puts the app back or tells you exactly where it stopped. <a class="mos-link" href="/docs/guides/updates/">How updates work</a>.</p>
       </details>
       <details>
         <summary>Can I install an app that isn't in the catalog? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>Yes. Paste a GitHub repository URL into the Apps search and MOS will fetch it, check it, and show you what it wants before anything is installed — which addresses it asks for, which storage, which other apps it wants to reach. A repository can publish one app or a whole catalog of them, so a collection someone else curates is added once and then browsed like the rest.</p>
-        <p>It's labelled <strong style="color:var(--mos-color-text-strong)">External · Unverified</strong> everywhere it appears, because we haven't reviewed it and we won't pretend otherwise. Building it runs the publisher's own instructions on your server, so it's genuinely your call — MOS's job is to make sure it's an informed one.</p>
+        <p>Yes. Any GitHub repository with a small <code>.mos</code> folder is an app source: paste its URL into the Apps search and MOS shows what it publishes, and what each app asks for, before anything is built. One repository can carry one app or a whole catalog, so a collection someone curates is added once and browsed like the rest.</p>
+        <p>These apps are labelled <strong style="color:var(--mos-color-text-strong)">External · Unverified</strong> everywhere, because we haven't reviewed them and won't pretend otherwise, and MOS runs them with fewer permissions than catalog apps. Building one runs the publisher's own instructions on your server, so it's your call; MOS makes sure it's an informed one.</p>
+        <p>No package yet? It is a manifest plus a Dockerfile, with a complete example repository to copy, or one prompt with the MOS plugin for Claude Code: <code>/mos:add-app</code> writes the package for you. <a class="mos-link" href="/docs/guides/apps/#you-found-an-app-on-github-now-what">Bringing your own apps</a> walks through it.</p>
       </details>
       <details>
         <summary>What if I want to leave? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>Everything runs on standard open-source apps with standard data formats. Whole-suite backups run on a schedule to a USB drive, a mounted block-storage volume, or an S3-compatible bucket, encrypted with your recovery key before they leave the server.</p>
-        <p>What MOS writes there is a plain <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a> repository, not a format of our own. If MOS vanished tomorrow, your recovery key and the restic command-line tool would still open every backup you have and give you your files back, on any machine. The way out does not run through us.</p>
+        <p>Everything runs on standard open-source apps with standard data formats, and your backups are plain <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a> repositories, encrypted with your recovery key before they leave the server.</p>
+        <p>If MOS vanished tomorrow, that key and the restic command-line tool would still open every backup you have, on any machine. The way out does not run through us.</p>
       </details>
       <details>
         <summary>It's beta — is it safe to use? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>MOS is version {MOS_VERSION} and improving quickly. Every change runs an automated test suite before it lands, the whole install-to-apps flow is exercised on real virtual machines, and every image is pinned to an exact digest. The changelog is public.</p>
-        <p>Trust is the product, so here's the honest part: pre-1.0 releases can include breaking changes, and we don't yet run the full end-to-end suite automatically on every release. Treat MOS as ready for evaluation and non-critical use for now: keep an independent backup of anything you can't afford to lose, and take a backup before you update — the button is right there.</p>
+        <p>MOS is version {MOS_VERSION} and improving quickly. Every change runs an automated test suite before it lands, the whole install-to-apps flow is driven on real machines before a release, and every image is pinned to an exact digest. The changelog is public.</p>
+        <p>Trust is the product, so here's the honest part: pre-1.0 releases can include breaking changes. Treat MOS as ready for evaluation and non-critical use for now: keep an independent copy of anything you can't afford to lose, and take a backup before you update. The button is right there.</p>
       </details>
     </div>
   </div>

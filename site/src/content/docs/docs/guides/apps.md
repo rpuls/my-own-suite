@@ -33,6 +33,24 @@ If the catalog doesn't have what you want, paste a GitHub repository URL into th
 
 A repository can publish **one app or a whole catalog of them**. That second shape is the useful one for anything niche: someone can curate a collection of lesser-known apps for people who want them, and you can keep a private collection of your own small services in a single repository instead of one repository per service.
 
+### You found an app on GitHub. Now what?
+
+Say you have found an open-source app you want on your server, and it is not in the catalog.
+
+1. **Paste its GitHub URL into the Apps search.** If the project ships a `.mos` folder, MOS shows the app and what it asks for, and you press **Install**. That is the whole job.
+2. **If MOS finds no package there**, the app needs one, and it has to live in a repository you control, because only a repository's owner can put files in it. Writing one is a job for an AI coding assistant. In [Claude Code](https://claude.com/claude-code), add the MOS plugin once, then ask:
+
+   ```
+   /plugin marketplace add rpuls/MOS-external-app-example
+   /plugin install mos@my-own-suite
+   /mos:add-app help me install https://github.com/<owner>/<app> on my MOS server
+   ```
+
+   It reads the app's documentation, writes the package into a public repository of yours (one catalog repository for everything you package is the tidy shape), pins the app's image to an exact version, pushes, and tells you the URL to paste.
+3. **Paste your repository's URL into the Apps search.** MOS shows the preview, or lists exactly why it refuses the package. Hand those reasons back to the assistant.
+4. **Install.** The app is labelled External · Unverified, like every app from an added source, and [What MOS does and doesn't vouch for](#what-mos-does-and-doesnt-vouch-for) says what that means. Choose **Add this source** as well, and the repository stays on your Apps screen for next time.
+5. **When the project releases a new version**, ask the assistant to update the package, and the app's detail view in Suite Manager offers **Check for updates**.
+
 ### Adding a source
 
 You can install straight from the preview, or click **Add this source** to keep it. An added source's apps sit in their own section of the Apps screen, under the publisher's name, so you can install from them whenever you like without pasting the URL again — and so you can tell at a glance which apps came from where.

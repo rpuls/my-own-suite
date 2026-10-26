@@ -1685,6 +1685,37 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   pointer-events: auto;
 }
 
+/* App icon tile: the one plate every app icon sits on. Icons ship with uneven
+   internal padding, so the tile adds its own; an icon that cannot read on this
+   plate carries its own background in its file. Text is the no-icon fallback. */
+.mos-app-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border: var(--mos-border-subtle);
+  border-radius: 27%;
+  background: var(--mos-color-surface);
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-small);
+  font-weight: 800;
+}
+
+.mos-app-icon > img {
+  display: block;
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+/* Over a screenshot the same tint is laid on the page colour, so the tile
+   looks as it does on a plain surface instead of letting the photo through. */
+.mos-app-icon-solid {
+  background: linear-gradient(var(--mos-color-surface), var(--mos-color-surface)) var(--mos-color-bg);
+}
+
 /* Chip: a short fact beside a name. Legible on any surface by its blur, border
    and label, never by a plate behind it. */
 .mos-chip {
