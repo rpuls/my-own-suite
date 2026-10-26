@@ -151,7 +151,6 @@ class AppPackageService {
     };
   }
 
-  // The drives the storage module knows, or null when the agent cannot say.
   // Whether each installed app's containers are all up, or null when the agent cannot say.
   async containersDown() {
     const answer = await Promise.resolve(this.agent?.containerStates?.()).catch(() => null);
@@ -160,6 +159,7 @@ class AppPackageService {
     return (packageId) => !(states[packageId]?.length && states[packageId].every((state) => state === 'running'));
   }
 
+  // The drives the storage module knows, or null when the agent cannot say.
   async storageDrives() {
     const answer = await Promise.resolve(this.agent?.storageInventory?.()).catch(() => null);
     const drives = Array.isArray(answer?.drives) ? answer.drives : null;

@@ -570,8 +570,8 @@ function renderStorageUdevRule() {
 `;
 }
 
-// The rule only hears drives plugged in after it exists. A drive already in when an
-// install or an update put the rule in place is announced again, as at boot.
+// The rule only hears drives plugged in after it exists. A drive already in when the
+// install put the rule in place is announced again, as at boot.
 function storageColdplugArgs() {
   return ['trigger', '--action=add', '--subsystem-match=block', ...STORAGE_FILESYSTEMS.map((type) => `--property-match=ID_FS_TYPE=${type}`)];
 }
@@ -642,6 +642,7 @@ module.exports = {
   APP_STATUS_ROOT,
   STORAGE_ATTACH_IDENTIFIER,
   STORAGE_ATTACH_UNIT,
+  STORAGE_FILESYSTEMS,
   STORAGE_UDEV_RULE_PATH,
   renderStorageAttachUnit,
   renderStorageUdevRule,
