@@ -19,7 +19,7 @@ function healthyCollection() {
   return {
     collectedAt: '2026-09-01T12:00:00.000Z',
     containers: [{ image: 'mos-app-vaultwarden:1', labels: { 'mos.package': 'vaultwarden' }, log: 'started', name: 'mos-app-vaultwarden', state: 'running', status: 'Up 2 hours', troubled: false }],
-    host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0' },
+    host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0', node: 'v22.23.4' },
     incomplete: [],
     networks: [
       { containers: ['mos-app-paperless-ngx-broker', 'mos-app-paperless-ngx-paperless', 'mos-app-x-abcdef01-scan-bridge'], driver: 'bridge', name: 'mos-app-paperless-ngx' },
@@ -209,6 +209,12 @@ test('an update that worked and HTTPS that was never applied are one line each, 
 
   assert.ok(text.includes('Nothing obviously wrong was detected'));
   assert.ok(text.includes('Update check       ok at 2026-09-02T07:00:00.000Z\nLast update        succeeded at 2026-09-01T11:00:00.000Z\nLast HTTPS apply   never\n'));
+});
+
+test('the host section names the Node.js every MOS service runs on', () => {
+  const { text } = buildSupportBundle({ collection: healthyCollection(), now, platform: {}, secrets: ['x'] });
+  const host = text.slice(text.indexOf('HOST'), text.indexOf('HOST PATCHES'));
+  assert.ok(host.includes('Kernel:\nLinux mos 6.8.0\nNode.js:\nv22.23.4\n'));
 });
 
 // The catalog is the other conversation this server has with GitHub, and it was

@@ -351,6 +351,15 @@ function ensureHostTools() {
   }
 }
 
+// Every MOS service runs on the host's Node, which comes from NodeSource and so
+// sits outside the security pocket unattended-upgrades is pinned to. A managed
+// update is the only thing that moves it to a patched release; the source list
+// pins the major line. An unreachable NodeSource must not fail the update.
+function refreshNode() {
+  run('apt-get', ['update'], { allowFailure: true });
+  run('apt-get', ['install', '-y', '--only-upgrade', 'nodejs'], { allowFailure: true });
+}
+
 // The backup agent runs from repo source, so a machine that updates rather
 // than reinstalls never runs the installer again. Installing the storage
 // engine here is what keeps an updated machine's agent able to write backups
@@ -501,6 +510,7 @@ function main() {
 
   refreshCaddyBinary();
   if (!dryRun) ensureHostTools();
+  refreshNode();
   refreshBackupEngine();
   // Applied on every managed update rather than only at install, for the reason
   // the journald config is: the installer is the one path a machine that already

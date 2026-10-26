@@ -1383,6 +1383,7 @@ Consequences:
 - **Major release upgrades stay out of scope.** MOS does not move an owner between Ubuntu releases, and there is no scaffolding for it. The docs name Ubuntu's support window for this release rather than promising patching forever.
 - The published image carries two timers of its own that fire apt's daily services shortly after boot, so a freshly flashed machine catches up within the half hour instead of waiting out apt's twelve hours of jitter; apt's own timers and their jitter are untouched. Only the image gets this; a VPS install is patched from the moment it is created.
 - Stock Ubuntu ships an `APT::Periodic` file on every server, so only `Unattended-Upgrade::` keys and `APT::Periodic::Unattended-Upgrade` count as an owner's policy. The hold list is written only where MOS owns the policy; on an owner-managed server it is removed, never applied over theirs.
+- **Node is patched by the managed update instead.** Every MOS service runs on the host's NodeSource Node, so `reconcile-system.cjs` upgrades `nodejs` within its pinned major line before restarting them; an unreachable NodeSource leaves the update successful and retries next time (added 2026-10-26 after the October Node security release).
 - Closes roadmap AL1 (`#277`).
 
 ## 2026-10-05: An App's End-To-End Journey Lives In Its Package, And A Package's `e2e/` Folder Is Never Package Content

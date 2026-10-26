@@ -199,6 +199,7 @@ class SystemDiagnosticsAdapter {
       dockerDisk: [DOCKER_BINARY, ['system', 'df']],
       kernel: ['/usr/bin/uname', ['-a']],
       memory: ['/usr/bin/free', ['-m']],
+      node: ['/usr/bin/node', ['--version']],
       uptime: ['/usr/bin/uptime', []],
     }).map(async ([name, [file, args]]) => {
       try { facts[name] = await capture(file, args); } catch { /* one fact, not the section */ }

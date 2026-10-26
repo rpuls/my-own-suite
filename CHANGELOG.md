@@ -47,6 +47,10 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **A restore starts every app it can, even when one will not.** One app that failed to start stopped the restore there, leaving every app after it down with no web address. Now the others carry on, and Backup & Restore names the apps that did not start, so you can restart them from Apps. An app's download now has as long as it needs, instead of being stopped after five minutes as if its build had hung, which on a fresh server was enough to fail ONLYOFFICE.
 - **Suite Manager restarts in seconds.** It waited for its open pages to disconnect before stopping, so every restart, an update's included, hung for a minute and a half until the system stopped it by force.
 
+### Security
+
+- **Every MOS update now brings your server's Node.js up to date, starting with the October 2026 security fixes.** Suite Manager and the MOS services run on Node.js, which stayed at the version the server was installed with, so servers installed before 21 October missed fixes for a remote code execution flaw and a certificate check bypass. Each MOS update now installs the newest Node.js 22 release before it restarts the services, beginning with 22.23.4, and the diagnostics file names the version running.
+
 ## [0.22.0] - 2026-10-15
 
 **This release is mostly behind the scenes: better infrastructure for app updates, and more automated testing to back it.** There aren't many new platform features this time, but this work matters for everything that comes next.

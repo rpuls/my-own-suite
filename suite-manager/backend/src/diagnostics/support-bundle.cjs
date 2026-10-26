@@ -341,6 +341,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
     ].join('\n')),
     section('HOST', [
       collection.host?.kernel && `Kernel:\n${collection.host.kernel}`,
+      collection.host?.node && `Node.js:\n${collection.host.node}`,
       collection.host?.uptime && `Uptime:\n${collection.host.uptime}`,
       collection.host?.memory && `Memory:\n${collection.host.memory}`,
       collection.host?.disk && `Disk:\n${collection.host.disk}`,

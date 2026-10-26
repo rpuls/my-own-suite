@@ -148,6 +148,12 @@ test('both install paths give the host ntfsfix for Check drive', () => {
   assert.ok(reconciler.includes('ensureHostTools();'));
 });
 
+test('a managed update moves the host Node to the newest patch release of its line', () => {
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.ok(reconciler.includes("['install', '-y', '--only-upgrade', 'nodejs']"));
+  assert.ok(reconciler.indexOf('  refreshNode();') < reconciler.indexOf("run('systemctl', ['daemon-reload']);"), 'Node must be upgraded before the services restart onto it');
+});
+
 // The Caddyfile every path writes points its error handler at a page under
 // /etc/caddy/mos-status. The reconciler wrote that page and the installer did
 // not, so a fresh install — and the published image — answered a restore with a
