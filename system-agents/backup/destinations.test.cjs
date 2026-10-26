@@ -304,6 +304,19 @@ test('a restore point written by another process shows up at once, in an archive
   assert.equal((await world.destination.health()).keyState, 'own');
 });
 
+// The Backups screen polls; a bucket that stopped answering held every poll for
+// as long as restic kept retrying, so the page showed nothing at all.
+test('a bucket that stops answering still lists what it last held, at once', async () => {
+  const world = await bucket();
+  await world.destination.points.write('point-1', manifestFor('point-1'));
+  await world.destination.readIndex({ force: true });
+  const stale = Date.now() - OBJECT_INDEX_TTL_MS - 1000;
+  world.destination.saveIndex({ ...world.destination.loadIndex(), fetchedAt: new Date(stale).toISOString(), fetchedAtMs: stale });
+  world.engine.listSnapshots = () => new Promise(() => {});
+
+  assert.deepEqual((await world.destination.points.summaries()).map((point) => point.id), ['point-1']);
+});
+
 // Recording a point MOS just wrote is not the same as having listed the bucket.
 // When there was no index to add to, the one invented for it must not be dated
 // now, or a single known point would stand in for everything else in the bucket

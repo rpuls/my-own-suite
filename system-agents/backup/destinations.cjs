@@ -222,8 +222,14 @@ class ObjectRestorePoints {
 
   locator(pointId) { return objectLocator(this.destination.id, pointId); }
 
+  // Answered from the last listing like health(), because the screen polls and a
+  // bucket that does not answer would hold every poll for minutes. Only a bucket
+  // never listed yet is waited for.
   async entries({ force = false } = {}) {
-    return (await this.destination.readIndex({ force })).points;
+    const current = force ? null : this.destination.loadIndex();
+    if (!current?.fetchedAtMs) return (await this.destination.readIndex({ force })).points;
+    if (Date.now() - current.fetchedAtMs >= OBJECT_INDEX_TTL_MS) this.destination.refreshInBackground();
+    return current.points;
   }
 
   async count() { return Object.keys(await this.entries()).length; }
