@@ -9,6 +9,11 @@ function domainStateFor(address) {
   return { baseDomain: baseHostOf(address), scheme: address.scheme };
 }
 
+// The agent reports content that is not YAML in its own words, so the address check skips it.
+function parsedOrNothing(content) {
+  try { return YAML.parse(String(content || '')) || []; } catch { return []; }
+}
+
 class HomepageService {
   // `appHosts` names the installed app on each subdomain an app is served at.
   constructor({ agent, appHosts = () => new Map(), now = () => new Date(), store, suiteAddress }) {
@@ -37,6 +42,9 @@ class HomepageService {
   validate(body) { return this.agent.validate(body?.file, body?.content); }
 
   async apply(body) {
+    if (body?.file === 'services.template.yaml') {
+      for (const subdomain of homeServiceHosts(parsedOrNothing(body?.content)).keys()) this.assertSubdomainFree(subdomain);
+    }
     return this.runOperation('raw-save', () => this.agent.apply({
       content: body?.content,
       domainState: this.domainState(),
@@ -94,8 +102,11 @@ class HomepageService {
     }));
   }
 
-  previewHomeService(body) {
+  async previewHomeService(body) {
     this.assertSubdomainFree(body?.subdomain);
+    const subdomain = String(body?.subdomain || '').trim().toLowerCase();
+    const linkName = (await this.homeServiceHosts()).get(subdomain);
+    if (linkName) throw new HomepageConfigError('DUPLICATE_PUBLIC_HOST', `${subdomain} is already the address of ${linkName} on your Homepage. Pick another name.`, 409);
     const proxy = validateProxy({
       subdomain: body?.subdomain,
       upstream: `${body?.protocol}://${body?.host}:${body?.port}`,

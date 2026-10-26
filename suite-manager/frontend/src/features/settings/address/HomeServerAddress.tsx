@@ -106,9 +106,9 @@ export function HomeServerAddress({ status, suite }: { status: AddressStatus; su
       title="Suite address"
     ><p>{ADDRESS_INTRO}</p></PanelHead>
     <AddressBand note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} suite={suite} />
-    {!applying && address.kind === 'easy-door' && status.easyDoorCertificate.state !== 'not-applicable' ? <EasyDoorLockBand certificate={status.easyDoorCertificate} /> : null}
+    {!applying && address.kind === 'easy-door' && !status.drifted?.addressMoved && status.easyDoorCertificate.state !== 'not-applicable' ? <EasyDoorLockBand certificate={status.easyDoorCertificate} /> : null}
     {outcome || notices.length || editing || contact !== 'ok' ? <PanelBody>
-      <ContactNotices change={status.lastChange} contact={contact} />
+      <ContactNotices contact={contact} movingTo={suite.movingTo} />
       <ChangeOutcome address={address} dnsHelp={<LocalDnsInstructions homeHost={address.host} serverAddress={dnsAddress} />} outcome={outcome} />
       {notices}
       {editing ? <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>

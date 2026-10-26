@@ -71,7 +71,7 @@ function homeServiceHosts(value) {
   const hosts = new Map();
   for (const { config, name } of entriesFromServices(value)) {
     const subdomain = config?.mos?.proxy?.subdomain;
-    if (typeof subdomain === 'string') hosts.set(subdomain.toLowerCase(), name);
+    if (typeof subdomain === 'string') hosts.set(subdomain.trim().toLowerCase(), name);
   }
   return hosts;
 }

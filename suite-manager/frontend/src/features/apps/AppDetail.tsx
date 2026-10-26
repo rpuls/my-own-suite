@@ -325,7 +325,7 @@ export function AppDetail({
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   // Null means no listing at all — removed, paused, never reached — not an unticked clock.
   const sourceReadAt = app.catalogUpdate?.sourceCheckedAt || null;
-  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled);
+  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !pausedByDrive(app.id, serverStorage));
   const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
     ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),

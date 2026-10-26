@@ -24,6 +24,7 @@ const {
   renderStorageUdevRule,
   STORAGE_ATTACH_UNIT,
   STORAGE_UDEV_RULE_PATH,
+  storageColdplugArgs,
 } = require('../infrastructure/control-plane-runtime.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
@@ -474,6 +475,9 @@ function main() {
   }
 
   log(`reconciling ${mosRoot}`);
+  // Ubuntu's needrestart restarts every service on a replaced Node the moment apt
+  // installs one, half way through this run; the restarts at the end are the ones that count.
+  process.env.NEEDRESTART_SUSPEND = '1';
   ensureAgentGroup();
   installDir('/etc/mos', 0o750);
   installDir('/etc/mos/secrets', 0o750);
@@ -571,6 +575,8 @@ function main() {
     run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
     run('systemctl', ['restart', 'mos-lab-reset-agent.service']);
   }
+  // After the restarts, so a drive the old backup agent still had mounted is free to open.
+  run('udevadm', storageColdplugArgs(), { allowFailure: true });
   log('system reconciliation complete');
 }
 

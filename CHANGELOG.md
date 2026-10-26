@@ -41,6 +41,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **Jellyfin joins the catalog.** Your own films and series, streamed to every screen in the house. Install it with a drive, and it starts with your administrator and its Movies and Series libraries already set up, so there is no setup wizard to click through.
 
 ### Fixed
+- **An app that has stopped says Not running.** Apps showed Running whenever MOS had once started them, so one stuck restarting, or stopped outside MOS, still looked fine on its card.
 - **An app source that cannot be fetched says why.** Adding or refreshing a source whose git host times out, cannot be reached or answers with an error now names the host and what it did, instead of "Internal server error".
 
 - **Signing in over http:// works in a browser that has used the https:// address.** A browser keeps a secure sign-in cookie from the https:// address and refuses to replace it over http://, so signing in at the http:// address while the certificate was still pending succeeded and then bounced straight back to the sign-in page. MOS now keeps its http:// sign-in under a name of its own, and a sign-in begun over http:// carries over once https:// is available.

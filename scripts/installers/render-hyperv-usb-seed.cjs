@@ -129,9 +129,10 @@ function loadSmokeConfig() {
   return values;
 }
 
+// Formats the lab's empty second disk and leaves it to MOS, which opens it the way
+// it opens any drive plugged in at install.
 function renderBackupDiskSetupCommand() {
   return String.raw`bash -lc 'set -euo pipefail
-mountpoint -q /media/mos-backup && exit 0
 root_source="$(findmnt -n -o SOURCE / || true)"
 root_disk="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
 if [ -z "$root_disk" ]; then root_disk="$(basename "$root_source" | sed "s/[0-9]*$//")"; fi
@@ -149,14 +150,7 @@ if [ -z "$candidate" ]; then
   exit 0
 fi
 mkfs.ext4 -F -L MOS_BACKUP "$candidate"
-mkdir -p /media/mos-backup
-uuid="$(blkid -s UUID -o value "$candidate")"
-if [ -n "$uuid" ] && ! grep -q "$uuid" /etc/fstab; then
-  printf "UUID=%s /media/mos-backup ext4 defaults,nofail 0 2\n" "$uuid" >> /etc/fstab
-fi
-mount /media/mos-backup
-chmod 0777 /media/mos-backup
-echo "[mos-smoke:hyperv-usb] Mounted disposable backup disk at /media/mos-backup."'
+echo "[mos-smoke:hyperv-usb] Formatted disposable backup disk $candidate as MOS_BACKUP."'
 `;
 }
 

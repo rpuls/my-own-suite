@@ -60,6 +60,8 @@ const buildTimingsPath = path.join(stateRoot, BUILD_TIMINGS_FILENAME);
 const DRIVE_ID_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
 const ERASING_PATTERN = /^archive-[0-9a-f]{8}\.erasing-\d+$/u;
 const STORAGE_UNREACHABLE_REASON = 'MOS could not read your storage right now.';
+// It cannot say what is in storage it cannot reach, so it says only that.
+const CANNOT_CONNECT_REASON = 'MOS cannot connect to this storage right now. Check the internet connection, then look again.';
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -152,7 +154,8 @@ async function survey() {
       id: drive.id,
       kind: 'disk',
       label,
-      reason: open ? null : drive.reason || 'MOS has not opened this drive yet. Unplug it and plug it back in.',
+      // An unopened drive's own reason is about app files, which a backup place does not care about.
+      reason: open ? null : drive.state !== 'available' && drive.reason ? drive.reason : 'MOS has not opened this drive yet. Unplug it and plug it back in.',
       sizeBytes: drive.sizeBytes ?? null,
       state: open ? 'ready' : drive.state,
       storageKind: drive.transport === 'usb' || drive.removable ? 'external' : 'local',
@@ -160,24 +163,27 @@ async function survey() {
     });
   }
   for (const record of destinationResolver.bucketRecords()) {
-    let reason = null;
+    let problem = null;
     try {
       for (const archive of await destinationResolver.archivesIn(record.id)) {
-        const health = await archive.health().catch(() => ({ keyState: null }));
+        const health = await archive.health().catch((error) => ({ keyState: null, ready: false, reason: error?.message || null }));
+        // A list read earlier still names the archives of a bucket that cannot be reached now.
+        if (health.ready === false && health.keyState !== 'locked') problem ??= health.reason || CANNOT_CONNECT_REASON;
         const described = await describeArchive(archive, record.label, health);
         if (described) archives.push(described);
       }
-      reason = destinationResolver.catalogProblem(record.id);
+      problem ??= destinationResolver.catalogProblem(record.id);
     } catch (error) {
-      reason = error?.message || 'MOS could not reach this storage.';
+      problem = error?.message || CANNOT_CONNECT_REASON;
     }
     places.push({
       ...publicObjectDestination(record),
       availableBytes: null,
+      detail: problem,
       kind: 'object',
-      reason,
+      reason: problem ? CANNOT_CONNECT_REASON : null,
       sizeBytes: null,
-      state: reason ? 'unreachable' : 'ready',
+      state: problem ? 'unreachable' : 'ready',
       storageKind: 'object',
     });
   }
@@ -1037,7 +1043,8 @@ if (require.main === module && process.argv[2] === '--worker') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
         // Where they go is part of the same choice, so a schedule is never on with nowhere to write.
-        if (body.destinationId) {
+        // Keeping the default as it is needs no check: a drive that is away stays chosen.
+        if (body.destinationId && normalizeDestinationId(body.destinationId) !== primary.read()?.destinationId) {
           const place = await knownPlace(body.destinationId);
           primary.save({ destinationId: place.id, label: place.label });
         }

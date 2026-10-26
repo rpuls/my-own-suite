@@ -381,7 +381,7 @@ export function bannerState(status: BackupStatus | null | undefined, busyBackup:
   const newest = (status?.backups || []).filter((backup) => backup.owner === 'this')
     .slice().sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const schedule = status?.schedule || null;
-  const nextRun = schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
+  const nextRun = auto && schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
 
   if (busyBackup) return { detail: 'Your apps pause for a few minutes and come back on their own.', title: 'Backing up now.', tone: 'ready' };
   if (!newest) {

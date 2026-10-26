@@ -72,6 +72,8 @@ export type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
   // MOS package version.
   appVersion: string | null;
+  // Installed, but Docker says a container of it is not running.
+  containersDown?: boolean;
   installJob?: AppJob<InstallStep> | null;
   updateJob?: AppJob<UpdateStep> | null;
   capabilities: {

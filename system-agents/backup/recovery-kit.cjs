@@ -61,7 +61,7 @@ function recoveryKitText({ asksForPassword = false, destinations = [], encrypted
     'How to recover onto another machine:',
     '',
     'Install MOS on the replacement machine and create an owner account on it so you can sign in.',
-    'Open Backup & Restore, connect the same drive or the same bucket, and MOS will say the backups there were written by another server.',
+    'Plug in the same drive, or add the same bucket under Settings > Storage. Then open Backup & Restore: MOS says the backups there were written by another server.',
     'Choose Enter recovery key, type the key above, and the restore points appear so you can restore one.',
     'When the restore finishes, sign in with the owner password from the server this kit came from, and re-apply your domain under HTTPS if you were using one.',
     "Your storage provider's console holds your access key; a new key for the same bucket works too.",

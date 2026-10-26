@@ -115,6 +115,10 @@ function validateWidget(widget) {
   };
 }
 
+// What Homepage can draw: a dashboard-icons name, an mdi-/si-/sh- name, or an image by path or address.
+// Anything else, `mdi:link` for one, is a broken image and a failed request on every load.
+const ICON_PATTERN = /^(?:https?:\/\/\S+|\/\S+|[a-z0-9][a-z0-9._-]*)$/iu;
+
 function normalizeDashboardInput(input, homeService) {
   const allowed = homeService
     ? ['description', 'group', 'host', 'icon', 'name', 'port', 'protocol', 'subdomain']
@@ -129,6 +133,9 @@ function normalizeDashboardInput(input, homeService) {
     if (!text[key] || text[key].length > 160 || /[\r\n]/u.test(text[key])) {
       throw new HomepageConfigError('INVALID_GUIDED_FIELD', `${key} is required and must be plain text.`);
     }
+  }
+  if (!ICON_PATTERN.test(text.icon)) {
+    throw new HomepageConfigError('INVALID_GUIDED_FIELD', 'Use a Homepage icon name, such as firefox or mdi-link, or the web address of an image.');
   }
   if (!homeService) {
     let url;

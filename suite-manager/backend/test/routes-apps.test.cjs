@@ -23,8 +23,9 @@ test('the app list carries each app its public URL and jobs, and checks sources 
   const order = [];
   const services = {
     appPackages: {
+      containersDown: async () => (id) => id === 'notes',
       hostFacts: async () => ({ architecture: 'amd64' }),
-      listPackages: () => [{ id: 'notes' }, { id: 'vaultwarden' }],
+      listPackages: () => [{ id: 'notes', instance: { status: 'installed' } }, { id: 'vaultwarden' }],
     },
     appUrls,
     catalogService: { status: () => ({ state: 'fresh' }) },
@@ -40,8 +41,8 @@ test('the app list carries each app its public URL and jobs, and checks sources 
     assert.deepEqual(listed.json(), {
       catalog: { state: 'fresh' },
       packages: [
-        { id: 'notes', installJob: { status: 'running' }, publicUrl: URLS.publicUrl, updateJob: null },
-        { id: 'vaultwarden', installJob: null, publicUrl: '', updateJob: null },
+        { containersDown: true, id: 'notes', installJob: { status: 'running' }, instance: { status: 'installed' }, publicUrl: URLS.publicUrl, updateJob: null },
+        { containersDown: false, id: 'vaultwarden', installJob: null, publicUrl: '', updateJob: null },
       ],
     });
   });

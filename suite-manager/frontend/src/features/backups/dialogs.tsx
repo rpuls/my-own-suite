@@ -33,18 +33,24 @@ export type ArchiveRef = { id: string; label: string; placeKind: 'disk' | 'objec
 
 const NO_STORAGE = <><strong>Nothing to back up to yet</strong><p className="suite-meta">Plug in a drive or connect storage online in <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Settings → Storage</a>, and it is listed here.</p></>;
 
+// Shown inside the dialog that failed, which stays open over the page's own notice.
+function ActionError({ error }: { error: string }) {
+  return error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null;
+}
+
 // The place a picker starts on: the default backup destination when it can take
-// a backup now, else the first place that can.
+// a backup now, else nothing. MOS never picks a place the owner did not choose.
 function startingPlace(storage: ReturnType<typeof useStorage>['storage'], names: ReturnType<typeof useStorage>['names'], preferred: string) {
   const offers = pickerOffers(storage || [], 'backups', { backupsKnown: true, names }).filter((offer) => offer.selectable);
-  return offers.find((offer) => offer.entry.id === preferred)?.entry.id || offers[0]?.entry.id || '';
+  return offers.find((offer) => offer.entry.id === preferred)?.entry.id || '';
 }
 
 // Taking a backup by hand: where it goes, an optional note, and the go-ahead.
 // With no default backup destination yet, the place picked becomes it unless unticked.
-export function BackupNowDialog({ auto, busy, onCancel, onStart }: {
+export function BackupNowDialog({ auto, busy, error, onCancel, onStart }: {
   auto: AutomaticPlace | null;
   busy: string;
+  error: string;
   onCancel: () => void;
   onStart: (choice: { destinationId: string; makePrimary: boolean; note: string }) => void;
 }) {
@@ -64,6 +70,7 @@ export function BackupNowDialog({ auto, busy, onCancel, onStart }: {
     onClose={() => { if (!working) onCancel(); }}
     title="Back up now"
   >
+    <ActionError error={error} />
     <StoragePicker
       backupsKnown={inventory?.backupsKnown === true}
       busy={working}
@@ -311,9 +318,10 @@ export function RecoveryKeyDialog({ archives, busy, error, keyState, mode, onAck
 // selected on the page, stated here as a fact.
 // When automatic backups run, how many they keep, and the default backup
 // destination they go to, which the backup before a MOS update uses too.
-export function ScheduleDialog({ auto, busy, onCancel, onSave, schedule }: {
+export function ScheduleDialog({ auto, busy, error, onCancel, onSave, schedule }: {
   auto: AutomaticPlace | null;
   busy: string;
+  error: string;
   onCancel: () => void;
   onSave: (next: Partial<BackupSchedule> & { destinationId: string }) => void;
   schedule: BackupSchedule;
@@ -337,6 +345,7 @@ export function ScheduleDialog({ auto, busy, onCancel, onSave, schedule }: {
     onClose={() => { if (!working) onCancel(); }}
     title="Automatic backups"
   >
+    <ActionError error={error} />
     <Checkbox checked={draft.enabled} disabled={working} onChange={(event) => change({ enabled: event.currentTarget.checked })}>
       Back up on a schedule
     </Checkbox>
@@ -401,10 +410,11 @@ export function ScheduleDialog({ auto, busy, onCancel, onSave, schedule }: {
 
 // Putting a restore point back. Everything that cannot be undone is said before the
 // confirmation field, and a restore onto another server states what happens to the address.
-export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart }: {
+export function RestoreDialog({ backup, busy, confirmation, error, onCancel, onConfirmation, onStart }: {
   backup: BackupEntry;
   busy: string;
   confirmation: string;
+  error: string;
   onCancel: () => void;
   onConfirmation: (next: string) => void;
   onStart: () => void;
@@ -425,6 +435,7 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
     onClose={() => { if (!busy) onCancel(); }}
     title={elsewhere ? `Make this server ${elsewhere}?` : 'Restore from this restore point'}
   >
+    <ActionError error={error} />
     <p>This replaces everything on this server with the restore point from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
     <p className="suite-meta">{backupDescription(backup)} · {backup.placeLabel}</p>
     {/* The estimate is the agent's, from this server's own jobs or a stated range. */}
@@ -456,9 +467,10 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
   </Dialog>;
 }
 
-export function DeleteDialog({ backup, busy, onCancel, onDelete }: {
+export function DeleteDialog({ backup, busy, error, onCancel, onDelete }: {
   backup: BackupEntry;
   busy: string;
+  error: string;
   onCancel: () => void;
   onDelete: () => void;
 }) {
@@ -473,6 +485,7 @@ export function DeleteDialog({ backup, busy, onCancel, onDelete }: {
     onClose={() => { if (!busy) onCancel(); }}
     title="Delete this restore point?"
   >
+    <ActionError error={error} />
     <p>The restore point from <strong>{whenWords(backup.createdAt)}</strong> is removed from {backup.placeLabel} and cannot be brought back.</p>
     <p className="suite-meta">The space only this restore point was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.</p>
     <Checkbox checked={understood} disabled={Boolean(busy)} onChange={(event) => setUnderstood(event.currentTarget.checked)}>

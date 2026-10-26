@@ -59,7 +59,7 @@ test('Hyper-V USB seed embeds the MOS bootstrap without the v1 owner handoff', (
   assert.equal(rendered.linuxPassword, 'linux-console-password');
   assert.equal(rendered.consoleLoginHandover, 'preconfigured');
   assert.match(renderedFirstBoot, /mkfs\.ext4 -F -L MOS_BACKUP/u);
-  assert.match(renderedFirstBoot, /\/media\/mos-backup/u);
+  assert.doesNotMatch(renderedFirstBoot, /\/media\/mos-backup/u);
   assert.match(renderedFirstBoot, /No empty second disk found for backup storage/u);
   // The Ubuntu install phase must stay offline-capable: no extra packages may
   // be fetched from the archive mid-install.

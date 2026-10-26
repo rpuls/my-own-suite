@@ -21,7 +21,7 @@ export async function homepage(ctx) {
   await page.getByRole('button', { name: /Website/ }).click();
   await page.getByLabel('Name', { exact: true }).fill(linkName);
   await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the MOS E2E suite');
-  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:link');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi-link');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByLabel('Website address', { exact: true }).fill('https://example.com/');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
@@ -32,7 +32,7 @@ export async function homepage(ctx) {
   await page.getByRole('button', { name: /Home network app/ }).click();
   await page.getByRole('textbox', { name: /^Name/ }).fill(serviceName);
   await page.getByRole('textbox', { name: /^Description/ }).fill('Safe local placeholder service');
-  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:server-network');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi-server-network');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByRole('textbox', { name: /^App address/ }).fill('http://192.168.1.20:8080');
   await page.getByRole('button', { name: 'Edit URL subdomain' }).click();

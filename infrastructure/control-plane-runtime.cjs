@@ -563,9 +563,17 @@ const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
 // `journalctl -u 'mos-storage-attach@*'` glob finds nothing to read.
 const STORAGE_ATTACH_IDENTIFIER = 'mos-storage-attach';
 
+const STORAGE_FILESYSTEMS = ['exfat', 'ntfs', 'vfat', 'ext4'];
+
 function renderStorageUdevRule() {
-  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="exfat|ntfs|vfat|ext4", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
+  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="${STORAGE_FILESYSTEMS.join('|')}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
 `;
+}
+
+// The rule only hears drives plugged in after it exists. A drive already in when an
+// install or an update put the rule in place is announced again, as at boot.
+function storageColdplugArgs() {
+  return ['trigger', '--action=add', '--subsystem-match=block', ...STORAGE_FILESYSTEMS.map((type) => `--property-match=ID_FS_TYPE=${type}`)];
 }
 
 // The same claims and mounts as the app agent, so the vault holds them both.
@@ -637,6 +645,7 @@ module.exports = {
   STORAGE_UDEV_RULE_PATH,
   renderStorageAttachUnit,
   renderStorageUdevRule,
+  storageColdplugArgs,
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   CADDY_SERVICE_OVERRIDE_PATH,

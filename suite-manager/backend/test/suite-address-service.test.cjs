@@ -281,6 +281,14 @@ test('a name that moved without its address is drift the owner follows, not a mo
   }
 });
 
+test('a name from before install ids whose address also moved is a moved server', async () => {
+  const recorded = 'home.192-168-30-104.local.myownsuite.org';
+  const { service } = makeService({ address: { host: recorded, kind: 'easy-door', scheme: 'https' }, detectAddress: () => '192.168.30.120', easyDoorId: () => 'kqmzrt' });
+  service.start();
+
+  assert.deepEqual((await service.status()).drifted, { addressMoved: true, from: recorded, to: 'home.30-120-kqmzrt.local.myownsuite.org' });
+});
+
 function publicServer({ records = {}, ...rest } = {}) {
   const resolveHost = async (host) => {
     if (host === 'home.203.0.113.5.sslip.io') return ['203.0.113.5'];

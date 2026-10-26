@@ -40,6 +40,7 @@ class AppAgentClient {
   status() { return this.request('GET', '/v1/status'); }
   storageInventory() { return this.request('GET', '/v1/storage/inventory'); }
   storageUsage() { return this.request('GET', '/v1/storage/usage'); }
+  containerStates() { return this.request('GET', '/v1/apps/containers'); }
   checkDrive(input) { return this.request('POST', '/v1/storage/check', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   ejectDrive(input) { return this.request('POST', '/v1/storage/eject', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
   useDrive(input) { return this.request('POST', '/v1/storage/use', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }

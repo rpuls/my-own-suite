@@ -16,6 +16,7 @@ const server = routeTable({
   'GET /v1/status': () => core.status(),
   'GET /v1/storage/inventory': () => core.storageInventory(),
   'GET /v1/storage/usage': () => core.storageUsage(),
+  'GET /v1/apps/containers': () => core.containerStates(),
   'POST /v1/storage/check': (body) => core.checkDrive(body),
   'POST /v1/storage/eject': (body) => core.ejectDrive(body),
   'POST /v1/storage/use': (body) => core.useDrive(body),
