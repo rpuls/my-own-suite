@@ -680,16 +680,18 @@ class ObjectArchive {
   }
 
   // Answered from the last refresh, since the screen polls and a network round
-  // trip per poll would bill the owner; only the very first call blocks.
+  // trip per poll would bill the owner; only the very first call blocks, and a
+  // bucket that has never answered is asked again only once the interval is up.
   async health() {
-    if (!this.loadIndex()) {
+    const held = this.loadIndex();
+    if (!held && !this.failedRecently()) {
       try {
         await this.readIndex({ force: true });
         this.noteReachable();
       } catch (error) {
         this.noteUnreachable(error);
       }
-    } else if (Date.now() - this.loadIndex().fetchedAtMs >= OBJECT_INDEX_TTL_MS) {
+    } else if (held && Date.now() - held.fetchedAtMs >= OBJECT_INDEX_TTL_MS) {
       this.refreshInBackground();
     }
     const index = this.loadIndex();
@@ -711,6 +713,11 @@ class ObjectArchive {
   noteUnreachable(error) {
     this.lastError = error?.message || 'MOS could not reach this storage.';
     this.lastLocked = error?.repositoryLocked === true;
+    this.lastFailedAtMs = Date.now();
+  }
+
+  failedRecently() {
+    return Boolean(this.lastError) && Date.now() - (this.lastFailedAtMs || 0) < OBJECT_INDEX_TTL_MS;
   }
 
   refreshInBackground() {

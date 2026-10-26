@@ -272,6 +272,20 @@ test('an unreachable bucket keeps the last known list and reports why it is not 
   assert.equal((await reopened.health()).ready, true);
 });
 
+test('a bucket that has never answered is asked once an interval, not on every poll', async () => {
+  const world = await bucket();
+  world.engine.offline = true;
+  let asked = 0;
+  const probe = world.engine.probeRepository.bind(world.engine);
+  world.engine.probeRepository = (spec) => { asked += 1; return probe(spec); };
+
+  assert.equal((await world.destination.health()).ready, false);
+  const afterFirst = asked;
+  assert.ok(afterFirst > 0);
+  assert.equal((await world.destination.health()).ready, false);
+  assert.equal(asked, afterFirst);
+});
+
 test('a bucket never reports free space, so a backup is not refused against a number nobody has', async () => {
   const world = await bucket();
   assert.equal(await world.destination.freeBytes(), null);
