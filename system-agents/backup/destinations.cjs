@@ -75,14 +75,41 @@ function sha256(file) {
   return hash.digest('hex');
 }
 
+// Backups tells the owner to unplug the drive once a backup is done, so what it
+// wrote has to be on the drive by then, not only in the page cache.
+function writeDurably(filePath, content) {
+  const descriptor = fs.openSync(filePath, 'w');
+  try {
+    fs.writeFileSync(descriptor, content, 'utf8');
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+// Makes a rename or a new file in `dir` survive the drive being pulled. Windows
+// cannot open a folder to sync it, and only the unit tests run there.
+function syncDir(dir) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(dir, 'r');
+    fs.fsyncSync(descriptor);
+  } catch (error) {
+    if (process.platform !== 'win32') throw error;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
 // The manifest is a restore point's completion marker, so it lands whole or not
 // at all: digest first, then an atomic rename.
 function writeRestorePoint(manifestPath, manifest) {
   ensureDir(path.dirname(manifestPath));
   const staged = `${manifestPath}.next`;
-  fs.writeFileSync(staged, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`, 'utf8');
+  writeDurably(staged, `${JSON.stringify(manifest, null, 2)}\n`);
+  writeDurably(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`);
   fs.renameSync(staged, manifestPath);
+  syncDir(path.dirname(manifestPath));
 }
 
 function readRestorePoint(manifestPath) {
@@ -178,8 +205,9 @@ class DiskRestorePoints {
 
   async writeNote(pointId, note) {
     const notePath = `${this.locator(pointId)}.note.txt`;
-    if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
+    if (note) writeDurably(notePath, `${note}\n`);
     else fs.rmSync(notePath, { force: true });
+    syncDir(path.dirname(notePath));
   }
 }
 
