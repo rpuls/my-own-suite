@@ -23,8 +23,11 @@ const {
   renderStorageAttachUnit,
   renderStorageUdevRule,
   STORAGE_ATTACH_UNIT,
+  STORAGE_FILESYSTEMS,
   STORAGE_UDEV_RULE_PATH,
 } = require('../infrastructure/control-plane-runtime.cjs');
+const { STORAGE_REGISTRY_FILENAME } = require('../shared/storage-contract.cjs');
+const { StorageRegistry } = require('../system-agents/lib/storage-registry.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
 
@@ -136,6 +139,24 @@ function run(command, args, options = {}) {
     if (!options.allowFailure) throw error;
     log(`${command} failed (${error.message}); continuing`);
     return '';
+  }
+}
+
+// Drives present before this release put the udev rule in place, so never announced.
+// A drive MOS already keeps something on is left alone: announcing it again restarts
+// its apps, and opens it again if the owner ejected it.
+function unannouncedStorageDevices(stateRoot, blockDevices) {
+  const known = new StorageRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) }).read().drives;
+  return blockDevices
+    .filter((device) => device.uuid && STORAGE_FILESYSTEMS.includes(device.fstype) && !known[device.uuid])
+    .map((device) => device.path);
+}
+
+function blockDevices() {
+  try {
+    return JSON.parse(execFileSync('lsblk', ['--json', '--list', '--output', 'PATH,UUID,FSTYPE'], { encoding: 'utf8' })).blockdevices || [];
+  } catch {
+    return [];
   }
 }
 
@@ -474,6 +495,9 @@ function main() {
   }
 
   log(`reconciling ${mosRoot}`);
+  // Ubuntu's needrestart restarts every service on a replaced Node the moment apt
+  // installs one, half way through this run; the restarts at the end are the ones that count.
+  process.env.NEEDRESTART_SUSPEND = '1';
   ensureAgentGroup();
   installDir('/etc/mos', 0o750);
   installDir('/etc/mos/secrets', 0o750);
@@ -571,6 +595,9 @@ function main() {
     run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
     run('systemctl', ['restart', 'mos-lab-reset-agent.service']);
   }
+  // After the restarts, so a drive the old backup agent still had mounted is free to open.
+  const unannounced = unannouncedStorageDevices(stateRoot, blockDevices());
+  if (unannounced.length) run('udevadm', ['trigger', '--action=add', ...unannounced], { allowFailure: true });
   log('system reconciliation complete');
 }
 
@@ -590,5 +617,6 @@ module.exports = {
   renderUnits,
   resolveRuntimeConfig,
   suiteManagerUnit,
+  unannouncedStorageDevices,
   vaultGateUnit,
 };

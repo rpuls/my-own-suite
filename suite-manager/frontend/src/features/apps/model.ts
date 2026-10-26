@@ -178,6 +178,7 @@ export function statusFor(app: AppPackageSummary, { paused = false } = {}) {
   if (app.installJob?.status === 'running') return { className: 'is-progress', label: 'Installing', tone: 'info' };
   if (app.updateJob?.status === 'running') return { className: 'is-progress', label: 'Updating', tone: 'info' };
   if (runtimeApplied(app) && paused) return { className: 'is-progress', label: 'Paused', tone: 'info' };
+  if (runtimeApplied(app) && app.containersDown) return { className: 'is-attention', label: 'Not running', tone: 'error' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (installIncomplete(app)) return { className: 'is-attention', label: 'Install incomplete', tone: 'warning' };
   return { className: 'is-available', label: 'Available', tone: 'info' };

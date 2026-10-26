@@ -272,6 +272,20 @@ test('an unreachable bucket keeps the last known list and reports why it is not 
   assert.equal((await reopened.health()).ready, true);
 });
 
+test('a bucket that has never answered is asked once an interval, not on every poll', async () => {
+  const world = await bucket();
+  world.engine.offline = true;
+  let asked = 0;
+  const probe = world.engine.probeRepository.bind(world.engine);
+  world.engine.probeRepository = (spec) => { asked += 1; return probe(spec); };
+
+  assert.equal((await world.destination.health()).ready, false);
+  const afterFirst = asked;
+  assert.ok(afterFirst > 0);
+  assert.equal((await world.destination.health()).ready, false);
+  assert.equal(asked, afterFirst);
+});
+
 test('a bucket never reports free space, so a backup is not refused against a number nobody has', async () => {
   const world = await bucket();
   assert.equal(await world.destination.freeBytes(), null);
@@ -302,6 +316,19 @@ test('a restore point written by another process shows up at once, in an archive
   assert.deepEqual((await world.destination.points.summaries()).map((point) => point.id), ['point-1']);
   assert.equal(world.destination.usage().restorePoints, 1);
   assert.equal((await world.destination.health()).keyState, 'own');
+});
+
+// The Backups screen polls; a bucket that stopped answering held every poll for
+// as long as restic kept retrying, so the page showed nothing at all.
+test('a bucket that stops answering still lists what it last held, at once', async () => {
+  const world = await bucket();
+  await world.destination.points.write('point-1', manifestFor('point-1'));
+  await world.destination.readIndex({ force: true });
+  const stale = Date.now() - OBJECT_INDEX_TTL_MS - 1000;
+  world.destination.saveIndex({ ...world.destination.loadIndex(), fetchedAt: new Date(stale).toISOString(), fetchedAtMs: stale });
+  world.engine.listSnapshots = () => new Promise(() => {});
+
+  assert.deepEqual((await world.destination.points.summaries()).map((point) => point.id), ['point-1']);
 });
 
 // Recording a point MOS just wrote is not the same as having listed the bucket.

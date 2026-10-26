@@ -179,6 +179,7 @@ export function BackupsScreen() {
   // The key is held only while its dialog is open.
   function closeDialog() {
     setDialog(null);
+    setError('');
     setRevealedKey(null);
     setRotation(null);
     setKeyError('');
@@ -338,6 +339,9 @@ export function BackupsScreen() {
     <p className="suite-lead mos-body-lg">A backup is a complete copy of your suite &mdash; your apps and everything in them. Keep it somewhere other than this server, and you can get everything back.</p>
   </div>;
 
+  const pageError = (dialog ? '' : error) || loadError;
+  const unreachable = (status?.places || []).filter((place) => place.kind === 'object' && place.state === 'unreachable');
+
   // The status read probes every destination, so until it lands the page has
   // nothing true to say; a headline over an empty page reads as broken.
   if (!status && !error && !loadError && !sessionEnded) {
@@ -398,7 +402,7 @@ export function BackupsScreen() {
     <div className="mos-page">
       {hero}
 
-      {error || loadError ? <Notice title="Backup needs attention" variant="error"><p>{error || loadError}</p></Notice> : null}
+      {pageError ? <Notice title="Backup needs attention" variant="error"><p>{pageError}</p></Notice> : null}
       {sessionEnded ? <Notice title={sessionEnded === 'restore' ? 'The restore signed you out' : 'Your session ended'} variant="info">
         <p>{sessionEnded === 'restore'
           ? 'The restore is done. Everyone is signed out because this is now the restored server. Sign in with the password you used on the server you restored — accounts and passwords now match the restore point, not what was set just before the restore.'
@@ -456,6 +460,10 @@ export function BackupsScreen() {
           </div>
           {blockReason && !backingUp && !workingLine ? <div className="suite-bk-banner-note"><p className="suite-bk-detail">{blockReason}</p></div> : null}
         </section>}
+
+        {unreachable.length ? <Notice title={`MOS cannot connect to ${new Intl.ListFormat('en', { type: 'conjunction' }).format(unreachable.map((place) => place.label))}`} variant="warning">
+          <p>Until it can, MOS cannot say which backups are there, so none are listed from {unreachable.length > 1 ? 'them' : 'it'}.</p>
+        </Notice> : null}
 
         <ArchivesPanel
           busy={busy}
@@ -536,6 +544,7 @@ export function BackupsScreen() {
       {dialog?.kind === 'backup' ? <BackupNowDialog
         auto={auto}
         busy={busy}
+        error={error}
         onCancel={closeDialog}
         onStart={(choice) => void startBackup(choice)}
       /> : null}
@@ -583,6 +592,7 @@ export function BackupsScreen() {
       {dialog?.kind === 'schedule' && status?.schedule ? <ScheduleDialog
         auto={auto}
         busy={busy}
+        error={error}
         onCancel={closeDialog}
         onSave={(next) => {
           const merged = { ...(status.schedule as BackupSchedule), ...next };
@@ -596,6 +606,7 @@ export function BackupsScreen() {
         backup={dialog.backup}
         busy={busy}
         confirmation={restoreConfirmation}
+        error={error}
         onCancel={closeDialog}
         onConfirmation={setRestoreConfirmation}
         onStart={() => void startRestore(dialog.backup)}
@@ -604,6 +615,7 @@ export function BackupsScreen() {
       {dialog?.kind === 'delete' ? <DeleteDialog
         backup={dialog.backup}
         busy={busy}
+        error={error}
         onCancel={closeDialog}
         onDelete={() => void deleteBackup(dialog.backup)}
       /> : null}

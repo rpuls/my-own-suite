@@ -589,6 +589,27 @@ export function Tooltip({ children, label }: { children: ReactNode; label: React
   </span>;
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Tab wraps around inside an open dialog instead of walking the page behind it.
+function keepFocusInside(container: HTMLElement, event: KeyboardEvent) {
+  const focusable = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((element) => element.offsetParent !== null);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (!container.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -600,7 +621,10 @@ export function Dialog({ children, className, footer, header, onClose, title }: 
   }, [onClose]);
   useEffect(() => {
     if (!dialogRef.current?.contains(document.activeElement)) closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && !editedRef.current) onCloseRef.current(); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !editedRef.current) onCloseRef.current();
+      if (event.key === 'Tab' && dialogRef.current) keepFocusInside(dialogRef.current, event);
+    };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
@@ -626,14 +650,22 @@ export function Dialog({ children, className, footer, header, onClose, title }: 
 // backdrop root and the frost blur never reaches the page, leaving unreadable
 // text-on-text.
 export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ariaLabel?: string; disabled?: boolean; items: Array<{ label: string; onSelect: () => void }> }) {
-  const [anchor, setAnchor] = useState<{ right: number; top: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ buttonTop: number; right: number; top: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   function toggle() {
     if (anchor) { setAnchor(null); return; }
     const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) setAnchor({ right: Math.max(8, window.innerWidth - rect.right), top: rect.bottom + 8 });
+    if (rect) setAnchor({ buttonTop: rect.top, right: Math.max(8, window.innerWidth - rect.right), top: rect.bottom + 8 });
   }
+  // A menu that would run past the bottom of the window opens above its button.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!anchor || !menu) return;
+    const height = menu.getBoundingClientRect().height;
+    const above = anchor.buttonTop - 8 - height;
+    if (anchor.top + height > window.innerHeight - 8 && above >= 8) menu.style.top = `${above}px`;
+  }, [anchor]);
   useEffect(() => {
     if (!anchor) return undefined;
     const close = () => setAnchor(null);

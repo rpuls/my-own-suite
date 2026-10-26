@@ -110,7 +110,7 @@ const STATE_LABELS: Record<StorageState, string> = {
   failed: 'Could not be opened',
   'read-only': 'Needs a check',
   ready: 'Ready',
-  unreachable: 'Cannot be reached',
+  unreachable: 'Cannot connect',
 };
 
 export function stateLabel(entry: Pick<Condition, 'connected' | 'state'>) {
@@ -218,7 +218,7 @@ function stateFact(entry: StorageEntry) {
   if (entry.state === 'failed') return entry.reason || 'MOS could not open this drive.';
   if (entry.state === 'ejected') return entry.connected ? 'Ejected — use it again in Storage, then pick it here' : 'Ejected — plug it back in first';
   if (entry.state === 'away') return 'Not connected — plug it in first';
-  if (entry.state === 'unreachable') return 'MOS could not reach it — look at it in Storage';
+  if (entry.state === 'unreachable') return 'Cannot connect — look at it in Storage';
   return '';
 }
 

@@ -20,6 +20,13 @@ const { SuiteAddressError, addressForHost, domainAddress } = require('../../../.
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { HttpsAgentError } = require('../settings/https-agent-client.cjs');
 
+// Names from before the install id spelled the whole address: home.192-168-1-20.local.myownsuite.org.
+const ID_LESS_EASY_DOOR_HOST = /^(?:[^.]+\.)?(\d{1,3}(?:-\d{1,3}){3})\.local\.myownsuite\.org$/u;
+
+function addressInEasyDoorHost(host) {
+  return parseEasyDoorHost(host)?.address || ID_LESS_EASY_DOOR_HOST.exec(String(host || ''))?.[1].replace(/-/gu, '.') || null;
+}
+
 // The stages of a change, in order. `dns` only exists for a public server's
 // domain: the wait for the owner's record to reach this server. `caddy` only
 // exists for a domain: it is the web server rewrite, restart and the wait for the
@@ -231,7 +238,7 @@ class SuiteAddressService {
     if (address.kind !== 'easy-door') return null;
     const live = this.easyDoorHost();
     if (!live || live === address.host) return null;
-    const recordedAddress = parseEasyDoorHost(address.host)?.address;
+    const recordedAddress = addressInEasyDoorHost(address.host);
     return { addressMoved: Boolean(recordedAddress) && recordedAddress !== parseEasyDoorHost(live).address, from: address.host, to: live };
   }
 

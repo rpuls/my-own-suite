@@ -151,6 +151,14 @@ class AppPackageService {
     };
   }
 
+  // Whether each installed app's containers are all up, or null when the agent cannot say.
+  async containersDown() {
+    const answer = await Promise.resolve(this.agent?.containerStates?.()).catch(() => null);
+    const states = answer?.packages && typeof answer.packages === 'object' ? answer.packages : null;
+    if (!states) return null;
+    return (packageId) => !(states[packageId]?.length && states[packageId].every((state) => state === 'running'));
+  }
+
   // The drives the storage module knows, or null when the agent cannot say.
   async storageDrives() {
     const answer = await Promise.resolve(this.agent?.storageInventory?.()).catch(() => null);
@@ -674,6 +682,13 @@ class AppPackageService {
     const projections = this.store.getAppProjections(instance.id);
     if (!runtimeRouteApplied(projections)) {
       throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Start this app before restarting it.', 409);
+    }
+    // Refused before anything runs: a restart that failed for want of the drive
+    // would stay on the app as its last failure after Use it again brought it back.
+    const pausedOn = (await this.storageDrives() || []).find((drive) => (drive.apps || []).includes(packageId) && ['away', 'ejected'].includes(drive.state));
+    if (pausedOn) {
+      const drive = pausedOn.name || pausedOn.label || 'its drive';
+      throw new AppPackageServiceError('APP_DRIVE_PAUSED', `This app is paused while ${drive} is ${pausedOn.state === 'away' ? 'unplugged' : 'ejected'}. Plug it in and choose Use it again in Settings → Storage.`, 409);
     }
 
     const applied = await this.applyPackageRuntime(packageId, requestContext);

@@ -381,7 +381,7 @@ export function bannerState(status: BackupStatus | null | undefined, busyBackup:
   const newest = (status?.backups || []).filter((backup) => backup.owner === 'this')
     .slice().sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const schedule = status?.schedule || null;
-  const nextRun = schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
+  const nextRun = auto?.place && schedule?.enabled && schedule.nextRunAt ? ` · Next ${formatInZone(schedule.nextRunAt, schedule.timeZone)}` : '';
 
   if (busyBackup) return { detail: 'Your apps pause for a few minutes and come back on their own.', title: 'Backing up now.', tone: 'ready' };
   if (!newest) {
@@ -428,6 +428,7 @@ export function scheduleLive(schedule: BackupSchedule | null | undefined, auto: 
   if (schedule.running) return { text: 'An automatic backup is running now.', tone: 'ready' };
   if (schedule.waiting) return { text: `Waiting: ${schedule.waiting.reason}`, tone: 'warning' };
   if (!schedule.enabled) return { text: 'Off. MOS only backs up when you ask it to, and before it updates itself.', tone: 'muted' };
+  if (!auto.place) return { text: `Waiting for ${auto.label} to be connected. Automatic backups do nothing until it is.`, tone: 'warning' };
   if (schedule.lastResult?.status === 'failed') return { text: `Last automatic backup stopped: ${schedule.lastResult.message}`, tone: 'error' };
   if (schedule.nextRunAt) return { text: `Next backup ${formatInZone(schedule.nextRunAt, schedule.timeZone)}.`, tone: 'ready' };
   return { text: '', tone: 'muted' };

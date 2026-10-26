@@ -20,9 +20,15 @@ function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceSer
       path: '/apps/packages',
       signIn: REVIEW,
       handler: async ({ response }) => {
+        const [host, down] = await Promise.all([appPackages.hostFacts(), appPackages.containersDown()]);
         jsonResponse(response, 200, {
           catalog: catalogService.status(),
-          packages: appPackages.listPackages(await appPackages.hostFacts()).map((app) => ({ ...withPublicUrl(app), installJob: installJobs.get(app.id), updateJob: updateJobs.get(app.id) })),
+          packages: appPackages.listPackages(host).map((app) => ({
+            ...withPublicUrl(app),
+            containersDown: Boolean(down && app.instance?.status === 'installed' && down(app.id)),
+            installJob: installJobs.get(app.id),
+            updateJob: updateJobs.get(app.id),
+          })),
         });
         // After the answer, on purpose: the Apps page never waits on a git host,
         // and a source found to have moved shows up on the next load.

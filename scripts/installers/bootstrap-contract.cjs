@@ -703,6 +703,7 @@ if [ "$MOS_DISPOSABLE_LAB" = '1' ]; then
   systemctl enable mos-lab-reset-agent.service
   systemctl restart mos-lab-reset-agent.service
 fi
+udevadm ${storageColdplugArgs().join(' ')} || true
 
 cat >> "$MOS_STATE_ROOT/bootstrap-contract.env" <<'MOS_BOOTSTRAP_DONE'
 MOS_BOOTSTRAP_STATUS='ready-for-owner-setup'
@@ -841,6 +842,7 @@ const {
   renderStorageAttachUnit,
   renderStorageUdevRule,
   renderUnavailablePage,
+  storageColdplugArgs,
   STORAGE_ATTACH_UNIT,
   STORAGE_UDEV_RULE_PATH,
   UNAVAILABLE_PAGE_FILENAME,

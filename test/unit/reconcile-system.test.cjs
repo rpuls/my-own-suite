@@ -9,6 +9,7 @@ const {
   resolveRuntimeConfig,
   renderUnits,
   suiteManagerUnit,
+  unannouncedStorageDevices,
   vaultGateUnit,
 } = require('../../scripts/reconcile-system.cjs');
 const { CADDY_BUILD_IMAGES, JOURNALD_CONFIG_PATH, PROGRESS_ROUTE, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
@@ -246,4 +247,18 @@ test('reconciled units always wait for the vault gate', () => {
   assert.equal('vault' in config, false, 'nothing about the units depends on reading the disk');
   assert.match(suiteManagerUnit(config), /^Requires=mos-vault\.service$/mu);
   assert.match(suiteManagerUnit(config), /^After=mos-vault\.service$/mu);
+});
+
+test('a managed update announces only drives MOS has never opened', (context) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-'));
+  context.after(() => fs.rmSync(tempDir, { force: true, recursive: true }));
+  fs.writeFileSync(path.join(tempDir, 'storage.json'), JSON.stringify({ buckets: {}, drives: { 'app-drive': { apps: ['immich'] } }, version: 2 }));
+  const devices = [
+    { fstype: 'ext4', path: '/dev/sdb1', uuid: 'app-drive' },
+    { fstype: 'exfat', path: '/dev/sdc1', uuid: 'old-backup-drive' },
+    { fstype: 'crypto_LUKS', path: '/dev/sda3', uuid: 'vault' },
+    { fstype: null, path: '/dev/sdd', uuid: null },
+  ];
+
+  assert.deepEqual(unannouncedStorageDevices(tempDir, devices), ['/dev/sdc1']);
 });

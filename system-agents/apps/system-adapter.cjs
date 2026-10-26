@@ -530,6 +530,17 @@ class SystemAppAdapter {
     return this.waitForReady(runtime.healthTarget, { crashed: () => this.crashLoopOf(runtime), host: runtime.healthHost });
   }
 
+  // Each app's containers by state, so an app Docker stopped is not shown as running.
+  async containerStates() {
+    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--filter', 'label=mos.package', '--format', '{{.Label "mos.package"}} {{.State}}'], { timeoutMs: 10_000 });
+    const states = {};
+    for (const line of String(output || '').split('\n')) {
+      const [packageId, state] = line.trim().split(' ');
+      if (packageId && state) (states[packageId] ||= []).push(state);
+    }
+    return states;
+  }
+
   async crashLoopOf({ packageId, services }) {
     for (const service of services) {
       const name = this.containerName(packageId, service.id, services.length);

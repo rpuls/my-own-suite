@@ -462,6 +462,10 @@ class AppAgentCore {
     return inventory;
   }
 
+  async containerStates() {
+    return { packages: await this.adapter.containerStates() };
+  }
+
   async storageUsage() {
     return this.adapter.storage.usage();
   }
