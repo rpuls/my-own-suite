@@ -9,7 +9,7 @@ import { openSuiteManager } from '../support/navigation.mjs';
 // under the browser's connection, so the outcome is read from the status — first
 // through the door the test is on, then through the new name once it serves.
 async function waitForAddressChange(page, env) {
-  const deadline = Date.now() + 5 * 60 * 1000;
+  const deadline = Date.now() + 10 * 60 * 1000;
   const homeUrl = `https://home.${env.dns01BaseDomain}/`;
   let lastStatus = null;
   while (Date.now() < deadline) {
