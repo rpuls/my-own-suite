@@ -58,7 +58,13 @@ function fullFilesystems(dfOutput) {
 // The section that leads the file. Everything below it is evidence; this is the
 // part a helper — or the AI they paste it into — reads first, and the reason the
 // bundle is worth more than a folder of raw logs.
-function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform = {} }) {
+const DRIVE_TROUBLE = {
+  away: 'is not connected.',
+  failed: 'is connected but could not be opened; its apps read nothing from it.',
+  'read-only': 'was opened read-only because it was not ejected cleanly; it needs Check drive.',
+};
+
+function summarizeTrouble({ apps = [], catalog = null, collection = {}, drives = null, platform = {} }) {
   const trouble = [];
   if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
   // A catalog that will not refresh is quiet by design — the app list and its
@@ -100,6 +106,9 @@ function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform
   }
   for (const app of apps) {
     if (app.lastFailure) trouble.push(`App ${app.displayName} last failed: ${app.lastFailure.errorCode} at ${app.lastFailure.completedAt || app.lastFailure.startedAt}.`);
+  }
+  for (const drive of drives || []) {
+    if (drive.apps?.length && DRIVE_TROUBLE[drive.state]) trouble.push(`Drive ${drive.label} (used by ${drive.apps.join(', ')}) ${DRIVE_TROUBLE[drive.state]}`);
   }
   for (const line of fullFilesystems(collection.host?.disk)) trouble.push(`Filesystem is nearly full: ${line}`);
   if (collection.incomplete?.length) trouble.push(`Some information could not be collected: ${collection.incomplete.join(', ')}.`);
@@ -249,6 +258,28 @@ function networkLines(networks) {
   ].join('\n')).join('\n\n');
 }
 
+// The drives apps keep folders on, as the app agent sees them, then the two logs
+// that explain a drive that would not open: the attach unit's runs and the kernel's.
+function storageLines(drives, storage) {
+  const listed = drives === null
+    ? ['The app agent could not list the drives.']
+    : drives.filter((drive) => drive.state !== 'available').map((drive) => [
+      `${drive.label}  ·  ${drive.state}  ·  ${drive.fileSystem || 'unknown filesystem'}  ·  ${drive.id}`,
+      `  used by ${drive.apps?.length ? drive.apps.join(', ') : 'no installed app'}`,
+      drive.reason ? indent(drive.reason) : null,
+      drive.detail ? indent(drive.detail) : null,
+    ].filter(Boolean).join('\n'));
+  return [
+    ...(listed.length ? listed : ['No app keeps files on a drive.']),
+    '',
+    'Drive events (plug-ins, Eject, Check drive):',
+    storage?.attach ? indent(storage.attach) : '  (not collected)',
+    '',
+    'Kernel lines about drives:',
+    storage?.kernel ? indent(storage.kernel) : '  (none)',
+  ].join('\n');
+}
+
 function containerLines(containers) {
   if (!containers?.length) return 'No MOS containers are present.';
   return containers.map((container) => [
@@ -267,13 +298,14 @@ function buildSupportBundle({
   apps = [],
   catalog = null,
   collection = {},
+  drives = null,
   homeHost = '',
   now = () => new Date(),
   platform = {},
   secrets = [],
 } = {}) {
   const createdAt = now().toISOString();
-  const trouble = summarizeTrouble({ apps, catalog, collection, platform });
+  const trouble = summarizeTrouble({ apps, catalog, collection, drives, platform });
 
   const body = [
 `MY OWN SUITE — DIAGNOSTICS
@@ -309,6 +341,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
     ].join('\n')),
     section('HOST', [
       collection.host?.kernel && `Kernel:\n${collection.host.kernel}`,
+      collection.host?.node && `Node.js:\n${collection.host.node}`,
       collection.host?.uptime && `Uptime:\n${collection.host.uptime}`,
       collection.host?.memory && `Memory:\n${collection.host.memory}`,
       collection.host?.disk && `Disk:\n${collection.host.disk}`,
@@ -317,6 +350,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
     section('HOST PATCHES', hostPatchLines(collection.hostPatches).join('\n')),
     section('WEB SERVER', webServerLines(collection.webServer)),
     section('APPS', appLines(apps)),
+    section('STORAGE DRIVES', storageLines(drives, collection.storage)),
     section('SERVICES', unitLines(collection.units)),
     section('NETWORKS', networkLines(collection.networks)),
     section('CONTAINERS', containerLines(collection.containers)),
@@ -372,6 +406,7 @@ async function assembleSupportBundle({
     try { return store.getAddressChange() || {}; } catch { return {}; }
   })();
   const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
+  const drives = await Promise.resolve(appAgent?.storageInventory?.()).then((answer) => answer?.drives || null, () => null);
   const apps = store.getAppInstances().map((instance) => ({
     displayName: instance.displayNameSnapshot || instance.packageId,
     installedAt: instance.installedAt,
@@ -387,6 +422,7 @@ async function assembleSupportBundle({
     apps,
     catalog: catalogStatus,
     collection,
+    drives,
     homeHost,
     now,
     platform: {

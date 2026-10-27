@@ -34,15 +34,15 @@ function requestFromPage(page, path, options) {
   });
 }
 
-// A GET is repeated when the page navigated under it (Suite Manager reloads its
-// own screens around a restore); anything that changes state is never repeated.
+// A GET is repeated when the page navigated under it (Suite Manager reloads its own
+// screens around a restore); anything that changes state is never repeated.
 export async function apiJson(page, path, options = {}) {
   let result;
   for (let attempt = 0; !result; attempt += 1) {
     try {
       result = await requestFromPage(page, path, options);
     } catch (error) {
-      if ((options.method || 'GET') !== 'GET' || attempt >= 3 || !/Execution context was destroyed/u.test(error.message)) throw error;
+      if ((options.method || 'GET') !== 'GET' || attempt >= 3 || !/Execution context was destroyed|Failed to fetch/u.test(error.message)) throw error;
       await page.waitForLoadState('domcontentloaded').catch(() => undefined);
     }
   }

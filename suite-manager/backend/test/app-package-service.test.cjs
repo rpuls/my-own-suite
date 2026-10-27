@@ -412,7 +412,7 @@ test('an external package cannot present its own privacy review as a MOS review'
   const candidate = await externalCandidate(root);
   await fsp.writeFile(path.join(candidate.packageDir, 'privacy-review.json'), `${JSON.stringify({
     appId: 'community-notes', posture: 'excellent', reviewedAt: '2026-07-01T00:00:00.000Z',
-    provenance: { humanReviewed: true, method: 'self' }, schemaVersion: 1, scope: { packageVersion: '1.0.0' },
+    provenance: { method: 'self' }, schemaVersion: 1, scope: { packageVersion: '1.0.0' },
   }, null, 2)}\n`);
   const republished = { ...candidate, manifest: readAppPackageManifest(candidate.packageDir).manifest, packageDigest: digestAppPackage(candidate.packageDir) };
   const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
@@ -593,6 +593,42 @@ test('the Apps list says why an app cannot be installed on this server, and says
   assert.deepEqual(unmetFor({ architecture: 'arm64', https: false }, 'immich'), ['architecture']);
   assert.deepEqual(unmetFor({ architecture: 'amd64', https: true }, 'vaultwarden'), []);
   assert.deepEqual(unmetFor({}, 'vaultwarden'), []);
+  store.close();
+});
+
+test('an app whose address a Homepage link serves is refused before anything is installed, and the Apps list names the link', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const homeLinks = new Map([['immich', 'NAS photos']]);
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() { throw new Error('should not be called'); },
+      async status() { return agentStatus(); },
+    },
+    appsDir: v2AppsDir,
+    homeLinks: async () => homeLinks,
+    store,
+  });
+  const unmetFor = (id) => service.listPackages({ baseHost: 'mos.example.com', homeLinks }).find((app) => app.id === id).unmetRequirements;
+
+  assert.deepEqual(unmetFor('immich'), [{ id: 'address', reason: 'immich.mos.example.com is used by your Homepage link NAS photos. Rename or remove that link first.' }]);
+  assert.deepEqual(unmetFor('vaultwarden'), []);
+  await assert.rejects(() => service.installPackage('immich'), (error) => error.code === 'APP_ROUTE_HOST_TAKEN' && /NAS photos/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('immich'), null);
+  store.close();
+});
+
+test('an installed app names itself on its web address, for keeping Homepage links off it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+
+  assert.deepEqual([...service.appRouteHosts()], [['stirling-pdf', 'Stirling PDF']]);
   store.close();
 });
 
@@ -1502,6 +1538,52 @@ test('new installs snapshot package contents before persisting configuration and
   store.close();
 });
 
+test('an app that needs a drive is refused without one and records its folders on the drive it was given', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  const drives = [{ connected: true, holdsAppFoldersFormat: true, id: '1A2B-3C4D', usable: true }, { connected: true, holdsAppFoldersFormat: false, id: 'e1e1-linux', reason: 'This drive is formatted as ext4.', usable: false }];
+  const agent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async status() { return agentStatus(); },
+    async storageInventory() { return { drives }; },
+  };
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+  const config = { adminName: 'Owner', adminPassword: 'jellyfin-test-password' };
+
+  await assert.rejects(() => service.installPackage('jellyfin', { config }), (error) => error.code === 'APP_STORAGE_DRIVE_REQUIRED');
+  await assert.rejects(() => service.installPackage('jellyfin', { config, drive: 'e1e1-linux' }), (error) => error.code === 'APP_STORAGE_DRIVE_UNAVAILABLE' && /ext4/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('jellyfin'), null);
+
+  const view = await service.installPackage('jellyfin', { config, drive: '1A2B-3C4D' });
+  assert.deepEqual(view.folders, [
+    { driveId: '1A2B-3C4D', locationKind: 'drive', name: 'Movies' },
+    { driveId: '1A2B-3C4D', locationKind: 'drive', name: 'Series' },
+  ]);
+  const compose = store.getAppProjections(view.id).find((projection) => projection.kind === 'compose').content;
+  assert.deepEqual(compose.services[0].folders.map((folder) => folder.path), ['/media/movies', '/media/series']);
+  assert.equal(compose.volumes.some((volume) => /movies|series/u.test(volume)), false);
+  store.close();
+});
+
+test('a plugged-in drive that needs a check opens the install, where the picker says why it waits', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const drives = [{ connected: true, holdsAppFoldersFormat: true, id: '1A2B-3C4D', state: 'read-only', usable: false }];
+  const service = new AppPackageService({ agent: { async status() { return agentStatus(); }, async storageInventory() { return { drives }; } }, appsDir: v2AppsDir, store });
+  assert.equal((await service.hostFacts()).storageDrives, 1);
+  await assert.rejects(() => service.installPackage('jellyfin', { config: { adminName: 'Owner', adminPassword: 'jellyfin-test-password' }, drive: '1A2B-3C4D' }), (error) => error.code === 'APP_STORAGE_DRIVE_UNAVAILABLE');
+  store.close();
+});
+
+test('the Apps list blocks an app that needs a drive on a server without one', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ appsDir: v2AppsDir, store });
+  const unmetFor = (host, id) => service.listPackages(host).find((app) => app.id === id).unmetRequirements.map((unmet) => unmet.id);
+  assert.deepEqual(unmetFor({ storageDrives: 0 }, 'jellyfin'), ['storage']);
+  assert.deepEqual(unmetFor({ storageDrives: 1 }, 'jellyfin'), []);
+  assert.deepEqual(unmetFor({ storageDrives: 0 }, 'immich'), []);
+  store.close();
+});
+
 test('installed package details and icons remain bound to the snapshot when the candidate changes or disappears', async () => {
   const root = await tempStateDir();
   const appsDir = path.join(root, 'apps');
@@ -1553,8 +1635,9 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
     evidence: [],
     openQuestions: [],
     policies: [],
+    lastHumanReview: { appVersion: manifest.version, date: '2026-07-01', reviewer: 'Test Reviewer' },
     posture: 'private-by-default',
-    provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test-commit', skill: 'assess-app-privacy', skillRevision: '1' },
+    provenance: { method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test-commit', skill: 'assess-app-privacy', skillRevision: '1' },
     reviewedAt: '2026-07-01T00:00:00.000Z',
     schemaVersion: 1,
     scope: {
@@ -1592,7 +1675,7 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
   assert.equal(installed.privacy.dimensions.dataProcessing, 'local');
   // Installed assessment provenance travels from the snapshot review.
   assert.equal(installed.privacy.provenance.method, 'human');
-  assert.equal(installed.privacy.provenance.humanReviewed, true);
+  assert.deepEqual(installed.privacy.provenance.lastHumanReview, { appVersion: manifest.version, date: '2026-07-01', reviewer: 'Test Reviewer' });
   assert.equal(installed.privacy.provenance.sourceRevision, 'test-commit');
   // No catalog service wired in this test, so there are no current advisories.
   assert.deepEqual(installed.advisories, []);

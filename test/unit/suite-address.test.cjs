@@ -23,7 +23,7 @@ function tempDir() {
 }
 
 test('a request records the door it came through: the Easy Door by shape, anything else as the install-time name', () => {
-  assert.deepEqual(addressForHost('home.192-168-30-104.local.myownsuite.org'), { host: 'home.192-168-30-104.local.myownsuite.org', kind: 'easy-door', scheme: 'http' });
+  assert.deepEqual(addressForHost('home.30-104-kqmzrt.local.myownsuite.org'), { host: 'home.30-104-kqmzrt.local.myownsuite.org', kind: 'easy-door', scheme: 'http' });
   assert.deepEqual(addressForHost('HOME.MOS.HOME:3100'), { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' });
   assert.deepEqual(addressForHost('home.203.0.113.5.sslip.io', { scheme: 'https' }), { host: 'home.203.0.113.5.sslip.io', kind: 'lan-name', scheme: 'https' });
   // A public address shaped like the door is not the door: the nameserver would never answer it.
@@ -41,7 +41,7 @@ test('a domain address is https on home.<domain> and carries what the domain mod
 
 test('the base every app hangs under is the host without its home label', () => {
   assert.equal(baseHostOf({ host: 'home.mos.home' }), 'mos.home');
-  assert.equal(baseHostOf({ host: 'home.192-168-30-104.local.myownsuite.org' }), '192-168-30-104.local.myownsuite.org');
+  assert.equal(baseHostOf({ host: 'home.30-104-kqmzrt.local.myownsuite.org' }), '30-104-kqmzrt.local.myownsuite.org');
   assert.equal(baseHostOf({ host: '127.0.0.1' }), '127.0.0.1');
 });
 
@@ -68,7 +68,7 @@ test('the file round-trips, refuses to be read before it exists, and rejects a b
 
 test('an offer is its own file beside the address, so writing one never touches the address', () => {
   const file = new SuiteAddressFile({ dir: path.join(tempDir(), 'suite-address') });
-  file.write(addressForHost('home.192-168-30-104.local.myownsuite.org'), { by: 'onboarding' });
+  file.write(addressForHost('home.30-104-kqmzrt.local.myownsuite.org'), { by: 'onboarding' });
   const before = fs.readFileSync(file.addressPath, 'utf8');
 
   assert.equal(file.readOffer(), null);

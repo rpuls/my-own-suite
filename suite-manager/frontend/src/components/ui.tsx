@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -10,6 +10,7 @@ export function Icon({ name }: { name: IconName }) {
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
+    'cloud-bucket': <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6l1.8 12.2c.3 1.6 3 2.8 6.2 2.8s5.9-1.2 6.2-2.8L20 6" /><path d="M5.2 11c1.4 1.1 3.9 1.8 6.8 1.8s5.4-.7 6.8-1.8" /></>,
     'cloud-storage': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="M12 12v5" /><path d="m9.5 14.5 2.5-2.5 2.5 2.5" /></>,
     copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
@@ -18,15 +19,17 @@ export function Icon({ name }: { name: IconName }) {
     external: <path d="M7 17L17 7M9 7h8v8" />,
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
+    file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" /></>,
+    folder: <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
-    'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
+    'hard-drive': <><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z" /><path d="M2 12h20" /><path d="M6 16h.01M10 16h.01" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     lock: <><rect height="11" rx="2" width="16" x="4" y="11" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
     mail: <><rect height="14" rx="2" width="18" x="3" y="5" /><path d="m3 7 9 6 9-6" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
-    'network-drive': <><circle cx="12" cy="12" r="3" /><path d="M12 1v4" /><path d="M12 19v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" /><path d="M1 12h4" /><path d="M19 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" /></>,
+    'network-drive': <><path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H9l2 2h8.5A1.5 1.5 0 0 1 21 7.5v6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 13.5Z" /><path d="M12 15v3.5" /><circle cx="12" cy="20" r="1.5" /><path d="M3 20h7.5M13.5 20H21" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     screens: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
     search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
@@ -35,7 +38,8 @@ export function Icon({ name }: { name: IconName }) {
     'sign-out': <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
     update: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>,
     upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" /></>,
-    'usb-drive': <><rect width="16" height="10" x="4" y="12" rx="2" /><path d="M2 8h20" /><path d="M6 8V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3" /></>,
+    'usb-drive': <><rect height="17" rx="2" width="12" x="2.5" y="3.5" /><path d="M5.5 7.5h6" /><path d="M7 17h.01" /><path d="M14.5 10h3a2.5 2.5 0 0 1 2.5 2.5V17" /><rect height="4" rx="1" width="3" x="18.5" y="17" /></>,
+    'usb-stick': <><rect height="12" rx="2" width="9" x="7.5" y="10" /><path d="M9.5 10V3.5h5V10" /><path d="M11 6h.01M13 6h.01" /></>,
     x: <path d="m6 6 12 12M18 6 6 18" />,
   };
   return <svg aria-hidden="true" className="suite-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">{paths[name]}</svg>;
@@ -127,8 +131,16 @@ export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes
   return <label className="suite-control"><span className="suite-field-label">{label}</span><textarea className="suite-input suite-textarea" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
+// The shared dropdown: the one native <select> under every choice in Suite
+// Manager, so the open list reads the same everywhere. Its look is
+// `.mos-dropdown` in branding/styles/mos.css. That look is interim: Claude
+// Design will specify the final dropdown for the MOS design system.
+export function Dropdown({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`mos-dropdown${className ? ` ${className}` : ''}`} {...props} />;
+}
+
 export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label?: string }) {
-  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<Dropdown className="suite-input suite-select" {...props}>{children}</Dropdown>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
 // The shared confirmation checkbox: a boxed, full-width row whose whole surface
@@ -136,6 +148,75 @@ export function Select({ children, helperText, label, ...props }: SelectHTMLAttr
 // so "I have read this" looks and behaves the same everywhere it is asked.
 export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode }) {
   return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
+}
+
+// Picks a row for a bulk action, ticked and unticked freely — unlike Checkbox,
+// which gates a submit. Its look is .mos-select-box in the branding stylesheet.
+export function SelectBox({ label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  return <label className="mos-select-box"><input aria-label={label} type="checkbox" {...props} /><span aria-hidden="true" className="mos-select-box-mark"><Icon name="check" /></span></label>;
+}
+
+export function ProgressBar({ label, value }: { label: string; value: number }) {
+  const percent = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return <div aria-label={label} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className="mos-progress" role="progressbar"><span className="mos-progress-fill" style={{ width: `${percent}%` }} /></div>;
+}
+
+// One of several, standing on its own in a row that also holds buttons. Its look
+// is .mos-radio in the branding stylesheet, the same mark ChoiceRow draws.
+export function Radio({ label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  return <label className="mos-radio"><input aria-label={label} className="mos-radio-input" type="radio" {...props} /><span aria-hidden="true" className="mos-radio-mark" /></label>;
+}
+
+type ChoiceRowProps = {
+  accent?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  icon: IconName;
+} & (
+  | { onPick: () => void; radio?: undefined }
+  | { onPick?: undefined; radio: { checked: boolean; name: string; onChange: () => void; value: string } }
+);
+
+// One choice among several, as a row: the icon, then the title and its facts.
+// With `radio` the choice is kept until something submits it; with `onPick` it
+// acts at once. Its look is .mos-choice-row in the branding stylesheet.
+export function ChoiceRow({ accent = false, children, disabled = false, icon, onPick, radio }: ChoiceRowProps) {
+  const body = <><span className="mos-choice-icon"><Icon name={icon} /></span><span className="mos-choice-body">{children}</span></>;
+  const className = `mos-choice-row${accent ? ' is-accent' : ''}`;
+  if (radio) {
+    return <label className={`${className}${disabled ? ' is-disabled' : ''}`}>
+      <input checked={radio.checked} className="mos-radio-input" disabled={disabled} name={radio.name} onChange={radio.onChange} type="radio" value={radio.value} />
+      <span aria-hidden="true" className="mos-radio-mark" />
+      {body}
+    </label>;
+  }
+  return <button className={`${className} is-action`} disabled={disabled} onClick={onPick} type="button">{body}</button>;
+}
+
+// A row that opens to more: icon first, chevron last, and the whole row one
+// hit target. The head button stretches over the row; anything that acts on the
+// row goes in `trailing`, above it rather than inside a button. Its look is
+// .mos-disclosure in the branding stylesheet.
+export function DisclosureRow({ aside, children, disabled = false, expanded, icon, label, onToggle, trailing }: {
+  aside?: ReactNode;
+  children: ReactNode;
+  disabled?: boolean;
+  expanded: boolean;
+  icon?: IconName;
+  // The button's accessible name where its content does not say what it opens.
+  label?: string;
+  onToggle: () => void;
+  trailing?: ReactNode;
+}) {
+  return <div className={`mos-disclosure${expanded ? ' is-expanded' : ''}${disabled ? ' is-disabled' : ''}`}>
+    <button aria-expanded={expanded} aria-label={label} className="mos-disclosure-head" disabled={disabled} onClick={onToggle} type="button">
+      {icon ? <span className="mos-disclosure-icon"><Icon name={icon} /></span> : null}
+      <span className="mos-disclosure-body">{children}</span>
+      {aside ? <span className="mos-disclosure-aside">{aside}</span> : null}
+    </button>
+    {trailing ? <div className="mos-disclosure-trailing">{trailing}</div> : null}
+    <span aria-hidden="true" className="mos-disclosure-chevron"><Icon name="chevron-right" /></span>
+  </div>;
 }
 
 // The shared setting switch: label and optional description on the left, the
@@ -215,20 +296,23 @@ export function PanelHead({ actions, children, heading, title }: {
 // One centred line: the fact, then the qualification, then at most one quiet
 // action. It is deliberately not a Notice — a notice interrupts, a band
 // annotates, and this one is read every visit.
-export function PanelBand({ busy = false, children, icon, note, title, tone = 'neutral' }: {
+export function PanelBand({ busy = false, children, icon, layout = 'centred', note, title, tone = 'neutral' }: {
   busy?: boolean;
   // A trailing action. Keep it ghost-quiet: the band is not what the owner
   // came to the page to do.
   children?: ReactNode;
   icon?: IconName;
+  // "row" reads as one sentence with its action at the end, for a band long
+  // enough that centring would stack it into three lines.
+  layout?: 'centred' | 'row';
   note?: ReactNode;
   title: ReactNode;
   tone?: 'accent' | 'info' | 'neutral' | 'warning';
 }) {
-  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`} aria-busy={busy || undefined}>
+  const text = <><span className="mos-panel-band-title">{title}</span>{note ? <> <span className="mos-panel-band-note">{note}</span></> : null}</>;
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}${layout === 'row' ? ' mos-panel-band-row' : ''}`} aria-busy={busy || undefined}>
     {busy ? <span className="mos-panel-band-icon"><Spinner /></span> : icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
-    <span className="mos-panel-band-title">{title}</span>
-    {note ? <span className="mos-panel-band-note">{note}</span> : null}
+    {layout === 'row' ? <span className="mos-panel-band-text">{text}</span> : text}
     {children}
   </div>;
 }
@@ -297,6 +381,12 @@ export function RowValue({ children, code, mask }: { children?: ReactNode; code?
 // that matter disappear into the noise.
 export function RowInput({ code, state, ...props }: InputHTMLAttributes<HTMLInputElement> & { code?: boolean; state?: 'filled' | 'missing' }) {
   return <input className={`mos-row-input${code ? ' mos-row-code' : ''}${state ? ` mos-row-input-${state}` : ''}`} {...props} />;
+}
+
+// A choice in a row, boxed exactly like RowInput so it lines up with the typed
+// fields around it.
+export function RowSelect({ children, state, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; state?: 'filled' | 'missing' }) {
+  return <Dropdown className={`mos-row-input${state ? ` mos-row-input-${state}` : ''}`} {...props}>{children}</Dropdown>;
 }
 
 export function RowAction({ danger, icon, label, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & { danger?: boolean; icon: IconName; label: string }) {
@@ -477,7 +567,7 @@ export function SecretText({ label, masked = false, value }: { label: string; ma
 }
 
 // Portalled like ActionMenu, so a flush panel's clipping cannot cut it off.
-// Placed below its anchor and kept inside the viewport.
+// Placed below its anchor, or above it when the viewport has no room below.
 export function Tooltip({ children, label }: { children: ReactNode; label: ReactNode }) {
   const id = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -490,7 +580,8 @@ export function Tooltip({ children, label }: { children: ReactNode; label: React
     const edge = 16;
     const left = anchor.left + anchor.width / 2 - tip.offsetWidth / 2;
     tip.style.left = `${Math.min(Math.max(left, edge), window.innerWidth - tip.offsetWidth - edge)}px`;
-    tip.style.top = `${anchor.bottom + 8}px`;
+    const fitsBelow = anchor.bottom + 8 + tip.offsetHeight <= window.innerHeight - edge;
+    tip.style.top = `${fitsBelow ? anchor.bottom + 8 : anchor.top - 8 - tip.offsetHeight}px`;
   }, [open]);
   return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={0}>
     {children}
@@ -498,23 +589,49 @@ export function Tooltip({ children, label }: { children: ReactNode; label: React
   </span>;
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Tab wraps around inside an open dialog instead of walking the page behind it.
+function keepFocusInside(container: HTMLElement, event: KeyboardEvent) {
+  const focusable = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((element) => element.offsetParent !== null);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (!container.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
+  const editedRef = useRef(false);
+  const pressedBackdropRef = useRef(false);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
   useEffect(() => {
     if (!dialogRef.current?.contains(document.activeElement)) closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current(); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !editedRef.current) onCloseRef.current();
+      if (event.key === 'Tab' && dialogRef.current) keepFocusInside(dialogRef.current, event);
+    };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
-  // Escape and a click on the backdrop both close every dialog, with no opt-out:
-  // a dismissal that works on some dialogs and not others is a worse trap than
-  // either rule on its own. A dialog that must not be dismissed mid-flight
-  // guards its own onClose, the way AppConfigDialog does while it is saving.
+  // One rule for every dialog: Escape and a click on the backdrop dismiss it
+  // until the owner changes any field in it; from then on only × and the
+  // dialog's own buttons close it. A click counts as a backdrop click only when
+  // it also started there, so a text selection dragged past the edge is not one.
   //
   // Portalled to <body> for the same reason as Drawer and ActionMenu: a dialog
   // opened from inside a frosted surface (the app detail slide-over, any
@@ -522,7 +639,7 @@ export function Dialog({ children, className, footer, header, onClose, title }: 
   // `position: fixed` centres it on the panel instead of the screen and its
   // frost blurs nothing. Screen-centred and frosted is the only correct result.
   return createPortal(
-    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onCloseRef.current(); }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
+    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && pressedBackdropRef.current && !editedRef.current) onCloseRef.current(); }} onPointerDown={(event) => { pressedBackdropRef.current = event.target === event.currentTarget; }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} onChange={() => { editedRef.current = true; }} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
     document.body,
   );
 }
@@ -533,14 +650,22 @@ export function Dialog({ children, className, footer, header, onClose, title }: 
 // backdrop root and the frost blur never reaches the page, leaving unreadable
 // text-on-text.
 export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ariaLabel?: string; disabled?: boolean; items: Array<{ label: string; onSelect: () => void }> }) {
-  const [anchor, setAnchor] = useState<{ right: number; top: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ buttonTop: number; right: number; top: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   function toggle() {
     if (anchor) { setAnchor(null); return; }
     const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) setAnchor({ right: Math.max(8, window.innerWidth - rect.right), top: rect.bottom + 8 });
+    if (rect) setAnchor({ buttonTop: rect.top, right: Math.max(8, window.innerWidth - rect.right), top: rect.bottom + 8 });
   }
+  // A menu that would run past the bottom of the window opens above its button.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!anchor || !menu) return;
+    const height = menu.getBoundingClientRect().height;
+    const above = anchor.buttonTop - 8 - height;
+    if (anchor.top + height > window.innerHeight - 8 && above >= 8) menu.style.top = `${above}px`;
+  }, [anchor]);
   useEffect(() => {
     if (!anchor) return undefined;
     const close = () => setAnchor(null);
@@ -571,8 +696,31 @@ export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ar
   </>;
 }
 
-export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {
-  return <div className="suite-stepper" aria-label="Progress">{steps.map((step, index) => <span aria-current={index === currentStepIndex ? 'step' : undefined} className={index === currentStepIndex ? 'is-active' : ''} key={step}>{index + 1}. {step}</span>)}</div>;
+export function Stepper({ currentStepIndex, steps, working = false }: { currentStepIndex: number; steps: string[]; working?: boolean }) {
+  return <ol className="suite-stepper" aria-label="Progress">{steps.map((step, index) => {
+    const done = index < currentStepIndex;
+    const active = index === currentStepIndex;
+    return <li aria-current={active ? 'step' : undefined} className={done ? 'is-done' : active ? 'is-active' : ''} key={step}>
+      {done ? <Icon name="check" /> : active && working ? <Spinner /> : null}
+      {done ? step : `${index + 1}. ${step}`}
+    </li>;
+  })}</ol>;
+}
+
+// For a moment the whole of Suite Manager must wait out, such as a MOS update: portalled
+// and modal like Dialog, but with nothing that closes it, since nothing behind it may be used.
+export function ScreenHold({ children, label, tone = 'info' }: { children: ReactNode; label: string; tone?: 'error' | 'info' | 'success' | 'warning' }) {
+  const holdRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    holdRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Tab' && holdRef.current) keepFocusInside(holdRef.current, event); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+  return createPortal(
+    <div className="suite-modal-backdrop suite-hold-backdrop" role="presentation"><section ref={holdRef} aria-label={label} aria-live="polite" aria-modal="true" className={`suite-hold mos-panel is-${tone}`} role="dialog" tabIndex={-1}>{children}</section></div>,
+    document.body,
+  );
 }
 
 export function Spinner() {

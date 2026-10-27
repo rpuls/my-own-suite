@@ -22,8 +22,11 @@
 
 import { useState } from 'react';
 
-import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
+import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
+import { rowLine } from '../storage/model';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
+import type { AppStorage } from './types';
 import type { Owner } from '../setup/types';
 
 export type OwnerEnvEntry = {
@@ -118,7 +121,9 @@ export function initialSetupConfig(app: SetupSource, owner: Owner) {
   return Object.fromEntries(
     setupFieldsNeedInput(app).map((field) => [
       field.id,
-      typeof field.default === 'string' ? ownerDefault(field.default, owner) : field.type === 'email' ? owner.email : '',
+      typeof field.default === 'string' ? ownerDefault(field.default, owner)
+        : field.type === 'boolean' ? String(field.default === true)
+          : field.type === 'email' ? owner.email : '',
     ]),
   );
 }
@@ -131,6 +136,12 @@ let rowSequence = 0;
 function nextKey() {
   rowSequence += 1;
   return `row-${rowSequence}`;
+}
+
+// The part of the rows a save submits, so Save can tell an unsaved change from
+// a form that already matches what the app runs with.
+function submittedRows(rows: EditorRow[]) {
+  return JSON.stringify(rows.map((row) => [row.name.trim(), row.secret, row.service, row.value]));
 }
 
 function rowsFrom(entries: OwnerEnvEntry[]): EditorRow[] {
@@ -192,6 +203,7 @@ export function AppConfigDialog({
   config,
   entries,
   fields,
+  folders,
   homepageAvailable,
   installed,
   installing,
@@ -202,6 +214,7 @@ export function AppConfigDialog({
   packageId,
   running,
   service,
+  storage,
   webAddress,
   webAddressKind,
 }: {
@@ -209,6 +222,7 @@ export function AppConfigDialog({
   config: InstanceConfigEntry[];
   entries: OwnerEnvEntry[];
   fields: SetupField[];
+  folders: Array<{ driveId: string; name: string }>;
   homepageAvailable: boolean;
   // Two separate facts, and conflating them strands a half-installed app. An
   // instance row means the package's setup values are already stored, so they
@@ -219,16 +233,18 @@ export function AppConfigDialog({
   installed: boolean;
   installing: boolean;
   onClose: () => void;
-  onInstall: (options: { config: Record<string, string>; showOnHomepage: boolean }) => void;
+  onInstall: (options: { config: Record<string, string>; drive: string | null; showOnHomepage: boolean }) => void;
   onSaved: () => Promise<void>;
   owner: Owner;
   packageId: string;
   running: boolean;
   service: string;
+  storage: AppStorage | null;
   webAddress: string;
   webAddressKind: 'web' | 'api';
 }) {
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFrom(entries));
+  const [savedRows, setSavedRows] = useState(() => submittedRows(rowsFrom(entries)));
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig({ setup: { fields } }, owner));
   const [showOnHomepage, setShowOnHomepage] = useState(homepageAvailable);
@@ -240,13 +256,20 @@ export function AppConfigDialog({
   const [pasteText, setPasteText] = useState('');
   const [pasteError, setPasteError] = useState('');
   const [copied, setCopied] = useState(false);
+  // A drive the app needs is picked at install. One it can do without stays out
+  // of the way until the owner adds it here, in the running app's settings.
+  const choosesDrive = Boolean(storage?.folders.length) && !folders.length && (installed ? running && !storage?.required : storage?.required === true);
+  const { backupsKnown, drive, entries: storageEntries, missing: driveMissing, names, reload: reloadStorage, setDrive } = useDriveChoice(storage, choosesDrive || folders.length > 0);
+  const keptDrive = folders.length ? storageEntries?.find((item) => item.id === folders[0]!.driveId) : undefined;
 
   const busy = saving || installing;
+  // A Save that stays lit after a successful save reads as "not saved yet".
+  const unsaved = submittedRows(rows) !== savedRows || (choosesDrive && Boolean(drive));
   const ownerFields = fields.filter((field) => !field.generated);
   const generatedFields = fields.filter((field) => field.generated);
   const storedFor = (id: string) => config.find((entry) => entry.key === id);
   // Nothing is collected once the values are stored, so nothing can be missing.
-  const canInstall = installed || !requiredSetupMissing({ setup: { fields } }, setupConfig);
+  const canInstall = installed || (!requiredSetupMissing({ setup: { fields } }, setupConfig) && !driveMissing);
 
   const lede = installed
     ? ownerFields.length ? '' : `Nothing to set. ${appName} looks after its own settings.`
@@ -330,6 +353,7 @@ export function AppConfigDialog({
             // which the backend reads as "keep the stored secret".
             ...(row.secret && row.stored && !row.value ? {} : { value: row.value }),
           })),
+          ...(choosesDrive && drive ? { drive } : {}),
         }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
@@ -350,11 +374,17 @@ export function AppConfigDialog({
       } else {
         setSteps((current) => setStep(current, 'health', 'complete'));
         setResult({ status: 'applied' });
+        // The drive is the app's now; the refreshed app shows it as a fact.
+        setDrive('');
       }
       // Re-seeded from what the server now holds, so a value just saved as
       // hidden flips to its stored, masked presentation rather than sitting
       // there as typed text.
-      if (body.instance?.env) setRows(rowsFrom(body.instance.env));
+      if (body.instance?.env) {
+        const saved = rowsFrom(body.instance.env);
+        setRows(saved);
+        setSavedRows(submittedRows(saved));
+      }
       await onSaved();
     } catch (caught) {
       setSteps(failRunning);
@@ -372,8 +402,8 @@ export function AppConfigDialog({
         {result?.status === 'applied' ? 'Done' : 'Cancel'}
       </button>
       {running
-        ? <button className="mos-btn mos-btn-primary" disabled={busy} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
-        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+        ? <button className="mos-btn mos-btn-primary" disabled={busy || !unsaved} onClick={() => void save()} type="button">{saving ? 'Saving...' : 'Save'}</button>
+        : <button className="mos-btn mos-btn-primary" disabled={busy || !canInstall} onClick={() => onInstall({ config: { ...setupConfig }, drive: choosesDrive && drive ? drive : null, showOnHomepage: homepageAvailable && showOnHomepage })} type="button">{installing ? 'Installing...' : resuming ? 'Finish install' : 'Install'}</button>}
     </>}
     onClose={() => { if (!busy) onClose(); }}
     title={running ? `${appName} settings` : `Install ${appName}`}
@@ -385,7 +415,7 @@ export function AppConfigDialog({
       <p className="suite-meta">{result.errorCode}</p>
     </Notice> : null}
     {result?.status === 'applied' ? <Notice title="Saved" variant="success">
-      <p>{appName} restarted with the new variables and came back healthy.</p>
+      <p>{appName} restarted with your changes and came back healthy.</p>
     </Notice> : null}
 
     {ownerFields.length ? <div className="suite-app-config-group">
@@ -403,6 +433,16 @@ export function AppConfigDialog({
               key={field.id}
               label={label}
             >{factValue(field, stored)}</Row>;
+          }
+          if (field.type === 'boolean') {
+            return <Row help={help || undefined} key={field.id} label={label}>
+              <Checkbox
+                aria-label={field.label}
+                checked={setupConfig[field.id] === 'true'}
+                disabled={busy}
+                onChange={(event) => { const value = String(event.currentTarget.checked); setSetupConfig((current) => ({ ...current, [field.id]: value })); }}
+              >Enabled</Checkbox>
+            </Row>;
           }
           return <Row
             help={field.secret ? `Set once. Later you change it inside ${appName}.` : help || undefined}
@@ -428,7 +468,22 @@ export function AppConfigDialog({
       </Rows>
     </div> : null}
 
-    <Rows lead={!ownerFields.length}>
+    {choosesDrive && storage ? <div className="suite-app-config-group">
+      <DriveChoice appName={appName} backupsKnown={backupsKnown} busy={busy} drive={drive} entries={storageEntries} names={names} onChange={setDrive} onReload={reloadStorage} storage={storage} />
+    </div> : null}
+
+    {folders.length && storage ? <div className="suite-app-config-group">
+      <Rows lead>
+        <Row
+          help={keptDrive && keptDrive.state !== 'ready' ? rowLine(keptDrive, { backupsKnown, names }) : 'Files on the drive are not part of MOS backups. Its drive is managed in Settings, under Storage.'}
+          label={driveChoiceLabel(storage)}
+        >
+          {`${folderList(storage.folders)} on ${keptDrive?.name || 'its drive'}`}
+        </Row>
+      </Rows>
+    </div> : null}
+
+    <Rows lead={!ownerFields.length && !choosesDrive}>
       {webAddress ? <Row label={webAddressKind === 'api' ? 'API address' : 'Web address'}>
         <RowTrailing>
           <RowValue>{webAddress}</RowValue>
@@ -554,7 +609,7 @@ export function AppConfigDialog({
     </Rows>
 
     {resuming ? <p className="mos-row-help">
-      {appName} was set up but never finished starting. Install it again to pick up where it stopped &mdash;
+      {appName} was set up but never finished starting. Finish install picks up where it stopped &mdash;
       the settings above are already saved and are not asked for twice.
     </p> : null}
     {!canInstall ? <p className="mos-row-help mos-row-help-permanent">

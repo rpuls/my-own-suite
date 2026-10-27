@@ -397,6 +397,17 @@ summary:focus-visible {
   border-color: transparent;
 }
 
+/* An action that cannot be undone, such as deleting the only copy of a file. */
+.mos-btn-danger {
+  color: var(--mos-color-danger);
+  border-color: var(--mos-color-danger-border);
+  background: var(--mos-color-danger-soft);
+}
+
+.mos-btn-danger:hover {
+  border-color: var(--mos-color-danger);
+}
+
 .mos-btn:hover {
   transform: translateY(-1px);
 }
@@ -597,6 +608,86 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   }
 }
 
+/* Selection box: picks rows for a bulk action and is ticked and unticked
+   freely. Not the confirmation checkbox, which is an acknowledgement submitted
+   with something else; "on" carries the accent gradient like the switch.
+
+   Structure contract: a <label class="mos-select-box"> holding a visually
+   hidden <input type="checkbox"> immediately followed by the decorative mark. */
+.mos-select-box {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  cursor: pointer;
+}
+
+.mos-select-box input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mos-select-box-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--mos-color-surface-border);
+  border-radius: 0.375rem;
+  color: transparent;
+  transition:
+    background var(--mos-transition),
+    border-color var(--mos-transition);
+}
+
+.mos-select-box-mark .suite-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  stroke-width: 3.5;
+}
+
+.mos-select-box:hover input:enabled + .mos-select-box-mark {
+  border-color: var(--mos-color-accent-border);
+}
+
+.mos-select-box input:checked + .mos-select-box-mark {
+  border-color: transparent;
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  color: var(--mos-color-button-primary-text);
+}
+
+.mos-select-box input:focus-visible + .mos-select-box-mark {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+/* Progress: how much of a known amount is done, such as the bytes of a file on
+   its way. The spent part is the switch's gradient. */
+.mos-progress {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+}
+
+.mos-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--mos-radius-pill);
+  background: linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  transition: width 400ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-select-box-mark,
+  .mos-progress-fill {
+    transition: none;
+  }
+}
+
 /* Settings row: the single element app configuration is built from. Label on
    the left, value on the right, a hairline between neighbours.
 
@@ -722,6 +813,29 @@ label.mos-row {
 .mos-row-input-filled {
   border-color: var(--mos-color-accent-border);
   background: var(--mos-color-accent-soft);
+}
+
+/* Dropdown: the shared native select (`Dropdown` in Suite Manager).
+   INTERIM LOOK. Claude Design will specify the final dropdown, closed field
+   and open list, for the MOS design system; replace this block with it.
+   Until then this only keeps the open list readable. The browser draws that
+   list itself and paints transparent colours over white, so options need
+   opaque theme colours, and color-scheme asks for a matching popup. */
+.mos-dropdown {
+  color-scheme: dark;
+}
+
+[data-theme='light'] .mos-dropdown {
+  color-scheme: light;
+}
+
+.mos-dropdown option {
+  background-color: var(--mos-color-bg-soft);
+  color: var(--mos-color-text);
+}
+
+.mos-dropdown option:disabled {
+  color: var(--mos-color-text-muted);
 }
 
 /* A row the owner types into puts its label on its own line and gives the whole
@@ -1129,6 +1243,8 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
    .mos-overlay; the anchor is what takes the pointer and focus, because a
    disabled button takes neither. */
 .mos-tooltip {
+  /* Above every dialog and drawer: a tooltip is brief and lets the pointer through. */
+  z-index: 200;
   max-width: min(20rem, calc(100vw - 2 * var(--mos-space-4)));
   padding: var(--mos-space-2) var(--mos-space-3);
   color: var(--mos-color-text-strong);
@@ -1266,4 +1382,387 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-connect-visual-sm {
   width: min(168px, 100%);
+}
+
+/* How full a piece of storage is. One track, a segment per thing on it in the
+   order of the legend, and what is left as the track itself. The compact bar is
+   the same track at a glance; storage with no fixed size draws no track at all. */
+.mos-usage {
+  display: grid;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.mos-usage-track {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface);
+}
+
+.mos-usage-compact .mos-usage-track {
+  height: 6px;
+}
+
+.mos-usage-segment {
+  flex: none;
+  min-width: 2px;
+  background: var(--mos-color-text-muted);
+}
+
+.mos-usage-segment.is-accent { background: var(--mos-color-accent); }
+.mos-usage-segment.is-info { background: var(--mos-color-info); }
+.mos-usage-segment.is-warning { background: var(--mos-color-warning); }
+.mos-usage-segment.is-muted { background: var(--mos-color-surface-border); }
+
+.mos-usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-2) var(--mos-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.mos-usage-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mos-usage-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--mos-color-surface-strong);
+}
+
+.mos-usage-swatch.is-accent { background: var(--mos-color-accent); }
+.mos-usage-swatch.is-info { background: var(--mos-color-info); }
+.mos-usage-swatch.is-warning { background: var(--mos-color-warning); }
+.mos-usage-swatch.is-muted { background: var(--mos-color-surface-border); }
+
+/* A band that is one sentence and an action: the sentence takes the room and
+   wraps inside it, so the action stays on the same line as it. */
+.mos-panel-band-row {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.mos-panel-band-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mos-panel-band-row > .mos-btn {
+  flex: none;
+}
+
+@media (max-width: 34rem) {
+  .mos-panel-band-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Radio: one of several, drawn like the select box so a kept choice reads the
+   same wherever it is asked. Structure contract: a hidden .mos-radio-input
+   immediately followed by the mark, inside .mos-radio or .mos-choice-row. */
+.mos-radio {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  cursor: pointer;
+}
+
+.mos-radio-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mos-radio-input:disabled {
+  cursor: not-allowed;
+}
+
+.mos-radio-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  transition: border-color var(--mos-transition);
+}
+
+.mos-radio-mark::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--mos-radius-pill);
+  background: transparent;
+  transition: background var(--mos-transition);
+}
+
+:is(.mos-radio, .mos-choice-row):hover .mos-radio-input:enabled + .mos-radio-mark {
+  border-color: var(--mos-color-accent-border);
+}
+
+.mos-radio-input:checked + .mos-radio-mark {
+  border-color: var(--mos-color-accent);
+}
+
+.mos-radio-input:checked + .mos-radio-mark::after {
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+}
+
+.mos-radio-input:focus-visible + .mos-radio-mark {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-radio-input:disabled + .mos-radio-mark {
+  opacity: 0.5;
+}
+
+/* Choice row: one choice among several, as a row of a flush panel list: the
+   radio, the icon, then the title and its facts. The same row picks storage, a
+   folder to move to, or a kind of storage to add; one that acts the moment it is
+   picked has no radio. */
+.mos-choice-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mos-space-3);
+  width: 100%;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mos-choice-row.is-action {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.mos-choice-row.is-accent {
+  color: var(--mos-color-accent);
+}
+
+.mos-choice-row.is-disabled,
+.mos-choice-row:disabled {
+  cursor: default;
+}
+
+.mos-choice-row:hover:not(:disabled, .is-disabled) {
+  background: var(--mos-color-surface-muted);
+}
+
+.mos-choice-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.mos-choice-row.is-accent .mos-choice-icon {
+  color: inherit;
+}
+
+.mos-panel-item-quiet .mos-choice-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.mos-choice-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.mos-choice-body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+/* Disclosure: a row that opens to more. Icon first, chevron last, and the
+   whole row one hit target and one hover: the head button's ::after covers the
+   row, and the trailing slot sits above it, passing clicks through everywhere
+   but its own controls, so a button is never inside a button. */
+.mos-disclosure {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+  padding-right: var(--mos-panel-pad);
+}
+
+.mos-disclosure:not(.is-disabled):hover {
+  background: var(--mos-color-surface-muted);
+}
+
+.mos-disclosure-head {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+  min-width: 0;
+  padding: var(--mos-space-3) 0 var(--mos-space-3) var(--mos-panel-pad);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mos-disclosure-head::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.mos-disclosure-head:disabled {
+  cursor: default;
+}
+
+.mos-disclosure-chevron {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-text-muted);
+  pointer-events: none;
+  transition: transform var(--mos-transition);
+}
+
+.mos-disclosure.is-expanded .mos-disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+.mos-disclosure-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.mos-panel-item-quiet .mos-disclosure-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.mos-disclosure-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.mos-disclosure-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.mos-disclosure-aside {
+  flex: none;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.mos-disclosure-trailing {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+  pointer-events: none;
+}
+
+.mos-disclosure-trailing :is(a, button, input, select, [tabindex]) {
+  pointer-events: auto;
+}
+
+/* App icon tile: the one plate every app icon sits on. Icons ship with uneven
+   internal padding, so the tile adds its own; an icon that cannot read on this
+   plate carries its own background in its file. Text is the no-icon fallback. */
+.mos-app-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border: var(--mos-border-subtle);
+  border-radius: 27%;
+  background: var(--mos-color-surface);
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-small);
+  font-weight: 800;
+}
+
+.mos-app-icon > img {
+  display: block;
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+/* Over a screenshot the same tint is laid on the page colour, so the tile
+   looks as it does on a plain surface instead of letting the photo through. */
+.mos-app-icon-solid {
+  background: linear-gradient(var(--mos-color-surface), var(--mos-color-surface)) var(--mos-color-bg);
+}
+
+/* Chip: a short fact beside a name. Legible on any surface by its blur, border
+   and label, never by a plate behind it. */
+.mos-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  color: var(--mos-color-text-muted);
+  font-size: 0.75rem;
+  font-weight: var(--mos-weight-bold);
+  white-space: nowrap;
+  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
+  backdrop-filter: var(--mos-frost-filter-backdrop);
+}
+
+.mos-chip-info {
+  border-color: var(--mos-color-info-border);
+  color: var(--mos-color-info);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-radio-mark,
+  .mos-radio-mark::after,
+  .mos-disclosure-chevron {
+    transition: none;
+  }
+}
+
+@media (max-width: 34rem) {
+  .mos-disclosure {
+    flex-wrap: wrap;
+  }
+
+  .mos-disclosure-trailing {
+    order: 1;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    padding: 0 0 var(--mos-space-3) var(--mos-panel-pad);
+  }
+
+  .mos-disclosure-aside {
+    display: none;
+  }
 }

@@ -59,7 +59,7 @@ export function PublicServerAddress({ status, suite }: { status: AddressStatus; 
     ><p>Where every app and your Homepage are published. MOS itself also keeps answering on <a href={status.bootstrapUrl}>{status.bootstrapUrl}</a>, so you can always get back here.</p></PanelHead>
     <AddressBand note={ADDRESS_KIND_SENTENCES[address.kind]} status={status} suite={suite} />
     {outcome || notices.length || editing || contact !== 'ok' ? <PanelBody>
-      <ContactNotices change={status.lastChange} contact={contact} />
+      <ContactNotices contact={contact} movingTo={suite.movingTo} />
       <ChangeOutcome address={address} outcome={outcome} />
       {notices}
       {editing ? <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>

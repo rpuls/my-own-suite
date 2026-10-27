@@ -20,9 +20,15 @@ function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceSer
       path: '/apps/packages',
       signIn: REVIEW,
       handler: async ({ response }) => {
+        const [host, down] = await Promise.all([appPackages.hostFacts(), appPackages.containersDown()]);
         jsonResponse(response, 200, {
           catalog: catalogService.status(),
-          packages: appPackages.listPackages(await appPackages.hostFacts()).map((app) => ({ ...withPublicUrl(app), installJob: installJobs.get(app.id), updateJob: updateJobs.get(app.id) })),
+          packages: appPackages.listPackages(host).map((app) => ({
+            ...withPublicUrl(app),
+            containersDown: Boolean(down && app.instance?.status === 'installed' && down(app.id)),
+            installJob: installJobs.get(app.id),
+            updateJob: updateJobs.get(app.id),
+          })),
         });
         // After the answer, on purpose: the Apps page never waits on a git host,
         // and a source found to have moved shows up on the next load.
@@ -101,7 +107,7 @@ function appUpdateRoutes({ appPackages, appUrls, homepageConfig, updateJobs }) {
   ];
 }
 
-function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
+function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs, updateJobs }) {
   const runtimeUrls = (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() });
 
   return [
@@ -122,7 +128,7 @@ function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
       bodyLimit: 64 * 1024,
       handler: async ({ body, params: [packageId], response }) => {
         const input = await body();
-        jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: input.config || {}, showOnHomepage: input.showOnHomepage === true }) });
+        jsonResponse(response, 202, { installJob: installJobs.begin(packageId, { config: input.config || {}, drive: typeof input.drive === 'string' ? input.drive : null, showOnHomepage: input.showOnHomepage === true }) });
       },
     },
     {
@@ -196,7 +202,10 @@ function packageRoutes({ appPackages, appUrls, homepageConfig, installJobs }) {
       pattern: packageRoute('uninstall'),
       signIn: 'Sign in to uninstall app packages.',
       handler: async ({ params: [packageId], response }) => {
-        jsonResponse(response, 200, await appPackages.uninstallPackage(packageId, homepageConfig));
+        const uninstalled = await appPackages.uninstallPackage(packageId, homepageConfig);
+        installJobs.forget(packageId);
+        updateJobs.forget(packageId);
+        jsonResponse(response, 200, uninstalled);
       },
     },
     {

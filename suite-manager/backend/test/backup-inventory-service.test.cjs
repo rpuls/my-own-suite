@@ -170,7 +170,7 @@ test('constructor resolves stateRoot to parent for non-suite-manager state dirs'
 test('the inventory names exactly the files and directories of the state table', () => {
   const service = new BackupInventoryService({ stateDir: path.join(TEMP_ROOT, 'suite-manager'), store: {} });
   const ids = service.managedState().map((entry) => entry.id);
-  assert.deepEqual(ids, ['suite-manager-state', 'app-package-snapshots', 'homepage-config', 'suite-address', 'caddy-Caddyfile', 'caddy-mos-homepage-routes.caddy', 'caddy-mos-app-routes.caddy', 'https-provider-secret', 'owner-claim-secret', 'app-candidate-cache']);
+  assert.deepEqual(ids, ['suite-manager-state', 'app-package-snapshots', 'homepage-config', 'easy-door-id', 'suite-address', 'caddy-Caddyfile', 'caddy-mos-homepage-routes.caddy', 'caddy-mos-app-routes.caddy', 'https-provider-secret', 'owner-claim-secret', 'app-candidate-cache', 'file-upload-staging']);
   assert.equal(service.managedState().find((entry) => entry.id === 'https-provider-secret').path, '/etc/mos/secrets/caddy-cloudflare.env');
 });
 

@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 
 const { hostingTrack, renderMachineCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
-const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorBaseDomain, easyDoorId } = require('../../shared/easy-door.cjs');
 const { normalizeBaseDomain, validBaseDomain, validateHttpsInput } = require('../../shared/https-contract.cjs');
 const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
 const { describeFailure, maskValues } = require('../lib/command-output.cjs');
@@ -43,6 +43,7 @@ const APPLY_KEYS = 'acmeEmail,baseDomain';
 function machineFacts() {
   return {
     bootstrapHost: String(process.env.MOS_HOME_HOST || '').trim().toLowerCase(),
+    easyDoorId,
     frontDoor: process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
     liveAddress: detectServerAddress(),
     recorded: new SuiteAddressFile().readOrNull(),
@@ -51,7 +52,7 @@ function machineFacts() {
 }
 
 function easyDoorBaseOf(facts) {
-  return hostingTrack(facts.frontDoor) === 'public-server' ? null : easyDoorBaseDomain(facts.liveAddress);
+  return hostingTrack(facts.frontDoor) === 'public-server' ? null : easyDoorBaseDomain(facts.liveAddress, facts.easyDoorId);
 }
 
 class HttpsAgentCore {

@@ -1,65 +1,67 @@
-// What a backup destination is, now that it is not always a filesystem.
-//
-// A drive and a bucket both hold one encrypted repository and a set of restore
-// points, and everything above this file — the backup pipeline, the schedule,
-// retention, the delete job — should not care which it is looking at. So each
-// destination answers the same small set of questions: is it there, how much
-// room is left, open its repository, and list, read, write or remove a restore
-// point.
-//
-// The two differ in where a restore point's manifest lives. On a drive it is a
-// file beside the repository, checksummed, exactly as MOS has always written
-// it. In a bucket there is no filesystem to put a file in and MOS speaks no
-// object protocol of its own, so the manifest is stored as its own snapshot
-// inside the repository: authenticated by the repository's own encryption
-// rather than by a checksum stored next to what it protects, and removed by
-// the same command that removes everything else. Listing those manifests means
-// asking the engine over the network, so a bucket keeps a local index of what
-// it holds; manifests never change once written, which is what makes that
-// index safe to trust between refreshes.
+// What a backup archive is, wherever it is kept: one encrypted repository and its
+// restore points. A drive and a bucket each hold any number side by side, and
+// everything above this file asks both the same questions.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const {
+  ARCHIVE_NAME_PATTERN,
+  archiveNames,
+  archiveRoot,
   assertRepositoryEngine,
+  BACKUPS_DIRNAME,
+  newArchiveName,
   readRepositoryDescriptor,
+  REPOSITORY_DIRNAME,
+  repositoryExists,
   repositoryPathFor,
-  repositorySidecarPath,
   restorePointPath,
   restorePointsDir,
   writeRepositoryDescriptor,
 } = require('./engines/engine.cjs');
-const { isObjectDestinationId, objectRepositorySpec } = require('./object-destinations.cjs');
+const { isBucketArchiveName, isObjectDestinationId, objectCatalogSpec, objectRepositorySpec } = require('./object-destinations.cjs');
 
 const MANIFEST_FILENAME = 'manifest.json';
+const CATALOG_DOCUMENT = 'archive.json';
 const NOTE_FILENAME = 'note.txt';
 const ROLE_MANIFEST = 'manifest';
 const ROLE_NOTE = 'note';
 const OBJECT_LOCATOR_SEPARATOR = '#';
-// How long a bucket's index of its own restore points is trusted without
-// asking again. Everything that changes it goes through this agent, which
-// refreshes it immediately; the interval only covers a second machine writing
-// into the same bucket, which MOS refuses to set up but cannot prevent.
+// How long a bucket's index of its own restore points is trusted without asking
+// again; only a second machine writing into the same bucket could stale it sooner.
 const OBJECT_INDEX_TTL_MS = 120_000;
 const OBJECT_INDEX_DIRNAME = 'object-index';
 const DRIVE_DISCONNECTED = 'The selected backup drive is not mounted anymore. Reconnect it and try again.';
+const DRIVE_ID_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 
-// The engine returns a locked repository rather than throwing, because reaching
-// a destination that holds another server's backups is a state the screen
-// offers a recovery key for. Past this point it would be a repository nothing
-// can read or write, so every caller that is about to use one stops here — with
-// the sentence that names the recovery key, never the engine's own words.
+// The engine returns a locked repository rather than throwing, because the screen
+// offers a recovery key for it; every caller about to use one stops here instead.
 function assertRepositoryUnlocked(repository) {
   if (!repository?.locked) return;
   throw Object.assign(new Error(repository.lockedMessage), { repositoryLocked: true });
 }
 
-// Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
-// one into a single Buffer exhausts RAM or trips ERR_FS_FILE_TOO_LARGE.
+// Backups are only ever written under this server's own key, or the owner's one
+// recovery key would no longer open everything this server made.
+
+function otherServersRefusal(message = 'Those backups belong to another server, so this server does not write into them.') {
+  return Object.assign(new Error(message), { code: 'DESTINATION_FOREIGN' });
+}
+
+// Whose key opens an archive: `own` this server's, `borrowed` another server's
+// key entered here, `locked` none MOS holds, `empty` nothing written yet.
+function keyStateOf(probeState, borrowed) {
+  if (probeState === 'locked') return 'locked';
+  if (probeState === 'absent') return 'empty';
+  return borrowed ? 'borrowed' : 'own';
+}
+
+// Hashed in chunks: volume archives are multi-gigabyte.
 function sha256(file) {
   const hash = crypto.createHash('sha256');
   const descriptor = fs.openSync(file, 'r');
@@ -73,16 +75,41 @@ function sha256(file) {
   return hash.digest('hex');
 }
 
-// A restore point's manifest is its completion marker: it names the snapshots
-// the repository holds for one backup, and nothing lists a restore point until
-// it exists. So it is written whole or not at all — digest first, then an
-// atomic rename of the manifest itself.
+// Backups tells the owner to unplug the drive once a backup is done, so what it
+// wrote has to be on the drive by then, not only in the page cache.
+function writeDurably(filePath, content) {
+  const descriptor = fs.openSync(filePath, 'w');
+  try {
+    fs.writeFileSync(descriptor, content, 'utf8');
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+// Makes a rename or a new file in `dir` survive the drive being pulled. Windows
+// cannot open a folder to sync it, and only the unit tests run there.
+function syncDir(dir) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(dir, 'r');
+    fs.fsyncSync(descriptor);
+  } catch (error) {
+    if (process.platform !== 'win32') throw error;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+// The manifest is a restore point's completion marker, so it lands whole or not
+// at all: digest first, then an atomic rename.
 function writeRestorePoint(manifestPath, manifest) {
   ensureDir(path.dirname(manifestPath));
   const staged = `${manifestPath}.next`;
-  fs.writeFileSync(staged, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`, 'utf8');
+  writeDurably(staged, `${JSON.stringify(manifest, null, 2)}\n`);
+  writeDurably(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`);
   fs.renameSync(staged, manifestPath);
+  syncDir(path.dirname(manifestPath));
 }
 
 function readRestorePoint(manifestPath) {
@@ -98,22 +125,31 @@ function tagValue(tags, key) {
   return found ? found.slice(prefix.length) : null;
 }
 
-// A restore point in a bucket is named by its destination and its job id,
-// because there is no path to name it with. The separator cannot appear in
-// either half, and the whole thing can never be mistaken for a filesystem path
-// because a destination id starts with "object:" and a path starts with "/".
-function objectLocator(destinationId, pointId) {
-  return `${destinationId}${OBJECT_LOCATOR_SEPARATOR}${pointId}`;
+// A bucket's restore point is named by archive and job id, since it has no path;
+// it can never be mistaken for one because a bucket archive's id starts "object:".
+function objectLocator(archiveId, pointId) {
+  return `${archiveId}${OBJECT_LOCATOR_SEPARATOR}${pointId}`;
+}
+
+// `object:<connection>/<archive name>`, split into the connection and the name.
+function parseObjectArchiveId(value) {
+  if (!isObjectDestinationId(value)) return null;
+  const slash = value.indexOf('/');
+  if (slash < 0) return null;
+  const placeId = value.slice(0, slash);
+  const name = value.slice(slash + 1);
+  return /^object:[A-Za-z0-9]{1,64}$/u.test(placeId) && isBucketArchiveName(name) ? { name, placeId } : null;
 }
 
 function parseObjectLocator(value) {
-  if (typeof value !== 'string' || !isObjectDestinationId(value)) return null;
+  if (typeof value !== 'string') return null;
   const separator = value.indexOf(OBJECT_LOCATOR_SEPARATOR);
   if (separator < 0) return null;
-  const destinationId = value.slice(0, separator);
+  const archiveId = value.slice(0, separator);
   const pointId = value.slice(separator + 1);
-  if (!isObjectDestinationId(destinationId) || !/^[A-Za-z0-9._-]{1,120}$/u.test(pointId)) return null;
-  return { destinationId, pointId };
+  const archive = parseObjectArchiveId(archiveId);
+  if (!archive || !/^[A-Za-z0-9._-]{1,120}$/u.test(pointId)) return null;
+  return { archiveId, placeId: archive.placeId, pointId };
 }
 
 // --- Restore points on a drive ---------------------------------------------
@@ -134,9 +170,7 @@ class DiskRestorePoints {
 
   async count() { return this.manifestPaths().length; }
 
-  // A manifest that will not parse is left out rather than thrown over: one
-  // damaged restore point must not make the other backups on the drive
-  // invisible.
+  // One damaged manifest is left out rather than hiding every other restore point.
   async summaries() {
     const summaries = [];
     for (const manifestPath of this.manifestPaths()) {
@@ -171,13 +205,16 @@ class DiskRestorePoints {
 
   async writeNote(pointId, note) {
     const notePath = `${this.locator(pointId)}.note.txt`;
-    if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
+    if (note) writeDurably(notePath, `${note}\n`);
     else fs.rmSync(notePath, { force: true });
+    syncDir(path.dirname(notePath));
   }
 }
 
 // --- Restore points in a bucket --------------------------------------------
 
+// A bucket has no filesystem, so manifests and notes are snapshots inside the
+// repository, listed through a local index that is safe because manifests never change.
 class ObjectRestorePoints {
   constructor(destination) {
     this.destination = destination;
@@ -185,8 +222,14 @@ class ObjectRestorePoints {
 
   locator(pointId) { return objectLocator(this.destination.id, pointId); }
 
+  // Answered from the last listing like health(), because the screen polls and a
+  // bucket that does not answer would hold every poll for minutes. Only a bucket
+  // never listed yet is waited for.
   async entries({ force = false } = {}) {
-    return (await this.destination.readIndex({ force })).points;
+    const current = force ? null : this.destination.loadIndex();
+    if (!current?.fetchedAtMs) return (await this.destination.readIndex({ force })).points;
+    if (Date.now() - current.fetchedAtMs >= OBJECT_INDEX_TTL_MS) this.destination.refreshInBackground();
+    return current.points;
   }
 
   async count() { return Object.keys(await this.entries()).length; }
@@ -199,9 +242,8 @@ class ObjectRestorePoints {
     }));
   }
 
-  // A point the index has never heard of is looked for once before it is
-  // called missing: it may have been written by this machine moments ago from
-  // another process, or by a restore of this machine's own state.
+  // Looked for once more before it is called missing: another process may have
+  // written it moments ago.
   async entry(pointId) {
     const cached = (await this.entries())[pointId];
     if (cached) return cached;
@@ -224,7 +266,7 @@ class ObjectRestorePoints {
       repository,
       tags: { mosjob: pointId, mosrole: ROLE_MANIFEST },
     });
-    await this.destination.rememberPoint(pointId, { manifest, manifestSnapshotId: snapshotId });
+    await this.destination.rememberPoint(pointId, { manifest, manifestSnapshotId: snapshotId }, repository);
   }
 
   async snapshotIds(pointId) {
@@ -242,9 +284,8 @@ class ObjectRestorePoints {
     await this.destination.forgetPoint(pointId);
   }
 
-  // A note is the one mutable thing about a restore point, so it is stored
-  // apart from the manifest here too: the new note goes in, the old snapshot
-  // goes out, and the manifest that names the backup's data is never rewritten.
+  // The note is the one mutable thing about a restore point, so it is its own
+  // snapshot: the manifest that names the backup's data is never rewritten.
   async writeNote(pointId, note) {
     const entry = await this.entry(pointId);
     const repository = await this.destination.repository();
@@ -260,19 +301,16 @@ class ObjectRestorePoints {
     if (entry.noteSnapshotId) {
       await this.destination.engine.forgetSnapshots({ repository, snapshotIds: [entry.noteSnapshotId] }).catch(() => {});
     }
-    await this.destination.rememberPoint(pointId, { ...entry, note: note || null, noteSnapshotId: snapshotId });
+    await this.destination.rememberPoint(pointId, { ...entry, note: note || null, noteSnapshotId: snapshotId }, repository);
   }
 }
 
-// The list entry for one restore point, from its manifest. Kept here so a
-// drive and a bucket describe what they hold in exactly the same words.
+// The list entry for one restore point, the same words for a drive and a bucket.
 function summarize(manifest, { id, locator, note }) {
   const volumes = manifest?.contents?.volumes || [];
   const rawBytes = (manifest?.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
   return {
     appCount: manifest?.contents?.apps?.length || 0,
-    // Which apps, by package id, so a restore can be described before it
-    // starts: the names and the time it will take are both read off this.
     apps: (manifest?.contents?.apps || []).map((app) => ({ packageId: app.packageId })),
     automatic: manifest?.backup?.initiator === 'schedule' || manifest?.backup?.initiator === 'update',
     createdAt: manifest?.backup?.createdAt || null,
@@ -288,8 +326,6 @@ function summarize(manifest, { id, locator, note }) {
     sourceHostname: manifest?.source?.hostname || null,
     sourceInstallId: manifest?.source?.installId || null,
     sourceVersion: manifest?.source?.version || null,
-    // The version the update was heading for, so a checkpoint can say which one
-    // it was taken before rather than only that it was taken before something.
     updateTarget: manifest?.backup?.updateTarget || null,
     volumeCount: volumes.length,
   };
@@ -297,45 +333,66 @@ function summarize(manifest, { id, locator, note }) {
 
 // --- Destinations -----------------------------------------------------------
 
-class DiskDestination {
-  constructor({ engine, guestKey, label, mountPath, system }) {
+class DiskArchive {
+  constructor({ createdBy, engine, guestKey, mountPath, name, placeId, system }) {
+    this.createdBy = createdBy || (() => ({}));
     this.engine = engine;
     this.guestKey = guestKey || (() => null);
-    this.id = mountPath;
+    this.id = `${placeId}/${name}`;
     this.kind = 'disk';
-    this.label = label || mountPath;
     this.mountPath = mountPath;
-    this.points = new DiskRestorePoints(mountPath);
+    this.name = name;
+    this.placeId = placeId;
+    this.root = archiveRoot(mountPath, name);
+    this.points = new DiskRestorePoints(this.root);
     this.system = system;
-    this.lockedAtMs = 0;
-    this.lockedState = null;
+    this.keyStateAtMs = 0;
+    this.keyStateFor = null;
+    this.keyStateHeld = null;
   }
 
   get noun() { return 'drive'; }
 
   repositorySpec() {
-    const localPath = repositoryPathFor(this.mountPath);
+    const localPath = repositoryPathFor(this.root);
     return { env: {}, localPath, location: localPath, password: this.guestKey(), secrets: [] };
   }
 
-  // A drive proves itself by being mounted and writable, which the destination
-  // listing already establishes without any engine call. The one thing left
-  // that costs one is whether the repository on it opens with this machine's
-  // key, so it is asked only when there is a repository to ask about and at
-  // most once per index interval — the destination listing is polled, and a
-  // process per drive per poll is not a thing to do to a machine.
+  descriptor() { return readRepositoryDescriptor(this.root); }
+
+  madeHere() {
+    const installId = this.createdBy().installId;
+    return Boolean(installId) && this.descriptor()?.createdByInstallId === installId;
+  }
+
+  // The keys a held answer was given for: a restore's worker process adopts a
+  // key or drops a borrowed one on disk, out of reach of this process's memory.
+  keysInUse() {
+    let engineKeyStamp = null;
+    try { engineKeyStamp = fs.statSync(this.engine.keyFile).mtimeMs; } catch {}
+    return JSON.stringify([engineKeyStamp, this.guestKey()]);
+  }
+
+  // Whose key opens the repository, asked of the engine at most once per index
+  // interval because the listing is polled. `empty` means no repository at all;
+  // a missing or torn descriptor changes nothing here.
   async health() {
-    if (!readRepositoryDescriptor(this.mountPath)) return { locked: false };
-    if (this.lockedState && Date.now() - this.lockedAtMs < OBJECT_INDEX_TTL_MS) return this.lockedState;
+    if (!repositoryExists(this.root)) return { keyState: 'empty' };
+    const keys = this.keysInUse();
+    if (this.keyStateHeld && this.keyStateFor === keys && Date.now() - this.keyStateAtMs < OBJECT_INDEX_TTL_MS) return this.keyStateHeld;
     let probe;
     try {
       probe = await this.engine.probe(this.repositorySpec());
     } catch {
-      return { locked: false };
+      // Taken for locked, a passing engine failure would start a second archive.
+      return { keyState: this.guestKey() ? 'borrowed' : 'own', reason: null };
     }
-    this.lockedAtMs = Date.now();
-    this.lockedState = probe.state === 'locked' ? { locked: true, reason: probe.message } : { locked: false };
-    return this.lockedState;
+    const answer = { keyState: keyStateOf(probe.state, Boolean(this.guestKey())), reason: probe.state === 'locked' ? probe.message : null };
+    if (answer.keyState === 'empty') return answer;
+    this.keyStateAtMs = Date.now();
+    this.keyStateFor = keys;
+    this.keyStateHeld = answer;
+    return answer;
   }
 
   get lostMessage() {
@@ -354,8 +411,8 @@ class DiskDestination {
   async assertAvailable(message) {
     if (this.system?.destinationMounted && !(await this.system.destinationMounted(this.mountPath))) throw new Error(message || DRIVE_DISCONNECTED);
     if (!this.writable()) throw new Error('The selected backup drive is not writable.');
-    const health = await this.health();
-    if (health.locked) throw new Error(health.reason);
+    const { keyState } = await this.health();
+    if (keyState !== 'own' && keyState !== 'empty') throw otherServersRefusal();
   }
 
   writable() {
@@ -367,9 +424,8 @@ class DiskDestination {
     }
   }
 
-  // The destination directory outlives its mount, so without this check a
-  // detached drive turns backups into silent writes onto the system disk —
-  // reported as success and invisible in the backup list.
+  // The folder outlives the mount, so an unchecked detached drive would turn
+  // backups into silent writes onto the system disk.
   async assertStillWritable(message) { await this.assertAvailable(message); }
 
   async freeBytes() {
@@ -382,19 +438,19 @@ class DiskDestination {
     }
   }
 
+  // The descriptor goes down before the repository is created, so a crash between
+  // the two leaves a described-but-empty archive the next backup simply finishes.
   async repository({ create = true } = {}) {
-    assertRepositoryEngine(this.mountPath, this.engine.name);
-    const localPath = repositoryPathFor(this.mountPath);
-    // The description goes down before the repository is created: a crash
-    // between the two leaves a described-but-empty destination that the same
-    // engine quietly finishes creating next time, while the wrong-engine
-    // refusal above is armed the whole way. The other order leaves a repository
-    // no descriptor guards.
-    if (create && !readRepositoryDescriptor(this.mountPath)) {
-      writeRepositoryDescriptor(this.mountPath, {
+    assertRepositoryEngine(this.root, this.engine.name);
+    const localPath = repositoryPathFor(this.root);
+    if (create && !this.descriptor()) {
+      const { hostname = null, installId = null } = this.createdBy();
+      writeRepositoryDescriptor(this.root, {
         createdAt: new Date().toISOString(),
+        createdByHostname: hostname,
+        createdByInstallId: installId,
         engineName: this.engine.name,
-        format: 'Encrypted, deduplicating content-addressed repository. Restoring it needs MOS and this repository password.',
+        format: 'Encrypted, deduplicating content-addressed repository. Restoring it needs MOS and the recovery key of the server that made it.',
         repositoryId: crypto.randomUUID(),
       });
     }
@@ -402,34 +458,37 @@ class DiskDestination {
       create,
       localPath,
       location: localPath,
-      missingMessage: 'The encrypted backup store is missing from this drive, so this backup cannot be read. Check that the right drive is connected and that its MOS-backups folder is intact.',
+      missingMessage: 'This backup archive is missing from the drive, so it cannot be read. Check that the right drive is connected and that its MOS-backups folder is intact.',
       password: this.guestKey(),
     });
     assertRepositoryUnlocked(repository);
-    return { ...repository, descriptor: readRepositoryDescriptor(this.mountPath), destinationId: this.id };
+    this.keyStateHeld = null;
+    return { ...repository, descriptor: this.descriptor(), destinationId: this.id };
   }
 
-  // Removing the repository a failed first backup created is safe only on a
-  // drive, where MOS made the directory and can see it is the one it made.
+  // Safe only on a drive, where MOS made the folder and can see it is the one it made.
   async discardCreatedRepository() {
-    fs.rmSync(repositoryPathFor(this.mountPath), { force: true, recursive: true });
-    fs.rmSync(repositorySidecarPath(this.mountPath), { force: true });
+    fs.rmSync(this.root, { force: true, recursive: true });
   }
 
-  descriptorRepositoryId() { return readRepositoryDescriptor(this.mountPath)?.repositoryId || null; }
+  descriptorRepositoryId() { return this.descriptor()?.repositoryId || null; }
 }
 
-class ObjectDestination {
-  constructor({ agentStateDir, engine, guestKey, record }) {
+class ObjectArchive {
+  constructor({ agentStateDir, catalog, createdBy, engine, entry = null, guestKey, name, record }) {
     this.agentStateDir = agentStateDir;
+    this.catalog = catalog || null;
+    this.createdBy = createdBy || (() => ({}));
     this.engine = engine;
+    this.entry = entry;
     this.guestKey = guestKey || (() => null);
-    this.id = record.id;
+    this.id = `${record.id}/${name}`;
     this.kind = 'object';
     this.label = record.label;
+    this.name = name;
     this.points = new ObjectRestorePoints(this);
     this.record = record;
-    this.spec = objectRepositorySpec(record);
+    this.spec = objectRepositorySpec(record, name);
     this.cached = null;
     this.cachedMtimeMs = null;
     this.lastError = null;
@@ -439,6 +498,12 @@ class ObjectDestination {
   }
 
   get noun() { return 'bucket'; }
+
+  get placeId() { return this.record.id; }
+
+  // Whether this machine put the archive in the catalog, so a backup cut off
+  // before its repository existed is finished rather than started again beside it.
+  madeHere() { return Boolean(this.entry?.installId) && this.entry.installId === this.createdBy().installId; }
 
   repositorySpec() { return { ...this.spec, localPath: null, password: this.guestKey() }; }
 
@@ -450,47 +515,39 @@ class ObjectDestination {
     return (await this.engine.probeRepository(this.repositorySpec())).state !== 'unreachable';
   }
 
-  // The engine's own verdict is the message: it names the difference between a
-  // refused key, an unreachable host and a bucket that is simply empty, which
-  // is exactly what an owner needs to fix and what a sentence written here
-  // could only blur.
+  // The engine's own verdict is the message: it tells a refused key from an
+  // unreachable host from an empty bucket, which is what an owner needs to fix.
   async assertAvailable() {
+    if (this.guestKey()) throw otherServersRefusal();
     const probe = await this.engine.probe(this.repositorySpec());
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineOutput: probe.output || null });
-    if (probe.state === 'locked') throw Object.assign(new Error(probe.message), { repositoryLocked: true });
+    if (probe.state === 'locked') throw otherServersRefusal();
   }
 
-  // Deliberately nothing. A drive needs proving still mounted before the
-  // manifest is written, because the directory survives the drive and the
-  // write would silently land on the system disk. A bucket has no such shadow:
-  // the manifest goes into the repository itself, so the write is its own
-  // proof, and probing again here would let one dropped packet discard a
-  // backup that had already succeeded.
+  // Nothing to prove: the manifest goes into the repository itself, so the write
+  // is its own proof, and probing again could discard a backup that succeeded.
   async assertStillWritable() {}
 
-  // Object storage sells capacity by what is stored rather than reserving it,
-  // so there is no free-space number to check a backup against. The engine
-  // reports if a bucket genuinely refuses a write.
+  // Object storage reserves nothing, so there is no free-space number to check against.
   async freeBytes() { return null; }
 
+  // Put in the catalog before its repository is made, as a drive's descriptor is,
+  // so another server sees an archive the moment there is anything in it.
   async repository({ create = true } = {}) {
     if (this.openRepository) return this.openRepository;
+    if (create && this.catalog) this.entry = await this.catalog.ensure(this.name, this.createdBy()) || this.entry;
     const repository = await this.engine.openOrCreateRepository({
       ...this.repositorySpec(),
       create,
-      missingMessage: 'There is no MOS backup store in this bucket yet, so there is nothing here to read.',
+      missingMessage: 'These backups are missing from the bucket, so there is nothing here to read.',
     });
-    // Not held, and not handed out: the caller is about to read or write with
-    // it, and the next look must ask again because the owner may have entered
-    // the key that opens it in between.
+    // A locked repository is not held: the owner may enter its key in between.
     assertRepositoryUnlocked(repository);
     this.openRepository = { ...repository, destinationId: this.id };
     return this.openRepository;
   }
 
-  // Never. MOS did not create the bucket and cannot tell what else an owner
-  // keeps in it, so a failed first backup leaves the repository in place and
-  // takes only its own snapshots back out.
+  // Never: restic gives no way to take a repository out of a bucket again.
   async discardCreatedRepository() {}
 
   descriptorRepositoryId() { return this.loadIndex()?.repositoryId || null; }
@@ -499,12 +556,8 @@ class ObjectDestination {
     return path.join(this.agentStateDir, OBJECT_INDEX_DIRNAME, `${this.id.replace(/[^A-Za-z0-9_-]+/gu, '-')}.json`);
   }
 
-  // The file is the truth, not the copy in memory. A backup runs in its own
-  // worker process and records the restore point it just wrote there, so an
-  // agent that trusted its own memory kept reporting a bucket as empty for the
-  // whole refresh interval after a backup into it had already succeeded. The
-  // modification time is what makes re-reading cheap enough to do on every
-  // look.
+  // The file is the truth, not the copy in memory: a backup's worker process
+  // records the restore point it wrote there, and the mtime makes re-reading cheap.
   loadIndex() {
     let stat;
     try {
@@ -534,14 +587,12 @@ class ObjectDestination {
     return index;
   }
 
-  // Refreshes only what it must: a manifest is immutable once written, so a
-  // point whose manifest snapshot id is unchanged is never fetched again, and
-  // an established bucket costs one listing per refresh rather than one read
-  // per backup it holds.
   emptyIndex() {
     return { fetchedAt: new Date().toISOString(), fetchedAtMs: Date.now(), location: this.spec.location, points: {}, repositoryId: null, storedBytes: null };
   }
 
+  // A point whose manifest snapshot id is unchanged is never fetched again, so an
+  // established bucket costs one listing per refresh.
   async readIndex({ force = false } = {}) {
     const current = this.loadIndex();
     if (!force && current && Date.now() - current.fetchedAtMs < OBJECT_INDEX_TTL_MS) return current;
@@ -549,9 +600,7 @@ class ObjectDestination {
     try {
       repository = await this.repository({ create: false });
     } catch (error) {
-      // A bucket MOS has never written to holds no backups, which is an answer
-      // rather than a failure. Anything else — a refused key, an unreachable
-      // host — is the caller's to report.
+      // A bucket MOS has never written to holds no backups; anything else is the caller's to report.
       if (!error?.repositoryAbsent) throw error;
       return this.saveIndex(this.emptyIndex());
     }
@@ -563,8 +612,7 @@ class ObjectDestination {
       if (!pointId || (role !== ROLE_MANIFEST && role !== ROLE_NOTE)) continue;
       const entry = found.get(pointId) || {};
       if (role === ROLE_MANIFEST) entry.manifestSnapshotId = snapshot.snapshotId;
-      // An interrupted note edit can leave two note snapshots for one point.
-      // The newest is the note the owner last saved.
+      // An interrupted note edit can leave two note snapshots; the newest is the owner's.
       else if (!entry.noteAt || String(snapshot.createdAt) > entry.noteAt) {
         entry.noteAt = String(snapshot.createdAt);
         entry.noteSnapshotId = snapshot.snapshotId;
@@ -599,9 +647,8 @@ class ObjectDestination {
     });
   }
 
-  // A document that will not read leaves its point in the index without one,
-  // which lists the backup and refuses to restore it — the honest outcome, and
-  // better than one unreadable manifest hiding every other backup in a bucket.
+  // A document that will not read leaves its point listed without one, which
+  // refuses to restore it rather than hiding every other backup in the bucket.
   async readDocument(repository, snapshotId, filename, parse) {
     try {
       return parse(await this.engine.readDocument({ filename, repository, snapshotId }));
@@ -610,14 +657,12 @@ class ObjectDestination {
     }
   }
 
-  // Recording a point MOS just wrote is not the same as having listed the
-  // bucket, so an index invented here is dated to the epoch: the point shows up
-  // immediately, and a real refresh is still owed. Dating it now would let one
-  // known point stand in for everything else in the bucket until the interval
-  // expired.
-  async rememberPoint(pointId, entry) {
+  // An index invented here is dated to the epoch: the point shows up at once and
+  // a real listing is still owed.
+  async rememberPoint(pointId, entry, repository) {
     const current = this.loadIndex() || { fetchedAt: new Date(0).toISOString(), fetchedAtMs: 0, location: this.spec.location, points: {}, repositoryId: null, storedBytes: null };
-    this.saveIndex({ ...current, points: { ...current.points, [pointId]: { note: null, noteSnapshotId: null, ...entry } } });
+    const repositoryId = repository?.repositoryId || current.repositoryId;
+    this.saveIndex({ ...current, points: { ...current.points, [pointId]: { note: null, noteSnapshotId: null, ...entry } }, repositoryId });
   }
 
   async forgetPoint(pointId) {
@@ -628,34 +673,33 @@ class ObjectDestination {
     this.saveIndex({ ...current, points });
   }
 
-  // Everything a bucket can say about itself without being asked again.
   usage() {
     const index = this.loadIndex();
     if (!index) return null;
     return { engineName: this.engine.name, restorePoints: Object.keys(index.points).length, storedBytes: index.storedBytes ?? null };
   }
 
-  // Whether the backups screen can offer this bucket, answered from the last
-  // refresh rather than by asking again. The screen polls, and a network round
-  // trip per poll would make an open Backups page a steady stream of requests
-  // against an owner's storage bill. Only the very first call blocks; after
-  // that a stale index is refreshed behind the answer.
+  // Answered from the last refresh, since the screen polls and a network round
+  // trip per poll would bill the owner; only the very first call blocks, and a
+  // bucket that has never answered is asked again only once the interval is up.
   async health() {
-    if (!this.loadIndex()) {
+    const held = this.loadIndex();
+    if (!held && !this.failedRecently()) {
       try {
         await this.readIndex({ force: true });
         this.noteReachable();
       } catch (error) {
         this.noteUnreachable(error);
       }
-    } else if (Date.now() - this.loadIndex().fetchedAtMs >= OBJECT_INDEX_TTL_MS) {
+    } else if (held && Date.now() - held.fetchedAtMs >= OBJECT_INDEX_TTL_MS) {
       this.refreshInBackground();
     }
     const index = this.loadIndex();
+    const reachable = Boolean(index) && !this.lastError;
     return {
       checkedAt: index?.fetchedAt || null,
-      locked: this.lastLocked,
-      ready: Boolean(index) && !this.lastError,
+      keyState: this.lastLocked ? 'locked' : !reachable ? null : !index.repositoryId ? 'empty' : this.guestKey() ? 'borrowed' : 'own',
+      ready: reachable,
       reason: this.lastError || null,
       usage: this.usage(),
     };
@@ -669,6 +713,11 @@ class ObjectDestination {
   noteUnreachable(error) {
     this.lastError = error?.message || 'MOS could not reach this storage.';
     this.lastLocked = error?.repositoryLocked === true;
+    this.lastFailedAtMs = Date.now();
+  }
+
+  failedRecently() {
+    return Boolean(this.lastError) && Date.now() - (this.lastFailedAtMs || 0) < OBJECT_INDEX_TTL_MS;
   }
 
   refreshInBackground() {
@@ -681,95 +730,287 @@ class ObjectDestination {
   }
 }
 
+// --- What a bucket holds ------------------------------------------------------
+
+// The archives in a bucket, read from its catalog plus the one MOS 0.22 left at
+// the root. Kept in a file like an archive's index, so a worker that adds an
+// archive is seen by the agent at once, and the bucket is asked at most once an
+// interval: in the background, once there is an answer to give meanwhile.
+class BucketCatalog {
+  constructor({ agentStateDir, engine, record }) {
+    this.agentStateDir = agentStateDir;
+    this.engine = engine;
+    this.id = record.id;
+    this.legacySpec = objectRepositorySpec(record, REPOSITORY_DIRNAME);
+    this.spec = objectCatalogSpec(record);
+    this.cached = null;
+    this.cachedMtimeMs = null;
+    this.lastError = null;
+    this.refreshing = null;
+  }
+
+  filePath() {
+    return path.join(this.agentStateDir, OBJECT_INDEX_DIRNAME, `${this.id.replace(/[^A-Za-z0-9_-]+/gu, '-')}.catalog.json`);
+  }
+
+  load() {
+    let stat;
+    try {
+      stat = fs.statSync(this.filePath());
+    } catch {
+      return null;
+    }
+    if (this.cached && this.cachedMtimeMs === stat.mtimeMs) return this.cached;
+    try {
+      const parsed = readJson(this.filePath());
+      if (parsed?.location !== this.spec.location || !Array.isArray(parsed.archives)) return null;
+      this.cached = { ...parsed, fetchedAtMs: new Date(parsed.fetchedAt || 0).getTime() };
+      this.cachedMtimeMs = stat.mtimeMs;
+      return this.cached;
+    } catch {
+      return null;
+    }
+  }
+
+  save(catalog) {
+    this.cached = catalog;
+    try {
+      ensureDir(path.dirname(this.filePath()));
+      fs.writeFileSync(this.filePath(), `${JSON.stringify({ ...catalog, fetchedAtMs: undefined }, null, 2)}
+`, { encoding: 'utf8', mode: 0o600 });
+      this.cachedMtimeMs = fs.statSync(this.filePath()).mtimeMs;
+    } catch {}
+    return catalog;
+  }
+
+  // The 0.22 archive is looked for once per connection: nothing writes there any more.
+  async fetch() {
+    const current = this.load();
+    const repository = await this.engine.openPublicRepository(this.spec);
+    const archives = [];
+    for (const snapshot of repository ? await this.engine.listSnapshots({ repository }) : []) {
+      const name = tagValue(snapshot.tags, 'mosarchive');
+      if (!isBucketArchiveName(name) || archives.some((entry) => entry.name === name)) continue;
+      archives.push({ createdAt: snapshot.createdAt || null, hostname: tagValue(snapshot.tags, 'moshost'), installId: tagValue(snapshot.tags, 'mosinstall'), name });
+    }
+    let legacy = current?.legacy ?? null;
+    if (legacy === null) {
+      const probe = await this.engine.probeRepository({ ...this.legacySpec, noun: 'bucket' });
+      if (probe.state === 'unreachable') throw new Error(probe.message);
+      legacy = probe.state !== 'absent';
+    }
+    if (legacy && !archives.some((entry) => entry.name === REPOSITORY_DIRNAME)) archives.push({ createdAt: null, hostname: null, installId: null, name: REPOSITORY_DIRNAME });
+    return this.save({ archives, fetchedAt: new Date().toISOString(), fetchedAtMs: Date.now(), legacy, location: this.spec.location });
+  }
+
+  // `wait` for a caller about to act on the answer; the listing takes the last one.
+  async archives({ wait = false } = {}) {
+    const current = this.load();
+    const fresh = current && Date.now() - current.fetchedAtMs < OBJECT_INDEX_TTL_MS;
+    if (fresh) return current.archives;
+    if (current && !wait) {
+      this.refreshInBackground();
+      return current.archives;
+    }
+    try {
+      const fetched = await this.fetch();
+      this.lastError = null;
+      return fetched.archives;
+    } catch (error) {
+      this.lastError = error?.message || 'MOS could not reach this storage.';
+      if (current && !wait) return current.archives;
+      throw error;
+    }
+  }
+
+  refreshInBackground() {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = this.fetch()
+      .then(() => { this.lastError = null; })
+      .catch((error) => { this.lastError = error?.message || 'MOS could not reach this storage.'; })
+      .finally(() => { this.refreshing = null; });
+    return this.refreshing;
+  }
+
+  // The catalog entry for an archive this machine is about to create, written
+  // first; the entry already there when a backup cut short is finished.
+  async ensure(name, { hostname = null, installId = null } = {}) {
+    const known = (await this.archives({ wait: true })).find((entry) => entry.name === name);
+    if (known || name === REPOSITORY_DIRNAME) return known || null;
+    const repository = await this.engine.openPublicRepository({ ...this.spec, create: true });
+    const entry = { createdAt: new Date().toISOString(), hostname, installId, name };
+    await this.engine.snapshotDocument({
+      content: `${JSON.stringify(entry, null, 2)}
+`,
+      filename: CATALOG_DOCUMENT,
+      repository,
+      tags: { mosarchive: name, moshost: hostname, mosinstall: installId },
+    });
+    const current = this.load() || { archives: [], legacy: null, location: this.spec.location };
+    const fetchedAt = current.fetchedAt || new Date(0).toISOString();
+    this.save({ ...current, archives: [...current.archives.filter((item) => item.name !== name), entry], fetchedAt, fetchedAtMs: new Date(fetchedAt).getTime() });
+    return entry;
+  }
+}
+
 // --- Resolving ---------------------------------------------------------------
 
-// Destinations are held between requests rather than rebuilt: an open
-// repository handle and a bucket's index are both worth keeping, and rebuilding
-// them per request would mean a network round trip on every poll of the backups
-// screen. The fingerprint drops a destination as soon as its settings change.
+// Archives are held between requests, since an open handle, an index and a key
+// answer are each an engine call to rebuild. An archive id is the place and the
+// archive's name: `<drive UUID>/archive-<hex>` or `object:<connection>/archive-<hex>`.
 class DestinationResolver {
-  constructor({ agentStateDir, engine, guestKeys, objectRegistry, resolveDiskLabel, system }) {
+  constructor({ agentStateDir, createdBy, engine, guestKeys, mountRoot = STORAGE_MOUNT_ROOT, objectRegistry, system }) {
     this.agentStateDir = agentStateDir;
+    this.catalogs = new Map();
+    this.createdBy = createdBy || (() => ({}));
     this.disks = new Map();
     this.engine = engine;
     this.guestKeys = guestKeys || null;
+    this.mountRoot = mountRoot;
     this.objectRegistry = objectRegistry;
     this.objects = new Map();
-    this.resolveDiskLabel = resolveDiskLabel || (() => null);
     this.system = system;
   }
 
-  objectRecords() { return this.objectRegistry ? this.objectRegistry.list() : []; }
+  bucketRecords() { return this.objectRegistry ? this.objectRegistry.list() : []; }
 
-  // Read on every command rather than captured, so entering or removing a key
-  // takes effect on a destination that is already held.
-  guestKeyFor(destinationId) {
-    return () => (this.guestKeys ? this.guestKeys.keyFor(destinationId) : null);
+  bucketRecord(placeId) {
+    const record = this.bucketRecords().find((entry) => entry.id === placeId);
+    if (!record) throw new Error('That storage connection no longer exists. Choose another place and try again.');
+    return record;
   }
 
-  objectDestination(record) {
+  // Read on every command rather than captured, so a key entered or removed
+  // takes effect on an archive that is already held.
+  guestKeyFor(archiveId) {
+    return () => (this.guestKeys ? this.guestKeys.keyFor(archiveId) : null);
+  }
+
+  mountPathOf(driveId) {
+    if (!DRIVE_ID_PATTERN.test(String(driveId))) throw new Error('Choose where to back up and try again.');
+    return path.join(this.mountRoot, driveId);
+  }
+
+  // Held per connection, and rebuilt when its address or keys change.
+  held(map, key, record, build) {
     const fingerprint = JSON.stringify([record.accessKeyId, record.bucket, record.endpoint, record.folder, record.region, record.secretAccessKey]);
-    const held = this.objects.get(record.id);
-    if (held && held.fingerprint === fingerprint) {
-      held.destination.label = record.label;
-      return held.destination;
-    }
-    const destination = new ObjectDestination({ agentStateDir: this.agentStateDir, engine: this.engine, guestKey: this.guestKeyFor(record.id), record });
-    this.objects.set(record.id, { destination, fingerprint });
-    return destination;
+    const held = map.get(key);
+    if (held && held.fingerprint === fingerprint) return held.value;
+    const value = build();
+    map.set(key, { fingerprint, value });
+    return value;
   }
 
+  catalogOf(record) {
+    return this.held(this.catalogs, record.id, record, () => new BucketCatalog({ agentStateDir: this.agentStateDir, engine: this.engine, record }));
+  }
+
+  objectArchive(record, name, entry = null) {
+    const id = `${record.id}/${name}`;
+    const archive = this.held(this.objects, id, record, () => new ObjectArchive({
+      agentStateDir: this.agentStateDir,
+      catalog: this.catalogOf(record),
+      createdBy: this.createdBy,
+      engine: this.engine,
+      entry,
+      guestKey: this.guestKeyFor(id),
+      name,
+      record,
+    }));
+    archive.label = record.label;
+    if (entry) archive.entry = entry;
+    return archive;
+  }
+
+  diskArchive(driveId, name) {
+    const id = `${driveId}/${name}`;
+    const held = this.disks.get(id);
+    if (held) return held;
+    const archive = new DiskArchive({ createdBy: this.createdBy, engine: this.engine, guestKey: this.guestKeyFor(id), mountPath: this.mountPathOf(driveId), name, placeId: driveId, system: this.system });
+    this.disks.set(id, archive);
+    return archive;
+  }
+
+  // An archive id, or a whole connection: one edited or removed takes its archives with it.
   forget(id) {
     this.disks.delete(id);
     this.objects.delete(id);
+    this.catalogs.delete(id);
+    for (const [key, held] of this.objects) {
+      if (held.value.placeId === id) this.objects.delete(key);
+    }
   }
 
-  // After this machine's key changes, every held answer about what it opens is
-  // stale at once.
+  // After this machine's key changes, every held answer about what it opens is stale.
   forgetAll() {
     this.disks.clear();
     this.objects.clear();
   }
 
-  // Held between requests like a bucket, and for the same reason: a drive that
-  // has answered whether its repository opens with this machine's key must not
-  // be asked again on every poll of the backups screen.
-  diskDestination(mountPath) {
-    const label = this.resolveDiskLabel(mountPath);
-    const held = this.disks.get(mountPath);
-    if (held) {
-      if (label) held.label = label;
-      return held;
-    }
-    const destination = new DiskDestination({ engine: this.engine, guestKey: this.guestKeyFor(mountPath), label, mountPath, system: this.system });
-    this.disks.set(mountPath, destination);
-    return destination;
+  // Throws rather than returning null: every caller is about to act on the archive.
+  resolve(archiveId) {
+    const object = parseObjectArchiveId(String(archiveId || ''));
+    if (object) return this.objectArchive(this.bucketRecord(object.placeId), object.name);
+    const [driveId, name, extra] = String(archiveId || '').split('/');
+    if (extra === undefined && DRIVE_ID_PATTERN.test(driveId || '') && ARCHIVE_NAME_PATTERN.test(name || '')) return this.diskArchive(driveId, name);
+    throw new Error('Choose a backup and try again.');
   }
 
-  // Throws rather than returning null: every caller is about to act on the
-  // destination, and "which drive did you mean" is the answer to give once.
-  resolve(destinationId) {
-    if (isObjectDestinationId(destinationId)) {
-      const record = this.objectRecords().find((entry) => entry.id === destinationId);
-      if (!record) throw new Error('That storage connection no longer exists. Choose a destination and try again.');
-      return this.objectDestination(record);
-    }
-    // Which paths are acceptable destinations is settled before a job exists
-    // (normalizeDestinationId in agent.cjs holds the /media, /mnt, /run/media
-    // rule); by here the only question left is which kind of thing this is.
-    if (typeof destinationId === 'string' && path.isAbsolute(destinationId)) return this.diskDestination(destinationId);
-    throw new Error('Choose a backup destination and try again.');
+  // The archive a folder on a mounted drive is, for a restore point's path.
+  archiveAt(root) {
+    const relative = path.relative(this.mountRoot, path.resolve(root)).split(path.sep);
+    if (relative.length !== 3 || relative[1] !== BACKUPS_DIRNAME) throw new Error('Choose a backup from connected storage.');
+    return this.resolve(`${relative[0]}/${relative[2]}`);
   }
 
-  objectDestinations() { return this.objectRecords().map((record) => this.objectDestination(record)); }
+  // Every archive in a place, this server's and other servers'. A bucket's list
+  // is its catalog's last answer unless `wait` asks for a current one.
+  async archivesIn(placeId, { wait = false } = {}) {
+    if (!isObjectDestinationId(placeId)) return archiveNames(this.mountPathOf(placeId)).map((name) => this.diskArchive(placeId, name));
+    const record = this.bucketRecord(placeId);
+    return (await this.catalogOf(record).archives({ wait })).map((entry) => this.objectArchive(record, entry.name, entry));
+  }
+
+  // Why a bucket's list could not be read the last time it was asked, or null.
+  catalogProblem(placeId) {
+    return this.catalogs.get(placeId)?.value.lastError || null;
+  }
+
+  // Where this server's next backup to a place goes: its own archive there (the
+  // newest if a takeover left two), else one it began and never finished, else a
+  // new one beside whatever other servers keep there. Never beside an archive on
+  // a drive without a descriptor that this server's key does not open: it may be
+  // this server's own with a torn descriptor, and a second one would hide it.
+  async target(placeId) {
+    const own = [];
+    let unfinished = null;
+    let undescribedLocked = null;
+    for (const archive of await this.archivesIn(placeId, { wait: true })) {
+      const { keyState } = await archive.health();
+      if (keyState === 'own') own.push(archive);
+      else if (keyState === 'empty' && archive.madeHere()) unfinished ??= archive;
+      else if (keyState === 'locked' && archive.kind === 'disk' && !archive.descriptor()) undescribedLocked ??= archive;
+    }
+    if (own.length) {
+      const newest = async (archive) => (await archive.points.summaries()).map((point) => point.createdAt || '').sort().at(-1) || '';
+      const dated = await Promise.all(own.map(async (archive) => [await newest(archive), archive]));
+      return dated.sort((left, right) => (left[0] < right[0] ? 1 : -1))[0][1];
+    }
+    if (undescribedLocked) {
+      throw Object.assign(new Error(`The archive ${undescribedLocked.name} on this drive has lost its description and this server's recovery key does not open it, so MOS will not start a second archive beside it. If those backups are another server's, enter that server's recovery key under Backups and erase them from there if they are not needed.`), { code: 'DESTINATION_UNDESCRIBED_ARCHIVE' });
+    }
+    if (unfinished) return unfinished;
+    if (isObjectDestinationId(placeId)) return this.objectArchive(this.bucketRecord(placeId), newArchiveName());
+    return this.diskArchive(placeId, newArchiveName());
+  }
 }
 
 module.exports = {
+  BucketCatalog,
   DestinationResolver,
-  DiskDestination,
   MANIFEST_FILENAME,
   objectLocator,
-  ObjectDestination,
+  ObjectArchive,
   OBJECT_INDEX_TTL_MS,
   parseObjectLocator,
   readRestorePoint,

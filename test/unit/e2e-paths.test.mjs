@@ -41,6 +41,13 @@ test('dns01 goes in front of the first step that needs HTTPS, once per reset', (
   assert.deepEqual(plan.steps.filter((step) => step.auto).length, 2);
 });
 
+test('a drive goes in front of the first install of an app that keeps files on one, once per run', () => {
+  const withDrive = [...catalog, { hasModule: true, id: 'media-d', keepsFilesOnDrive: true, needsHttps: false }];
+  const plan = resolvePath(['reset', 'owner', 'install:plain-a', 'install:media-d', 'reset', 'owner', 'install:media-d'], withDrive);
+  assert.deepEqual(tokens(plan), ['reset', 'owner', 'install:plain-a', 'drive', 'install:media-d', 'reset', 'owner', 'install:media-d']);
+  assert.deepEqual(tokens(resolvePath(['drive', 'install:media-d'], withDrive)), ['drive', 'install:media-d']);
+});
+
 test('a lab that starts on HTTPS gets no dns01, before or after a reset', () => {
   const plan = resolvePath(['owner', 'install:secure-c', 'reset', 'owner', 'verify:secure-c'], catalog, { startsSecure: true });
   assert.deepEqual(tokens(plan), ['owner', 'install:secure-c', 'reset', 'owner', 'verify:secure-c']);

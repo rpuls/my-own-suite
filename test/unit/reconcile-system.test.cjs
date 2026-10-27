@@ -9,6 +9,7 @@ const {
   resolveRuntimeConfig,
   renderUnits,
   suiteManagerUnit,
+  unannouncedStorageDevices,
   vaultGateUnit,
 } = require('../../scripts/reconcile-system.cjs');
 const { CADDY_BUILD_IMAGES, JOURNALD_CONFIG_PATH, PROGRESS_ROUTE, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
@@ -135,7 +136,23 @@ test('a fresh install installs the backup storage engine, not just a managed upd
   // restic publishes its Linux builds bzip2-compressed and nothing else, and an
   // Ubuntu server image does not carry bzip2.
   assert.match(installer, /^apt-get install -y bzip2 /mu);
-  assert.ok(reconciler.includes("run('apt-get', ['install', '-y', 'bzip2']"));
+  assert.ok(reconciler.includes("['bzip2', 'bzip2']"));
+});
+
+// Check drive runs ntfsfix, which ships in ntfs-3g and not in an Ubuntu server
+// image. A machine that updated into Check drive must have it as much as a new one.
+test('both install paths give the host ntfsfix for Check drive', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.match(installer, /^apt-get install -y [^\n]*\bntfs-3g\b/mu);
+  assert.ok(reconciler.includes("['ntfsfix', 'ntfs-3g']"));
+  assert.ok(reconciler.includes('ensureHostTools();'));
+});
+
+test('a managed update moves the host Node to the newest patch release of its line', () => {
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.ok(reconciler.includes("['install', '-y', '--only-upgrade', 'nodejs']"));
+  assert.ok(reconciler.indexOf('  refreshNode();') < reconciler.indexOf("run('systemctl', ['daemon-reload']);"), 'Node must be upgraded before the services restart onto it');
 });
 
 // The Caddyfile every path writes points its error handler at a page under
@@ -230,4 +247,18 @@ test('reconciled units always wait for the vault gate', () => {
   assert.equal('vault' in config, false, 'nothing about the units depends on reading the disk');
   assert.match(suiteManagerUnit(config), /^Requires=mos-vault\.service$/mu);
   assert.match(suiteManagerUnit(config), /^After=mos-vault\.service$/mu);
+});
+
+test('a managed update announces only drives MOS has never opened', (context) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-'));
+  context.after(() => fs.rmSync(tempDir, { force: true, recursive: true }));
+  fs.writeFileSync(path.join(tempDir, 'storage.json'), JSON.stringify({ buckets: {}, drives: { 'app-drive': { apps: ['immich'] } }, version: 2 }));
+  const devices = [
+    { fstype: 'ext4', path: '/dev/sdb1', uuid: 'app-drive' },
+    { fstype: 'exfat', path: '/dev/sdc1', uuid: 'old-backup-drive' },
+    { fstype: 'crypto_LUKS', path: '/dev/sda3', uuid: 'vault' },
+    { fstype: null, path: '/dev/sdd', uuid: null },
+  ];
+
+  assert.deepEqual(unannouncedStorageDevices(tempDir, devices), ['/dev/sdc1']);
 });

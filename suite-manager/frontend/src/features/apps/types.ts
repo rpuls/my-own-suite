@@ -50,6 +50,9 @@ export type UpdateComparison = {
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
+  // Folders the new version brings to an app that had none, which the update
+  // dialog asks a drive for.
+  storage: AppStorage | null;
   // Capabilities the candidate needs that nothing here provides, with what would.
   requirements: Array<{ providers: Array<{ action: 'install' | 'update'; id: string; name: string; version: string }>; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
@@ -58,10 +61,19 @@ export type UpdateComparison = {
 
 export type UnmetRequirement = { id: string; reason: string };
 
+// Folders an app reads from a drive the owner picks; `required` apps cannot be
+// installed without one.
+export type AppStorage = { description: string | null; folders: Array<{ name: string; service: string }>; label: string | null; required: boolean };
+
+// One job on one drive, read back with the storage list; `format` is an install stick's.
+export type DriveStep = ProgressStep & { id: 'check' | 'eject' | 'format' | 'use' };
+
 export type AppPackageSummary = {
   // The app's own version, as its manifest declares it; `version` below is the
   // MOS package version.
   appVersion: string | null;
+  // Installed, but Docker says a container of it is not running.
+  containersDown?: boolean;
   installJob?: AppJob<InstallStep> | null;
   updateJob?: AppJob<UpdateStep> | null;
   capabilities: {
@@ -101,6 +113,9 @@ export type AppPackageSummary = {
     // Environment variables the owner set on this instance, never the package.
     // A hidden one carries a fingerprint and a label instead of its value.
     env?: OwnerEnvEntry[];
+    // Where this app's folders were placed; empty when it has none or the owner
+    // installed it without a drive.
+    folders?: Array<{ driveId: string; name: string }>;
     guideState?: { completedAt: string | null; firstViewedAt: string | null; manifestDigest: string; skippedAt: string | null; status: 'not-started' | 'viewed' | 'completed' | 'skipped'; updatedAt: string } | null;
     id: string;
     installedAt: string;
@@ -151,6 +166,7 @@ export type AppPackageSummary = {
   role: 'standalone' | 'capability-provider' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: SetupField[] };
+  storage: AppStorage | null;
   summary: string;
   // What this server lacks that the app needs, each with the reason to show.
   unmetRequirements: UnmetRequirement[];

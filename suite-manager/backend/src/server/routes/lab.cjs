@@ -1,4 +1,4 @@
-const { clearSessionCookie } = require('../cookies.cjs');
+const { clearSessionCookies } = require('../cookies.cjs');
 const { jsonResponse } = require('../responses.cjs');
 
 const LAB_RESET_DISABLED = { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' };
@@ -17,7 +17,7 @@ function labRoutes({ disposableLab, labResetAgent }) {
         }
         const result = await labResetAgent.reset({ reason: 'hyperv-e2e' });
         jsonResponse(response, 202, result, {
-          'Set-Cookie': clearSessionCookie(secure),
+          'Set-Cookie': clearSessionCookies(secure),
         });
       },
     },

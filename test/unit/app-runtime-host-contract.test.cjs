@@ -46,7 +46,7 @@ function recordingAgent() {
       applied.push(input);
       return { services: [] };
     },
-  });
+  }, { easyDoorBase: () => null });
   return { applied, core };
 }
 

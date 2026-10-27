@@ -9,6 +9,10 @@ const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infr
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
+const { STORAGE_ATTACH_IDENTIFIER } = require('../../infrastructure/control-plane-runtime.cjs');
+const { STORAGE_REGISTRY_FILENAME } = require('../../shared/storage-contract.cjs');
+const { PausedPages, pausedByDrives } = require('./paused-pages.cjs');
+const { AppStorage, STORAGE_DRIVE_LABEL, StorageError } = require('./storage.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -29,6 +33,10 @@ const CONTAINER_LOG_ARGS = ['--log-opt', 'max-size=10m', '--log-opt', 'max-file=
 // A running app is waited for, because a first start or an update can run every database
 // migration it has (Paperless-ngx needed 99 s on a CI runner); only one that hangs waits it out.
 const HEALTH_TIMEOUT_MS = 15 * 60_000;
+// Base images are fetched before the build, on a clock of their own: a multi-GB
+// first download on a fresh or restored machine is not a build that hung.
+const BASE_IMAGE_PULL_TIMEOUT_MS = 40 * 60_000;
+const BUILD_TIMEOUT_MS = 5 * 60_000;
 // Docker restarts a crashed container after a delay that doubles from 100 ms, so ten restarts
 // outlast a neighbouring database's first start by far, and a crash loop is told in minutes.
 const CRASH_LOOP_RESTARTS = 10;
@@ -75,6 +83,7 @@ const FAILURE_MESSAGES = {
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   snapshot: ['APP_PACKAGE_SNAPSHOT_FAILED', 'The validated app package could not be snapshotted.'],
+  storage: ['APP_STORAGE_UNAVAILABLE', "The drive that holds this app's folders could not be opened."],
   'stale-volume': ['APP_VOLUME_STALE', 'Persistent data from a different installation of this app is still present. Remove or restore it before installing.'],
   stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
@@ -91,6 +100,7 @@ const STAGE_ACTIVITY = {
   remove: 'removing the app runtime',
   run: 'docker run',
   snapshot: 'snapshotting the package',
+  storage: "opening the app's drive",
   stop: 'stopping the app runtime',
   writing: 'writing the app route',
 };
@@ -210,6 +220,26 @@ async function readRetainedImageTags(file) {
   } catch {
     return [];
   }
+}
+
+// The registry images a Dockerfile starts from; an earlier stage, scratch, or a
+// name built from an ARG is left for the build to resolve.
+function baseImages(dockerfilePath) {
+  let text = '';
+  try {
+    text = fs.readFileSync(dockerfilePath, 'utf8');
+  } catch {
+    return [];
+  }
+  const stages = new Set(['scratch']);
+  const images = new Set();
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^\s*FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?/iu.exec(line);
+    if (!match) continue;
+    if (!stages.has(match[1].toLowerCase()) && !match[1].includes('$')) images.add(match[1]);
+    if (match[2]) stages.add(match[2].toLowerCase());
+  }
+  return [...images];
 }
 
 function renderAppRouteBlock(packageId, caddyRoutes) {
@@ -334,8 +364,10 @@ class SystemAppAdapter {
     executeCapture = undefined,
     now = () => Date.now(),
     pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+    pausedPages,
     probeAddress: probe = probeAddress,
     routesPath = APP_ROUTES_PATH,
+    storage,
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
@@ -358,11 +390,161 @@ class SystemAppAdapter {
     this.pause = pause;
     this.probeAddress = probe;
     this.routesPath = routesPath;
+    this.pausedPages = pausedPages || new PausedPages({ appNameOf: (packageId) => this.installedAppName(packageId), routesPath });
+    this.storage = storage || new AppStorage({
+      registryPath: path.join(path.dirname(appPackageRoot), STORAGE_REGISTRY_FILENAME),
+      execute: this.execute,
+      executeCapture: this.executeCapture,
+    });
     this.waitForReady = waitForReady;
+  }
+
+  // A drive that appeared: mounted again if an app keeps folders on it, and the
+  // containers reading it restarted, since a bind made before the drive left
+  // still points at the old mount. Stopped apps have no containers to restart.
+  // Every drive that appears is opened, so Storage can say what is on it and Backups
+  // can list what another server left there; only a remembered one has containers.
+  // udev starts the attach unit for the system disk's own partitions too, and those are never a drive.
+  async attachOnSight(driveId) {
+    if (!(await this.storage.candidates()).some((drive) => drive.id === driveId)) return { attached: false, restarted: 0 };
+    return this.reattachDrive(driveId);
+  }
+
+  async reattachDrive(driveId) {
+    await this.storage.attach(driveId);
+    if (!this.storage.isRemembered(driveId)) return { attached: true, restarted: 0 };
+    const containers = await this.driveContainers(driveId);
+    if (containers.length) await this.execute(this.dockerBinary, ['restart', ...containers], { timeoutMs: 180_000 });
+    await this.syncPausedPages();
+    return { attached: true, restarted: containers.length };
+  }
+
+  // What each paused app's own address says. Never fatal: the page is a courtesy,
+  // and the drive action it follows has already happened.
+  async syncPausedPages(drives = null) {
+    try {
+      this.pausedPages.sync(pausedByDrives(drives || await this.storage.drives()));
+    } catch (error) {
+      process.stderr.write(`[mos-app-agent] paused pages not updated: ${error.message}
+`);
+    }
+  }
+
+  installedAppName(packageId) {
+    for (const instance of fs.readdirSync(this.appPackageRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(this.appPackageRoot, instance.name, 'installed', 'manifest.json'), 'utf8'));
+        if (manifest.id === packageId || instance.name === packageId) return manifest.name;
+      } catch {}
+    }
+    return null;
+  }
+
+  // Only the services given folders carry the drive's label, so an app's other
+  // containers keep running while its drive is away.
+  async driveContainers(driveId) {
+    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--quiet', '--filter', `label=${STORAGE_DRIVE_LABEL}.${driveId}`], { timeoutMs: 30_000 });
+    return String(output || '').split(/\s+/u).filter(Boolean);
+  }
+
+  // `unless-stopped` keeps them stopped across a restart until the drive returns.
+  async ejectDrive(driveId) {
+    const containers = await this.driveContainers(driveId);
+    if (containers.length) await this.execute(this.dockerBinary, ['stop', ...containers], { timeoutMs: 180_000 });
+    try {
+      await this.storage.eject(driveId);
+    } catch (error) {
+      await this.reattachDrive(driveId).catch(() => {});
+      await this.logDriveEvent(`drive ${driveId}: eject refused, apps put back: ${error.message}`);
+      throw error;
+    }
+    await this.logDriveEvent(`drive ${driveId} ejected; stopped ${containers.length} container(s)`);
+    await this.syncPausedPages();
+    return { stopped: containers.length };
+  }
+
+  // "Use it again" after Eject, for a drive still plugged in.
+  async useDrive(driveId) {
+    const { restarted } = await this.reattachDrive(driveId);
+    await this.logDriveEvent(`drive ${driveId} opened again from Suite Manager; restarted ${restarted} container(s)`);
+    return { restarted };
+  }
+
+  async formatInstallerStick(devicePath) {
+    await this.storage.formatInstallerStick(devicePath);
+    await this.logDriveEvent(`install stick ${devicePath} formatted for storage`);
+  }
+
+  async checkDrive(driveId) {
+    const containers = await this.driveContainers(driveId);
+    if (containers.length) await this.execute(this.dockerBinary, ['stop', ...containers], { timeoutMs: 180_000 });
+    try {
+      await this.storage.check(driveId);
+      await this.logDriveEvent(`drive ${driveId} checked; open read-write again`);
+    } catch (error) {
+      await this.logDriveEvent(`drive ${driveId}: check did not help: ${error.message}`);
+      throw error;
+    } finally {
+      // Without a mounted drive their binds have no source and they refuse to start.
+      if (containers.length) await this.execute(this.dockerBinary, ['start', ...containers], { timeoutMs: 180_000 }).catch(() => {});
+      await this.syncPausedPages();
+    }
+    return { restarted: containers.length };
+  }
+
+  // Into the plug-in unit's journal, so diagnostics show what the owner pressed
+  // in the same timeline as what the drive did.
+  async logDriveEvent(message) {
+    await this.execute('logger', ['--tag', STORAGE_ATTACH_IDENTIFIER, '--', `[mos-storage] ${message}`], { timeoutMs: 10_000 }).catch(() => {});
+  }
+
+  // Volume and folder arguments for each service's `docker run`, prepared before
+  // anything is stopped so a drive that is not there leaves the running app alone.
+  // A bind made with --mount refuses a missing source instead of creating it, so
+  // a folder can never silently land on the system disk. The drive claims follow
+  // what this apply mounts, so a rolled-back drive change lets go of its drive.
+  async containerMountArgs(packageId, services) {
+    const byService = new Map();
+    const mountedDrives = new Set();
+    for (const service of services) {
+      const args = [];
+      for (const volume of service.volumes || []) {
+        const separator = String(volume).indexOf(':');
+        if (separator > 0) args.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
+      }
+      if (service.folders?.length) {
+        const binds = await this.storage.prepareFolders(packageId, service.folders).catch((error) => {
+          const failure = new AppApplyError('storage', [error.message]);
+          // A StorageError is a fixed sentence written for the owner, so it may replace the stage's.
+          if (error instanceof StorageError) failure.message = error.message;
+          throw failure;
+        });
+        for (const bind of binds) args.push('--mount', `type=bind,source=${bind.source},target=${bind.target},readonly`);
+        const drives = new Set(binds.map((bind) => bind.drive));
+        for (const drive of drives) {
+          args.push('--label', `${STORAGE_DRIVE_LABEL}.${drive}=true`);
+          mountedDrives.add(drive);
+        }
+      }
+      byService.set(service.id, args);
+    }
+    this.storage.release(packageId, [...mountedDrives]);
+    return byService;
   }
 
   waitUntilHealthy(runtime) {
     return this.waitForReady(runtime.healthTarget, { crashed: () => this.crashLoopOf(runtime), host: runtime.healthHost });
+  }
+
+  // Each app's containers by state, so an app Docker stopped is not shown as running.
+  async containerStates() {
+    const output = await this.executeCapture(this.dockerBinary, ['ps', '--all', '--filter', 'label=mos.package', '--format', '{{.Label "mos.package"}} {{.State}}'], { timeoutMs: 10_000 });
+    const states = {};
+    for (const line of String(output || '').split('\n')) {
+      const [packageId, state] = line.trim().split(' ');
+      if (packageId && state) (states[packageId] ||= []).push(state);
+    }
+    return states;
   }
 
   async crashLoopOf({ packageId, services }) {
@@ -565,6 +747,21 @@ class SystemAppAdapter {
     }
   }
 
+  async buildServiceImage(service, { cwd, labels }, onActivity) {
+    for (const image of baseImages(path.join(cwd, service.dockerfile))) {
+      const present = await this.execute(this.dockerBinary, ['image', 'inspect', '--format', '{{.Id}}', image], { timeoutMs: 30000 }).then(() => true, () => false);
+      if (present) continue;
+      onActivity(`downloading ${image} for service "${service.id}"`);
+      await this.execute(this.dockerBinary, ['pull', image], { timeoutMs: BASE_IMAGE_PULL_TIMEOUT_MS });
+    }
+    onActivity(`docker build for service "${service.id}"`);
+    await this.execute(this.dockerBinary, [
+      'build', '--file', service.dockerfile, '--tag', service.imageTag,
+      ...Object.entries(labels).flatMap(([key, value]) => ['--label', `mos.${key}=${value}`]),
+      '.',
+    ], { cwd, timeoutMs: BUILD_TIMEOUT_MS });
+  }
+
   async buildAppPackageUpdate({ candidateDigest, expectedInstalledDigest, instanceId, packageId, packageVersion, services, sourceRevision }) {
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
@@ -573,16 +770,9 @@ class SystemAppAdapter {
     try {
       verifySnapshotIdentity(installed, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: expectedInstalledDigest, packageId });
       verifySnapshotIdentity(candidate, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidateDigest, packageId });
+      const labels = { package: packageId, 'package-version': packageVersion, 'package-digest': candidateDigest, 'source-revision': sourceRevision };
       for (const service of services) {
-        activity = `docker build for service "${service.id}"`;
-        await this.execute(this.dockerBinary, [
-          'build', '--file', service.dockerfile, '--tag', service.imageTag,
-          '--label', `mos.package=${packageId}`,
-          '--label', `mos.package-version=${packageVersion}`,
-          '--label', `mos.package-digest=${candidateDigest}`,
-          '--label', `mos.source-revision=${sourceRevision}`,
-          '.',
-        ], { cwd: candidate, timeoutMs: 300000 });
+        await this.buildServiceImage(service, { cwd: candidate, labels }, (next) => { activity = next; });
       }
       return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'candidate-built'] };
     } catch (error) {
@@ -602,12 +792,8 @@ class SystemAppAdapter {
     const networkName = this.networkName(packageId);
     await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
     await this.ensureAppVolumes({ instanceId, packageId, services });
+    const mounts = await this.containerMountArgs(packageId, services);
     for (const service of services) {
-      const volumeArgs = [];
-      for (const volume of service.volumes || []) {
-        const separator = String(volume).indexOf(':');
-        if (separator > 0) volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
-      }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
         ...CONTAINER_LOG_ARGS,
@@ -619,7 +805,7 @@ class SystemAppAdapter {
         '--label', `mos.package-digest=${packageDigest}`,
         '--label', `mos.source-revision=${sourceRevision}`,
         ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
-        ...volumeArgs,
+        ...mounts.get(service.id),
         service.imageTag,
       ], { mask: environmentSecrets([service]), timeoutMs: 60000 }).catch((error) => {
         throw error instanceof AppApplyError ? error : new AppApplyError('run', describeFailure(error, `docker run for service "${service.id}"`));
@@ -918,20 +1104,15 @@ class SystemAppAdapter {
     try {
       verifySnapshotIdentity(packageDir, { errorMessage: 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest: packageDigest, packageId });
       const serviceCount = services.length;
+      const labels = { package: packageId, 'package-version': packageVersion, 'package-digest': packageDigest, 'source-revision': sourceRevision };
       for (const service of services) {
-        activity = `docker build for service "${service.id}"`;
-        await this.execute(this.dockerBinary, [
-          'build',
-          '--file', service.dockerfile,
-          '--tag', service.imageTag,
-          '--label', `mos.package=${packageId}`,
-          '--label', `mos.package-version=${packageVersion}`,
-          '--label', `mos.package-digest=${packageDigest}`,
-          '--label', `mos.source-revision=${sourceRevision}`,
-          '.',
-        ], { cwd: packageDir, timeoutMs: 300000 });
+        await this.buildServiceImage(service, { cwd: packageDir, labels }, (next) => { activity = next; });
       }
       buildSeconds = (this.now() - startedAt) / 1000;
+
+      stage = 'storage';
+      activity = STAGE_ACTIVITY.storage;
+      const mounts = await this.containerMountArgs(packageId, services);
 
       stage = 'run';
       activity = STAGE_ACTIVITY.run;
@@ -942,13 +1123,6 @@ class SystemAppAdapter {
       await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
         activity = `docker run for service "${service.id}"`;
-        const volumeArgs = [];
-        for (const volume of service.volumes || []) {
-          const separator = String(volume).indexOf(':');
-          if (separator > 0) {
-            volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
-          }
-        }
         const containerName = this.containerName(packageId, service.id, serviceCount);
         await this.execute(this.dockerBinary, [
           'run',
@@ -964,7 +1138,7 @@ class SystemAppAdapter {
           '--label', `mos.package-digest=${packageDigest}`,
           '--label', `mos.source-revision=${sourceRevision}`,
           ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
-          ...volumeArgs,
+          ...mounts.get(service.id),
           service.imageTag,
         ], { mask: environmentSecrets([service]), timeoutMs: 60000 });
       }
@@ -1135,6 +1309,7 @@ class SystemAppAdapter {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
       await this.removePackageNetwork(packageId);
+      this.storage.release(packageId);
       for (const volume of volumes) {
         const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);

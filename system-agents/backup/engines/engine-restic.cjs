@@ -16,7 +16,6 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
-const { generate, isRecoveryKey } = require('../recovery-key.cjs');
 const { RecoveryKeyStore } = require('../../lib/recovery-key-store.cjs');
 
 const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
@@ -28,10 +27,6 @@ const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on th
 // tmpfs, so a key handed to one command never reaches a disk — least of all
 // the plaintext system partition the vault exists to keep owner data off.
 const RUNTIME_SECRET_DIR = '/run/mos-backup-agent';
-// The pre-release 64-hex password, moved aside rather than replaced. It is
-// never deleted: a drive that stays unplugged for months must still open, and
-// migrate, on the day it is finally attached.
-const LEGACY_KEY_SUFFIX = '.legacy';
 // Keys a rotation has replaced. They are kept rather than destroyed because a
 // repository that was not attached when the key changed still answers to the
 // one it had: a drive in a drawer may be months behind, and dropping the key
@@ -219,8 +214,6 @@ class ResticEngine {
 
   get keyFile() { return this.keys.keyPath; }
 
-  get legacyKeyFile() { return `${this.keyFile}${LEGACY_KEY_SUFFIX}`; }
-
   get supersededKeyFile() { return `${this.keyFile}${SUPERSEDED_KEY_SUFFIX}`; }
 
   get stagedKeyFile() { return `${this.keyFile}${STAGED_KEY_SUFFIX}`; }
@@ -276,36 +269,6 @@ class ResticEngine {
     } catch {
       return [];
     }
-  }
-
-  // Every key this machine used before its current one, newest first: what a
-  // rotation replaced, and then the pre-release password a machine installed
-  // before recovery keys existed may still be carrying. One list, because a
-  // repository holding either is the same problem with the same fix.
-  supersededKeys() {
-    const legacy = this.legacyKey();
-    return [...this.rotatedKeys(), ...(legacy ? [legacy] : [])];
-  }
-
-  legacyKey() {
-    try {
-      return fs.readFileSync(this.legacyKeyFile, 'utf8').trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
-  // Moves a pre-release 64-hex password aside so this machine gets a key its
-  // owner can write down. Idempotent, and it never removes the old value: the
-  // repositories keyed with it are migrated one at a time, whenever each is
-  // next opened, which for an unplugged drive may be months from now.
-  migrateLegacyKey() {
-    if (!fs.existsSync(this.keyFile)) return false;
-    const existing = fs.readFileSync(this.keyFile, 'utf8').trim();
-    if (!existing || isRecoveryKey(existing)) return false;
-    writeSecretFile(this.legacyKeyFile, existing);
-    this.keys.writeKey(generate().key);
-    return true;
   }
 
   // Verification has to read the repository, not a local copy of what the
@@ -426,7 +389,7 @@ class ResticEngine {
   }
 
   keyList({ password, repository }) {
-    const output = this.runAs(repository, password, ['key', 'list', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }).trim();
+    const output = this.runAs(repository, password, ['key', 'list', '--no-lock', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }).trim();
     try {
       const parsed = JSON.parse(output || '[]');
       return Array.isArray(parsed) ? parsed : [parsed];
@@ -452,27 +415,12 @@ class ResticEngine {
     this.runAs(repository, password, ['key', 'remove', keyId, ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 });
   }
 
-  /**
-   * One repository's catch-up onto this machine's current key, run the first
-   * time probing it answers `locked` while a key it used to have is still here.
-   * It covers both ways a repository falls behind: a pre-release password, and
-   * a key the owner has since rotated.
-   *
-   * Adding the current key and removing the old one is a metadata write. restic
-   * wraps a single data key with any number of passwords, so nothing stored is
-   * re-encrypted and every earlier backup stays exactly as valid as it was —
-   * and, for the same reason, nothing that was readable with the old key stops
-   * being readable to someone who kept both that key and a copy of the data.
-   * That is restic's model, not a shortcut taken here, and the rotation screen
-   * says so in those words.
-   *
-   * The old key id is removed while authenticated with the new one, because
-   * restic refuses to remove the password it is authenticated with; a failure
-   * there leaves both valid, which is untidy rather than harmful.
-   */
+  // A repository still on a key the owner rotated away from is re-wrapped onto the
+  // current one: a metadata write, nothing stored is re-encrypted. The old key is
+  // removed under the new one because restic will not remove the key it holds.
   async migrateRepositoryKey({ env = {}, localPath = null, location, secrets = [] }) {
     const repository = { engineName: this.name, env, localPath, location, secrets };
-    for (const previous of this.supersededKeys()) {
+    for (const previous of this.rotatedKeys()) {
       if ((await this.probeRepository({ env, location, password: previous, secrets })).state !== 'open') continue;
       const previousKeyId = this.keyList({ password: previous, repository }).find((entry) => entry.current)?.id || null;
       this.keyAdd({ newPassword: this.recoveryKey(), password: previous, repository });
@@ -484,16 +432,9 @@ class ResticEngine {
     return false;
   }
 
-  // Whether a repository opens, wherever it lives. A drive with no config file
-  // is absent without asking the engine; a `locked` answer is retried once
-  // through the pre-release password, which is the single place every
-  // repository keyed before the recovery key existed gets migrated — so health
-  // checks, preflights and opens all migrate, not only the open.
-  //
-  // `password` is the key of the server that owns the repository, for a
-  // destination this machine only borrows. It also stops the migration, which
-  // writes: nothing this machine does to another server's archive may change
-  // it, and there is nothing here of ours to migrate anyway.
+  // Whether a repository opens. A `locked` answer is retried once through the keys
+  // a rotation replaced: the one write a status poll can make (key add/remove),
+  // never with `password`, which names another server's archive.
   async probe({ env = {}, localPath = null, location, password = null, secrets = [] }) {
     if (localPath && !this.repositoryInitialized(localPath)) return { cause: 'absent', state: 'absent' };
     const noun = localPath ? 'drive' : 'bucket';
@@ -503,8 +444,7 @@ class ResticEngine {
     return this.probeRepository({ env, location, noun, secrets });
   }
 
-  // The listing is polled, so two probes of one repository can overlap; the
-  // second waits for the first's migration rather than adding the key twice.
+  // Two overlapping probes share one migration rather than adding the key twice.
   migrateOnce(spec) {
     this.migrations ||= new Map();
     const pending = this.migrations.get(spec.location) || this.migrateRepositoryKey(spec).finally(() => this.migrations.delete(spec.location));
@@ -512,14 +452,12 @@ class ResticEngine {
     return pending;
   }
 
-  // A local repository's stored size is measured from its directory: the CLI
-  // reports it in a form not worth a version-sensitive parser when the truth is
-  // on disk. A bucket has no directory to walk, so there the engine is asked —
-  // one call, and the only place its stats output is parsed.
+  // A local repository is measured from its directory; a bucket has none, so the
+  // engine is asked, lock-free so a running check or prune does not fail the refresh.
   async repositoryStats({ repository }) {
     if (repository.localPath) return { storedBytes: treeBytes(repository.localPath) };
     try {
-      const parsed = JSON.parse(this.runFor(repository, ['stats', '--mode', 'raw-data', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }) || '{}');
+      const parsed = JSON.parse(this.runFor(repository, ['stats', '--no-lock', '--mode', 'raw-data', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }) || '{}');
       return { storedBytes: Number.isFinite(parsed.total_size) ? parsed.total_size : null };
     } catch {
       return { storedBytes: null };
@@ -575,7 +513,9 @@ class ResticEngine {
     const passwordFile = password ? this.stagePassword(password) : null;
     let result;
     try {
-      result = await this.runStreaming(['cat', 'config', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
+      // Lock-free: the listing polls this while a check or a restore may hold the
+      // repository's exclusive lock, and a read of the config needs no lock.
+      result = await this.runStreaming(['cat', 'config', '--no-lock', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
         decisive: (text) => repositoryProbeCause(text).cause !== 'unknown',
         env: passwordFile ? { ...env, RESTIC_PASSWORD_FILE: passwordFile } : env,
         timeout: PROBE_TIMEOUT_MS,
@@ -638,12 +578,31 @@ class ResticEngine {
     return { ...repository, created, repositoryId };
   }
 
+  // A repository whose password is published rather than secret: a bucket's catalog
+  // of the archives in it, which says no more than a drive's plaintext descriptor.
+  // Null when there is none yet and none was asked for. A second server creating
+  // the same catalog at the same moment is answered by opening the one that won.
+  async openPublicRepository({ create = false, env = {}, location, password, secrets = [] }) {
+    const repository = { engineName: this.name, env, localPath: null, location, password, secrets };
+    const probe = await this.probeRepository({ env, location, password, secrets });
+    if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineName: this.name, engineOutput: probe.output || null });
+    if (probe.state === 'locked') throw new Error('The MOS-backups folder in this bucket holds a catalog MOS cannot read.');
+    if (probe.state === 'open') return repository;
+    if (!create) return null;
+    try {
+      this.runAs(repository, password, ['init', ...this.repositoryFlags(repository)], { timeout: 600_000 });
+    } catch (error) {
+      if ((await this.probeRepository({ env, location, password, secrets })).state !== 'open') throw error;
+    }
+    return repository;
+  }
+
   // restic's own repository id, which identifies the store independently of
   // where it is addressed from. A bucket therefore needs no descriptor file of
   // MOS's own to be recognisable after its endpoint or prefix is re-entered.
   repositoryConfigId(repository) {
     try {
-      return JSON.parse(this.runFor(repository, ['cat', 'config', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS }) || '{}').id || null;
+      return JSON.parse(this.runFor(repository, ['cat', 'config', '--no-lock', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS }) || '{}').id || null;
     } catch {
       return null;
     }
@@ -695,7 +654,7 @@ class ResticEngine {
         if (parsed.message_type === 'summary' && parsed.snapshot_id) return parsed.snapshot_id;
       } catch {}
     }
-    const latest = this.listJson(repository, ['snapshots', ...this.repositoryFlags(repository), '--json', '--latest', '1']).pop();
+    const latest = this.listJson(repository, ['snapshots', '--no-lock', ...this.repositoryFlags(repository), '--json', '--latest', '1']).pop();
     if (!latest?.id) throw new Error('The backup storage engine did not report a snapshot for the data it just stored.');
     return latest.id;
   }
@@ -721,7 +680,7 @@ class ResticEngine {
   }
 
   async listSnapshots({ repository }) {
-    return this.listJson(repository, ['snapshots', ...this.repositoryFlags(repository), '--json'])
+    return this.listJson(repository, ['snapshots', '--no-lock', ...this.repositoryFlags(repository), '--json'])
       .map((entry) => ({ createdAt: entry.time || null, snapshotId: entry.id, sourcePath: (entry.paths || [])[0] || null, tags: entry.tags || [] }));
   }
 

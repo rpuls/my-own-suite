@@ -20,9 +20,17 @@ const {
   UNAVAILABLE_PAGE_ROOT,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
+  STORAGE_ATTACH_UNIT,
+  STORAGE_FILESYSTEMS,
+  STORAGE_UDEV_RULE_PATH,
 } = require('../infrastructure/control-plane-runtime.cjs');
+const { STORAGE_REGISTRY_FILENAME } = require('../shared/storage-contract.cjs');
+const { StorageRegistry } = require('../system-agents/lib/storage-registry.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
+const { missingFromBuild, nextBuildDir } = require('../suite-manager/backend/src/server/frontend-release.cjs');
 
 function parseEnvFile(filePath) {
   try {
@@ -132,6 +140,24 @@ function run(command, args, options = {}) {
     if (!options.allowFailure) throw error;
     log(`${command} failed (${error.message}); continuing`);
     return '';
+  }
+}
+
+// Drives present before this release put the udev rule in place, so never announced.
+// A drive MOS already keeps something on is left alone: announcing it again restarts
+// its apps, and opens it again if the owner ejected it.
+function unannouncedStorageDevices(stateRoot, blockDevices) {
+  const known = new StorageRegistry({ registryPath: path.join(stateRoot, STORAGE_REGISTRY_FILENAME) }).read().drives;
+  return blockDevices
+    .filter((device) => device.uuid && STORAGE_FILESYSTEMS.includes(device.fstype) && !known[device.uuid])
+    .map((device) => device.path);
+}
+
+function blockDevices() {
+  try {
+    return JSON.parse(execFileSync('lsblk', ['--json', '--list', '--output', 'PATH,UUID,FSTYPE'], { encoding: 'utf8' })).blockdevices || [];
+  } catch {
+    return [];
   }
 }
 
@@ -295,6 +321,7 @@ Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=${config.disposableLab}
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
+ExecStartPre=+/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/frontend-release.cjs ${config.mosRoot}/suite-manager/frontend/dist
 ExecStart=/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -328,26 +355,40 @@ function refreshCaddyBinary() {
   }
 }
 
+// Here as well as in the installer, which an updated machine never runs again:
+// bzip2 unpacks restic's only Linux build, ntfs-3g's ntfsfix is Check drive, and
+// exfatprogs formats the install stick for storage.
+// Without a network, the feature that needs one reports the real failure.
+const HOST_TOOLS = [['bzip2', 'bzip2'], ['ntfsfix', 'ntfs-3g'], ['mkfs.exfat', 'exfatprogs']];
+
+function ensureHostTools() {
+  const missing = HOST_TOOLS.filter(([tool]) => {
+    try { execFileSync('which', [tool], { stdio: 'ignore' }); return false; } catch { return true; }
+  }).map(([, name]) => name);
+  if (!missing.length) return;
+  log(`installing ${missing.join(' ')}`);
+  // Stale package lists are the usual reason the first attempt fails.
+  if (!canRun('apt-get', ['install', '-y', ...missing])) {
+    run('apt-get', ['update'], { allowFailure: true });
+    run('apt-get', ['install', '-y', ...missing], { allowFailure: true });
+  }
+}
+
+// Every MOS service runs on the host's Node, which comes from NodeSource and so
+// sits outside the security pocket unattended-upgrades is pinned to. A managed
+// update is the only thing that moves it to a patched release; the source list
+// pins the major line. An unreachable NodeSource must not fail the update.
+function refreshNode() {
+  run('apt-get', ['update'], { allowFailure: true });
+  run('apt-get', ['install', '-y', '--only-upgrade', 'nodejs'], { allowFailure: true });
+}
+
 // The backup agent runs from repo source, so a machine that updates rather
 // than reinstalls never runs the installer again. Installing the storage
 // engine here is what keeps an updated machine's agent able to write backups
 // at all, per the rule in infrastructure/control-plane-runtime.cjs.
-//
-// restic ships its Linux builds bzip2-compressed and nothing else, so
-// unpacking the pinned download needs bzip2 on the host. Without a network,
-// the engine install below reports the real failure.
-function ensureBzip2() {
-  try {
-    execFileSync('which', ['bzip2'], { stdio: 'ignore' });
-    return;
-  } catch {}
-  log('installing bzip2 (needed to unpack the pinned restic download)');
-  run('apt-get', ['install', '-y', 'bzip2'], { allowFailure: true });
-}
-
 function refreshBackupEngine() {
   installDir('/usr/local/libexec/mos', 0o755);
-  if (!dryRun) ensureBzip2();
   if (dryRun) { log(`would install backup storage engine ${ENGINE_NAME}`); return; }
   try {
     installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name: ENGINE_NAME });
@@ -401,6 +442,7 @@ function renderUnits() {
       script: 'system-agents/apps/agent.cjs',
       wants: 'network-online.target docker.service',
     }),
+    [STORAGE_ATTACH_UNIT]: renderStorageAttachUnit({ mosRoot, stateRoot }),
     'mos-backup-agent.service': agentUnit({
       after: 'network-online.target docker.service',
       description: 'MOS backup and restore agent',
@@ -453,8 +495,15 @@ function main() {
   if (typeof process.getuid === 'function' && process.getuid() !== 0 && !dryRun) {
     throw new Error('MOS system reconciliation must run as root.');
   }
+  // Before anything restarts: Suite Manager would start on its old pages rather than serve these.
+  const newPages = nextBuildDir(path.join(mosRoot, 'suite-manager', 'frontend', 'dist'));
+  const missingPages = fs.existsSync(newPages) ? missingFromBuild(newPages) : [];
+  if (missingPages.length) throw new Error(`The new Suite Manager pages are incomplete (missing ${missingPages.join(', ')}); nothing was restarted.`);
 
   log(`reconciling ${mosRoot}`);
+  // Ubuntu's needrestart restarts every service on a replaced Node the moment apt
+  // installs one, half way through this run; the restarts at the end are the ones that count.
+  process.env.NEEDRESTART_SUSPEND = '1';
   ensureAgentGroup();
   installDir('/etc/mos', 0o750);
   installDir('/etc/mos/secrets', 0o750);
@@ -490,6 +539,8 @@ function main() {
   if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
+  if (!dryRun) ensureHostTools();
+  refreshNode();
   refreshBackupEngine();
   // Applied on every managed update rather than only at install, for the reason
   // the journald config is: the installer is the one path a machine that already
@@ -527,6 +578,8 @@ function main() {
   }
 
   for (const [name, content] of Object.entries(renderUnits())) unit(name, content);
+  writeFile(STORAGE_UDEV_RULE_PATH, renderStorageUdevRule(), 0o644);
+  if (!dryRun) run('udevadm', ['control', '--reload-rules'], { allowFailure: true });
 
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
@@ -548,6 +601,9 @@ function main() {
     run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
     run('systemctl', ['restart', 'mos-lab-reset-agent.service']);
   }
+  // After the restarts, so a drive the old backup agent still had mounted is free to open.
+  const unannounced = unannouncedStorageDevices(stateRoot, blockDevices());
+  if (unannounced.length) run('udevadm', ['trigger', '--action=add', ...unannounced], { allowFailure: true });
   log('system reconciliation complete');
 }
 
@@ -567,5 +623,6 @@ module.exports = {
   renderUnits,
   resolveRuntimeConfig,
   suiteManagerUnit,
+  unannouncedStorageDevices,
   vaultGateUnit,
 };

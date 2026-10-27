@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { StorageError } = require('./storage.cjs');
 
 const { ADDRESS_TIMEOUT_MS, CRASH_LOOP_RESTARTS, DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, HEALTH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock, waitForHttp } = require('./system-adapter.cjs');
 
@@ -593,6 +594,28 @@ test('system adapter builds an identity-bound update candidate without touching 
   assert.equal(commands[0].cwd, candidate);
   assert.equal(commands[0].args[0], 'build');
   assert.equal(commands.some((command) => command.args.includes('rm') || command.args.includes('run')), false);
+});
+
+test('a missing base image is downloaded before the build and outside its time limit', async () => {
+  const root = await tempDir();
+  await fsp.writeFile(path.join(root, 'Dockerfile'), 'FROM vendor/app@sha256:aaa AS app\nFROM --platform=linux/amd64 vendor/base:1 AS base\nFROM app\nFROM ${BASE}\nFROM scratch\n');
+  const commands = [];
+  const present = new Set(['vendor/base:1']);
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args, options = {}) {
+      commands.push({ args, timeoutMs: options.timeoutMs });
+      if (args[0] === 'image' && !present.has(args.at(-1))) throw new Error('No such image');
+    },
+  });
+  const activities = [];
+  await adapter.buildServiceImage({ dockerfile: 'Dockerfile', id: 'web', imageTag: 'app:test' }, { cwd: root, labels: { package: 'example-tool' } }, (activity) => activities.push(activity));
+
+  assert.deepEqual(commands.filter((command) => command.args[0] !== 'image').map((command) => command.args.slice(0, 2)), [['pull', 'vendor/app@sha256:aaa'], ['build', '--file']]);
+  const [pull, build] = commands.filter((command) => command.args[0] !== 'image');
+  assert.ok(pull.timeoutMs > build.timeoutMs);
+  assert.ok(build.args.includes('mos.package=example-tool'));
+  assert.deepEqual(activities, ['downloading vendor/app@sha256:aaa for service "web"', 'docker build for service "web"']);
 });
 
 test('system adapter restores the installed runtime when an update candidate fails health', async () => {
@@ -1369,4 +1392,151 @@ test('the health probe asks for the app by the name its manifest gives it, not b
     await new Promise((resolve) => server.close(resolve));
   }
   assert.deepEqual(hosts, ['paperless:8000']);
+});
+
+async function folderApp(storage) {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'jellyfin', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    appsRoot: root,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push({ args, file }); return { stdout: '' }; },
+    routesPath: path.join(root, 'routes.caddy'),
+    storage,
+    async waitForReady() {},
+  });
+  const runtime = {
+    caddyRoutes: 'http://jellyfin.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthHost: 'jellyfin',
+    healthTarget: 'http://127.0.0.1:18123/health',
+    instanceId,
+    packageDigest: digestAppPackage(packageDir),
+    packageId: 'jellyfin',
+    packageVersion: '0.1.0',
+    services: [{
+      dockerfile: 'Dockerfile',
+      environment: {},
+      folders: [{ drive: '1A2B-3C4D', name: 'Movies', path: '/media/movies' }],
+      id: 'jellyfin',
+      imageTag: 'mos-app-jellyfin:0.1.0',
+      internalPort: 8096,
+      loopbackPort: 18123,
+      public: true,
+      volumes: ['config:/config'],
+    }],
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+  };
+  return { adapter, commands, runtime };
+}
+
+test('folders on a drive reach the container as read-only binds that cannot create their source', async () => {
+  const released = [];
+  const storage = {
+    prepareFolders: async () => [{ drive: '1A2B-3C4D', source: '/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies', target: '/media/movies' }],
+    release: (packageId, keptDrives) => released.push([packageId, keptDrives]),
+  };
+  const { adapter, commands, runtime } = await folderApp(storage);
+  await adapter.applyAppServices(runtime);
+
+  const run = commands.find((command) => command.args[0] === 'run').args;
+  assert.ok(run.includes('type=bind,source=/media/mos-storage/1A2B-3C4D/MOS-files/apps/jellyfin/Movies,target=/media/movies,readonly'));
+  assert.ok(run.includes('mos.storage-drive.1A2B-3C4D=true'));
+  assert.ok(run.includes('mos-app-jellyfin-config:/config'));
+  assert.deepEqual(released, [['jellyfin', ['1A2B-3C4D']]]);
+});
+
+test('an apply without the folders a rolled-back drive change added lets go of that drive', async () => {
+  const released = [];
+  const storage = { prepareFolders: async () => assert.fail('no folders to prepare'), release: (packageId, keptDrives) => released.push([packageId, keptDrives]) };
+  const { adapter, runtime } = await folderApp(storage);
+  await adapter.applyAppServices({ ...runtime, services: runtime.services.map(({ folders, ...service }) => service) });
+
+  assert.deepEqual(released, [['jellyfin', []]]);
+});
+
+test('a drive that cannot be opened fails the apply before the running app is touched', async () => {
+  const storage = { prepareFolders: async () => { throw new StorageError("The drive that holds this app's folders is not connected."); } };
+  const { adapter, commands, runtime } = await folderApp(storage);
+  await assert.rejects(adapter.applyAppServices(runtime), (error) => {
+    assert.equal(error.code, 'APP_STORAGE_UNAVAILABLE');
+    assert.equal(error.message, "The drive that holds this app's folders is not connected.");
+    return true;
+  });
+  assert.equal(commands.some((command) => command.args[0] === 'rm'), false);
+});
+
+test('every drive that appears is opened, and only the containers reading a remembered one are restarted', async () => {
+  const attached = [];
+  const storage = { attach: async (driveId) => { attached.push(driveId); }, isRemembered: (driveId) => driveId === '1A2B-3C4D' };
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push([file, ...args]); return { stdout: args[0] === 'ps' ? 'c1\nc2\n' : '' }; },
+    storage,
+  });
+
+  assert.deepEqual(await adapter.reattachDrive('OTHER-DRIVE'), { attached: true, restarted: 0 });
+  assert.deepEqual(await adapter.reattachDrive('1A2B-3C4D'), { attached: true, restarted: 2 });
+  assert.deepEqual(attached, ['OTHER-DRIVE', '1A2B-3C4D']);
+  assert.deepEqual(commands, [
+    ['docker', 'ps', '--all', '--quiet', '--filter', 'label=mos.storage-drive.1A2B-3C4D'],
+    ['docker', 'restart', 'c1', 'c2'],
+  ]);
+});
+
+test('a filesystem that is not a storage drive, like the system disk, is left alone on sight', async () => {
+  const storage = { attach: async () => assert.fail('the system disk is never attached'), candidates: async () => [{ id: '1A2B-3C4D' }] };
+  const adapter = new SystemAppAdapter({ storage });
+
+  assert.deepEqual(await adapter.attachOnSight('8725-B90B'), { attached: false, restarted: 0 });
+});
+
+function driveAdapter(storage) {
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push([file, ...args]); return { stdout: args[0] === 'ps' ? 'c1\n' : '' }; },
+    pausedPages: { sync: () => commands.push(['paused-pages']) },
+    storage: { attach: async () => {}, drives: async () => [], isRemembered: () => true, ...storage },
+  });
+  return {
+    adapter,
+    commands: () => commands.filter((command) => command[0] === 'docker' && command[1] !== 'ps').map((command) => command.slice(1).join(' ')),
+    logged: () => commands.filter((command) => command[0] === 'logger').map((command) => `${command[2]} ${command.at(-1)}`),
+  };
+}
+
+test('eject stops the containers reading the drive before it is closed', async () => {
+  const order = [];
+  const { adapter, commands, logged } = driveAdapter({ eject: async () => { order.push(commands().join('|')); } });
+  assert.deepEqual(await adapter.ejectDrive('1A2B-3C4D'), { stopped: 1 });
+  assert.deepEqual(order, ['stop c1']);
+  assert.deepEqual(logged(), ['mos-storage-attach [mos-storage] drive 1A2B-3C4D ejected; stopped 1 container(s)']);
+});
+
+test('an eject that cannot close the drive puts its apps back as they were', async () => {
+  const { adapter, commands, logged } = driveAdapter({ eject: async () => { throw new StorageError('Something on the server is still using this drive.'); } });
+  await assert.rejects(adapter.ejectDrive('1A2B-3C4D'), /still using this drive/u);
+  assert.deepEqual(commands(), ['stop c1', 'restart c1']);
+  assert.match(logged()[0], /eject refused, apps put back: Something on the server is still using this drive\./u);
+});
+
+test('Check drive starts the stopped containers again whether or not the check repaired it', async () => {
+  const repaired = driveAdapter({ check: async () => {} });
+  assert.deepEqual(await repaired.adapter.checkDrive('1A2B-3C4D'), { restarted: 1 });
+  assert.deepEqual(repaired.commands(), ['stop c1', 'start c1']);
+  assert.match(repaired.logged()[0], /drive 1A2B-3C4D checked; open read-write again/u);
+
+  const refused = driveAdapter({ check: async () => { throw new StorageError('The quick check could not repair this drive.'); } });
+  await assert.rejects(refused.adapter.checkDrive('1A2B-3C4D'), /could not repair/u);
+  assert.deepEqual(refused.commands(), ['stop c1', 'start c1']);
+  assert.match(refused.logged()[0], /check did not help: The quick check could not repair this drive\./u);
 });

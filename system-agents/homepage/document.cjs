@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 const YAML = require('yaml');
 
-const { HOMEPAGE_FILES, HomepageConfigError, MANAGED_APP_HREF_PREFIX, PROTOCOLS, publicUrlFor, validateProxy } = require('../../shared/homepage-contract.cjs');
+const { entriesFromServices, HOMEPAGE_FILES, HomepageConfigError, MANAGED_APP_HREF_PREFIX, PROTOCOLS, publicUrlFor, validateProxy } = require('../../shared/homepage-contract.cjs');
 
 const HOMEPAGE_FILE_SET = new Set(HOMEPAGE_FILES);
 
@@ -51,39 +51,6 @@ function validateYaml(content, file) {
 // Homepage renders one nested level of groups (sections inside a category), so
 // the contract walks group -> subgroup -> service. A list value marks a
 // subgroup; anything else is a service config.
-const MAX_GROUP_DEPTH = 2;
-
-function entriesFromServices(value) {
-  if (!Array.isArray(value)) {
-    throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Services must be a list of groups.');
-  }
-  const entries = [];
-  const walkGroup = (group, services, depth) => {
-    if (!group.trim() || !Array.isArray(services)) {
-      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must have a name and service list.');
-    }
-    if (depth > MAX_GROUP_DEPTH) {
-      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Service groups can be nested at most one level deep.');
-    }
-    for (const serviceItem of services) {
-      if (!serviceItem || typeof serviceItem !== 'object' || Array.isArray(serviceItem)) {
-        throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every dashboard service must be a mapping.');
-      }
-      for (const [name, config] of Object.entries(serviceItem)) {
-        if (Array.isArray(config)) walkGroup(name, config, depth + 1);
-        else entries.push({ config, group, name });
-      }
-    }
-  };
-  for (const groupItem of value) {
-    if (!groupItem || typeof groupItem !== 'object' || Array.isArray(groupItem)) {
-      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must be a mapping.');
-    }
-    for (const [group, services] of Object.entries(groupItem)) walkGroup(group, services, 1);
-  }
-  return entries;
-}
-
 function validateServices(value) {
   const ids = new Set();
   const subdomains = new Set();
@@ -148,6 +115,10 @@ function validateWidget(widget) {
   };
 }
 
+// What Homepage can draw: a dashboard-icons name, an mdi-/si-/sh- name, or an image by path or address.
+// Anything else, `mdi:link` for one, is a broken image and a failed request on every load.
+const ICON_PATTERN = /^(?:https?:\/\/\S+|\/\S+|[a-z0-9][a-z0-9._-]*)$/iu;
+
 function normalizeDashboardInput(input, homeService) {
   const allowed = homeService
     ? ['description', 'group', 'host', 'icon', 'name', 'port', 'protocol', 'subdomain']
@@ -162,6 +133,9 @@ function normalizeDashboardInput(input, homeService) {
     if (!text[key] || text[key].length > 160 || /[\r\n]/u.test(text[key])) {
       throw new HomepageConfigError('INVALID_GUIDED_FIELD', `${key} is required and must be plain text.`);
     }
+  }
+  if (!ICON_PATTERN.test(text.icon)) {
+    throw new HomepageConfigError('INVALID_GUIDED_FIELD', 'Use a Homepage icon name, such as firefox or mdi-link, or the web address of an image.');
   }
   if (!homeService) {
     let url;

@@ -2,7 +2,7 @@
 // Easy Door wildcard certificates and nothing else; the zone file it renders is
 // its only state, so a rebuilt box loses only tokens minutes from expiring.
 
-const { EASY_DOOR_DASHED_ADDRESS } = require('../../shared/easy-door.cjs');
+const { EASY_DOOR_LABEL } = require('../../shared/easy-door.cjs');
 
 const ZONE = 'acme.myownsuite.org';
 const NAMESERVER = 'ns-acme.myownsuite.org';
@@ -15,7 +15,11 @@ const TXT_TTL_SECONDS = 30;
 const UPDATES_PER_SOURCE = 20;
 const SOURCE_WINDOW_MS = 60 * 60 * 1000;
 
-const SUBDOMAIN_PATTERN = new RegExp(`^${EASY_DOOR_DASHED_ADDRESS}$`, 'u');
+const OCTET = '(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])';
+// The pre-0.23 label, the address alone. Answered until 1.0 so a server still on
+// one keeps renewing (roadmap H12); no MOS server is ever given one now.
+const PRE_ID_LABEL = `(?:10-${OCTET}|172-(?:1[6-9]|2[0-9]|3[01])|192-168)-${OCTET}-${OCTET}`;
+const SUBDOMAIN_PATTERN = new RegExp(`^(?:${EASY_DOOR_LABEL}|${PRE_ID_LABEL})$`, 'u');
 // base64url(SHA-256(key authorization)), unpadded: the only TXT value ACME asks for.
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 
@@ -35,8 +39,9 @@ function parseUpdate(body) {
   return { subdomain, txt };
 }
 
-// Several households share one LAN address and renew independently, so a name
-// keeps several live tokens rather than acme-dns's last two.
+// A pre-0.23 name is shared by every household on one LAN address, each renewing
+// on its own, so a name keeps several live tokens rather than acme-dns's last two.
+// A name with an install id needs two; the cap can drop with PRE_ID_LABEL.
 class TokenBook {
   constructor(entries = []) {
     this.byName = new Map();

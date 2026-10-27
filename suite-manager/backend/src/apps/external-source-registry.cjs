@@ -59,9 +59,9 @@ const EXTERNAL_SOURCE_STATUS = Object.freeze({
 class ExternalSourceError extends CodedError {
   constructor(code, message) {
     const statusCode = EXTERNAL_SOURCE_STATUS[code] || 400;
-    // The 5xx codes have always been answered as internal errors; keeping that is
-    // part of moving the status here, not a judgement that it is right.
-    super(code, message, { internal: statusCode >= 500, statusCode });
+    // A git host that failed the request is the owner's to act on, so its sentence
+    // reaches them; only MOS being unable to install is a fault of MOS's own.
+    super(code, message, { internal: code === 'SOURCE_INSTALL_UNAVAILABLE', statusCode });
   }
 }
 

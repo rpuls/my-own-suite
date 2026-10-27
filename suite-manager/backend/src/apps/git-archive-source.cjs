@@ -84,7 +84,7 @@ function parseGitPackageUrl(input) {
 // see, deliberately, so that it does not leak whether the repository exists. So
 // 404 and 401 mean the same thing here — not visible, cause unknown — and MOS must
 // not claim the repository was deleted.
-function fetchFailure(response) {
+function fetchFailure(response, host) {
   const status = response.status;
   if (status === 401 || status === 404) {
     return new ExternalSourceError('SOURCE_NOT_VISIBLE', 'The git host will not show this repository to an anonymous request. It may have been deleted, renamed, or made private.');
@@ -96,34 +96,37 @@ function fetchFailure(response) {
     return error;
   }
   if (status === 403) return new ExternalSourceError('SOURCE_FORBIDDEN', 'The git host refused the request for this repository.');
-  return new ExternalSourceError('SOURCE_FETCH_FAILED', `External source request failed with HTTP ${status}.`);
+  return new ExternalSourceError('SOURCE_FETCH_FAILED', `${host} answered HTTP ${status} for this repository. Try again later.`);
 }
 
 async function request(fetchImpl, url, { timeoutMs }, headers = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const { host } = new URL(url);
   try {
     const response = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'mos-external-source', ...headers }, redirect: 'manual', signal: controller.signal });
-    if (response.status >= 300 && response.status < 400) throw new ExternalSourceError('SOURCE_REDIRECT_REJECTED', 'External source requests must not redirect.');
-    if (!response.ok) throw fetchFailure(response);
+    if (response.status >= 300 && response.status < 400) throw new ExternalSourceError('SOURCE_REDIRECT_REJECTED', `${host} redirected the request, and MOS fetches a repository only at its own address. If it moved, paste its new address.`);
+    if (!response.ok) throw fetchFailure(response, host);
     return response;
   } catch (error) {
     if (error instanceof ExternalSourceError) throw error;
-    throw new ExternalSourceError('SOURCE_FETCH_FAILED', error?.name === 'AbortError' ? 'External source request timed out.' : 'External source request failed.');
+    throw new ExternalSourceError('SOURCE_FETCH_FAILED', error?.name === 'AbortError'
+      ? `${host} did not answer in time. Try again later.`
+      : `MOS could not reach ${host}. Check that this server is online and the address is right.`);
   } finally { clearTimeout(timer); }
 }
 
 async function boundedBytes(response, maximumBytes) {
   const declared = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > maximumBytes) throw new ExternalSourceError('SOURCE_TOO_LARGE', 'External source response exceeds the byte limit.');
+  if (Number.isFinite(declared) && declared > maximumBytes) throw new ExternalSourceError('SOURCE_TOO_LARGE', 'The git host sent more than MOS accepts for one app package.');
   const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > maximumBytes) throw new ExternalSourceError('SOURCE_TOO_LARGE', 'External source response exceeds the byte limit.');
+  if (bytes.length > maximumBytes) throw new ExternalSourceError('SOURCE_TOO_LARGE', 'The git host sent more than MOS accepts for one app package.');
   return bytes;
 }
 
 async function requestJson(fetchImpl, url, limits) {
   const bytes = await boundedBytes(await request(fetchImpl, url, limits), limits.metadataBytes);
-  try { return JSON.parse(bytes.toString('utf8')); } catch { throw new ExternalSourceError('SOURCE_FETCH_FAILED', 'External source returned invalid metadata.'); }
+  try { return JSON.parse(bytes.toString('utf8')); } catch { throw new ExternalSourceError('SOURCE_FETCH_FAILED', 'The git host sent an answer MOS could not read.'); }
 }
 
 // Resolve a repository ref (or the default branch) to an immutable commit before

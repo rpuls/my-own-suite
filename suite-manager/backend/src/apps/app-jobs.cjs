@@ -12,6 +12,7 @@ class AppJobs {
     this.logger = logger;
     this.now = now;
     this.jobs = new Map();
+    this.forgottenWhileRunning = new WeakSet();
   }
 
   // Elapsed by the server's clock, which the polling browser does not share.
@@ -23,6 +24,14 @@ class AppJobs {
       if (step.status === 'running') step.seconds = Math.max(0, Math.floor((this.now() - Date.parse(step.startedAt)) / 1000));
     }
     return copy;
+  }
+
+  // A finished job describes an app that is no longer there once it is uninstalled;
+  // a running one stays until it settles, so the page can still follow it.
+  forget(packageId) {
+    const job = this.jobs.get(packageId);
+    if (job?.status === 'running') this.forgottenWhileRunning.add(job);
+    else this.jobs.delete(packageId);
   }
 
   begin(packageId, input) {
@@ -64,6 +73,7 @@ class AppJobs {
       this.logger?.warn?.(this.failureEvent, { code: job.error.code, packageId, step: failed?.id || null });
     } finally {
       job.finishedAt = new Date(this.now()).toISOString();
+      if (this.forgottenWhileRunning.has(job) && this.jobs.get(packageId) === job) this.jobs.delete(packageId);
     }
   }
 }

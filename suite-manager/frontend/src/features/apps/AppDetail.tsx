@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, Tooltip } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
+import { DriveChoice, driveFoldersLine, folderList, useDriveChoice } from './DriveChoice';
+import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
+import { appDriveNotice, pausedByDrive, useStorage } from '../storage/model';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import { ProgressSteps } from './ProgressSteps';
 import { isNotAssessed } from './privacy-posture';
@@ -9,7 +12,7 @@ import type { Owner } from '../setup/types';
 import { jsonResponse, postJson } from '../../lib/api';
 import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
 import { AppHealthIndicator, AppIcon } from './AppCard';
-import { appAddress, appAdvancedFacts, appIconSrc, capabilityLabel, categoryLabel, descriptionFor, failureCopy, formatCores, formatMemory, guideStatusLabel, hasGuide, hasHomepageContribution, hasPrimaryAppDestination, isCompanionApp, permissionLabel, primaryCategory, requirementsFor, resolveGuideValue, resourceLabel, runtimeApplied, runtimeRouteApplied, serviceExposed, serviceRoleLabel, shortReplaces, summaryFor, updateHeadline, updateJobSteps, updateNoticeTitle } from './model';
+import { appAddress, appAdvancedFacts, appIconSrc, capabilityLabel, categoryLabel, descriptionFor, failureCopy, formatCores, formatMemory, guideStatusLabel, hasGuide, hasHomepageContribution, hasPrimaryAppDestination, installIncomplete, isCompanionApp, permissionLabel, primaryCategory, requirementsFor, resolveGuideValue, resourceLabel, runtimeApplied, runtimeRouteApplied, serviceExposed, serviceRoleLabel, shortReplaces, summaryFor, updateHeadline, updateJobSteps, updateNoticeTitle } from './model';
 import type { AppJob, AppPackageSummary, InstallStep, UnmetRequirement, UpdateComparison, UpdateStep } from './types';
 
 // The pasted-external install keeps its own boxed setup form: that flow is
@@ -129,8 +132,8 @@ function AppGuidePanel({
   </aside>;
 }
 
-export function InstallButton({ disabled, installing, onClick, unmet = [] }: { disabled: boolean; installing: boolean; onClick: () => void; unmet?: UnmetRequirement[] }) {
-  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : 'Install'}</button>;
+export function InstallButton({ disabled, installing, label = 'Install', onClick, unmet = [] }: { disabled: boolean; installing: boolean; label?: string; onClick: () => void; unmet?: UnmetRequirement[] }) {
+  const button = <button className="mos-btn mos-btn-primary" disabled={disabled || unmet.length > 0} onClick={onClick} type="button">{installing ? 'Installing...' : label}</button>;
   return unmet.length ? <Tooltip label={unmet.map((item) => item.reason).join(' ')}>{button}</Tooltip> : button;
 }
 
@@ -157,7 +160,7 @@ export function AppDetail({
   installError: string;
   installSteps: InstallStep[];
   onClose: () => void;
-  onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
+  onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; drive?: string | null; showOnHomepage?: boolean }) => void;
   onLifecycle: (app: AppPackageSummary, action: 'enable' | 'restart' | 'stop' | 'uninstall') => void;
   onConnect: (connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) => void;
   onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
@@ -186,7 +189,18 @@ export function AppDetail({
   const [applyError, setApplyError] = useState('');
   const [recovering, setRecovering] = useState(false);
   const [recoverError, setRecoverError] = useState('');
+  const updateStorage = comparison?.storage ?? null;
+  const updateDrive = useDriveChoice(updateStorage, Boolean(updateStorage));
+  // An app reading a drive that did not open looks healthy everywhere else.
+  const placedFolders = app.instance?.folders || [];
+  const { storage: serverStorage } = useStorage(placedFolders.length > 0);
+  const driveNotice = placedFolders.length ? appDriveNotice(app.name, serverStorage?.find((item) => item.id === placedFolders[0]!.driveId), folderList(placedFolders)) : null;
   const ready = runtimeApplied(app);
+  const incomplete = installIncomplete(app);
+  // A resume keeps the Homepage choice the interrupted install was made with.
+  const resumeHomepage = app.installJob ? app.installJob.steps.some((step) => step.id === 'homepage') : true;
+  // The failure on record explains an interrupted install in the owner's terms, so the stepper only shows where it stopped.
+  const failureOnRecord = Boolean(app.instance?.lastFailure && !app.instance.updateRecovery);
   const requirements = requirementsFor(app);
   const updateRunning = app.updateJob?.status === 'running';
   const updating = startingUpdate || updateRunning;
@@ -209,6 +223,7 @@ export function AppDetail({
     && comparison!.updateStatus === 'update-available'
     && comparison!.compatibility !== 'unsupported'
     && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
+    && !updateDrive.missing
     && !updating;
   const ownerChanges = comparison ? comparison.changes.filter((change) => change.classification !== 'automatically-handled') : [];
   const handledChanges = comparison ? comparison.changes.filter((change) => change.classification === 'automatically-handled') : [];
@@ -262,7 +277,7 @@ export function AppDetail({
     try {
       const { updateJob } = await postJson<{ updateJob: AppJob<UpdateStep> }>(
         `/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/update-job`,
-        { config: updateInput, confirmationToken: comparison.confirmationToken },
+        { config: updateInput, confirmationToken: comparison.confirmationToken, drive: updateDrive.drive || null },
         `Unable to update ${app.name}.`,
       );
       setUpdateStartedAt(updateJob.startedAt);
@@ -291,7 +306,7 @@ export function AppDetail({
 
   // The dialog hands over what the owner filled in and closes; progress belongs
   // on the detail page behind it, where it stays visible for the whole install.
-  function submitInstall(options: { config: Record<string, string>; showOnHomepage: boolean }) {
+  function submitInstall(options: { config: Record<string, string>; drive: string | null; showOnHomepage: boolean }) {
     setConfigOpen(false);
     onInstall(app, options);
   }
@@ -310,7 +325,7 @@ export function AppDetail({
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   // Null means no listing at all — removed, paused, never reached — not an unticked clock.
   const sourceReadAt = app.catalogUpdate?.sourceCheckedAt || null;
-  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled);
+  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !pausedByDrive(app.id, serverStorage));
   const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
     ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),
@@ -342,12 +357,12 @@ export function AppDetail({
           <button aria-label="Close app details" className="suite-app-hero-pill is-round" onClick={onClose} type="button"><Icon name="x" /></button>
         </div>
         <div className="suite-app-detail-hero-bottom">
-          <AppIcon app={app} large />
+          <AppIcon app={app} large solid={Boolean(cover)} />
           <div className="suite-app-detail-heading">
             <div className="suite-app-detail-title-row">
               <h2>{app.name}</h2>
               {app.appVersion ? <span className="suite-app-detail-version">{app.appVersion}</span> : null}
-              <AppHealthIndicator app={app} />
+              <AppHealthIndicator app={app} paused={Boolean(pausedByDrive(app.id, serverStorage))} />
             </div>
             <p className="suite-app-detail-replaces">
               {app.catalog.replaces.length ? <><span className="suite-app-detail-replaces-label">Replaces</span><strong>{shortReplaces(app.catalog.replaces)}</strong></> : null}
@@ -363,7 +378,7 @@ export function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading || updateRunning} onClick={() => void prepareUpdate()} type="button">{updateRunning ? 'Updating...' : comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : incomplete ? <InstallButton disabled={installing} installing={installing} label="Finish install" onClick={() => onInstall(app, { showOnHomepage: resumeHomepage })} unmet={app.unmetRequirements} /> : <InstallButton disabled={!app.validation.valid || installing} installing={installing} onClick={() => setConfigOpen(true)} unmet={app.unmetRequirements} />}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating || updateRunning} items={maintenanceActions} /> : null}
@@ -376,6 +391,7 @@ export function AppDetail({
             title={`Uninstall ${app.name}?`}
           >
             <Notice title="Uninstalling deletes this app's data" variant="warning"><p>MOS removes the app's containers, web address, Homepage shortcut, settings, secrets, and data volumes. Anything stored in {app.name} is deleted with it &mdash; only a backup made beforehand can bring it back.</p></Notice>
+            {app.instance?.folders?.length ? <p className="suite-meta">Your {folderList(app.instance.folders)} folders on your drive are not touched. They stay on the drive with everything in them.</p> : null}
             <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
           </Dialog> : null}
         </div>
@@ -411,10 +427,8 @@ export function AppDetail({
             never outlive the problem it describes. The plain sentence is the
             whole message for most owners; the code and the agent's own output
             sit in the panel, which is where a bug report copies them from.
-            Suppressed while `installError` is set, because a failed install
-            reloads the app and would otherwise say the same thing twice — once
-            live in the stepper above and once from the record it just wrote. */}
-        {app.instance?.lastFailure && !app.instance.updateRecovery && !installError ? <Notice title={failureCopy(app.instance.lastFailure).title} variant="warning">
+            It is the one explanation: the stepper below then shows only where it stopped. */}
+        {failureOnRecord && app.instance?.lastFailure ? <Notice title={failureCopy(app.instance.lastFailure).title} variant="warning">
           <p>{failureCopy(app.instance.lastFailure).detail}</p>
           <AdvancedPanel
             facts={[
@@ -427,7 +441,9 @@ export function AppDetail({
           />
         </Notice> : null}
 
-        <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
+        {driveNotice ? <Notice title={driveNotice.title} variant={driveNotice.variant}><p>{driveNotice.body} <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>{driveNotice.linkLabel}</a>.</p></Notice> : null}
+
+        <ProgressSteps error={failureOnRecord ? '' : installError} errorTitle="Install needs attention" steps={installSteps} />
         {app.installJob?.status === 'succeeded' && app.installJob.notice ? <Notice title="Its web address is not open yet" variant="warning">
           <p>{app.installJob.notice.message}</p>
           <AdvancedPanel facts={[{ label: 'Address check', value: app.installJob.notice.detail }]} reveal="technical-mode" />
@@ -603,6 +619,7 @@ export function AppDetail({
       config={app.instance?.config || []}
       entries={ownerEnv}
       fields={app.setup.fields}
+      folders={app.instance?.folders || []}
       homepageAvailable={homepageAvailable}
       installed={Boolean(app.instance)}
       installing={installing}
@@ -613,6 +630,7 @@ export function AppDetail({
       packageId={app.id}
       running={ready}
       service={app.routes[0]?.service || app.services[0]?.id || app.id}
+      storage={app.storage}
       webAddress={appAddress(app)}
       webAddressKind={app.routes[0]?.kind || 'web'}
     /> : null}
@@ -668,6 +686,9 @@ export function AppDetail({
             <span className="suite-app-service-copy">
               <span className="suite-app-service-role"><strong>{serviceRoleLabel(app, service.id)}</strong><code>{service.id}</code></span>
               <small>{service.volumes.length ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</small>
+              {app.storage?.folders.some((folder) => folder.service === service.id) ? <small>
+                {driveFoldersLine(app.storage, service.id)}
+              </small> : null}
               {/* Only worth splitting out when there is more than one share to
                   account for; on a single-service app it would just restate
                   the package total printed above. */}
@@ -742,6 +763,7 @@ export function AppDetail({
         </> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={updating} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
+        {updateStorage ? <DriveChoice appName={app.name} backupsKnown={updateDrive.backupsKnown} busy={updating} drive={updateDrive.drive} entries={updateDrive.entries} names={updateDrive.names} onChange={updateDrive.setDrive} onReload={updateDrive.reload} storage={updateStorage} /> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
         {dialogJob ? <>
           <ProgressSteps error={dialogJob.error?.message || (dialogJob.status === 'failed' ? `Unable to update ${app.name}.` : '')} errorTitle="The update did not finish" steps={updateJobSteps(dialogJob)} />

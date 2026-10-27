@@ -47,6 +47,7 @@ const {
   writeSecretFile,
 } = require('./app-package-internals.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
+const { declaredFolders, placeFolders } = require('./app-storage.cjs');
 const { AppUpdateService } = require('./app-update-service.cjs');
 const {
   compareSemver,
@@ -57,12 +58,13 @@ const {
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
-const { declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
+const { addressTaken, declaredHostRequirements, unmetHostRequirements, withUnmetRequirements } = require('./host-requirements.cjs');
 const {
   inspectAppPackages,
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
+const { baseHostOf } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.cjs');
 
@@ -73,6 +75,7 @@ const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.
 // the verification can never be stricter than the apply it verifies.
 const OWNER_ENV_HEALTH_TIMEOUT_MS = 90_000;
 const OWNER_ENV_HEALTH_BACKOFF_MS = [2_000, 4_000, 8_000, 10_000];
+const DRIVE_FACTS_TTL_MS = 15_000;
 
 class AppPackageService {
   constructor({
@@ -84,6 +87,8 @@ class AppPackageService {
     // wired to each other rather than one owning the other.
     externalCatalog = () => [],
     externalClient = null,
+    // The Homepage links holding an address under the suite, subdomain to link name.
+    homeLinks = async () => new Map(),
     limiter = new AppOperationLimiter(),
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
@@ -96,6 +101,7 @@ class AppPackageService {
     this.catalogService = catalogService;
     this.externalCatalog = externalCatalog;
     this.externalClient = externalClient;
+    this.homeLinks = homeLinks;
     this.limiter = limiter;
     this.now = now;
     this.officialRepository = officialRepository;
@@ -130,8 +136,62 @@ class AppPackageService {
   async hostFacts(agentStatus = null) {
     this.hostArchitecture ??= hostArchitectureOf(agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null));
     const address = this.suiteAddress?.readOrNull();
+    // Every poll of the Apps page lands here, and a drive count only changes when
+    // a drive is plugged in, so an answer this fresh is good enough.
+    const drives = this.lastDrives && this.now().getTime() - this.lastDrives.at < DRIVE_FACTS_TTL_MS ? this.lastDrives.drives : await this.storageDrives();
     // On the Easy Door over HTTP the certificate is on its way and the switch is automatic.
-    return { architecture: this.hostArchitecture, https: address ? address.scheme === 'https' : null, httpsPending: address?.kind === 'easy-door' && address.scheme === 'http' };
+    return {
+      architecture: this.hostArchitecture,
+      baseHost: address ? baseHostOf(address) : null,
+      homeLinks: await this.homeLinks().catch(() => null),
+      https: address ? address.scheme === 'https' : null,
+      httpsPending: address?.kind === 'easy-door' && address.scheme === 'http',
+      // A drive that needs a check still opens the install, where the picker says why it waits.
+      storageDrives: drives ? drives.filter((drive) => drive.connected && drive.holdsAppFoldersFormat).length : null,
+    };
+  }
+
+  // Whether each installed app's containers are all up, or null when the agent cannot say.
+  async containersDown() {
+    const answer = await Promise.resolve(this.agent?.containerStates?.()).catch(() => null);
+    const states = answer?.packages && typeof answer.packages === 'object' ? answer.packages : null;
+    if (!states) return null;
+    return (packageId) => !(states[packageId]?.length && states[packageId].every((state) => state === 'running'));
+  }
+
+  // The drives the storage module knows, or null when the agent cannot say.
+  async storageDrives() {
+    const answer = await Promise.resolve(this.agent?.storageInventory?.()).catch(() => null);
+    const drives = Array.isArray(answer?.drives) ? answer.drives : null;
+    this.lastDrives = { at: this.now().getTime(), drives };
+    return drives;
+  }
+
+  forgetDriveFacts() {
+    this.lastDrives = null;
+  }
+
+  // Each package's name and whether it is installed, for naming folders on a drive,
+  // including the folders of apps no longer installed.
+  appNames() {
+    const installed = new Set(this.store.getAppInstances().map((instance) => instance.packageId));
+    return new Map(this.listPackages().map((app) => [app.id, { installed: installed.has(app.id), name: app.name }]));
+  }
+
+  // Each installed app's subdomains, to its name, for keeping Homepage links off them.
+  appRouteHosts() {
+    const hosts = new Map();
+    for (const instance of this.store.getAppInstances()) {
+      const caddy = this.store.getAppProjections(instance.id).find((projection) => projection.kind === 'caddy')?.content;
+      for (const route of Array.isArray(caddy?.routes) ? caddy.routes : []) hosts.set(route.host, instance.displayNameSnapshot || instance.packageId);
+    }
+    return hosts;
+  }
+
+  async assertAddressFree(packageId, routes) {
+    const address = this.suiteAddress?.readOrNull();
+    const taken = addressTaken(packageId, routes, { baseHost: address ? baseHostOf(address) : null, homeLinks: await this.homeLinks().catch(() => null) });
+    if (taken) throw new AppPackageServiceError('APP_ROUTE_HOST_TAKEN', taken, 409);
   }
 
   // Refusing up front turns a build that cannot pull its images, or an app that
@@ -231,6 +291,8 @@ class AppPackageService {
   // The install flow's apply runs for minutes, so a second tab or a reload can
   // ask again mid-build. Its own key refuses that without gating stop or uninstall.
   async startPackageRuntime(packageId, requestContext = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (instance) await this.assertAddressFree(packageId, this.installedPackageFor(instance).manifest.routes);
     return this.limiter.runExclusive(`start:${packageId}`, () => this.applyPackageRuntime(packageId, requestContext));
   }
 
@@ -339,6 +401,7 @@ class AppPackageService {
     const rowKeys = new Set(rows.map((row) => row.key));
     const nextConfig = [...this.store.getAppConfig(consumer.id).filter((row) => !rowKeys.has(row.key)), ...rows];
     const nextProjections = renderInstanceProjections(consumerPackage.manifest, nextConfig, {
+      folders: this.store.getAppInstanceFolders(consumer.id),
       instanceId: consumer.id,
       integrations: [
         ...this.store.getAppIntegrations(),
@@ -620,6 +683,13 @@ class AppPackageService {
     if (!runtimeRouteApplied(projections)) {
       throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Start this app before restarting it.', 409);
     }
+    // Refused before anything runs: a restart that failed for want of the drive
+    // would stay on the app as its last failure after Use it again brought it back.
+    const pausedOn = (await this.storageDrives() || []).find((drive) => (drive.apps || []).includes(packageId) && ['away', 'ejected'].includes(drive.state));
+    if (pausedOn) {
+      const drive = pausedOn.name || pausedOn.label || 'its drive';
+      throw new AppPackageServiceError('APP_DRIVE_PAUSED', `This app is paused while ${drive} is ${pausedOn.state === 'away' ? 'unplugged' : 'ejected'}. Plug it in and choose Use it again in Settings → Storage.`, 409);
+    }
 
     const applied = await this.applyPackageRuntime(packageId, requestContext);
     return {
@@ -698,9 +768,9 @@ class AppPackageService {
     return validated;
   }
 
-  // Environment variables an owner set on an installed app, for values the
-  // package never asked for and MOS has no reason to know about. The submitted
-  // set replaces the stored one.
+  // What an owner changes in an installed app's settings: environment variables
+  // the package never asked for, where the submitted set replaces the stored one,
+  // and a drive for an app that can keep files on one but was installed without.
   //
   // Holds the same per-app operation key as restart, enable, disable and
   // uninstall: an env save landing inside an update's activate-to-commit window
@@ -725,6 +795,8 @@ class AppPackageService {
     const previousRows = this.store.getAppEnv(instance.id);
     const entries = Array.isArray(input.entries) ? input.entries : [];
     const validated = this.validateOwnerEnvSubmission({ configRows, entries, instance, integrations, manifest, previousRows });
+    const heldFolders = this.store.getAppInstanceFolders(instance.id);
+    const addedFolders = await this.foldersForDrive(manifest, heldFolders, typeof input.drive === 'string' ? input.drive : '');
 
     // Every stored secret is read into memory before any of them is overwritten.
     // A secret file is keyed by its name, so saving a new value for a name that
@@ -758,6 +830,7 @@ class AppPackageService {
     // projections stay a pure function of manifest + config + relationships +
     // owner env, so an app update re-renders them without losing this change.
     const nextProjections = renderInstanceProjections(manifest, configRows, {
+      folders: [...heldFolders, ...addedFolders],
       instanceId: instance.id,
       integrations,
       ownerEnv: rows,
@@ -771,6 +844,7 @@ class AppPackageService {
     this.store.transaction(() => {
       this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows });
       this.store.replaceAppProjections({ at, instanceId: instance.id, projections: nextProjections });
+      this.store.insertAppInstanceFolders(instance.id, addedFolders, at);
     });
 
     try {
@@ -778,6 +852,7 @@ class AppPackageService {
       await this.waitForPackageHealth(packageId);
     } catch (error) {
       const rollback = await this.rollbackPackageEnvironment({
+        addedFolders,
         heldSecrets,
         instance,
         packageId,
@@ -825,7 +900,7 @@ class AppPackageService {
   // secret values, and the previous projections, then the runtime built from
   // them. Reports rather than throws, because the caller has to be able to tell
   // "your change was refused" from "and the app is in neither state".
-  async rollbackPackageEnvironment({ heldSecrets, instance, packageId, previousRows, projections, requestContext, rows }) {
+  async rollbackPackageEnvironment({ addedFolders, heldSecrets, instance, packageId, previousRows, projections, requestContext, rows }) {
     try {
       for (const row of rows) {
         if (!row.secret) continue;
@@ -837,6 +912,7 @@ class AppPackageService {
       this.store.transaction(() => {
         this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows: previousRows });
         this.store.replaceAppProjections({ at, instanceId: instance.id, projections });
+        this.store.removeAppInstanceFolders(instance.id, addedFolders.map((folder) => folder.name));
       });
       await this.applyPackageRuntime(packageId, requestContext);
       await this.waitForPackageHealth(packageId);
@@ -952,12 +1028,17 @@ class AppPackageService {
     return candidate;
   }
 
+  // For MOS's own packages; one from an added source is always held to the version.
+  meetsMinimumMos(minimum) {
+    return this.catalogService?.meetsMinimumMos?.(minimum) ?? compareSemver(this.platformVersion, minimum || '0.0.0') >= 0;
+  }
+
   checkoutAvailableFor(packageId, summary) {
     const packageDir = path.join(this.appsDir, packageId);
-    const minimumMosVersion = summary.minimumMosVersion || '0.0.0';
     return {
       appVersion: summary.appVersion,
-      compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+      // Written for the very code this server runs, whatever VERSION says until the release.
+      compatibility: 'compatible',
       minimumMosVersion: summary.minimumMosVersion || '',
       packageDigest: digestAppPackage(packageDir),
       packageVersion: summary.version,
@@ -1018,6 +1099,7 @@ class AppPackageService {
       }
       return {
         ...appPackage,
+        channel: 'checkout',
         cleanup: () => releaseCandidateDir(candidateDir),
         packageDigest,
         // `revision` stands in as the package digest exactly as it does on the
@@ -1067,10 +1149,6 @@ class AppPackageService {
             version: instance.packageVersion,
           }, ['The installed package snapshot is unavailable.'])
           : candidatesByPackage.get(packageId));
-      const projections = instance ? this.store.getAppProjections(instance.id) : [];
-      const config = instance ? this.store.getAppConfig(instance.id) : [];
-      const env = instance ? this.store.getAppEnv(instance.id) : [];
-      const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
@@ -1081,7 +1159,9 @@ class AppPackageService {
         // API path the UI calls back on must address it by that id.
         id: packageId,
         installStatus: instance?.status || 'not-installed',
-        instance: publicInstance(instance ? { ...instance, guideState, lastFailure: this.store.latestFailedAppOperation(instance.id) } : null, projections, config, env),
+        instance: instance
+          ? this.publicView({ ...instance, guideState: this.store.getAppGuideState(instance.id), lastFailure: this.store.latestFailedAppOperation(instance.id) })
+          : null,
         // Trust comes from the recorded source, never from package metadata, so
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',
@@ -1264,6 +1344,8 @@ class AppPackageService {
     const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
     assertAppAgentContract(agentStatus);
     await this.assertHostRequirementsMet(manifest, agentStatus);
+    await this.assertAddressFree(packageId, manifest.routes);
+    const folders = await this.placeFolders(manifest, input.drive);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1339,11 +1421,28 @@ class AppPackageService {
           volumes: [],
         })
         : null,
+      folders,
       input,
       instance,
       manifestId: manifest.id,
       packageId,
     });
+  }
+
+  async placeFolders(manifest, driveId) {
+    if (!declaredFolders(manifest).length) return [];
+    return placeFolders(manifest, driveId || null, driveId ? await this.storageDrives() : []);
+  }
+
+  // A drive picked in an installed app's settings. An app keeps the drive it was
+  // given, so another one is refused rather than moving its folders; naming the
+  // drive it already has again changes nothing.
+  async foldersForDrive(manifest, heldFolders, driveId) {
+    if (!driveId) return [];
+    if (!declaredFolders(manifest).length) throw new AppPackageServiceError('APP_STORAGE_NOT_DECLARED', `${manifest.name} does not keep files on a drive.`, 409);
+    if (heldFolders.length && heldFolders.every((folder) => folder.driveId === driveId)) return [];
+    if (heldFolders.length) throw new AppPackageServiceError('APP_STORAGE_ALREADY_PLACED', `${manifest.name} already keeps its files on a drive.`, 409);
+    return this.placeFolders(manifest, driveId);
   }
 
   // The tail every install shares once its snapshot exists on disk. Official and
@@ -1357,17 +1456,18 @@ class AppPackageService {
   // `discardSnapshot` is the caller's way to disown a snapshot the store never
   // came to reference: nothing points at it, so the agent that created it is
   // asked to drop it before the failure surfaces.
-  async completeInstall({ at, discardSnapshot = null, input, instance, manifestId, packageId, requestSource = null }) {
+  async completeInstall({ at, discardSnapshot = null, folders = [], input, instance, manifestId, packageId, requestSource = null }) {
     try {
       const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
       if (installedManifest.id !== manifestId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
         throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
       }
       const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
-      const projections = renderDryRunProjections(installedManifest, config, { packageId });
+      const projections = renderDryRunProjections(installedManifest, config, { folders, packageId });
       this.store.installAppInstance({
         at,
         config,
+        folders,
         instance,
         operationId: crypto.randomUUID(),
         projections,
@@ -1480,7 +1580,10 @@ class AppPackageService {
   }
 
   publicView(instance) {
-    return publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id));
+    return {
+      ...publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id)),
+      folders: this.store.getAppInstanceFolders(instance.id),
+    };
   }
 
   setPackageGuideStatus(packageId, status) {

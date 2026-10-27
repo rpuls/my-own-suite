@@ -1,5 +1,6 @@
+const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { detectServerAddress, easyDoorBaseDomain } = require('../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorBaseDomain, easyDoorId } = require('../../shared/easy-door.cjs');
 const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
 
 // The Easy Door base app routes are aliased on, or null. Apps are
@@ -7,9 +8,9 @@ const { SuiteAddressFile } = require('../../shared/suite-address.cjs');
 // recorded address is one; until then it follows the machine's live address,
 // which is what the door itself does. Decided from the recorded address rather
 // than from the live Caddyfile because every LAN Caddyfile carries the door now.
-function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), serverAddress = detectServerAddress() } = {}) {
+function aliasedEasyDoorBase({ address = new SuiteAddressFile().readOrNull(), id = easyDoorId, serverAddress = detectServerAddress() } = {}) {
   if (address?.kind === 'domain') return null;
-  return easyDoorBaseDomain(serverAddress);
+  return easyDoorBaseDomain(serverAddress, id);
 }
 
 class AppRuntimeError extends Error {
@@ -75,6 +76,36 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
+const FOLDER_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?$/u;
+const FOLDER_DRIVE_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
+const STORAGE_ID_PATTERN = /^(?:[A-Za-z0-9-]{4,64}|object:[0-9a-f]{12})$/u;
+const CONTAINER_PATH_PATTERN = /^\/[^:,\u0000]+$/u;
+
+function driveOf(input) {
+  if (!exactKeys(input, ['drive']) || !FOLDER_DRIVE_PATTERN.test(String(input.drive))) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A drive request names one drive by its id.');
+  }
+  return input.drive;
+}
+
+// Folders are the one host path a service can reach, and only one MOS builds
+// itself from a drive id and a folder name, so both are held to what the
+// manifest allows before they get near a mount.
+function assertServiceFolders(folders) {
+  if (folders === undefined) return;
+  if (!Array.isArray(folders) || folders.length < 1 || folders.length > 16) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Service folders must be a list of one to sixteen folders.');
+  }
+  for (const folder of folders) {
+    if (!exactKeys(folder, ['drive', 'name', 'path'])
+        || !FOLDER_DRIVE_PATTERN.test(String(folder.drive))
+        || !FOLDER_NAME_PATTERN.test(String(folder.name))
+        || !CONTAINER_PATH_PATTERN.test(String(folder.path))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service folder is invalid.');
+    }
+  }
+}
+
 function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = {}) {
   const runtimeKeys = ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl', 'sourceRevision'];
   if (!exactKeys(input, allowExpectedInstalledDigest ? [...runtimeKeys, 'expectedInstalledDigest'] : runtimeKeys)) {
@@ -112,6 +143,7 @@ function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = 
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service loopback port is invalid.');
     }
     loopbackPorts.add(service.loopbackPort);
+    assertServiceFolders(service.folders);
     servicesById.set(service.id, service);
   }
 
@@ -311,6 +343,7 @@ function runtimeServices(input, routes) {
     loopbackPort: service.loopbackPort,
     public: routes.some((route) => route.service === service.id),
     volumes: service.volumes,
+    ...(service.folders ? { folders: service.folders } : {}),
   }));
 }
 
@@ -375,8 +408,11 @@ function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy, 
   handle {
     reverse_proxy http://${reverseProxy}
   }` : `  reverse_proxy http://${reverseProxy}`;
+  // Its own copy of the outage handler: on an owned domain no other site covers
+  // this host, so an app MOS paused could not say so at its address otherwise.
   return `${scheme}://${appHost} {
 ${bridge}
+${unavailableHandler()}
 }
 `;
 }
@@ -412,6 +448,62 @@ class AppAgentCore {
       hostArchitecture: HOST_ARCHITECTURES[process.arch] || null,
       service: 'mos-app-agent',
     };
+  }
+
+  // A drive pulled while nobody acted is told on its apps' addresses as soon as
+  // anything looks; reads that find the same drive states write nothing.
+  async storageInventory() {
+    const inventory = await this.adapter.storage.inventory();
+    const driveStates = JSON.stringify((inventory.drives || []).map((drive) => [drive.id, drive.state]).sort());
+    if (driveStates !== this.syncedDriveStates) {
+      this.syncedDriveStates = driveStates;
+      await this.adapter.syncPausedPages?.(inventory.drives);
+    }
+    return inventory;
+  }
+
+  async containerStates() {
+    return { packages: await this.adapter.containerStates() };
+  }
+
+  async storageUsage() {
+    return this.adapter.storage.usage();
+  }
+
+  async useDrive(input) {
+    return { ...await this.adapter.useDrive(driveOf(input)), status: 'attached' };
+  }
+
+  async openDrive(input) {
+    return { ...await this.adapter.storage.open(driveOf(input)), status: 'opened' };
+  }
+
+  async forgetDrive(input) {
+    await this.adapter.storage.forget(driveOf(input));
+    return { status: 'forgotten' };
+  }
+
+  async renameStorage(input) {
+    if (!exactKeys(input, ['id', 'name']) || !STORAGE_ID_PATTERN.test(String(input.id)) || typeof input.name !== 'string') {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A rename names one drive or bucket and its new name.');
+    }
+    return this.adapter.storage.rename(input.id, input.name);
+  }
+
+  async formatInstallerStick(input) {
+    if (!exactKeys(input, ['devicePath']) || !/^\/dev\/[a-z0-9]+$/u.test(String(input.devicePath))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A format request names the install stick by its device.');
+    }
+    await this.adapter.formatInstallerStick(input.devicePath);
+    return { status: 'formatted' };
+  }
+
+  async ejectDrive(input) {
+    return { ...await this.adapter.ejectDrive(driveOf(input)), status: 'ejected' };
+  }
+
+  async checkDrive(input) {
+    return { ...await this.adapter.checkDrive(driveOf(input)), status: 'checked' };
   }
 
   async snapshotPackage(input) {

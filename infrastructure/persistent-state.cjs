@@ -18,6 +18,8 @@
 //                             tokens).
 // - excluded:                 regenerable caches never worth carrying.
 
+const { easyDoorIdPath } = require('../shared/easy-door.cjs');
+
 const APP_VOLUME_PREFIX = 'mos-app-';
 const SUITE_MANAGER_DATABASE_FILENAME = 'suite-manager.sqlite';
 
@@ -107,20 +109,21 @@ function classifyVolumes(volumes, knownPackageIds) {
 
 // The complete classification of MOS-managed state on a host. Entries with
 // `backedUp: true` and a `stagePath` are staged into the bundle's state tree
-// at that relative path and restored back to `path`; entries with
+// at that relative path and restored back to `path`, or left as they are when
+// `keptWhenAbsent` and the backup has none; entries with
 // `emptyContent` are reset to it before a restore rebuilds them. The backup
 // engine stages and resets exactly this list, so adding a managed location
 // means adding an entry here, not editing engine code. Volumes are enumerated
 // dynamically via `classifyVolumes` and appear here as the contract entry
 // `app-volumes`.
-function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/secrets', stateDir, stateRoot }) {
+function managedStateTargets({ caddyDir = '/etc/caddy', easyDoorIdFile = easyDoorIdPath(), secretsDir = '/etc/mos/secrets', stateDir, stateRoot }) {
   return [
     {
       backedUp: true,
       class: 'authoritative-persistent',
       // The SQLite database is excluded from the tree copy and captured as a
-      // consistent snapshot instead; the candidate cache is regenerable.
-      exclude: ['app-candidates', SUITE_MANAGER_DATABASE_FILENAME, `${SUITE_MANAGER_DATABASE_FILENAME}-shm`, `${SUITE_MANAGER_DATABASE_FILENAME}-wal`],
+      // consistent snapshot instead; the candidate cache and upload staging are transient.
+      exclude: ['app-candidates', 'file-uploads', SUITE_MANAGER_DATABASE_FILENAME, `${SUITE_MANAGER_DATABASE_FILENAME}-shm`, `${SUITE_MANAGER_DATABASE_FILENAME}-wal`],
       id: 'suite-manager-state',
       kind: 'directory',
       path: stateDir,
@@ -142,6 +145,19 @@ function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/s
       kind: 'directory',
       path: `${stateRoot}/homepage/config`,
       stagePath: 'var-lib-mos/homepage/config',
+    },
+    // The id in this install's Easy Door name, carried so a restored suite can take
+    // its old name back and every device set up with it works again. Moving onto
+    // it is still the owner's step, under the address below. A backup without
+    // one, from a cloud server, leaves this machine's own id in place.
+    {
+      backedUp: true,
+      class: 'authoritative-persistent',
+      id: 'easy-door-id',
+      keptWhenAbsent: true,
+      kind: 'file',
+      path: easyDoorIdFile,
+      stagePath: 'var-lib-mos-easy-door/id',
     },
     // The address this suite publishes on. Never backed up and never restored:
     // it belongs to the machine, and a restore that carried it would move the
@@ -222,6 +238,13 @@ function managedStateTargets({ caddyDir = '/etc/caddy', secretsDir = '/etc/mos/s
       id: 'app-candidate-cache',
       kind: 'directory',
       path: `${stateDir}/app-candidates`,
+    },
+    {
+      backedUp: false,
+      class: 'excluded',
+      id: 'file-upload-staging',
+      kind: 'directory',
+      path: `${stateDir}/file-uploads`,
     },
     {
       backedUp: false,

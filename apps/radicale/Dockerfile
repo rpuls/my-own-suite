@@ -1,7 +1,7 @@
 # Radicale MOS app package.
 
-# tomsquest/docker-radicale 3.8.1.1 (Radicale 3.8.1).
-FROM tomsquest/docker-radicale@sha256:e6d8c17bc4d75f3fd40e52b20421ba244c17ca08fb01cd7dc90d5d78ba51b58d
+# tomsquest/docker-radicale 3.8.3.0 (Radicale 3.8.3).
+FROM tomsquest/docker-radicale@sha256:a3b1b452f4bc3d1aee43015b85bc2d9ee5de0ff7e96d5d2b47f1d889aa682409
 
 COPY entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh

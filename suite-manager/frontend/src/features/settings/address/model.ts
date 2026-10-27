@@ -50,7 +50,7 @@ export type AddressStatus = {
   bootstrapUrl: string;
   // The recorded Easy Door name no longer matches the live one: the machine's
   // address moved under it.
-  drifted: { from: string; to: string } | null;
+  drifted: { addressMoved: boolean; from: string; to: string } | null;
   // The trusted certificate for the Easy Door. `log` is Caddy's own lines about
   // it while it has not arrived, for the technical panel only.
   easyDoorCertificate: { host: string | null; log: string[]; notAfter: string | null; state: 'held' | 'not-applicable' | 'pending' };
@@ -84,6 +84,7 @@ export function useSuiteAddress() {
   // The change this screen started, so its outcome is shown once and the
   // history of an earlier one is not mistaken for it.
   const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [startedTarget, setStartedTarget] = useState<AddressChange['target']>(null);
 
   // One read of the address status, and the screen is told where it ended:
   // signed out, refused at this address, unreachable, or answered. A domain
@@ -128,8 +129,9 @@ export function useSuiteAddress() {
     setError('');
     setBusy('change');
     try {
-      const started = await postJson<{ startedAt: string }>('/suite-manager/api/settings/address/change', body, 'The address could not be changed.');
+      const started = await postJson<{ startedAt: string; target: AddressChange['target'] }>('/suite-manager/api/settings/address/change', body, 'The address could not be changed.');
       setStartedAt(started.startedAt);
+      setStartedTarget(started.target);
       await load();
       return true;
     } catch (caught) {
@@ -160,7 +162,11 @@ export function useSuiteAddress() {
   // The outcome of the change this screen started, shown until the next one.
   const outcome = change && startedAt && change.at && change.at >= startedAt && change.status !== 'applying' ? change : null;
 
-  return { applying, busy, cancelChange, contact, dismissOffer, error, loadError, outcome, setError, startChange, status };
+  // Where the suite is going: the move this screen started, or one already running when it opened.
+  // A finished earlier change names where the suite already is, so it is never this.
+  const movingTo = startedTarget || (change?.status === 'applying' ? change.target : null);
+
+  return { applying, busy, cancelChange, contact, dismissOffer, error, loadError, movingTo, outcome, setError, startChange, status };
 }
 
 export type SuiteAddressController = ReturnType<typeof useSuiteAddress>;

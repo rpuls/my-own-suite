@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "appId": "jellyfin",
+  "reviewedAt": "2026-10-25T12:00:00.000Z",
+  "expiresAt": "2027-01-17T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.2",
+    "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/jellyfin",
+      "revision": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Jellyfin",
+        "version": "12.3",
+        "artifact": "docker.io/jellyfin/jellyfin",
+        "digest": "sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5"
+      }
+    ],
+    "clientsExcluded": [
+      "Jellyfin mobile, TV and desktop client apps",
+      "Third-party Jellyfin clients",
+      "Plugins the owner installs from the plugin catalogue"
+    ]
+  },
+  "posture": "external-dependency",
+  "dimensions": {
+    "defaultEgress": "external-contact",
+    "control": "accepted-by-mos",
+    "accountDependency": "local-only",
+    "dataProcessing": "optional-external",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "verified"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "The package mounts the owner's Movies and Series folders read-only and creates every library with SaveLocalMetadata, SaveSubtitlesWithMedia, SaveLyricsWithMedia and SaveTrickplayWithMedia off, so nothing is written beside the owner's files.",
+      "source": "apps/jellyfin/entrypoint.sh"
+    },
+    {
+      "type": "observed",
+      "claim": "A local run of the packaged image (Jellyfin 12.2) on 2026-10-17 created the administrator and a Movies library through the API, found a test film in the read-only folder, and the stored library options showed SaveSubtitlesWithMedia false and EnableRealtimeMonitor true.",
+      "source": "Package image built from apps/jellyfin and run under Docker Desktop",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "documented",
+      "claim": "Jellyfin fetches metadata and artwork for library items from external providers enabled per library, TheMovieDb by default for films and series. The providers can be switched off in each library's settings.",
+      "source": "Jellyfin documentation, Metadata",
+      "url": "https://jellyfin.org/docs/general/server/metadata/",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "observed",
+      "claim": "The server's startup log shows the Update Plugins scheduled task running on first start, which reads the configured plugin repository. The task can be disabled under Scheduled Tasks in the dashboard.",
+      "source": "Jellyfin 12.2 container log, local run",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "documented",
+      "claim": "Jellyfin has no account with the Jellyfin project and no telemetry; administrators and users exist only on the server.",
+      "source": "Jellyfin project site",
+      "url": "https://jellyfin.org/",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "observed",
+      "claim": "The MOS E2E network capture recorded this package on the Hyper-V lab on 2026-10-17, through install with a storage drive, the package's journey (signing in, copying a film onto the drive, plugging it back in, Jellyfin listing the film and playing it in the browser) and a control lookup and connection from each app container. The server looked up and connected to repo.jellyfin.org and ams1.mirror.jellyfin.org (the plugin catalogue and its mirror), api.themoviedb.org and www.omdbapi.com (metadata for the film it found). The browser, on Jellyfin's own pages, loaded https://www.gstatic.com/cv/js/sender/v1/cast_sender.js, Google's Cast sender library, which the web client loads to offer casting to a Chromecast. The test film matched no title, so no artwork was downloaded in this run.",
+      "source": "MOS E2E `npm run e2e -- owner app:jellyfin network`, run 20261017-001359-owner-app-jellyfin-network (network/report.md)",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "observed",
+      "claim": "The image bundles the OMDb metadata plugin next to TheMovieDb (the container log shows \"Loaded plugin: OMDb 12.2.0.0\"), and the web client references the Cast sender library by that URL in its scripts. Jellyfin offers no setting that stops its pages loading it.",
+      "source": "Jellyfin 12.2 container on the MOS lab: its log and /jellyfin/jellyfin-web/*.js",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "observed",
+      "claim": "Jellyfin 12.3 server and web are bug-fix releases with no new integration, account or telemetry. Its image has the same entrypoint, user, ports, volumes and environment as 12.2 and still bundles the same metadata plugins, including OMDb. Its web client and plugins name the same external URLs as 12.2's, including the Cast sender library.",
+      "source": "Jellyfin v12.3 server and web release notes; package image built from apps/jellyfin and compared with the 12.2 package image under Docker",
+      "url": "https://github.com/jellyfin/jellyfin/releases/tag/v12.3",
+      "retrievedAt": "2026-10-25"
+    }
+  ],
+  "security": [
+    {
+      "type": "documented",
+      "claim": "Jellyfin's 2026 advisories include a critical path traversal that could delete or move directories before first-run setup was finished (GHSA-6828-c7cx-hvqm) and an FFmpeg argument injection through subtitle file names (GHSA-wwwm-px48-fpvq). Each is fixed in 10.11.10 or 12.0; this package runs 12.2. Only the newest stable release receives security fixes, so the package follows Jellyfin's releases.",
+      "source": "Jellyfin security advisories and security policy",
+      "url": "https://github.com/jellyfin/jellyfin/security/advisories",
+      "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "configured",
+      "claim": "The film folders are mounted read-only from a drive mounted without executables, device files or setuid, so a flaw like the directory-deletion one reaches only Jellyfin's own settings and cache, which MOS backs up. Jellyfin runs without extra privileges, the Docker socket or a graphics device, on a network of its own apart from the other apps.",
+      "source": "apps/jellyfin/manifest.json, system-agents/apps/storage.cjs, system-agents/apps/system-adapter.cjs"
+    },
+    {
+      "type": "observed",
+      "claim": "Jellyfin trusts MOS's reverse proxy for the visitor's address, so a user whose remote access is switched off can sign in only from the home network. A lab check refused such a user from a public address and let them in from a home address, after a restart and on a new network too.",
+      "source": "apps/jellyfin/entrypoint.sh; Jellyfin 12.2 package image on the MOS Hyper-V lab",
+      "retrievedAt": "2026-10-17"
+    }
+  ],
+  "outbound": [
+    {
+      "from": "server",
+      "host": "api.themoviedb.org",
+      "purpose": "Looks up the title, year, cast and description of each film and series found on the drive. It sees the server's address and the titles asked about.",
+      "receiver": "TheMovieDb"
+    },
+    {
+      "from": "server",
+      "host": "image.tmdb.org",
+      "purpose": "Downloads posters and backdrops for the films and series it identified.",
+      "receiver": "TheMovieDb"
+    },
+    {
+      "from": "server",
+      "host": "www.omdbapi.com",
+      "purpose": "Looks up ratings and descriptions for the films and series found on the drive, through the bundled OMDb plugin. It sees the server's address and the titles asked about.",
+      "receiver": "OMDb API"
+    },
+    {
+      "from": "server",
+      "host": "repo.jellyfin.org",
+      "purpose": "Reads the plugin catalogue to offer plugins and their updates. It sees the server's address.",
+      "receiver": "Jellyfin project"
+    },
+    {
+      "from": "server",
+      "host": "*.mirror.jellyfin.org",
+      "purpose": "The mirrors the plugin catalogue is served from.",
+      "receiver": "Jellyfin project"
+    },
+    {
+      "from": "browser",
+      "host": "www.gstatic.com",
+      "purpose": "Loads Google's Cast library in Chrome and other Chromium browsers so a film can be sent to a Chromecast. Google sees the browser's address when a Jellyfin page opens.",
+      "receiver": "Google"
+    }
+  ],
+  "telemetryControls": [],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/jellyfin/jellyfin/blob/master/LICENSE",
+      "retrievedAt": "2026-10-17",
+      "publisher": "Jellyfin project"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://www.themoviedb.org/privacy-policy",
+      "retrievedAt": "2026-10-17",
+      "publisher": "TheMovieDb"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "claude-opus-5-5",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "008fe9bd8810baf87526c710eddfaf96282e16eb",
+    "repositoryCommit": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-10-17",
+    "appVersion": "12.2"
+  },
+  "openQuestions": [
+    "Jellyfin's pages load Google's Cast library whether or not the owner has a Chromecast. Patching it out of the web client, as the Stirling PDF package does for its pages, would remove casting; it was not attempted in this package version.",
+    "Bundled metadata plugins beyond TheMovieDb and OMDb may contact their own services for other content types, such as music."
+  ]
+}

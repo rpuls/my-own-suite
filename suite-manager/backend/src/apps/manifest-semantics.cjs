@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SMTP_TEMPLATE_KEYS } = require('../../../../shared/smtp-contract.cjs');
-const { PACKAGE_TESTS_DIR } = require('./package-contracts.cjs');
+const { PACKAGE_TESTS_DIR, compareSemver } = require('./package-contracts.cjs');
 
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const FIELD_ID_PATTERN = /^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$/u;
@@ -134,6 +134,44 @@ function validateResourceSemantics(manifest, packageDir, errors) {
         }
       }
     }
+  }
+}
+
+// An older MOS ignores the field and would run the app without its folders,
+// so unlike other additions the minimum version is enforced, not just advised.
+const STORAGE_MINIMUM_MOS_VERSION = '0.23.0';
+
+function validateStorageSemantics(manifest, errors) {
+  if (!isRecord(manifest.storage) || !Array.isArray(manifest.storage.folders)) return;
+  if (typeof manifest.minimumMosVersion === 'string' && compareSemver(manifest.minimumMosVersion, STORAGE_MINIMUM_MOS_VERSION) < 0) {
+    errors.push(`storage requires minimumMosVersion ${STORAGE_MINIMUM_MOS_VERSION} or later.`);
+  }
+  const services = isRecord(manifest.resources?.services) ? manifest.resources.services : {};
+  const names = new Set();
+  const paths = new Set();
+  for (const [index, folder] of manifest.storage.folders.entries()) {
+    if (!isRecord(folder)) continue;
+    const prefix = `storage.folders[${index}]`;
+    if (typeof folder.name === 'string') {
+      const key = folder.name.toLowerCase();
+      if (names.has(key)) errors.push(`${prefix}.name duplicates another folder; names are compared ignoring case because most drives do.`);
+      names.add(key);
+    }
+    const service = services[folder.service];
+    if (typeof folder.service === 'string' && !isRecord(service)) {
+      errors.push(`${prefix}.service must name a service in resources.services.`);
+    }
+    if (typeof folder.path !== 'string') continue;
+    if (path.posix.normalize(folder.path) !== folder.path || folder.path.endsWith('/')) {
+      errors.push(`${prefix}.path must be a canonical absolute path.`);
+    }
+    const mountKey = `${folder.service}:${folder.path}`;
+    if (paths.has(mountKey)) errors.push(`${prefix}.path is already used by another folder in the same service.`);
+    paths.add(mountKey);
+    const volumePaths = Array.isArray(service?.volumes)
+      ? service.volumes.filter((volume) => typeof volume === 'string').map((volume) => volume.slice(volume.indexOf(':') + 1))
+      : [];
+    if (volumePaths.includes(folder.path)) errors.push(`${prefix}.path is already a volume of service ${folder.service}.`);
   }
 }
 
@@ -516,6 +554,7 @@ function validateManifestSemantics(manifest, { packageDir = null } = {}) {
   validateIconSemantics(manifest, packageDir, errors);
   validateSetupSemantics(manifest, errors);
   validateResourceSemantics(manifest, packageDir, errors);
+  validateStorageSemantics(manifest, errors);
   validateRouteSemantics(manifest, errors);
   validateHealthSemantics(manifest, errors);
   validateCatalogSemantics(manifest, packageDir, errors);

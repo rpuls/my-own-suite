@@ -16,7 +16,7 @@ export function SuiteAddressPanel() {
       <PanelHead heading="h3" title="Suite address"><p>Where every app and your Homepage are published.</p></PanelHead>
       <PanelBody>
         {loadError ? <Notice title="The suite address could not be loaded" variant="error"><p>{loadError}</p></Notice> : null}
-        <ContactNotices change={null} contact={contact} />
+        <ContactNotices contact={contact} movingTo={null} />
         {contact === 'ok' && !loadError ? <p className="suite-meta">Loading the suite address...</p> : null}
       </PanelBody>
     </Panel>;

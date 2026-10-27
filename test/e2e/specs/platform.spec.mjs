@@ -57,7 +57,7 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await page.getByRole('button', { name: /Website/ }).click();
   await page.getByLabel('Name', { exact: true }).fill('MOS Test Link');
   await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the MOS browser flow');
-  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:link');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi-link');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByLabel('Website address', { exact: true }).fill('https://example.com/');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
@@ -68,13 +68,12 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await page.getByRole('button', { name: /Home network app/ }).click();
   await page.getByRole('textbox', { name: /^Name/ }).fill('MOS Test Service');
   await page.getByRole('textbox', { name: /^Description/ }).fill('Existing network service');
-  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:server-network');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi-server-network');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByRole('textbox', { name: /^App address/ }).fill('http://192.168.1.20:8080');
   await page.getByRole('button', { name: 'Edit URL subdomain' }).click();
   await page.getByLabel('URL subdomain').fill('test-service');
-  await page.getByRole('button', { name: 'Preview route' }).click();
-  await expect(page.getByText('http://test-service.127.0.0.1.sslip.io/')).toBeVisible();
+  await expect(page.getByText('MOS will route')).toContainText('http://test-service.127.0.0.1.sslip.io/');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
   await expect(page.getByLabel('Homepage YAML')).toContainText('MOS Test Service');

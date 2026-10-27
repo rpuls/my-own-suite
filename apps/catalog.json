@@ -3,8 +3,8 @@
     "actual-budget": {
       "appVersion": "26.8.1",
       "minimumMosVersion": "0.21.0",
-      "packageDigest": "sha256:34cb000bcd8c5420242b84a5efe122b964a7fea19d727932ae32b7547ffe8632",
-      "packageVersion": "0.2.1",
+      "packageDigest": "sha256:7029022c5308ac25ff4e6d82a7e3758c4623378de92ee105bb9ad1fb891e231d",
+      "packageVersion": "0.2.2",
       "path": "apps/actual-budget",
       "privacy": {
         "posture": "privacy-configured",
@@ -13,10 +13,32 @@
     },
     "immich": {
       "appVersion": "3.2.4",
-      "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:eba42e3717229b0cb6595427149ca7cb35cbc090c9dec0394e6e51fda049406b",
-      "packageVersion": "0.8.3",
+      "minimumMosVersion": "0.23.0",
+      "packageDigest": "sha256:d55b2364b555ce7fbbbe3a76942e5beb5d78b4219e08577dcc1be3b24132d2e7",
+      "packageVersion": "0.9.0",
       "path": "apps/immich",
+      "privacy": {
+        "posture": "external-dependency",
+        "status": "reviewed"
+      }
+    },
+    "jellyfin": {
+      "appVersion": "12.3",
+      "minimumMosVersion": "0.23.0",
+      "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
+      "packageVersion": "0.1.2",
+      "path": "apps/jellyfin",
+      "privacy": {
+        "posture": "external-dependency",
+        "status": "reviewed"
+      }
+    },
+    "navidrome": {
+      "appVersion": "0.64.2",
+      "minimumMosVersion": "0.23.0",
+      "packageDigest": "sha256:e64a4eaf54080648de56fb828a077883fbac3f6bf49a83f2cc9b3b0eb0623649",
+      "packageVersion": "0.1.0",
+      "path": "apps/navidrome",
       "privacy": {
         "posture": "external-dependency",
         "status": "reviewed"
@@ -34,10 +56,10 @@
       }
     },
     "paperless-ngx": {
-      "appVersion": "3.3.0",
+      "appVersion": "3.3.4",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:e9b60aa01b289ca69475cabcd50acfd9842577f8c1a77cc64887798cee146665",
-      "packageVersion": "0.3.4",
+      "packageDigest": "sha256:37d9c06668703644d0b58d5ff1c018f905a193cc480c1c862e22035e787da801",
+      "packageVersion": "0.3.7",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",
@@ -45,10 +67,10 @@
       }
     },
     "radicale": {
-      "appVersion": "3.8.1",
+      "appVersion": "3.8.3",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:77fe03d3ad632f699e401f2f7a9a0befc4919b26ae9777c61ada9472474bdb01",
-      "packageVersion": "0.5.3",
+      "packageDigest": "sha256:868fe17fec3d5a5ee5b9c157a736ae5b06c104eca21bcdd547ff7203a94b4122",
+      "packageVersion": "0.5.5",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",

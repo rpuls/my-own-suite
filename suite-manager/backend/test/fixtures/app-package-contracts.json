@@ -111,9 +111,13 @@
         "url": "https://example.com/privacy"
       }
     ],
+    "lastHumanReview": {
+      "appVersion": "1.0.0",
+      "date": "2026-01-05",
+      "reviewer": "Example Reviewer"
+    },
     "posture": "private-by-default",
     "provenance": {
-      "humanReviewed": true,
       "method": "ai-assisted",
       "model": "example-model",
       "modelIdentifierSource": "runtime-reported",

@@ -1,58 +1,52 @@
 ---
 const iconStyle =
   'width:2.6rem;height:2.6rem;border-radius:var(--mos-radius-sm);display:grid;place-items:center;background:var(--mos-color-accent-soft);color:var(--mos-color-accent)'
+const linkStyle = 'font-size:0.9rem'
 ---
 
 <section class="band" id="safe">
   <div class="shell">
     <div class="section-head center">
       <span class="mos-eyebrow">Kept safe</span>
-      <h2 class="mos-section-title">Backups, updates, and a serious trust architecture</h2>
-      <p class="mos-body-lg mos-meta">Self-hosting only pays off if the thing hosting your life is careful. Here is what MOS does so you don't have to think about it.</p>
+      <h2 class="mos-section-title">Looked after, so you don't have to think about it</h2>
+      <p class="mos-body-lg mos-meta">Self-hosting only pays off if the thing hosting your life is careful. Here is the short version; the docs tell the whole story.</p>
     </div>
     <div class="paths">
-      {/* Deliberately leads with the condition rather than the benefit: this is
-          the one card in the section that describes something the owner sets up
-          rather than something MOS already did, and the section lede ("what MOS
-          does so you don't have to think about it") pulls the other way. A
-          skim-reader must not come away thinking a fresh self-hosted install is
-          already on HTTPS — it is not; it serves plain HTTP until this is done.
-          Revert to the benefit-first wording once AL6 (docs/roadmap.md) ships
-          trusted HTTPS on own hardware with no domain to buy. */}
       <div class="mos-panel path">
-        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-shield"/></svg></span>
-        <h3 style="font-size:1.15rem">Private HTTPS at home</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Bring a domain and point its DNS at Cloudflare, and MOS issues real green-lock certificates for your LAN — without exposing anything to the internet.</p>
-      </div>
-      <div class="mos-panel path">
-        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-key"/></svg></span>
-        <h3 style="font-size:1.15rem">Secrets stay secret</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Secrets never enter the database, logs, or API responses. Narrow host agents apply changes; the web UI never gets root.</p>
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-layers"/></svg></span>
+        <h3 style="font-size:1.15rem">The critical parts are tested by millions</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Ubuntu, Docker, Caddy, Let's Encrypt and restic do the heavy lifting; MOS adds the glue and the friendly screens. If those names mean nothing to you, that's fine. If they do, you know why they're here.</p>
+        <a class="mos-link" href="/docs/reference/architecture/" style={linkStyle}>MOS architecture →</a>
       </div>
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-lock"/></svg></span>
-        <h3 style="font-size:1.15rem">Backups you can open without us</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Whole-suite backups run on a schedule and are encrypted before they leave the server — by <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a>, not by anything we wrote. What lands on your drive or bucket is a standard restic repository: your recovery key opens it on any machine, with no MOS involved.</p>
+        <h3 style="font-size:1.15rem">Your data is encrypted</h3>
+        <p class="mos-meta" style="font-size:0.92rem">On your own hardware, everything sits in a standard LUKS vault that the machine's own security chip opens at boot. If the machine goes missing, its disk is unreadable anywhere else.</p>
+        <a class="mos-link" href="/docs/install/own-hardware/#good-to-know" style={linkStyle}>How the vault works →</a>
       </div>
       <div class="mos-panel path">
-        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
-        <h3 style="font-size:1.15rem">A catalog your server can verify</h3>
-        <p class="mos-meta" style="font-size:0.92rem">The app catalog is cryptographically signed, and your server checks the signature against a key it already has — not one downloaded alongside it. Even offline, it won't trust a catalog nobody signed.</p>
-      </div>
-      <div class="mos-panel path">
-        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-plug"/></svg></span>
-        <h3 style="font-size:1.15rem">Apps update on their own schedule</h3>
-        <p class="mos-meta" style="font-size:0.92rem">A security fix for your password manager doesn't wait for us to ship a version of MOS. Each app updates by itself, when you say so — with the changes spelled out first.</p>
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-key"/></svg></span>
+        <h3 style="font-size:1.15rem">Your whole suite in one backup</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Every app and everything in it, on a schedule, to a drive you plug in or to storage online, encrypted with your recovery key before it leaves the server. Plain <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a> archives your key opens anywhere, and one button brings it all back.</p>
+        <a class="mos-link" href="/docs/guides/backup-restore/" style={linkStyle}>Back up and restore →</a>
       </div>
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-shield"/></svg></span>
-        <h3 style="font-size:1.15rem">Your apps can't change under you</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Each app runs from a verified copy of the exact package it was installed with. Nothing we publish later reaches into a machine we don't own — your app changes when you decide it does.</p>
+        <h3 style="font-size:1.15rem">HTTPS, like magic</h3>
+        <p class="mos-meta" style="font-size:0.92rem">A real, browser-trusted padlock on your home network, minutes after first start. Nothing to buy, no port to open, no terminal to touch. Don't believe us? The docs explain exactly how.</p>
+        <a class="mos-link" href="/docs/install/easy-address/" style={linkStyle}>How the padlock works →</a>
       </div>
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-plug"/></svg></span>
-        <h3 style="font-size:1.15rem">Updates that put things back</h3>
-        <p class="mos-meta" style="font-size:0.92rem">The new version is built and health-checked before the old one stops. If it fails, MOS restores what was running — or tells you exactly what it couldn't undo. Never a cheerful "done" over a broken app.</p>
+        <h3 style="font-size:1.15rem">Updates you approve</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Apps and the platform each show what changes before you press the button, and a failed update puts things back. Ubuntu's own security patches install themselves.</p>
+        <a class="mos-link" href="/docs/guides/updates/" style={linkStyle}>How updates work →</a>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-eye"/></svg></span>
+        <h3 style="font-size:1.15rem">Every connection disclosed</h3>
+        <p class="mos-meta" style="font-size:0.92rem">MOS has no telemetry and never reports back to us. If an app depends on an outside service, its page says exactly which one and why before you install, evidence included. Your server checks the catalog's signature before trusting a word of it.</p>
+        <a class="mos-link" href="/docs/privacy/how-we-assess/" style={linkStyle}>How apps are assessed →</a>
       </div>
     </div>
   </div>

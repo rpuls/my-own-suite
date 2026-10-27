@@ -736,7 +736,7 @@ describe('the graphic at its extremes', () => {
 });
 
 describe('logo colour variants', () => {
-  // Upstream metadata names the file by its own colour: the light-coloured
+  // Staged metadata names the file by its own colour: the light-coloured
   // file is for a dark canvas.
   it('puts the light-coloured file on the dark canvas and vice versa', () => {
     const catalog = { light: 'vaultwarden-light' };

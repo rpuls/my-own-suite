@@ -183,7 +183,7 @@ ${renderJournaldConfig()}MOS_JOURNALD
 systemctl restart systemd-journald || true
 
 apt-get update
-apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates caddy curl cryptsetup-bin docker.io git gnupg ntfs-3g ufw
 # Ubuntu's caddy package only supplies the caddy user, its unit and /etc/caddy; the
 # binary that runs is the one built below. Held, so unattended upgrades never restart
 # Caddy to update a binary nothing runs.
@@ -242,10 +242,15 @@ docker rm "$caddy_builder_container"
 docker image rm ${CADDY_BUILD_IMAGES.join(' ')} >/dev/null 2>&1 || true
 chmod 0755 /usr/local/libexec/mos/caddy.next
 mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
-${CADDY_REQUIRED_MODULES.map((module) => `if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^${module}$'; then
+# Read once into a file: grep -q quits at its first match, and under pipefail the
+# list-modules it cut off would fail this check at random.
+caddy_modules="$(mktemp)"
+/usr/local/libexec/mos/caddy list-modules > "$caddy_modules"
+${CADDY_REQUIRED_MODULES.map((module) => `if ! grep -qxF '${module}' "$caddy_modules"; then
   echo '[mos] The repo-built Caddy binary is missing ${module}.' >&2
   exit 1
 fi`).join('\n')}
+rm -f "$caddy_modules"
 
 # The backup agent runs the storage engine binary, which lives beside Caddy and
 # is not a package. reconcile-system.cjs installs it on every managed update; a
@@ -423,6 +428,7 @@ Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=$MOS_DISPOSABLE_LAB
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
+ExecStartPre=+/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/frontend-release.cjs $MOS_INSTALL_ROOT/repo/suite-manager/frontend/dist
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -516,6 +522,14 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 MOS_APP_AGENT_UNIT
+
+# Rendered from the same definitions reconcile-system.cjs writes on every
+# managed update, which a fresh install never runs.
+cat > /etc/systemd/system/${STORAGE_ATTACH_UNIT} <<MOS_STORAGE_ATTACH_UNIT
+${renderStorageAttachUnit()}MOS_STORAGE_ATTACH_UNIT
+cat > ${STORAGE_UDEV_RULE_PATH} <<'MOS_STORAGE_UDEV_RULE'
+${renderStorageUdevRule()}MOS_STORAGE_UDEV_RULE
+udevadm control --reload-rules || true
 
 cat > /etc/systemd/system/mos-backup-agent.service <<MOS_BACKUP_AGENT_UNIT
 [Unit]
@@ -690,6 +704,7 @@ if [ "$MOS_DISPOSABLE_LAB" = '1' ]; then
   systemctl enable mos-lab-reset-agent.service
   systemctl restart mos-lab-reset-agent.service
 fi
+udevadm ${storageColdplugArgs().join(' ')} || true
 
 cat >> "$MOS_STATE_ROOT/bootstrap-contract.env" <<'MOS_BOOTSTRAP_DONE'
 MOS_BOOTSTRAP_STATUS='ready-for-owner-setup'
@@ -825,7 +840,12 @@ const {
   renderCaddyServiceOverride,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
   renderUnavailablePage,
+  storageColdplugArgs,
+  STORAGE_ATTACH_UNIT,
+  STORAGE_UDEV_RULE_PATH,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
 } = require('../../infrastructure/control-plane-runtime.cjs');

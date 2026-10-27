@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { svgTone } from './svg-tone.mjs';
 
 const plannerRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const siteRoot = path.resolve(plannerRoot, '..');
@@ -53,7 +54,7 @@ function stageDashboardIcons() {
   const denylist = new Set(JSON.parse(denylistRaw).icons.map(String));
   // The leading number versions the staged output format; bump it when this
   // function changes what it writes so existing checkouts restage.
-  const stamp = `2:${commit}:${createHash('sha256').update(denylistRaw).digest('hex')}`;
+  const stamp = `3:${commit}:${createHash('sha256').update(denylistRaw).digest('hex')}`;
 
   const destination = path.join(plannerRoot, 'public', 'dashboard-icons');
   const markerPath = path.join(destination, '.staged');
@@ -86,18 +87,20 @@ function stageDashboardIcons() {
     const svgSource = path.join(checkout, 'svg', `${id}.svg`);
     if (!fs.existsSync(svgSource)) continue;
     fs.copyFileSync(svgSource, path.join(destination, 'svg', `${id}.svg`));
-    // Monochrome logos ship colour variants (upstream `colors` maps the
-    // variant's own colour → icon id: `light` is the light-coloured file);
-    // stage them too so the planner can swap when the canvas flips.
-    // Denylisting a variant id strips just it.
+    // Upstream `colors` keys mean the file's colour for some logos and the
+    // theme it suits for others, so the pair is decided from what each file
+    // paints. Only a single-colour logo gets a sibling to swap to; a coloured
+    // one reads on both canvases and stays as picked. Denylisting a variant
+    // id strips just it.
+    const baseTone = svgTone(fs.readFileSync(svgSource, 'utf8'));
     const colors = {};
-    for (const [scheme, variantId] of Object.entries(entry.colors ?? {})) {
-      if (!['light', 'dark'].includes(scheme) || typeof variantId !== 'string') continue;
-      if (variantId === id || denylist.has(variantId)) continue;
+    for (const variantId of Object.values(entry.colors ?? {})) {
+      if (typeof variantId !== 'string' || variantId === id || denylist.has(variantId)) continue;
       const variantSource = path.join(checkout, 'svg', `${variantId}.svg`);
       if (!fs.existsSync(variantSource)) continue;
       fs.copyFileSync(variantSource, path.join(destination, 'svg', `${variantId}.svg`));
-      colors[scheme] = variantId;
+      const tone = svgTone(fs.readFileSync(variantSource, 'utf8'));
+      if (baseTone !== 'colour' && tone !== 'colour' && tone !== baseTone) colors[tone] ??= variantId;
     }
     staged[id] = { base: 'svg', aliases: entry.aliases ?? [], categories: entry.categories ?? [] };
     if (Object.keys(colors).length) staged[id].colors = colors;

@@ -14,7 +14,7 @@ const crypto = require('node:crypto');
 const dns = require('node:dns');
 
 const ZONE = 'acme.myownsuite.org';
-const PROBE = '192-168-255-254';
+const PROBE = '255-254-prbchk';
 const args = process.argv.slice(2);
 const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const viaResolver = args.includes('--via-resolver');
@@ -67,8 +67,16 @@ const checks = [
     return response.status === 404 ? null : `got ${response.status}`;
   }],
   ['POST /update for a public address -> 400', async () => {
-    const response = await post('/update', { subdomain: '203-0-113-9', txt });
+    const response = await post('/update', { subdomain: '203-0-113-9-prbchk', txt });
     return response.status === 400 ? null : `got ${response.status}`;
+  }],
+  ['POST /update for 192.168 written with four numbers -> 400', async () => {
+    const response = await post('/update', { subdomain: '192-168-255-254-prbchk', txt });
+    return response.status === 400 ? null : `got ${response.status}`;
+  }],
+  ['POST /update for a pre-0.23 name, until 1.0 -> 200', async () => {
+    const response = await post('/update', { subdomain: '192-168-255-254', txt });
+    return response.status === 200 ? null : `got ${response.status}`;
   }],
   ['POST /update for a private address -> 200', async () => {
     const response = await post('/update', { subdomain: PROBE, txt });

@@ -33,7 +33,7 @@ async function createCollection(page, type, title) {
   await form.locator('input[data-name="displayname"]').fill(title);
   await form.locator('button[data-name="submit"]').click();
   await expect(collectionCard(page, title)).toBeVisible({ timeout: 30000 });
-  return new URL(await collectionCard(page, title).getByRole('textbox').inputValue()).pathname;
+  return new URL(await collectionCard(page, title).locator('input[data-name="url"]').inputValue()).pathname;
 }
 
 // Read back at whatever door this run is on, which may have changed since.

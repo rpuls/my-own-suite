@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { catalogApps } from './catalog.mjs';
 import { repoRoot } from './env.mjs';
+import { sshArgs } from './lab-shell.mjs';
 
 export const CONTROL_HOST = 'example.com';
 const APP_CONTAINER = 'mos-app-';
@@ -35,20 +36,6 @@ export function suiteBase(url) {
 
 function underAny(host, domains) {
   return [...domains].some((domain) => host === domain || host.endsWith(`.${domain}`));
-}
-
-function sshArgs({ key, target }, knownHosts) {
-  return [
-    '-i', key,
-    '-o', 'BatchMode=yes',
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'ConnectTimeout=10',
-    '-o', 'ServerAliveInterval=30',
-    // A lab gets a new host key with every rebuild, so one is trusted for one run.
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-o', `UserKnownHostsFile=${knownHosts.replaceAll('\\', '/')}`,
-    target,
-  ];
 }
 
 function startServerCapture(shell, dir) {

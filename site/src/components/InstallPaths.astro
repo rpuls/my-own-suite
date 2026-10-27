@@ -7,32 +7,30 @@ import { INSTALL_CLOUD_PATH, INSTALL_OWN_HARDWARE_PATH } from '../lib/links'
     <div class="section-head center">
       <span class="mos-eyebrow">Choose your platform</span>
       <h2 class="mos-section-title">Where should your cloud live?</h2>
-      <p class="mos-body-lg mos-meta">MOS runs on hardware you pick — a computer at home, a cloud server you rent, or (soon) one we run for you. Honest about what each one needs.</p>
+      <p class="mos-body-lg mos-meta">A computer at home, a cloud server you rent, or (soon) one we run for you. Honest about what each one needs.</p>
     </div>
     <div class="paths">
       <div class="mos-panel path">
         <span class="mos-pill mos-pill-accent">Own hardware</span>
         <h3>USB installer</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Download the installer image, flash it, boot a dedicated machine, confirm. LAN-first at <code style="font-family:var(--mos-font-mono)">home.mos.home</code>.</p>
+        <p class="mos-meta" style="font-size:0.92rem">Download the image, write it to a USB stick, boot a spare machine from it. One confirmation, a few minutes of copying, and the screen shows your suite's address.</p>
         <ul>
-          <li>A spare mini-PC or PC to dedicate</li>
-          <li>Erases the target disk (Ubuntu Server 24.04-based)</li>
-          <li>No developer tools needed — only a free USB writer (Rufus runs without installing)</li>
-          <li>Costs only your electricity — usually a small amount each month</li>
-          <li>Best privacy — nothing leaves your home</li>
+          <li>A spare mini-PC or old laptop to dedicate — its disk is erased</li>
+          <li>A free USB writer such as Rufus or balenaEtcher</li>
+          <li>Best privacy: nothing leaves your home, and it costs only electricity</li>
         </ul>
-        <a class="mos-link" href={INSTALL_OWN_HARDWARE_PATH} style="margin-top:8px">Read the install guide →</a>
+        <a class="mos-link" href={INSTALL_OWN_HARDWARE_PATH}>Go to the install guide →</a>
       </div>
       <div class="mos-panel path">
         <span class="mos-pill mos-pill-accent">Cloud server</span>
         <h3>One command</h3>
-        <p class="mos-meta" style="font-size:0.92rem">One command in your provider's browser console (or over SSH) on a fresh Ubuntu 24.04 server. Provider-agnostic.</p>
+        <p class="mos-meta" style="font-size:0.92rem">Sign up with a provider, deploy a small Ubuntu 24.04 server, paste one command into its browser console and wait about ten minutes. Done. Nothing to install on your own computer, and a six-minute video walks you through every click.</p>
         <ul>
-          <li>A small server you rent — about $20–25 a month (DigitalOcean is the tested reference)</li>
-          <li>Your provider's web console or SSH — nothing to install on your computer</li>
+          <li>A small rented server, about $20–25 a month</li>
           <li>Reachable from anywhere you allow</li>
+          <li>Your own domain in one step, or the address MOS generates for you</li>
         </ul>
-        <a class="mos-link" href={INSTALL_CLOUD_PATH} style="margin-top:8px">Read the install guide →</a>
+        <a class="mos-link" href={INSTALL_CLOUD_PATH}>Go to the install guide →</a>
       </div>
       <div class="mos-panel path coming">
         <span class="mos-badge">Coming soon</span>{/* tracked: https://github.com/rpuls/my-own-suite/issues/279 */}
@@ -44,46 +42,8 @@ import { INSTALL_CLOUD_PATH, INSTALL_OWN_HARDWARE_PATH } from '../lib/links'
           <li>A paid subscription — pricing announced at launch</li>
           <li>Planned — not yet available</li>{/* tracked: https://github.com/rpuls/my-own-suite/issues/279 */}
         </ul>
-        <span class="mos-meta" style="font-size:0.86rem;margin-top:8px">We'll announce it here.</span>
+        <span class="mos-meta" style="font-size:0.86rem">We'll announce it here.</span>
       </div>
-    </div>
-    <div class="install-line shell" style="width:100%;max-width:760px;margin-inline:auto;margin-top:var(--mos-space-7)">
-      <div class="cmd">
-        <span class="dollar">$</span>
-        <span class="cmd-text">curl -fsSL https://get.myownsuite.org | sudo bash</span>
-        <button
-          class="cmd-copy"
-          type="button"
-          aria-label="Copy install command"
-          data-copy="curl -fsSL https://get.myownsuite.org | sudo bash"
-        >
-          <svg class="icon-copy" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <svg class="icon-check" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </button>
-      </div>
-      <p class="mos-small mos-meta" style="margin-top:8px;text-align:center">On fresh Ubuntu 24.04 this installs the latest MOS release, pinned to that release's exact commit — the same version the USB installer gives you. Inspect it first at <code>https://get.myownsuite.org/install.sh</code>.</p>
     </div>
   </div>
 </section>
-
-<script>
-  for (const button of document.querySelectorAll<HTMLButtonElement>('.cmd-copy')) {
-    let resetTimer: ReturnType<typeof setTimeout> | undefined
-    button.addEventListener('click', async () => {
-      const text = button.dataset.copy
-      if (!text) return
-      try {
-        await navigator.clipboard.writeText(text)
-      } catch {
-        return
-      }
-      button.classList.add('copied')
-      button.setAttribute('aria-label', 'Copied')
-      clearTimeout(resetTimer)
-      resetTimer = setTimeout(() => {
-        button.classList.remove('copied')
-        button.setAttribute('aria-label', 'Copy install command')
-      }, 2000)
-    })
-  }
-</script>

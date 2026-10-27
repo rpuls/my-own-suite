@@ -1,11 +1,11 @@
 # ACME responder
 
-An own-hardware MOS box serves its Easy Door, `home.192-168-68-123.local.myownsuite.org`, with a
+An own-hardware MOS box serves its Easy Door, `home.68-123-kqmzrt.local.myownsuite.org`, with a
 certificate every browser trusts. The box is on a LAN, so the CA cannot reach it and DNS-01 is the
 only challenge left, which needs a TXT record at
-`_acme-challenge.192-168-68-123.local.myownsuite.org`. The Easy Door zone holds no state and nothing
+`_acme-challenge.68-123-kqmzrt.local.myownsuite.org`. The Easy Door zone holds no state and nothing
 can write to it, so it answers that one name with a CNAME into this box's zone,
-`192-168-68-123.acme.myownsuite.org`. This box holds the token there for ten minutes.
+`68-123-kqmzrt.acme.myownsuite.org`. This box holds the token there for ten minutes.
 
 ## What the box does
 
@@ -20,20 +20,20 @@ can write to it, so it answers that one name with a CNAME into this box's zone,
 
 ```
 POST /update   X-Api-User / X-Api-Key ignored
-{ "subdomain": "192-168-68-123", "txt": "<43-char base64url token>" }
+{ "subdomain": "68-123-kqmzrt", "txt": "<43-char base64url token>" }
 -> 200 { "txt": "<token>" }
 ```
 
-`/register` does not exist. The name is shared by every box on that LAN address, so a credential
-would prove nothing and would be state to back up and leak.
+`/register` does not exist. The id in the name tells installs apart and proves nothing, so a
+credential would prove nothing either, and would be state to back up and leak.
 
 ## Rules it enforces
 
 | Rule | Why |
 | --- | --- |
-| `subdomain` is a dashed RFC1918 address, the same ranges as the Easy Door zone | The responder can never prove control of any other name |
+| `subdomain` is an Easy Door label, the same RFC1918 ranges as the Easy Door zone, or until 1.0 a pre-0.23 label with no id | The responder can never prove control of any other name |
 | `txt` is exactly 43 base64url characters | The only value ACME asks for |
-| Up to 8 live tokens per name, 10 minutes each, oldest evicted | Households on one LAN address renew independently and must not knock each other's token out |
+| Up to 8 live tokens per name, 10 minutes each, oldest evicted | A pre-0.23 name is shared by every household on its LAN address, each renewing on its own; two are enough once those names go at 1.0 (roadmap H12) |
 | TXT TTL and negative TTL 30 s | A resolver never caches a stale answer past the next order |
 | 20 updates per source per hour, 20,000 live tokens overall | A box makes a handful of calls per issuance |
 | No request log | Not the source, the name or the token. The journal gets failures and hourly counts |
@@ -97,7 +97,7 @@ node infrastructure/acme-responder/verify.cjs <reserved-ip>              # the b
 node infrastructure/acme-responder/verify.cjs 1.1.1.1 --via-resolver     # the whole CNAME chain
 ```
 
-Each run posts one throwaway token for `192-168-255-254` and expects to read it back within seconds.
+Each run posts one throwaway token for `255-254-prbchk` (192.168.255.254), and one for its pre-0.23 name, and expects to read the first back within seconds.
 `--wait-expiry` also waits out its ten minutes.
 
 ### Testing a change before it ships

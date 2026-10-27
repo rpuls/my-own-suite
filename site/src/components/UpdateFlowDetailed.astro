@@ -1,0 +1,234 @@
+---
+// The app update flow with the detail under each step, as a vertical timeline
+// that reads at docs width. The three MOS steps sit in one box; the rail from
+// the publisher ends on that box and a new one leaves it. Every rail segment
+// is an element in normal flow that stretches beside its step's text, so the
+// arrows need no measuring and cannot drift.
+import { Image } from 'astro:assets'
+import nornAvatar from '../assets/norn.png'
+---
+
+<div class="ufd not-content">
+  <ol class="ufd-steps">
+    <li class="ufd-step">
+      <div class="ufd-rail">
+        <span class="ufd-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></span>
+        <span class="ufd-line"></span>
+        <svg class="ufd-head" viewBox="0 0 10 8" aria-hidden="true"><path d="M0 0h10L5 8z" fill="currentColor"/></svg>
+      </div>
+      <div class="ufd-body">
+        <span class="ufd-eyebrow">Step 1 · App publisher</span>
+        <span class="ufd-title">Releases a new version</span>
+        <span class="ufd-lead">A new version appears on the app's GitHub releases, or as a new image tag.</span>
+        <ul class="ufd-facts">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></svg><span>Your server keeps running the version you installed. Nothing changes yet.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg><span>Releases that pile up in between are reviewed together, so none is skipped.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span>The release notes are read as untrusted text: they can colour a review, never run anything.</span></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="ufd-group">
+      <span class="ufd-group-label"><svg width="16" height="16" viewBox="0 0 100 100" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="6.5" stroke-linecap="round"><line x1="50" y1="36" x2="50" y2="24"/><line x1="50" y1="64" x2="50" y2="76"/><line x1="36" y1="50" x2="24" y2="50"/><line x1="64" y1="50" x2="76" y2="50"/><line x1="36" y1="36" x2="26" y2="26"/><line x1="64" y1="36" x2="74" y2="26"/><line x1="36" y1="64" x2="26" y2="74"/><line x1="64" y1="64" x2="74" y2="74"/></g><g fill="currentColor"><circle cx="18" cy="18" r="13"/><circle cx="50" cy="16" r="13"/><circle cx="82" cy="18" r="13"/><circle cx="16" cy="50" r="13"/><circle cx="84" cy="50" r="13"/><circle cx="18" cy="82" r="13"/><circle cx="50" cy="84" r="13"/><circle cx="82" cy="82" r="13"/></g><rect x="37" y="37" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="6.5"/></svg>Inside MOS</span>
+      <ol class="ufd-steps is-inner">
+        <li class="ufd-step">
+          <div class="ufd-rail">
+            <span class="ufd-ico is-norn"><Image src={nornAvatar} alt="Norn" width={44} height={44} /><span class="ufd-bot" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></span></span>
+            <span class="ufd-line"></span>
+            <svg class="ufd-head" viewBox="0 0 10 8" aria-hidden="true"><path d="M0 0h10L5 8z" fill="currentColor"/></svg>
+          </div>
+          <div class="ufd-body">
+            <span class="ufd-eyebrow">Step 2 · Norn, the MOS release bot</span>
+            <span class="ufd-title">Reviews, rebuilds and tests it</span>
+            <span class="ufd-lead">Twice a day Norn compares each catalog app with its newest stable release. For a new one it:</span>
+            <ul class="ufd-facts">
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Reads every release crossed for breaking changes: migrations, changed deployment files, clashes with MOS settings.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>Redoes the privacy assessment: licence, terms, telemetry, every outbound endpoint.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Rebuilds the package on pinned image digests and runs MOS's own checks.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg><span>Proves it on a throwaway server: a fresh install, an update from your version, and a backup-and-restore drill.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg><span>Records every outside connection the app makes and holds it to the published list.</span></li>
+            </ul>
+            <span class="ufd-verdict">Verdict: proceed, skip or hold</span>
+          </div>
+        </li>
+        <li class="ufd-step">
+          <div class="ufd-rail">
+            <span class="ufd-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+            <span class="ufd-line"></span>
+            <svg class="ufd-head" viewBox="0 0 10 8" aria-hidden="true"><path d="M0 0h10L5 8z" fill="currentColor"/></svg>
+          </div>
+          <div class="ufd-body">
+            <span class="ufd-eyebrow">Step 3 · MOS maintainer, a human</span>
+            <span class="ufd-title">Reviews the evidence and signs</span>
+            <span class="ufd-lead">Norn opens a pull request carrying the evidence: each drill's result, any new hosts, the screens that changed.</span>
+            <ul class="ufd-facts">
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg><span>A person reads the assessment, the diff and the drill before anything is accepted.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 9-9"/><path d="m16 5 3 3M18 3l3 3"/></svg><span>Signs the catalog with the MOS key. Only a human holds it, so no bot can publish an app.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg><span>Merges into staging, where the batch is tested as a whole.</span></li>
+            </ul>
+            <span class="ufd-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg><span><b>Held back.</b> A version that breaks something never reaches owners. The reason and what would lift it stay on record, and every later release is judged with it in mind.</span></span>
+          </div>
+        </li>
+        <li class="ufd-step is-last">
+          <div class="ufd-rail">
+            <span class="ufd-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><g stroke="currentColor" stroke-width="6.5" stroke-linecap="round"><line x1="50" y1="36" x2="50" y2="24"/><line x1="50" y1="64" x2="50" y2="76"/><line x1="36" y1="50" x2="24" y2="50"/><line x1="64" y1="50" x2="76" y2="50"/><line x1="36" y1="36" x2="26" y2="26"/><line x1="64" y1="36" x2="74" y2="26"/><line x1="36" y1="64" x2="26" y2="74"/><line x1="64" y1="64" x2="74" y2="74"/></g><g fill="currentColor"><circle cx="18" cy="18" r="13"/><circle cx="50" cy="16" r="13"/><circle cx="82" cy="18" r="13"/><circle cx="16" cy="50" r="13"/><circle cx="84" cy="50" r="13"/><circle cx="18" cy="82" r="13"/><circle cx="50" cy="84" r="13"/><circle cx="82" cy="82" r="13"/></g><rect x="37" y="37" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="6.5"/></svg></span>
+          </div>
+          <div class="ufd-body">
+            <span class="ufd-eyebrow">Step 4 · MOS release</span>
+            <span class="ufd-title">Promoted to the stable track</span>
+            <span class="ufd-lead">Stable servers read the signed catalog from the main branch, so a version reaches them when the batch is promoted, normally with the next MOS release.</span>
+            <ul class="ufd-facts">
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg><span>Your server fetches the catalog every few hours and verifies the signature before trusting a byte of it.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span>The app gets an Update available badge. Nothing is downloaded or built yet.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6l-8-3Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><span>A problem found later travels separately: a signed advisory feed, checked hourly, flagged against the version you actually run.</span></li>
+            </ul>
+          </div>
+        </li>
+      </ol>
+    </li>
+
+    <li class="ufd-step is-after-box">
+      <div class="ufd-rail">
+        <span class="ufd-line is-lead"></span>
+        <svg class="ufd-head" viewBox="0 0 10 8" aria-hidden="true"><path d="M0 0h10L5 8z" fill="currentColor"/></svg>
+        <span class="ufd-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg></span>
+      </div>
+      <div class="ufd-body">
+        <span class="ufd-eyebrow">Step 5 · You, the owner</span>
+        <span class="ufd-title">Review, then press the button</span>
+        <span class="ufd-lead">Suite Manager shows what would change before anything changes:</span>
+        <ul class="ufd-facts">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg><span>The version you're on and the one you'd move to, with anything that would break.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg><span>New settings the app now needs, asked up front.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>Whether the privacy grade moved, or the app wants more access than it has today.</span></li>
+        </ul>
+        <span class="ufd-text">When you press the button, MOS builds the new version before stopping the old one, checks it is healthy, then switches over. Your data is kept throughout, and an older version is never offered.</span>
+        <span class="ufd-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg><span><b>If it fails, the app is put back as it was.</b> Where the new version already migrated data, you are told exactly which state you're in and what resolves it.</span></span>
+      </div>
+    </li>
+  </ol>
+</div>
+
+<style>
+  .ufd {
+    --ufd-ico: 48px;
+    --ufd-gap: 32px;
+    --ufd-line: var(--mos-color-accent);
+    margin: var(--mos-space-5) 0;
+    font-family: var(--mos-font-sans);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--mos-color-text);
+  }
+
+  .ufd-steps { margin: 0; padding: 0; list-style: none; }
+
+  .ufd-step {
+    display: flex;
+    align-items: stretch;
+    gap: var(--mos-space-4);
+    margin: 0;
+    padding-left: 22px;
+  }
+
+  .is-inner > .ufd-step { padding-left: 0; }
+
+  /* The rail is a column beside the text: icon, a line that stretches to the
+     bottom of the step, and the head that ends just above the next thing. */
+  .ufd-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 var(--ufd-ico);
+    width: var(--ufd-ico);
+  }
+
+  .ufd-line { flex: 1 1 auto; width: 2px; min-height: 12px; margin-top: 4px; background: var(--ufd-line); }
+  .ufd-line.is-lead { flex: 0 0 auto; height: calc(var(--ufd-gap) - 10px); margin-top: 0; }
+  .ufd-head { display: block; flex: 0 0 auto; width: 10px; height: 8px; margin-bottom: 2px; color: var(--ufd-line); }
+
+  .ufd-body { display: grid; gap: var(--mos-space-2); flex: 1 1 auto; min-width: 0; padding-bottom: var(--ufd-gap); }
+  .ufd-step.is-last .ufd-body { padding-bottom: 0; }
+  .ufd-step.is-after-box .ufd-body { padding-top: var(--ufd-gap); }
+
+  .ufd-group {
+    margin: 0;
+    padding: 20px;
+    border: 2px solid var(--mos-color-accent-border);
+    border-radius: var(--mos-radius-lg);
+    background: var(--mos-color-surface-muted);
+  }
+
+  .ufd-group-label,
+  .ufd-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mos-color-accent);
+  }
+
+  .ufd-group-label { margin-bottom: var(--mos-space-4); }
+
+  .ufd-ico {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: var(--ufd-ico);
+    height: var(--ufd-ico);
+    border: 2px solid var(--mos-color-accent);
+    border-radius: 50%;
+    background: var(--mos-color-surface-strong);
+    color: var(--mos-color-accent);
+  }
+
+  .ufd-ico.is-norn { background: #071a2a; }
+  .ufd-ico.is-norn img { display: block; width: calc(var(--ufd-ico) - 4px); height: calc(var(--ufd-ico) - 4px); border-radius: 50%; object-fit: cover; }
+
+  .ufd-bot {
+    position: absolute;
+    right: -5px;
+    bottom: -3px;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--mos-color-bg);
+    border-radius: 50%;
+    background: var(--mos-color-accent);
+    color: var(--mos-color-bg);
+  }
+
+  .ufd-title { font-size: 1.2rem; line-height: 1.25; font-weight: 700; color: var(--mos-color-text-strong); }
+  .ufd-lead { color: var(--mos-color-text-muted); }
+  .ufd-facts { display: grid; gap: var(--mos-space-2); margin: var(--mos-space-1) 0 0; padding: 0; list-style: none; }
+  .ufd-facts li { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0; }
+  .ufd-facts svg { flex: 0 0 auto; margin-top: 0.3rem; color: var(--mos-color-accent); }
+  .ufd-verdict { margin-top: var(--mos-space-1); font-weight: 700; color: var(--mos-color-accent); }
+
+  .ufd-note {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    margin-top: var(--mos-space-2);
+    padding: var(--mos-space-3) var(--mos-space-4);
+    border: 1px dashed var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-sm);
+    font-size: 0.9rem;
+  }
+
+  .ufd-note svg { flex: 0 0 auto; margin-top: 0.15rem; color: var(--mos-color-warning); }
+  .ufd-note b { color: var(--mos-color-warning); }
+
+  @media (max-width: 520px) {
+    .ufd-group { padding: 14px; }
+    .ufd-step { padding-left: 16px; }
+    .is-inner > .ufd-step { padding-left: 0; }
+  }
+</style>

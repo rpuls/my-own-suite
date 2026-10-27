@@ -23,8 +23,13 @@ export type PrivacyPostureId = 'private-by-default' | 'privacy-configured' | 'ow
 
 export type PrivacyDimensionKey = 'defaultEgress' | 'control' | 'accountDependency' | 'dataProcessing' | 'policyExposure';
 
+export type HumanReview = { appVersion: string; date: string; reviewer: string };
+
+export type AwaitingHumanReview = { appVersion: string; date: string; finding: string };
+
 export type PrivacyProvenance = {
-  humanReviewed: boolean;
+  awaitingHumanReview: AwaitingHumanReview[];
+  lastHumanReview: HumanReview | null;
   method: string | null;
   model: string | null;
   sourceRevision: string | null;
@@ -87,6 +92,7 @@ export const GLYPHS = {
   check: 'M5 13l4 4 10-10',
   chevronRight: 'M9 6l6 6-6 6',
   externalLink: 'M7 17L17 7M9 7h8v8',
+  info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16v-5M12 8h.01',
 };
 
 export const POSTURES: Record<PrivacyPostureId, { border: string; color: string; label: string; sentence: string; soft: string }> = {
@@ -287,18 +293,23 @@ export function reviewDateLabel(reviewedAt: string | null | undefined): string |
   if (!reviewedAt) return null;
   const date = new Date(reviewedAt);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC', year: 'numeric' });
 }
 
 // A review authored by an AI without a human sign-off must say so everywhere
 // "reviewed" appears — tile included — not only in dialog fine print.
 function reviewerLabel(privacy: PrivacyReviewSummary | null | undefined): string {
   const provenance = privacy?.provenance;
-  return provenance?.method === 'ai-assisted' && !provenance.humanReviewed ? 'AI-reviewed for MOS' : 'Reviewed by MOS';
+  return provenance?.method === 'ai-assisted' && !provenance.lastHumanReview ? 'AI-reviewed for MOS' : 'Reviewed by MOS';
+}
+
+export function awaitingHumanReview(privacy: PrivacyReviewSummary | null | undefined): AwaitingHumanReview[] {
+  return isRated(privacy) ? privacy?.provenance?.awaitingHumanReview || [] : [];
 }
 
 export function tileMetaLine(privacy: PrivacyReviewSummary | null | undefined): string {
   if (isNotAssessed(privacy)) return 'From a source you added';
+  if (awaitingHumanReview(privacy).length) return 'Awaiting human review';
   return isRated(privacy) ? reviewerLabel(privacy) : 'Not yet rated';
 }
 
@@ -381,10 +392,15 @@ export function advisoryMarkerLabel(advisories: PrivacyAdvisory[] | null | undef
 
 export function provenanceMethodLabel(privacy: PrivacyReviewSummary | null | undefined): string | null {
   if (!isRated(privacy) || !privacy?.provenance) return null;
-  const { humanReviewed, method } = privacy.provenance;
+  const { lastHumanReview, method } = privacy.provenance;
   const base = method === 'human' ? 'Human review' : method === 'ai-assisted' ? 'AI-assisted review' : null;
-  if (!base) return humanReviewed ? 'Human-checked' : null;
-  return method === 'ai-assisted' && humanReviewed ? `${base}, human-checked` : base;
+  return [base, lastHumanReview ? humanReviewSentence(lastHumanReview) : null].filter(Boolean).join(', ') || null;
+}
+
+// Names the version a person looked at, so later AI-checked versions never borrow the claim.
+export function humanReviewSentence(review: HumanReview): string {
+  const month = new Date(`${review.date}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC', year: 'numeric' });
+  return `human-reviewed by ${review.reviewer} at version ${review.appVersion} in ${month}`;
 }
 
 export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): string {

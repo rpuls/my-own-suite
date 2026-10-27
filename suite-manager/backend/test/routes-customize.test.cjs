@@ -6,15 +6,21 @@ const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-cl
 const { HomepageService } = require('../src/homepage/homepage-service.cjs');
 const { withRoutes } = require('./support/route-harness.cjs');
 
-function homepageConfig(agent) {
+function homepageConfig(agent, appHosts = () => new Map()) {
   const store = {
     completeHomepageOperation() {},
     failHomepageOperation() {},
     recordHomepageRevision() {},
     startHomepageOperation() {},
   };
-  return new HomepageService({ agent, store, suiteAddress: { read: () => addressForHost('home.test') } });
+  return new HomepageService({ agent, appHosts, store, suiteAddress: { read: () => addressForHost('home.test') } });
 }
+
+test('a home service cannot take the address an installed app is served at', async () => {
+  const config = homepageConfig({ async addHomeService() { throw new Error('should not be called'); } }, () => new Map([['jellyfin', 'Jellyfin']]));
+  assert.throws(() => config.add({ entry: { subdomain: 'Jellyfin' } }, true), (error) => error.code === 'DUPLICATE_PUBLIC_HOST' && /Jellyfin's address/u.test(error.message));
+  await assert.rejects(config.previewHomeService({ host: '192.168.1.3', port: 8096, protocol: 'http', subdomain: 'jellyfin' }), { code: 'DUPLICATE_PUBLIC_HOST' });
+});
 
 test('Homepage customization APIs require authentication and pass only structured operations', async () => {
   const calls = [];
@@ -37,6 +43,34 @@ test('Homepage customization APIs require authentication and pass only structure
   });
 
   assert.deepEqual(calls, [['status'], ['read', 'services.template.yaml']]);
+});
+
+const JELLYFIN_LINK = `- Home services:
+    - NAS Jellyfin:
+        href: https://jellyfin.home.test/
+        mos: { id: 0b5c1f3e-8a2d-4c6b-9e1f-2a3b4c5d6e7f, managedBy: user, proxy: { subdomain: " Jellyfin", upstream: "http://192.168.1.3:8096" } }
+`;
+
+test('the address preview refuses a subdomain another Homepage link already holds', async () => {
+  const config = homepageConfig({ async read() { return { content: JELLYFIN_LINK, file: 'services.template.yaml', revision: 'r1' }; } });
+  await assert.rejects(config.previewHomeService({ host: '192.168.1.4', port: 80, protocol: 'http', subdomain: 'jellyfin' }), (error) => error.code === 'DUPLICATE_PUBLIC_HOST' && /NAS Jellyfin/u.test(error.message));
+});
+
+test('a raw save of the services file cannot put a link on the address of an installed app', async () => {
+  const config = homepageConfig({ async apply() { throw new Error('should not be called'); } }, () => new Map([['jellyfin', 'Jellyfin']]));
+  await assert.rejects(config.apply({ content: JELLYFIN_LINK, expectedRevision: 'r1', file: 'services.template.yaml' }), { code: 'DUPLICATE_PUBLIC_HOST' });
+});
+
+test('the addresses Homepage links hold are read from the services file, by link name', async () => {
+  const content = `- Home services:
+    - NAS Jellyfin:
+        href: https://jellyfin.home.test/
+        mos: { id: 0b5c1f3e-8a2d-4c6b-9e1f-2a3b4c5d6e7f, managedBy: user, proxy: { subdomain: jellyfin, upstream: "http://192.168.1.3:8096" } }
+    - Router:
+        href: http://192.168.1.1/
+`;
+  const config = homepageConfig({ async read() { return { content, file: 'services.template.yaml', revision: 'r1' }; } });
+  assert.deepEqual([...await config.homeServiceHosts()], [['jellyfin', 'NAS Jellyfin']]);
 });
 
 test('anything else under customize asks for a session before it is not found', async () => {

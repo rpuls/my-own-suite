@@ -1,23 +1,8 @@
-const { restoreGuaranteeFor } = require('../../backups/restore-guarantee.cjs');
+const { restoreGuarantee } = require('../../backups/restore-guarantee.cjs');
 const { jsonResponse } = require('../responses.cjs');
 
 const MANAGE = 'Sign in to manage backups.';
 const INVALID_PASSWORD = { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' };
-
-// Storage credentials go to the agent field by field, so it is never handed
-// something the screen did not ask for; nothing here keeps or logs them.
-function objectDestination(input) {
-  return {
-    accessKeyId: String(input.accessKeyId || ''),
-    bucket: String(input.bucket || ''),
-    endpoint: String(input.endpoint || ''),
-    folder: String(input.folder || ''),
-    label: String(input.label || ''),
-    region: String(input.region || ''),
-    secretAccessKey: String(input.secretAccessKey || ''),
-    ...(input.id ? { id: String(input.id) } : {}),
-  };
-}
 
 function recoveryKeyRoutes({ backupAgent, setup }) {
   return [
@@ -65,107 +50,25 @@ function recoveryKeyRoutes({ backupAgent, setup }) {
   ];
 }
 
-function destinationRoutes({ backupAgent }) {
+function archiveRoutes({ backupAgent }) {
+  const archive = (path, call, fields = []) => ({
+    method: 'POST',
+    path,
+    signIn: MANAGE,
+    bodyLimit: 8 * 1024,
+    handler: async ({ body, response }) => {
+      const input = await body();
+      jsonResponse(response, 200, await call(Object.fromEntries(['archiveId', ...fields].map((field) => [field, String(input[field] || '')]))));
+    },
+  });
   return [
     // Another server's key goes straight through to the agent and is never kept here.
-    {
-      method: 'POST',
-      path: '/backups/destinations/unlock',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.unlockDestination({
-          destinationId: String(input.destinationId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/keys',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.archiveKeys({
-          destinationId: String(input.destinationId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/keys/remove',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.removeArchiveKey({
-          destinationId: String(input.destinationId || ''),
-          keyId: String(input.keyId || ''),
-          recoveryKey: String(input.recoveryKey || ''),
-        }));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/forget-key',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(input.destinationId || '')));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/forget-drive',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.forgetDrive(String(input.fsUuid || '')));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/mount',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.mount(String(input.destinationId || '')));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        jsonResponse(response, 200, await backupAgent.connectObjectDestination(objectDestination(await body())));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object/test',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        jsonResponse(response, 200, await backupAgent.testObjectDestination(objectDestination(await body())));
-      },
-    },
-    {
-      method: 'POST',
-      path: '/backups/destinations/object/remove',
-      signIn: MANAGE,
-      bodyLimit: 8 * 1024,
-      handler: async ({ body, response }) => {
-        const input = await body();
-        jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(input.destinationId || '') }));
-      },
-    },
+    archive('/backups/archives/unlock', (input) => backupAgent.unlockArchive(input), ['recoveryKey']),
+    archive('/backups/archives/keys', (input) => backupAgent.archiveKeys(input), ['recoveryKey']),
+    archive('/backups/archives/keys/remove', (input) => backupAgent.removeArchiveKey(input), ['keyId', 'recoveryKey']),
+    archive('/backups/archives/forget-key', (input) => backupAgent.forgetArchiveKey(input)),
+    // One archive another server made on a drive; the screen asked for the confirmation.
+    archive('/backups/archives/erase', (input) => backupAgent.eraseArchive(input), ['confirmation']),
     // Where everything automatic writes: the schedule and the checkpoint before an update.
     {
       method: 'POST',
@@ -195,29 +98,30 @@ function backupRoutes(services) {
           jsonResponse(response, 200, {
             ...agentStatus,
             inventory: backupInventory.inventory(),
-            ...restoreGuaranteeFor(agentStatus),
+            ...restoreGuarantee(),
             serviceAvailable: true,
           });
         } catch (error) {
           // Answered 200 so the screen can say so; a genuine fault looks the same as a stopped agent.
           logger.warn('backup-agent-unavailable', { error });
           jsonResponse(response, 200, {
+            archives: [],
             backups: [],
             currentJob: null,
-            destinations: [],
             error: error.message || 'Backup agent is unavailable.',
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
+            places: [],
             recoveryKey: null,
-            ...restoreGuaranteeFor(null),
+            ...restoreGuarantee(),
             serviceAvailable: false,
           });
         }
       },
     },
     ...recoveryKeyRoutes(services),
-    ...destinationRoutes(services),
+    ...archiveRoutes(services),
     {
       method: 'POST',
       path: '/backups/start',
@@ -225,7 +129,7 @@ function backupRoutes(services) {
       bodyLimit: 8 * 1024,
       handler: async ({ body, response }) => {
         const input = await body();
-        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), note: String(input.note || '') }));
+        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(input.destinationId || ''), makePrimary: input.makePrimary === true, note: String(input.note || '') }));
       },
     },
     {
@@ -236,6 +140,7 @@ function backupRoutes(services) {
       handler: async ({ body, response }) => {
         const input = await body();
         jsonResponse(response, 200, await backupAgent.setSchedule({
+          ...(input.destinationId ? { destinationId: String(input.destinationId) } : {}),
           enabled: input.enabled === true,
           frequency: String(input.frequency || ''),
           hour: Number(input.hour),

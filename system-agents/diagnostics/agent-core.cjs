@@ -44,6 +44,9 @@ const LIMITS = {
   networks: 24,
   healthyLines: 40,
   sectionChars: 24_000,
+  // Outside the log budget, so held small: on a machine whose drives behave it is a
+  // line per plug-in.
+  storageChars: 8_000,
   // A ceiling on the whole collection, not just on each part of it. Per-section
   // caps alone bound nothing useful: nine units and twenty-four containers at
   // 24 000 characters each is 770 KB, which is a file nobody reads and roughly
@@ -159,11 +162,15 @@ class DiagnosticsAgentCore {
     // machine is by definition not well. Serialising forty reads behind a
     // twenty-second timeout each is how a diagnostic becomes a hang; running
     // them all at once is how it becomes the last straw.
-    const [host, hostPatches, webServer, networks, units, containers] = await Promise.all([
+    const [host, hostPatches, webServer, networks, storage, units, containers] = await Promise.all([
       attempt('host', () => this.adapter.hostFacts(), {}),
       attempt('host-patches', () => this.adapter.hostPatches(), null),
       attempt('web-server', () => this.adapter.webServerConfig(), []),
       attempt('networks', () => this.adapter.networks(LIMITS.networks), []),
+      attempt('storage', async () => ({
+        attach: boundText(await this.adapter.storageAttachJournal(LIMITS.troubledLines), LIMITS.storageChars),
+        kernel: boundText(await this.adapter.storageKernelLines(LIMITS.troubledLines), LIMITS.storageChars),
+      }), null),
       mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
         const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
@@ -192,6 +199,7 @@ class DiagnosticsAgentCore {
       hostPatches,
       incomplete,
       networks,
+      storage,
       units: fitted.units,
       // Bounded like a log, and for the same reason: a Caddyfile on a machine
       // with fifty apps is still the thing worth reading in full, but it must

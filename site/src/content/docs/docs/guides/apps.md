@@ -7,8 +7,8 @@ Everything you host lives in the **Apps** screen of Suite Manager: a curated cat
 
 ## Installing an app
 
-1. Open **Suite Manager → Apps** and browse or search the catalog. Each app's card shows what it replaces, how involved the setup is, and roughly how heavy it is on your machine; the detail view adds features, related apps, and its [privacy posture](/docs/privacy/how-we-assess/) — the A-to-D grade every catalog app receives from the MOS privacy assessment.
-2. Click through to **install**. Some apps need nothing from you at all. Others ask for one or two inputs — typically an admin email (pre-filled with your owner email) and a password. Secrets an app needs internally are generated for you and stored on the server, never shown or asked for.
+1. Open **Suite Manager → Apps** and browse or search the catalog. Each app's card shows what it replaces, how involved the setup is, and roughly how heavy it is on your server; the detail view adds features, related apps, and its [privacy posture](/docs/privacy/how-we-assess/) — the A-to-D grade every catalog app receives from the MOS privacy assessment.
+2. Click through to **install**. Some apps need nothing from you at all. Others ask for one or two inputs — typically an admin email (pre-filled with your owner email) and a password. An app that keeps its library on a drive, like Jellyfin, asks which drive; see [Your files on a drive](/docs/guides/files-on-a-drive/). Secrets an app needs internally are generated for you and stored on the server, never shown or asked for.
 3. Wait for the install to finish. Under the hood, MOS builds the app from its pinned recipe, starts it, wires up its web address, and adds a tile to your Home dashboard.
 
 **That recipe is then yours.** MOS keeps a verified copy of the exact package it installed, and your app runs from that copy from then on. Nothing we change in the repository later can reach in and alter the app you're already running — it changes only when you choose to update it.
@@ -32,6 +32,24 @@ When two installed apps can work together, the Apps screen offers a **connect** 
 If the catalog doesn't have what you want, paste a GitHub repository URL into the Apps search. MOS fetches it, checks it, and shows you what it publishes before anything is installed — each app, and what it's asking for: which web addresses, which storage, which other apps it wants to reach, all in plain language.
 
 A repository can publish **one app or a whole catalog of them**. That second shape is the useful one for anything niche: someone can curate a collection of lesser-known apps for people who want them, and you can keep a private collection of your own small services in a single repository instead of one repository per service.
+
+### You found an app on GitHub. Now what?
+
+Say you have found an open-source app you want on your server, and it is not in the catalog.
+
+1. **Paste its GitHub URL into the Apps search.** If the project ships a `.mos` folder, MOS shows the app and what it asks for, and you press **Install**. That is the whole job.
+2. **If MOS finds no package there**, the app needs one, and it has to live in a repository you control, because only a repository's owner can put files in it. Writing one is a job for an AI coding assistant. In [Claude Code](https://claude.com/claude-code), add the MOS plugin once, then ask:
+
+   ```
+   /plugin marketplace add rpuls/MOS-external-app-example
+   /plugin install mos@my-own-suite
+   /mos:add-app help me install https://github.com/<owner>/<app> on my MOS server
+   ```
+
+   It reads the app's documentation, writes the package into a public repository of yours (one catalog repository for everything you package is the tidy shape), pins the app's image to an exact version, pushes, and tells you the URL to paste.
+3. **Paste your repository's URL into the Apps search.** MOS shows the preview, or lists exactly why it refuses the package. Hand those reasons back to the assistant.
+4. **Install.** The app is labelled External · Unverified, like every app from an added source, and [What MOS does and doesn't vouch for](#what-mos-does-and-doesnt-vouch-for) says what that means. Choose **Add this source** as well, and the repository stays on your Apps screen for next time.
+5. **When the project releases a new version**, ask the assistant to update the package, and the app's detail view in Suite Manager offers **Check for updates**.
 
 ### Adding a source
 
@@ -77,3 +95,5 @@ Every installed app shows a live health indicator, verified against the actual r
 ## Where your data actually lives
 
 Each app keeps its data in dedicated storage volumes on your server, named and owned by MOS. Whole-suite [backups](/docs/guides/backup-restore/) capture every one of them automatically — you never need to know an individual app's layout.
+
+The exception is the files an app reads from a drive you plugged in — a film library, a photo folder. Those live on that drive, not in your backups, and the drive goes with you to any server. [Your files on a drive](/docs/guides/files-on-a-drive/) explains.

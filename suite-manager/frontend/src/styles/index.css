@@ -413,6 +413,444 @@
   flex-shrink: 0;
 }
 
+/* Settings → Storage: one row per place, collapsed until opened. The item is
+   flush, so the disclosure head and the details carry the inset and the selected
+   tint runs the full width of an opened row. */
+.suite-storage-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-info);
+}
+
+.suite-storage-row.is-attention .mos-disclosure-icon,
+.suite-storage-row.is-attention .suite-storage-name strong {
+  color: var(--mos-color-warning);
+}
+
+.mos-panel-item-quiet .suite-storage-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-storage-icon .suite-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.suite-storage-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-storage-name strong {
+  font-size: var(--mos-text-body-lg);
+  color: var(--mos-color-text-strong);
+}
+
+.suite-storage-name .mos-pill .suite-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+/* A fixed column for the words, so every row's bar starts at the same place. */
+.suite-storage-glance {
+  display: inline-grid;
+  grid-template-columns: 9rem 10.5rem;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+/* Lined up under the row's name: past the icon and its gap. */
+.suite-storage-details {
+  display: grid;
+  gap: var(--mos-space-3);
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad) calc(var(--mos-panel-pad) + 1.3rem + var(--mos-space-3));
+}
+
+.suite-storage-details .mos-usage {
+  max-width: 48rem;
+}
+
+.suite-storage-used {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--mos-space-2);
+  margin: 0;
+}
+
+.suite-storage-contents {
+  color: var(--mos-color-text);
+}
+
+.suite-storage-note {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
+.suite-storage-unusable p {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  margin: 0;
+}
+
+.suite-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.suite-storage-flow-working {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-storage-flow-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+/* The picker: a choice row per place, the reason it cannot be picked in place of
+   its facts, and adding storage as the last row. */
+.suite-storage-picker {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-storage-warning {
+  color: var(--mos-color-warning);
+  font-size: var(--mos-text-label);
+}
+
+.suite-storage-empty {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-storage-empty p {
+  margin: 0;
+}
+
+/* The start page: each place at a glance, one button only where one is needed. */
+.suite-storage-widget-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.suite-storage-widget-body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.suite-storage-widget-body .mos-usage {
+  max-width: 14rem;
+}
+
+@media (max-width: 34rem) {
+  .suite-storage-glance {
+    grid-template-columns: 6rem auto;
+  }
+
+  .suite-storage-details {
+    padding-left: var(--mos-panel-pad);
+  }
+}
+
+/* Files on a drive. Rows are quiet: the selection box and the menu show on
+   hover, and stay while anything is selected or where there is no hover. */
+.suite-files {
+  max-width: 1100px;
+}
+
+.suite-files .mos-panel-body > p {
+  margin: 0;
+}
+
+.suite-files-back {
+  justify-self: start;
+  margin-bottom: calc(-1 * var(--mos-space-3));
+  font-weight: var(--mos-weight-semibold);
+}
+
+.suite-files-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--mos-space-3);
+}
+
+.suite-files-title h1 {
+  margin: 0;
+  color: var(--mos-color-text-strong);
+  font-size: 1.875rem;
+  letter-spacing: var(--mos-letter-spacing-title);
+  line-height: var(--mos-line-height-tight);
+}
+
+.suite-files-title + .suite-lead {
+  margin-top: calc(-1 * var(--mos-space-4));
+}
+
+.suite-files-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-3);
+  min-height: 3rem;
+}
+
+.suite-files-toolbar.is-selecting {
+  padding: var(--mos-space-2) var(--mos-space-4);
+  border: 1px solid var(--mos-color-accent-border);
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-accent-soft);
+}
+
+.suite-files-toolbar.is-selecting strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-files-spacer {
+  flex: 1;
+}
+
+.suite-files-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.suite-files-crumbs strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-files-crumb-gap {
+  margin-right: var(--mos-space-2);
+  color: var(--mos-color-text-muted);
+}
+
+.suite-files-row {
+  display: grid;
+  grid-template-columns: 1.125rem 1.25rem minmax(0, 1fr) auto 4.5rem;
+  align-items: center;
+  gap: var(--mos-space-3);
+  padding-top: var(--mos-space-3);
+  padding-bottom: var(--mos-space-3);
+}
+
+.suite-files-pick,
+.suite-files-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+  opacity: 0;
+  transition: opacity var(--mos-transition);
+}
+
+.suite-files-row:hover :is(.suite-files-pick, .suite-files-actions),
+.suite-files-row:focus-within :is(.suite-files-pick, .suite-files-actions),
+.suite-files-row.is-selecting .suite-files-pick {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .suite-files-pick,
+  .suite-files-actions {
+    opacity: 1;
+  }
+}
+
+.suite-files-actions .suite-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.suite-files-icon {
+  display: flex;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-files-icon.is-folder {
+  color: var(--mos-color-info);
+}
+
+.suite-files-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mos-color-text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.suite-files-name {
+  font-weight: var(--mos-weight-semibold);
+}
+
+.suite-files-facts {
+  font-size: var(--mos-text-small);
+  white-space: nowrap;
+}
+
+.suite-files-label {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.suite-files-row.is-unused :is(.suite-files-icon, .suite-files-name) {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-files-row.is-unused a.suite-files-name {
+  font-weight: var(--mos-weight-regular);
+}
+
+.suite-files-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--mos-space-2);
+  padding-block: var(--mos-space-8);
+  text-align: center;
+}
+
+.suite-files-empty > .suite-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--mos-color-info);
+}
+
+.suite-files-empty strong {
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-body-lg);
+}
+
+.suite-files-empty p {
+  max-width: 28rem;
+  margin: 0;
+}
+
+.suite-files-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--mos-space-2);
+  padding-top: var(--mos-space-3);
+  padding-bottom: var(--mos-space-3);
+  border-top: var(--mos-border-hairline);
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
+.suite-files-upload {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding-top: var(--mos-space-3);
+  padding-bottom: var(--mos-space-3);
+}
+
+.suite-files-upload-line {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.suite-files-upload .mos-progress {
+  margin-left: calc(1.25rem + var(--mos-space-3));
+}
+
+.suite-files-upload-icon {
+  display: flex;
+  color: var(--mos-color-info);
+}
+
+.suite-files-upload.is-added .suite-files-upload-icon,
+.suite-files-upload.is-added .suite-meta {
+  color: var(--mos-color-accent);
+}
+
+.suite-files-upload.is-failed .suite-files-upload-icon {
+  color: var(--mos-color-warning);
+}
+
+.suite-files-upload.is-waiting .suite-files-upload-icon {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-icon-button.suite-files-quiet-button {
+  width: 2rem;
+  height: 2rem;
+  border-color: transparent;
+  background: transparent;
+}
+
+/* While files are dragged over the page, the whole page is where they go. */
+.suite-files-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  padding: var(--mos-space-4);
+  background: var(--mos-color-backdrop);
+  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
+  backdrop-filter: var(--mos-frost-filter-backdrop);
+}
+
+.suite-files-drop-target {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--mos-space-2);
+  border: 2px dashed var(--mos-color-accent);
+  border-radius: var(--mos-radius-lg);
+  color: var(--mos-color-text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+
+.suite-files-drop-target strong {
+  color: var(--mos-color-text-strong);
+  font-size: 1.25rem;
+}
+
+.suite-files-drop-target .suite-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--mos-color-accent);
+}
+
+.suite-files-drop-target.is-refused {
+  border-color: var(--mos-color-warning-border);
+}
+
+.suite-files-drop-target.is-refused .suite-icon {
+  color: var(--mos-color-warning);
+}
+
+@media (max-width: 34rem) {
+  .suite-files-row {
+    grid-template-columns: 1.125rem 1.25rem minmax(0, 1fr) auto;
+  }
+
+  .suite-files-facts {
+    grid-column: 3;
+    grid-row: 2;
+  }
+}
+
 /* The explanation for a source that could not be checked, inset to line up with
    the row above it rather than running edge to edge on its own. */
 .suite-source-problem {
@@ -912,7 +1350,6 @@
 
 .suite-disclaimer-steps li + li { margin-top: var(--mos-space-3); }
 
-
 .suite-app-simple-header {
   display: grid;
   gap: var(--mos-space-2);
@@ -1024,29 +1461,11 @@
   transform: scale(1.02);
 }
 
+/* Size only: the plate itself is the shared .mos-app-icon. */
 .suite-app-icon {
-  display: inline-flex;
-  place-items: center;
-  justify-content: center;
   width: 5.5rem;
   height: 5.5rem;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border: var(--mos-border-subtle);
-  border-radius: var(--mos-radius-lg);
-  background: var(--mos-color-surface-strong);
-  color: var(--mos-color-text-strong);
-  font-size: var(--mos-text-small);
-  font-weight: 800;
   transition: transform 180ms ease;
-}
-
-.suite-app-icon img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  padding: 0.65rem;
 }
 
 .suite-app-icon-large {
@@ -1692,13 +2111,9 @@
   background: var(--mos-color-surface-strong);
 }
 
-/* The logo keeps a light tile of its own: package icons are drawn for light
-   backgrounds and would disappear into the screenshot behind them. */
 .suite-app-detail-hero .suite-app-icon-large {
   width: 5.25rem;
   height: 5.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 1.25rem 2.5rem rgba(3, 10, 20, 0.45);
 }
 
@@ -2399,7 +2814,6 @@
   grid-template-columns: minmax(8rem, auto) 1fr;
 }
 
-
 .suite-updates-layout {
   display: grid;
   gap: var(--mos-space-5);
@@ -2531,14 +2945,6 @@
   font-size: var(--mos-text-small);
   text-align: right;
   text-wrap: pretty;
-}
-
-.suite-updates-steps {
-  overflow-x: auto;
-}
-
-.suite-updates-steps .suite-stepper {
-  justify-content: flex-start;
 }
 
 .suite-updates-outcome {
@@ -2679,7 +3085,6 @@ button.suite-updates-change-head {
 .suite-input::placeholder { color: var(--mos-color-text-muted); }
 .suite-input:focus { border-color: var(--mos-color-accent-border); outline: var(--mos-focus-ring); }
 .suite-select { appearance: none; padding-right: 2.2rem; background: linear-gradient(45deg, transparent 50%, var(--mos-color-text) 50%) right 0.95rem center / 0.42rem 0.42rem no-repeat, linear-gradient(135deg, var(--mos-color-text) 50%, transparent 50%) right 0.68rem center / 0.42rem 0.42rem no-repeat, var(--mos-color-surface-strong); }
-.suite-select option { background: var(--mos-color-surface-elevated); color: var(--mos-color-text); }
 .suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
 .suite-form-wide { grid-column: 1 / -1; }
@@ -2691,9 +3096,33 @@ button.suite-updates-change-head {
 .suite-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); }
 .suite-dialog-header h2 { margin: 0; }
 .suite-dialog-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--mos-space-2); }
-.suite-stepper { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--mos-space-2); color: var(--mos-color-text-muted); font-size: var(--mos-text-small); font-weight: 700; }
-.suite-stepper span { padding: 0.25rem 0.6rem; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-pill); background: transparent; color: inherit; }
-.suite-stepper .is-active { border-color: var(--mos-color-accent-border); color: var(--mos-color-text); }
+.suite-stepper { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--mos-space-2); margin: 0; padding: 0; list-style: none; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); font-weight: 700; }
+.suite-stepper li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-pill); background: transparent; color: inherit; }
+.suite-stepper li .suite-icon, .suite-stepper li .suite-spinner { width: 1rem; height: 1rem; }
+.suite-stepper .is-done { border-color: var(--mos-color-accent-border); color: var(--mos-color-accent); }
+.suite-stepper .is-active { padding: calc(0.3rem - 1px) calc(0.75rem - 1px); border: 2px solid var(--mos-color-accent); background: var(--mos-color-accent-soft); box-shadow: 0 0 0 4px var(--mos-color-accent-focus); color: var(--mos-color-text-strong); font-weight: 800; }
+.suite-stepper .is-active .suite-spinner { color: var(--mos-color-accent); }
+.suite-hold-backdrop { z-index: 90; background: var(--mos-color-overlay); -webkit-backdrop-filter: var(--mos-frost-filter); backdrop-filter: var(--mos-frost-filter); }
+.suite-hold { display: grid; gap: var(--mos-space-4); width: min(100%, 600px); padding: clamp(1.4rem, 4vw, 2.5rem); border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-xl); background: var(--mos-color-frost-strong); box-shadow: var(--mos-shadow-strong); outline: none; }
+.suite-hold.is-warning { border-color: var(--mos-color-warning-border); }
+.suite-hold.is-success { border-color: var(--mos-color-success-border); }
+.suite-hold.is-error { border-color: var(--mos-color-danger-border); }
+.suite-hold .suite-stepper { justify-content: flex-start; }
+.suite-hold-head { display: flex; align-items: center; gap: var(--mos-space-3); }
+.suite-hold-head h2 { margin: 0; font-size: 1.75rem; line-height: 1.15; }
+.suite-hold-head p { margin: 0.25rem 0 0; }
+.suite-hold-icon { display: inline-flex; color: var(--mos-color-accent); }
+.suite-hold-icon .suite-icon, .suite-hold-icon .suite-spinner { width: 3rem; height: 3rem; }
+.suite-hold.is-warning .suite-hold-icon { color: var(--mos-color-warning); }
+.suite-hold.is-error .suite-hold-icon { color: var(--mos-color-danger); }
+.suite-hold-copy { display: grid; gap: var(--mos-space-2); margin: 0; color: var(--mos-color-text-muted); line-height: var(--mos-line-height-body); }
+.suite-hold-copy strong { color: var(--mos-color-text); font-size: var(--mos-text-body-lg); }
+.suite-hold-copy p { margin: 0; }
+.suite-hold-working { display: flex; align-items: center; gap: var(--mos-space-2); }
+.suite-hold-note { display: flex; align-items: center; gap: var(--mos-space-2); margin: 0; padding-top: var(--mos-space-3); border-top: 1px solid var(--mos-color-hairline); color: var(--mos-color-text-muted); font-size: var(--mos-text-small); }
+.suite-hold-note .suite-icon { color: var(--mos-color-info); }
+.suite-hold-note strong { color: var(--mos-color-text); }
+.suite-hold-actions { display: flex; flex-wrap: wrap; gap: var(--mos-space-2); }
 .suite-decision-step { display: grid; gap: 0.75rem; }
 .suite-decision-step h3 { margin: 0; font-size: var(--mos-text-card-title); }
 .suite-choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--mos-space-2); }
@@ -3043,7 +3472,6 @@ button.suite-updates-change-head {
   text-transform: uppercase;
 }
 
-
 .suite-privacy-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -3134,9 +3562,21 @@ button.suite-updates-change-head {
   overflow-wrap: anywhere;
 }
 
-.suite-privacy-outbound-from,
-.suite-privacy-outbound-receiver {
+.suite-privacy-outbound-from {
   color: var(--mos-color-text-muted);
+}
+
+.suite-privacy-outbound-info {
+  width: 1rem;
+  height: 1rem;
+  align-self: center;
+  color: var(--mos-color-text-muted);
+  cursor: help;
+}
+
+.suite-privacy-outbound-tip {
+  display: grid;
+  gap: var(--mos-space-1);
 }
 
 .suite-privacy-advisory-flag {
@@ -3544,201 +3984,13 @@ button.suite-updates-change-head {
   gap: 0.2rem;
 }
 
-.suite-bk-backup-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--mos-space-2);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.suite-bk-backup-controls label {
-  margin: 0;
-}
-
-/* One destination: the radio that chooses it, what it is and how it is doing,
-   and at most one button with a More menu. Three zones, always in the same
-   three positions. The shared panel item supplies the inset and the rule. */
-.suite-bk-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--mos-space-3);
-}
-
-.suite-bk-row-body {
-  display: grid;
-  gap: 0.3rem;
-  min-width: 0;
-}
-
-.suite-bk-row-title {
+/* A place in the restore list is a whole-row disclosure; its name and chip sit
+   on one line above its summary. */
+.suite-bk-group-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-}
-
-.suite-bk-row-title strong {
-  font-size: var(--mos-text-body-lg);
-}
-
-.suite-bk-row-icon {
-  display: flex;
-  flex: none;
-  color: var(--mos-color-text-muted);
-}
-
-.suite-bk-row.is-ready .suite-bk-row-icon,
-.mos-panel-item-selected .suite-bk-row-icon {
-  color: var(--mos-color-accent);
-}
-
-.suite-bk-row-icon .suite-icon {
-  width: 1.15rem;
-  height: 1.15rem;
-}
-
-.suite-bk-kind {
-  color: var(--mos-color-text-muted);
-  font-size: 0.9rem;
-}
-
-.suite-bk-row-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--mos-space-2);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-/* Selecting a place is the one consequential choice on the page, so it is a
-   radio: one of these, and picking another moves it. */
-.suite-bk-radio {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  margin-top: 0.25rem;
-  padding: 0;
-  border: 2px solid var(--mos-color-surface-border);
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.suite-bk-radio > span {
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.mos-panel-item-selected .suite-bk-radio {
-  border-color: var(--mos-color-accent);
-}
-
-.mos-panel-item-selected .suite-bk-radio > span {
-  background: var(--mos-color-accent);
-}
-
-.suite-bk-radio:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.suite-bk-selected-note {
-  margin: 0;
-  color: var(--mos-color-accent);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-/* What opens this one, said on the row rather than in a sentence that
-   disappears on reload. */
-.suite-bk-keyline {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45rem;
-  margin: 0;
-  color: var(--mos-color-accent);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.suite-bk-keyline.is-warning {
-  color: var(--mos-color-warning);
-}
-
-.suite-bk-keyline .suite-icon {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.2rem;
-}
-
-.suite-bk-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.55rem;
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-  color: var(--mos-color-text-muted);
-  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
-  backdrop-filter: var(--mos-frost-filter-backdrop);
-}
-
-.suite-bk-chip.is-guest {
-  border-color: var(--mos-color-info-border);
-  color: var(--mos-color-info);
-}
-
-/* A place in the restore list is a whole-row disclosure, so the item is flush
-   and the button carries the inset. */
-.suite-bk-group-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: var(--mos-panel-pad);
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-group-head:disabled {
-  cursor: default;
-}
-
-.suite-bk-group-head:hover:not(:disabled) {
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-bk-group-name {
-  display: grid;
-  gap: 0.15rem;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.suite-bk-group-name > span:first-child {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.suite-bk-group-key {
-  flex: none;
-  color: var(--mos-color-text-muted);
-  font-size: 0.8rem;
 }
 
 .suite-bk-chevron {
@@ -3827,23 +4079,8 @@ button.suite-updates-change-head {
   cursor: pointer;
 }
 
-/* History, not a decision, so it is last and closed. The head is the whole
-   row, so it carries the panel's inset itself. */
-.suite-bk-activity-head {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: var(--mos-panel-pad);
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-activity-head .suite-bk-detail {
+/* History, not a decision, so it is last and closed. */
+.suite-bk-activity-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3859,54 +4096,6 @@ button.suite-updates-change-head {
   grid-template-columns: minmax(9rem, auto) minmax(0, 1fr);
   gap: var(--mos-space-3);
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-/* Choosing a kind of destination, in the wizard and in the empty state. */
-.suite-bk-kinds {
-  display: grid;
-  gap: var(--mos-space-3);
-}
-
-.suite-bk-kind-card {
-  display: grid;
-  gap: 0.35rem;
-  padding: var(--mos-space-4);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suite-bk-kind-card:hover,
-.suite-bk-kind-card.is-picked {
-  border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-accent-soft);
-}
-
-.suite-bk-kind-card > span:first-child {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.suite-bk-kind-card > span:first-child strong {
-  font-size: var(--mos-text-body-lg);
-}
-
-.suite-bk-kind-card > span:first-child .suite-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  color: var(--mos-color-accent);
-}
-
-.suite-bk-kind-card > span:last-child {
-  color: var(--mos-color-text-muted);
   font-size: 0.9rem;
   line-height: 1.55;
 }
@@ -3969,24 +4158,9 @@ button.suite-updates-change-head {
   color: var(--mos-color-text-muted);
 }
 
-/* A restore takes the page over: nothing else on it is true while the machine
+/* A restore takes the page over: nothing else on it is true while the server
    is being replaced. */
-.suite-bk-bar {
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--mos-color-surface-border);
-  overflow: hidden;
-}
-
-.suite-bk-bar > span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--mos-color-accent);
-  transition: width 400ms ease;
-}
-
-.mos-panel-head .suite-bk-bar {
+.suite-bk-progress {
   margin-top: 0.5rem;
   max-width: 24rem;
 }
@@ -4073,30 +4247,12 @@ button.suite-bk-group {
 }
 
 @media (max-width: 47.9375rem) {
-  .suite-bk-row {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .suite-bk-row-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-
   .suite-bk-banner-action {
     justify-items: stretch;
     text-align: left;
     width: 100%;
   }
 
-  .suite-bk-backup-controls {
-    justify-content: stretch;
-  }
-
-  .suite-bk-backup-controls .mos-btn {
-    flex: 1 1 auto;
-  }
-
-  .suite-bk-group-key,
   .suite-bk-point-label {
     display: none;
   }

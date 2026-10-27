@@ -33,8 +33,8 @@ rely on. Those three are contracts now, and the theme stays for what the gate ne
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
 disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path
 (`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the items below, which
-the gate never covered: a backup taken before an update without being asked, and a cleanup story for
-volumes MOS does not own.
+the gate never covered: a cleanup story for volumes MOS does not own, and a replacement machine
+taking the address of the one it replaces.
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
@@ -45,10 +45,6 @@ restore from a real provider (`docs/decisions.md`, 2026-09-06). The owner holds 
 all of it, and a replacement machine can take over a destination the original wrote (`docs/decisions.md`,
 2026-09-07).
 
-- **A4 — Pre-update backups and last-known-good protection.** `#282`. Built and unit-covered
-  (`docs/decisions.md`, 2026-09-09): a MOS update takes a backup of the whole suite first, waits
-  rather than fails when the destination is not connected, and the two queues now refuse each other.
-  Open only until the lab drill confirms it end to end. *(Small)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
@@ -65,9 +61,11 @@ all of it, and a replacement machine can take over a destination the original wr
 domain, and "what if myownsuite.org disappears" has a published answer.
 
 - **B1 — Sign the rest of the baseline, and make AI the change detector.** The first-entry half is
-  established: `skills/human-privacy-review` is the written procedure, a review records
-  `humanReviewed` and a named reviewer, and the packages that entered the catalog most recently were
-  signed before they shipped. Two things are unfinished. Half the catalog — ONLYOFFICE, Seafile,
+  established: `skills/human-privacy-review` is the written procedure, a review records its
+  `lastHumanReview` (who, when, which app version) apart from the AI work that follows it, an update
+  that changes what happens to owners' data publishes the finding in `awaitingHumanReview` without
+  holding the update back, and the packages that entered the catalog most recently were signed
+  before they shipped. Two things are unfinished. Half the catalog — ONLYOFFICE, Seafile,
   Stirling PDF and Vaultwarden — still publishes assessments no human has signed, which the site
   discloses honestly and which is still a discoverable gotcha on the most differentiated feature in
   the product; two of the four are reruns rather than signatures, because a capture taken since
@@ -75,7 +73,7 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   re-authors the whole assessment from scratch, when it should be reviewed as a **diff against the
   last signed review** — the work AI is genuinely good at, the part that does not scale by hand, and
   the only thing standing between an upstream policy change and a published grade that moves with no
-  human in the loop. Anything the diff surfaces goes back to a human before the grade moves. Needs
+  human in the loop. Needs
   `assess-app-privacy` split into first-entry and update-diff modes, and a provenance field recording
   which one ran. *(Medium)*
 - **B2 — Get the MOS zone onto the Public Suffix List.** `#192`. The zone is operated now and the
@@ -85,7 +83,7 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   load-bearing for the whole own-hardware path, because without the listing one install's suite can
   set cookies another install's suite reads, and every Easy Door certificate draws on Let's Encrypt's
   fifty-certificates-per-registered-domain budget for all of `myownsuite.org`; the listing makes that
-  budget per LAN address. The entry is a pull request against `publicsuffix/list`
+  budget per install. The entry is a pull request against `publicsuffix/list`
   that then waits on browser release cycles, so the lead time is months and it has to start early —
   and the PSL guidelines decline beta-stage projects, so the submission needs the project to look
   like something first. The remaining non-PSL work is disclosure: MOS receives the queries, and the
@@ -130,7 +128,7 @@ act on.
   cannot run the advertised Seafile + ONLYOFFICE pair. Also rewrites getting-started's overspecific
   "roughly the price of the subscriptions you're replacing" line. Must cover **disk capacity**, not
   only CPU and RAM: nothing in the docs currently says how much storage a plan includes, block storage
-  is billed per GB at every provider, and app data cannot be moved off the root disk today — so a
+  is billed per GB at every provider, and only an app's own folders can move off the root disk — so a
   reader arriving from Google Photos has no way to predict either the size or the bill. This is where
   own hardware is the honest answer for large libraries. *(Small)*
 - **C3 — App-install duration expectations.** `#235`. First installs of heavy apps take up to ~10
@@ -141,17 +139,10 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C8 — Say how long a backup check or restore takes, and show it happening.** `#280`. A check
-  and a restore each run 10–20 minutes on ordinary hardware, the only expectation set is "a long
-  time", and for most of a restore the owner is looking at the static busy page, which knows nothing.
-  The agent already logs every stage with a timestamp; what is missing is an estimate before the
-  owner commits, live stages on the busy page, and a per-phase progress indicator. The measured
-  lesson: restore time is dominated by rebuilding app images, not by gigabytes. *(Medium)*
-- **C9 — Say why a pasted package URL could not be fetched.** When the repository behind a
-  pasted source URL answers 404 or cannot be reached, Suite Manager already has the sentence (the
-  HTTP status and the host) but files it as an internal fault, so the owner is shown "Internal
-  server error" and a reference they cannot act on. A fetch failure is the owner's to fix and should
-  be answered in its own words; the reference stays for faults that really are MOS's. *(Small)*
+- **C10 — A stopped app answers honestly at its own address.** An app paused by its drive already
+  says so (the per-address page in `/etc/caddy/mos-status/apps/`). Every other down app still gets
+  Suite Manager's "busy right now" page: a failed update should say so with the action that fixes
+  it, and a crash a plain "this app is stopped", through the same page mechanism. *(Small)*
 
 ### H. Install media people can just flash
 
@@ -167,12 +158,6 @@ theme retires.
 2026-08-16 decision records the contract. What is left in this theme is the part an image cannot fix
 on its own: machines that install but will not boot, and reaching the suite once it is running.
 
-- **H10 — The installer writes no boot entry for the disk it just wrote.** `mos-image-finalize` uses
-  `grub-install --removable`, which is right for a stick and leaves a fixed disk depending on firmware
-  that tries `EFI/BOOT/BOOTX64.EFI` on its own. The ones that do not say *no bootable drive* with the
-  stick out and boot normally with it in — which reads as a failed install and is what the multi-disk
-  picker now makes more likely, since the firmware has more disks to guess between. `mos-self-install`
-  should add an `efibootmgr` entry for the disk it wrote. *(Small)*
 - **H9 — Re-render app routes when the machine's address changes.** The Easy Door name encodes the LAN
   IP. Suite Manager survives a DHCP move because its site block matches any private address, but every
   installed app's route names one exact host and is only re-rendered when that app is next applied — so
@@ -188,20 +173,19 @@ on its own: machines that install but will not boot, and reaching the suite once
   in the owner's browser and the onboarding screen has to react to what it finds. The banner's
   standing advice — no answer on the second address means your router refuses names pointing into
   your own network, use the first — is the fallback this replaces, not a stopgap to remove. *(Small)*
-- **H8 — Trusted HTTPS with no domain to buy.** A self-hosted suite serves plain HTTP, so the owner
-  password is first set over an unencrypted connection and secure-origin apps do not work at all.
-  Promoted out of the alpha gate: it is not hardening, it is the only entry door that half the
-  audience has. **The address half has landed** — the box answers on
-  `home.<lan-ip-with-dashes>.local.myownsuite.org` and serves every installed app under the same
-  base, `http://home.mos.home` stays the recovery door, and applying a real domain closes it; the
-  contract is in `docs/decisions.md`. It left two things behind: rebinding protection, which belongs
-  to **H7**, and address instability, which is **H9**.
-
-  **The certificate half is built** (decision 2026-10-03): one wildcard per box through a token-only
-  ACME responder, and the suite switches to HTTPS by itself. The gate is the rest: the responder
-  Droplet and its two parent-zone records live, an issuance against Let's Encrypt staging and then
-  production from the lab box, the lab drills, and the Let's Encrypt rate-limit adjustment request
-  filed. *(Large)*
+- **H11 — Install the published image in the release gate.** `bake.sh verify` boots the image as an
+  internal disk, so `mos-self-install` sees an installed machine and steps aside: the USB install path
+  — disk picker, ERASE, copy, restart onto the internal disk — never runs before a download is
+  published. QEMU can attach the image as removable USB storage (`usb-storage,removable=on`), so the
+  gate can install onto a blank disk, boot it without the stick and require Suite Manager to answer,
+  then install again over that machine, the reinstall case `AGENTS.md` rule 8 guards. Real hardware
+  stays the release's last check, for firmware quirks no VM reproduces. *(Medium)*
+- **H12 — Stop answering Easy Door names without an install id, at 1.0.** Since 0.23.0 every server's
+  name carries its own id (`docs/decisions.md`, 2026-10-23), and the nameserver and ACME responder
+  still answer the shared names 0.22 servers were given, so a server that has not updated keeps its door
+  and its renewals. At 1.0 the Corefile's pre-0.23 templates and the responder's `PRE_ID_LABEL` go,
+  `TOKENS_PER_NAME` drops to two, and Let's Encrypt is told the shared names are gone. A suite still
+  published on an old name loses it then, so the 1.0 notes say to press Move first. *(Small)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
@@ -217,18 +201,13 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL2 — Encryption at rest for own-hardware installs.** `#278`. Decided and built
-  (`docs/decisions.md`, 2026-09-18): a plaintext system partition, everything of the owner's in a
-  TPM-sealed LUKS2 vault, the key handed over at setup beside the server login, a page that asks for
-  it when the chip refuses, and an optional switch that makes the chip demand the owner's password
-  after every restart. Open until the lab drills pass: first boot on a machine with a TPM and one
-  without, a power cut in each mode, a wrong key, a wrong password until the chip locks out, a
-  password change in password mode, the disk moved to another machine, a takeover restore onto a
-  machine that has a vault, a firmware setting changed so the chip refuses and the machine re-seals
-  itself after one key entry, the locked page served over HTTPS with a 40-character password accepted
-  end to end, and the two that prove the theft claim — boot a signed live USB, and edit the plaintext
-  root offline and boot it back, in both modes, recording that both succeed in the default one so the
-  claim made there is written from evidence. *(Small)*
+- **AL2 — Finish the vault's lab drills.** The vault shipped in 0.21.0 (`docs/decisions.md`, 2026-09-18)
+  and held through the 2026-10-02 drill on the HP and a production restore onto it. Still owed: first
+  boot on a machine without a TPM, a power cut in each mode, a wrong key, a wrong password until the
+  chip locks out, a password change in password mode, the disk moved to another machine, a takeover
+  restore onto a machine that has a vault, a firmware change the machine re-seals itself after, the
+  locked page over HTTPS with a 40-character password, and the two that prove the theft claim — boot a
+  signed live USB, and edit the plaintext root offline and boot it back, in both modes. *(Small)*
 - **AL13 — The five owner-facing decisions the vault slice left open.** Each one is a small change
   whose shape is a choice rather than a fix, raised by the 2026-09-25 branch review and deliberately
   not built with it. (a) The handover page currently offers Ubuntu recovery mode as the way back
@@ -260,10 +239,11 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-C — Storage
 
-- **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so
-  the system disk is the ceiling and attaching a larger volume does nothing for it. Documented as a
-  manual pre-install mount for now (`cloud-server.mdx`), which does not help an existing install and
-  cannot vary per app. The durable answer is MOS choosing where each app's volumes live. *(Large)*
+- **AL8 — Per-app volume placement.** Since 0.23.0 an app's own folders live on a drive the owner
+  picks (`docs/decisions.md`, 2026-10-17), which is where a media library belongs. Everything else an
+  app keeps, such as its database and configuration, still lives on whichever disk the container
+  runtime uses, so for those the system disk is the ceiling. The durable answer is MOS choosing where
+  each app's volumes live. *(Large)*
 
 ### AL-U — App updates
 
@@ -298,9 +278,9 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
-artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers ·
-**H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become the bar.
+**B1** human sign-off on privacy reviews · **E3** signed release and installer
+artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers. Alpha is
+where these stop being roadmap and become the bar.
 
 ---
 
@@ -364,15 +344,6 @@ the update or install path requires SSH.
   the default bridge. MOS enforces strictly at the gate and not at all at runtime; doing both is
   achievable and unmatched among comparable platforms. *(Large)*
 
-### G. Ops hygiene
-
-**Gate:** the claim-drift class the July 2026 audit found cannot recur silently.
-
-- **G1 — Automated stale-wording checks for active documentation.** `#224`. The audit's core finding
-  was that claims outlived the facts and lived in more places than the facts did. *(Small)*
-- **G2 — Site link, accessibility, and clean-build checks in CI.** `#225`. Clean-build landed with the
-  deployment cutover; links and a11y did not. *(Small)*
-
 ---
 
 ## Later — Bets and deferred
@@ -402,6 +373,13 @@ the update or install path requires SSH.
   anything on it. The role is theatre until MOS has a unified sign-in story, and the SSO and LDAP
   forms of that are declined below. Blocked on that question being reopened, not on any work here.
   *(Medium — blocked)*
+- **L11 — Move files between drives.** The files screen's Move dialog shows "Another drive" as
+  *Later*: it needs the app agent's first long-running copy job, with progress, crash sweeps and
+  both drives held for its length, which a within-drive rename never did. Waits until the drive
+  features have had months of real use (#336). *(Medium)*
+- **L12 — A bucket as a shared media library.** Storage rented online holding a library an app
+  reads, so a few friends can share one: a mounted bucket beside the drive model, kept apart from
+  any backup bucket. The storage module was shaped so this fits; it waits with L11. *(Large)*
 
 ---
 
@@ -482,8 +460,8 @@ Owner decisions. Future agents and reviews should not resurface these.
   *not* the reason, because MOS owns the app lifecycle and could publish a record per app on install.
 - **MOS shipping its own LAN DNS resolver** — declined. It adds nothing for owners already running a
   resolver, and buying the router-only case costs an always-on service, a `systemd-resolved` port
-  conflict, and a failure mode where the box going down takes the household's DNS with it. **H8**
-  reaches the same owners without any of that.
+  conflict, and a failure mode where the box going down takes the household's DNS with it. The Easy
+  Door reaches the same owners without any of that.
 - **A bare-IP catch-all as the answer to reachability** — declined as a solution, though it may still
   ship as a convenience. It fixes first contact and nothing after it: `seafile.192.168.123.45` cannot
   exist, so the first app an owner installs puts them back where they started.
@@ -491,7 +469,7 @@ Owner decisions. Future agents and reviews should not resurface these.
   now. It is free and gives stable names that survive a DHCP change, but it is security-sensitive code
   holding a credential that can edit a DNS zone, against a stateless nameserver with no code to audit
   and no credential to lose. It stays the documented upgrade path if name instability annoys real
-  testers, and **H8**'s certificate half may force a narrow version of it regardless.
+  testers.
 - **Hosting authoritative DNS on Railway, Cloudflare Workers, or any PaaS** — impossible, verified,
   not a budget question. Recursive resolvers query authoritative servers over plain UDP/53 and need a
   static inbound address; DNS-over-HTTPS is a stub-to-resolver protocol and does not substitute. This
@@ -539,6 +517,14 @@ Owner decisions. Future agents and reviews should not resurface these.
   and buy nothing for the apps that replay their own migration history, which is most of them. **AL9**
   takes the correctness half by refusing a jump the app cannot survive. Reopen only as a published
   waypoint package for a named app that genuinely demands one.
+- **Shared cross-app library folders** — declined (2026-10-17) in favor of per-app external
+  folders: the manifest declares an app's exposed folders, MOS creates
+  `MOS-files/apps/<app>/<folder>` on the owner-chosen drive and mounts them, and moving files
+  between apps is the owner's explicit file move. A folder shared by default invites surprise
+  cross-app effects — a kids' app showing the whole collection, metadata sidecar conflicts —
+  for a deduplication benefit nobody asked for. The one cross-app mechanism is a future
+  connector write-grant (radarr-style, one app writing into another's folder). Do not re-raise
+  shared library instances.
 
 ---
 

@@ -7,6 +7,21 @@ export const STEPS = {
   owner: { arg: 'none', budgetMinutes: 4, describe: 'Create the owner, or sign in, and answer the terms and handover gates.' },
   homepage: { arg: 'none', budgetMinutes: 6, describe: 'Add a website and a home-network app to Homepage, to look for after a restore.' },
   'homepage-check': { arg: 'none', budgetMinutes: 4, describe: 'The Homepage entries `homepage` added are still there.' },
+  drive: { arg: 'filesystem', budgetMinutes: 2, describe: 'Give the lab a drive for apps that keep files on one, unless it has one already: a FAT32 disk image on a loop device, or NTFS for `drive:ntfs`.' },
+  'drive-pull': { arg: 'none', budgetMinutes: 8, describe: "Pull the apps' drive out without ejecting it and plug it back in; an NTFS drive must come back read-only with its apps running on it." },
+  'drive-check': { arg: 'none', budgetMinutes: 15, describe: 'Check the read-only drive from Settings, and wait until it works read-write with its apps running.' },
+  'drive-eject': { arg: 'none', budgetMinutes: 10, describe: 'Eject the drive from Settings, unplug it and plug it back in; it must come back working with no check.' },
+  'power-cut': { arg: 'none', budgetMinutes: 15, describe: 'Reset the lab on the spot with the drive mounted, as a power cut would; an NTFS drive must come back read-only with its apps running.' },
+  'drive-files': { arg: 'none', budgetMinutes: 30, describe: "In the files screen of the apps' drive: make a folder, add a multi-GB file while the connection is cut twice, download it back byte for byte, rename it, move it, and delete the lot." },
+  'drive-files-read-only': { arg: 'none', budgetMinutes: 5, describe: "The apps' drive needs a check: its files can be browsed and downloaded, and every change is refused." },
+  'drive-files-live': { arg: 'none', budgetMinutes: 10, describe: "Eject the apps' drive under an open files screen, which closes, then plug it back in, and the screen opens again without a reload." },
+  'drive-files-leftovers': { arg: 'none', budgetMinutes: 5, describe: 'The folder an uninstalled app left on a drive is listed last and greyed in the apps folder, and deleting it whole from its row gives the space back.' },
+  'drive-found': { arg: 'none', budgetMinutes: 8, describe: "A drive MOS was never told about, holding another server's backups, is opened on sight when plugged in: Storage says what it holds and Backups lists them, with no claim made." },
+  'erase-other-archive': { arg: 'none', budgetMinutes: 10, describe: "Plant another server's archive beside this run's disk backup and erase it from Backups: it goes from the list and the drive, and this server's own backups beside it stay." },
+  'drive-away': { arg: 'none', budgetMinutes: 12, describe: "Back up to a spare drive from Back up now and pull it: the drive and its backups leave Storage and Backups, and plugged back in they are listed again as this server's." },
+  'rename-storage': { arg: 'none', budgetMinutes: 6, describe: 'Rename the backup drive and a spare drive in Settings → Storage: Backups and the picker use the new names, and an empty name gives a drive its own label back.' },
+  'use-again': { arg: 'none', budgetMinutes: 10, describe: "Eject the apps' drive and bring it back with Use it again on its row, no cable touched: it is ready read-write and its apps run." },
+  reboot: { arg: 'none', budgetMinutes: 15, describe: "Restart the lab; every drive open before is open again, with the same app folders, uninstalled apps' included." },
   dns01: { arg: 'none', budgetMinutes: 10, describe: 'Move the suite to the DNS-01 domain in test/e2e/.env; later steps use its https address.' },
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },
   app: { arg: 'app', budgetMinutes: 20, describe: "Open the app from its Homepage tile and run the app's own journey." },
@@ -18,8 +33,10 @@ export const STEPS = {
   connect: { arg: 'none', budgetMinutes: 5, describe: 'Connect every installed app to the installed providers it can use.' },
   installed: { arg: 'apps', budgetMinutes: 1, describe: 'Exactly these apps are installed (comma-separated; `installed:` alone means none).' },
   absent: { arg: 'app', budgetMinutes: 1, describe: 'The app is not installed.' },
+  uninstall: { arg: 'app', budgetMinutes: 3, describe: 'Uninstall the app; folders it kept on a drive stay there.' },
   backup: { arg: 'destination', budgetMinutes: 25, describe: 'Back up now, to the backup disk (`backup`) or to a new folder in the lab bucket (`backup:bucket`).' },
   restore: { arg: 'destination', budgetMinutes: 30, describe: "Restore this run's latest backup. `restore:bucket` first disconnects and reconnects the bucket, and opens it with the saved recovery key if it is locked." },
+  takeover: { arg: 'none', budgetMinutes: 35, describe: "Find this run's latest disk backup beside a copy only another server's key opens: listed apart and locked, opened with that key but not changeable, and restoring from it makes this server that one, with its key and the drive." },
   'platform-update': { arg: 'wait', budgetMinutes: 50, describe: 'Apply the platform update the lab track offers. `platform-update:wait` waits up to 40 minutes for the track to move first.' },
   diagnostics: { arg: 'none', budgetMinutes: 8, describe: 'Export the diagnostics file and check it for leaked secrets, crashes and missing sections.' },
   marketing: { arg: 'none', budgetMinutes: 10, describe: 'Refresh the public site screenshots from the installed suite.' },
@@ -29,6 +46,7 @@ export const STEPS = {
 };
 
 const DESTINATIONS = new Set(['local', 'bucket']);
+const FILESYSTEMS = new Set(['ntfs']);
 
 const feeds = (provider, consumer) => (provider.provides || []).some((type) => (consumer.accepts || []).includes(type));
 
@@ -65,6 +83,31 @@ export const NAMED_PATHS = {
       const group = appGroup(app, catalog);
       return ['reset', 'owner', ...installTogether(group), 'backup:bucket', 'reset', 'owner', 'restore:bucket', ...each('verify', group), 'routes', 'network', 'cleanup'];
     },
+  },
+  'drive-drills': {
+    app: true,
+    describe: "The app on an NTFS drive through what real life does to one: pulled without ejecting, checked, ejected, a power cut, and a restart after it is uninstalled, its files still there after each.",
+    build: (app) => [
+      'reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`,
+      'drive-pull', `verify:${app}`, 'drive-check', `verify:${app}`,
+      'drive-eject', `verify:${app}`,
+      'power-cut', `verify:${app}`, 'drive-check',
+      `uninstall:${app}`, 'reboot',
+    ],
+  },
+  'drive-files': {
+    app: true,
+    describe: "The files screen on the app's NTFS drive: browse, add, download, rename, move and delete, then read-only, ejected and replugged under an open screen, and the folders it leaves when uninstalled.",
+    build: (app) => [
+      'reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`,
+      'drive-files', 'drive-pull', 'drive-files-read-only', 'drive-check', 'drive-files-live',
+      `uninstall:${app}`, 'drive-files-leftovers',
+    ],
+  },
+  'drive-dr': {
+    app: true,
+    describe: "The storage story: the app's files on an NTFS drive and its data in a disk backup, a reset lab restored from that backup finds its files on the drive again, a copy of that backup only another server's key opens is taken over, and then another server's archive is erased, a spare backup drive forgotten, drives renamed, and the apps' drive ejected and used again.",
+    build: (app) => ['reset', 'owner', 'drive:ntfs', `install:${app}`, `app:${app}`, 'backup', 'reset', 'owner', 'restore', `verify:${app}`, 'drive-found', 'takeover', 'erase-other-archive', 'drive-away', 'rename-storage', 'use-again', 'routes', 'network', 'cleanup'],
   },
   update: {
     app: true,
@@ -135,6 +178,8 @@ function checkStep(step, catalogIds) {
       return arg === null || DESTINATIONS.has(arg) ? null : `${step.name}:${arg} is not a destination (local or bucket).`;
     case 'wait':
       return arg === null || arg === 'wait' ? null : `${step.name} takes only :wait.`;
+    case 'filesystem':
+      return arg === null || FILESYSTEMS.has(arg) ? null : `${step.name} takes only :ntfs.`;
     default:
       return null;
   }
@@ -142,6 +187,8 @@ function checkStep(step, catalogIds) {
 
 // Expands named paths, checks every token, and puts `dns01` in front of the first
 // step that needs HTTPS for an app that requires it, since a reset drops the domain.
+// Likewise `drive` goes in front of the first install of an app that keeps files on
+// a drive; a reset leaves the drive attached, so once is enough.
 // A cloud server serves HTTPS from its first address, so `startsSecure` runs need no
 // dns01, and a reset returns them to HTTPS rather than to plain HTTP.
 export function resolvePath(items, catalog, { backupTo = null, eachApp = null, startsSecure = false } = {}) {
@@ -193,6 +240,7 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
 
   const steps = [];
   let secure = startsSecure;
+  let drive = false;
   for (const token of tokens) {
     const step = toLabDestination({ ...parseToken(token), token }, backupTo);
     const problem = checkStep(step, catalogIds);
@@ -202,8 +250,13 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
     }
     if (step.name === 'reset') secure = startsSecure;
     if (step.name === 'dns01') secure = true;
+    if (step.name === 'drive') drive = true;
+    if (!drive && step.name === 'install' && byId.get(step.arg)?.keepsFilesOnDrive) {
+      steps.push({ arg: null, auto: 'the app keeps its files on a drive', name: 'drive', token: 'drive' });
+      drive = true;
+    }
     if (!secure && STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps) {
-      steps.push({ arg: null, auto: true, name: 'dns01', token: 'dns01' });
+      steps.push({ arg: null, auto: 'the app needs HTTPS', name: 'dns01', token: 'dns01' });
       secure = true;
     }
     steps.push(step);

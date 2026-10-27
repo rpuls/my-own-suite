@@ -4,8 +4,11 @@ MOS serves each app on its own subdomain, which is a browser-origin isolation bo
 ordinary LAN nothing resolves those names, so an owner who finishes an install has no way in unless
 they run their own resolver. This box is the second door: a public authoritative nameserver that
 answers queries for names encoding the server's **LAN** address, so
-`seafile.192-168-123-45.local.myownsuite.org` resolves to `192.168.123.45` on any device with no
-configuration by the owner.
+`seafile.123-45-kqmzrt.local.myownsuite.org` resolves to `192.168.123.45` on any device with no
+configuration by the owner. 192.168.c.d is written `c-d` and the other private ranges keep all four
+numbers; the six letters after them are the install's own id, which tells two households on one
+address apart and is ignored here. Until 1.0 the pre-0.23 names, all four numbers and no id
+(`seafile.192-168-123-45.local.myownsuite.org`), are answered too (roadmap H12).
 
 The first door — one wildcard `*.mos.home` rule in the owner's own Pi-hole, AdGuard, Unbound or
 OpenWRT — does not involve this box, does not depend on it, and keeps working if it disappears.
@@ -29,9 +32,9 @@ the vector, because an attacker would need the victim already on their LAN, wher
 options anyway.
 
 **One name is not stateless, and it does not live here.** A box's wildcard certificate is proved
-with a DNS-01 TXT record at `_acme-challenge.<a>-<b>-<c>-<d>.local.myownsuite.org`, and this zone holds no
+with a DNS-01 TXT record at `_acme-challenge.<label>.local.myownsuite.org`, and this zone holds no
 state. So that one name, for the same three RFC1918 ranges, is answered with a CNAME derived from the
-name, exactly as the A answer is, into `<a>-<b>-<c>-<d>.acme.myownsuite.org`. The token itself lives
+name, exactly as the A answer is, into `<label>.acme.myownsuite.org`. The token itself lives
 on the ACME responder (`infrastructure/acme-responder/`), a separate box with its own delegation.
 This one still writes nothing and holds nothing.
 
@@ -142,7 +145,7 @@ CNAME for every type, a name that exists returning NODATA
 rather than NXDOMAIN for AAAA, the apex SOA, and recursion being refused. The equivalent with `dig`:
 
 ```bash
-dig @<reserved-ip> seafile.192-168-123-45.local.myownsuite.org +short   # -> 192.168.123.45
+dig @<reserved-ip> seafile.123-45-kqmzrt.local.myownsuite.org +short   # -> 192.168.123.45
 dig @<reserved-ip> login.203-0-113-9.local.myownsuite.org +short      # must be empty
 dig @<reserved-ip> google.com                                         # must be REFUSED
 ```

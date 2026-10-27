@@ -21,16 +21,18 @@ a.link { color: var(--mos-color-accent); font-weight: 700; }
 .site-header-inner {
   display: flex; align-items: center; gap: var(--mos-space-6);
   height: 4.6rem; margin-top: 0.9rem;
-  padding: 0 var(--mos-space-5);
+  padding: 0 var(--mos-space-7);
   border: var(--mos-border-strong); border-radius: var(--mos-radius-pill);
   background: var(--mos-color-frost); box-shadow: var(--mos-shadow-soft);
   -webkit-backdrop-filter: var(--mos-frost-filter); backdrop-filter: var(--mos-frost-filter);
 }
 .brand { display: flex; align-items: center; gap: var(--mos-space-3); }
 .site-nav { display: flex; gap: var(--mos-space-5); margin-left: var(--mos-space-4); }
-.site-nav a { color: var(--mos-color-text-muted); font-weight: 600; font-size: 0.95rem; }
-.site-nav a:hover { color: var(--mos-color-text-strong); }
-.site-header-actions { margin-left: auto; display: flex; align-items: center; gap: var(--mos-space-3); }
+.site-nav a, .site-header-actions a { color: var(--mos-color-text-muted); font-weight: 600; font-size: 0.95rem; }
+.site-nav a:hover, .site-header-actions a:hover { color: var(--mos-color-text-strong); }
+.site-header-actions { margin-left: auto; display: flex; align-items: center; gap: var(--mos-space-5); }
+.site-header-actions a { display: inline-flex; align-items: center; gap: 0.45rem; }
+.site-header-actions svg { display: block; }
 
 /* Hero */
 .hero { padding: clamp(3rem, 8vh, 6rem) 0 clamp(2rem, 5vh, 3.5rem); }
@@ -150,7 +152,6 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--mos-space-5); }
 .step { padding: var(--mos-space-6); display: grid; gap: var(--mos-space-3); align-content: start; }
 .step .num { font-size: 2.2rem; font-weight: 800; color: var(--mos-color-accent); line-height: 1; letter-spacing: -0.03em; }
-.install-line { margin-top: var(--mos-space-6); }
 .cmd {
   display: flex; align-items: center; gap: var(--mos-space-3);
   padding: var(--mos-space-4) var(--mos-space-5); border: var(--mos-border-subtle);
@@ -172,19 +173,19 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
 .cmd-copy.copied { color: var(--mos-color-accent); }
 .cmd-copy.copied .icon-copy { display: none; }
 .cmd-copy.copied .icon-check { display: block; }
+.hero-install {
+  display: grid; justify-items: center; gap: var(--mos-space-3);
+  margin-top: clamp(2.5rem, 5vh, 3.5rem); padding-top: var(--mos-space-6); border-top: var(--mos-border-subtle);
+}
+.hero-install .cmd { max-width: 100%; padding: var(--mos-space-3) var(--mos-space-4); font-size: 0.9rem; }
+.hero-install p { margin: 0; text-align: center; }
 
 /* Catalog — max 4 cards visible per page */
 .catalog { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--mos-space-4); }
 .app { padding: var(--mos-space-5); display: grid; gap: var(--mos-space-3); align-content: start; }
 .app-top { display: flex; align-items: center; gap: var(--mos-space-3); }
-.app-ico {
-  display: grid; place-items: center; width: 3rem; height: 3rem; flex: 0 0 auto;
-  border-radius: var(--mos-radius-sm); overflow: hidden;
-  background: var(--mos-color-surface-strong); color: #fff; font-weight: 800; font-size: 0.9rem;
-}
-/* Icons ship with inconsistent internal padding (some touch the PNG
-   edges), so the tile always adds breathing room of its own. */
-.app-ico img { display: block; width: 74%; height: 74%; object-fit: contain; }
+/* Size only: the plate itself is the shared .mos-app-icon. */
+.app-ico { width: 3rem; height: 3rem; }
 .app h3 { margin: 0; font-size: 1.15rem; color: var(--mos-color-text-strong); }
 .app .replaces { color: var(--mos-color-text-muted); font-size: 0.86rem; }
 .together {
@@ -233,8 +234,19 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
 /* Install paths */
 .paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--mos-space-4); }
 .byo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--mos-space-4); max-width: 64rem; margin-inline: auto; }
-.path { padding: var(--mos-space-6); display: grid; gap: var(--mos-space-3); align-content: start; }
+/* The band is the card's one headline, so it sits a step above the band's remark size. */
+.byo-card h3 { margin: 0; font-size: 1.05rem; }
+/* The list takes the spare height so both cards' links line up on the bottom edge. */
+.byo-card { grid-template-rows: auto 1fr; }
+.byo-card .mos-panel-body { grid-template-rows: 1fr auto auto; }
+.byo-card ul { margin: 0; padding-left: 1.1rem; color: var(--mos-color-text-muted); display: grid; gap: 6px; font-size: 0.92rem; align-self: start; }
+.byo-card .mos-link { font-size: 0.92rem; }
+/* A column so the card's exit link can sit on the bottom edge whatever the copy length above it. */
+.path { padding: var(--mos-space-6); display: flex; flex-direction: column; gap: var(--mos-space-3); }
+.path > :last-child { margin-top: auto; }
 .path h3 { margin: 0; font-size: 1.2rem; color: var(--mos-color-text-strong); }
+/* Grid items stretch by default, which turned every pill into a full-width bar. */
+.path > .mos-pill, .path > .mos-badge { align-self: flex-start; }
 .path ul { margin: var(--mos-space-2) 0 0; padding-left: 1.1rem; color: var(--mos-color-text-muted); display: grid; gap: 6px; font-size: 0.92rem; }
 .path.coming { opacity: 0.92; }
 
@@ -345,11 +357,8 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-hero-top { display: flex; justify-content: flex-end; gap: var(--mos-space-2); padding: var(--mos-space-4); }
 /* No bottom padding: the body's own top padding is the whole gap. */
 .app-drawer-hero-bottom { display: grid; align-content: end; justify-items: start; gap: var(--mos-space-3); padding: var(--mos-space-5) var(--mos-space-6) 0; }
-/* Package icons are drawn for light backgrounds, so the logo keeps a light
-   tile of its own over the screenshot. */
 .app-drawer-hero .app-ico {
-  width: 4.25rem; height: 4.25rem; border-radius: var(--mos-radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.94);
+  width: 4.25rem; height: 4.25rem;
   box-shadow: 0 1rem 2rem rgba(3, 10, 20, 0.45);
 }
 .app-drawer-headline { display: grid; gap: 0.4rem; min-width: 0; }

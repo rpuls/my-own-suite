@@ -12,7 +12,7 @@ Suite Manager is where you run your suite. It lives at `home.<your-domain>/suite
 - **Customize** — shape your Home dashboard: add links and home-network services, rearrange groups, or edit the underlying configuration directly. See [Customize your Homepage](/docs/guides/customize-homepage/).
 - **Backup** — manual whole-suite backups to an attached external drive on own hardware or a mounted block-storage volume on a cloud server, plus restore. See [Back up and restore](/docs/guides/backup-restore/).
 - **Updates** — check for and apply updates to the *platform*, and choose your update track. Individual apps update from the Apps screen instead. See [Keep your suite up to date](/docs/guides/updates/).
-- **Settings** — the [real domain + HTTPS setup](/docs/guides/https-domain/) for self-hosted installs, the [app sources you have added](/docs/guides/apps/) yourself, and a plain-language summary of recent security activity on your server over the last 30 days.
+- **Settings** — the [real domain + HTTPS setup](/docs/guides/https-domain/) for self-hosted installs, **Storage** with every drive plugged in and the storage you rent online ([Your files on a drive](/docs/guides/files-on-a-drive/)), the [app sources you have added](/docs/guides/apps/) yourself, and a plain-language summary of recent security activity on your server over the last 30 days.
 - **Sign out.**
 
 ## Conventions worth knowing

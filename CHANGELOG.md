@@ -10,6 +10,60 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-27
+
+### Added
+
+- **This release is a big one.** Your files, your server, your apps. MOS can now give apps access to files on external drives, a long-awaited capability that opens the catalog to a whole new group of apps.
+
+  To celebrate, two self-hosting favourites are joining the MOS catalog: **Navidrome** for your music and **Jellyfin** for your movies and shows. Connect your drive, bring your collection, and make yourself at home.
+
+- **Navidrome and Jellyfin join the catalog, ready for your collection.** Pick a drive and administrator during installation; MOS sets up the app for you.
+  - **Navidrome:** turn the music you own into a personal streaming service, with an artwork-rich library, search, playlists and favourites, without a music subscription. Compatible client apps also let you listen on Sonos and AirPlay speakers. Usage reporting is disabled, the login background is local, and online metadata and artwork are an installation choice. Listening-history sharing remains your choice inside Navidrome.
+  - **Jellyfin:** stream your films and series to your screens, with Movies and Series libraries already configured and no setup wizard to complete.
+
+- **Apps can read files from an external drive, and you can manage them in your browser.** Choose a drive at installation or in the app's settings, then add your collection through **Browse files** in Settings → Storage or from another computer. Reconnecting the drive starts its apps and discovers new files. App files stay on the drive after uninstall and are **outside suite backups**.
+  - App files need an exFAT, NTFS or FAT32 drive separate from the system drive. MOS creates folders such as `MOS-files/apps/jellyfin/Movies` and gives apps read-only access.
+  - **Browse files** supports uploads, downloads, folders, renaming, moving and deleting. Interrupted uploads resume when you drop the same file again. Files outside MOS-managed folders can be viewed and downloaded; folders left by uninstalled apps can be browsed or deleted. Deletion warns that these files are not backed up.
+  - **Eject** pauses the drive's apps; reconnect it or choose **Use it again** to resume them. After an unsafe NTFS disconnect, apps can still read files, while writes wait for **Check drive**. Apps and Storage explain when a drive is disconnected, ejected or needs attention.
+  - **Compatibility:** the `storage` manifest field requires MOS 0.23.0 and app agent contract 13. Package updates may add storage folders but cannot drop or rename them. The platform installs `mos-storage-attach@.service`, `/etc/udev/rules.d/90-mos-storage.rules`, `ntfs-3g` and `exfatprogs`; drives mount under `/media/mos-storage/<filesystem id>`, with NTFS still using the kernel's ntfs3 driver. File operations temporarily use `.mos-uploads` and `.mos-deleting` inside `MOS-files`.
+
+- **Settings → Storage brings drives and storage online together.** See capacity, contents and availability in one place, then pick from the same list for apps and backups. Connected drives are inspected automatically, including backups another server left behind. Rename storage within MOS, or turn a leftover MOS installer stick into an ordinary drive with a progress display.
+  - Linux-formatted drives can hold backups but not app files; unsupported formats are identified but not offered. MOS warns when you choose to back up a library onto its own drive.
+  - **Compatibility:** `/var/lib/mos/storage.json` replaces the backup agent's `known-drives.json` and `object-destinations.json`. Connections to storage online migrate at startup; known drives migrate when connected. The shared storage module now owns drive mounting.
+
+- **One drive or bucket can hold backups from several MOS servers.** Backup & Restore separates **This server's backups** from **Backups from another server**. You can restore another server's archive or erase just that archive without affecting the others; restoring makes this server take that server's place. Only this server's backups count towards its backup status.
+  - **Compatibility:** drive backups move into `MOS-backups/archive-<8 hex>/` with a `MOS-REPOSITORY.json` identifying their server. The old root-level repository moves the first time the drive is writable. Storage online uses `MOS-backups/archive-<8 hex>/repository` and a shared `MOS-backups/catalog` restic index with a public password; an existing `MOS-backups/repository` stays in place and remains usable. Backups MOS has not opened since 0.20.0 no longer migrate automatically to your recovery key and appear locked.
+
+### Changed
+
+- **Backup & Restore makes destinations simpler, with automatic carry-over from 0.22.** **Back up now** chooses a destination for that backup; **Automatic backups** chooses the destination for scheduled backups and pre-update backups. Existing backup drives, storage online and schedules carry over without action. A disconnected drive migrates when you next connect it.
+
+- **Immich can show photos from your drive and sets up its administrator for you.** Package 0.9.0 adds an optional read-only Photos folder and asks for administrator credentials during installation. Updating an existing installation asks once for your current Immich email and password.
+
+- **Privacy reviews keep the human sign-off visible.** Each review names the person and app version they checked. Later AI checks cannot borrow that approval, and serious findings stay under **Waiting for a human review** until checked. Actual Budget, Paperless and Radicale receive package updates restoring their human review records.
+
+- **Easy Door addresses avoid certificate limits on repeated installations.** Each server adds six random letters to its address. Existing addresses keep working; Settings → Address offers the new one, and moving requires updating bookmarks and phone apps. Backups preserve the letters so a restored server can recover its address.
+  - **Compatibility:** the identity lives in `/var/lib/mos-easy-door/id`, outside the encrypted vault, and is included in backups. Addresses without the letters keep resolving and renewing until 1.0.
+
+- **Paperless-ngx and Radicale receive security and compatibility updates.**
+  - **Paperless-ngx package 0.3.6, app 3.3.4:** updates Pillow and aiohttp, removes withdrawn emSign certificates, and fixes document permissions, searches and exports. First startup rebuilds the search index, which can take longer for large archives. There are no database migrations; reverting the package remains safe.
+  - **Radicale package 0.5.5, app 3.8.3:** restores standards-compliant free-busy responses without event details and excludes transparent recurring events. Calendar sharing and groups remain disabled.
+- **Suite Manager runs on React 19.3.1.** This dependency update requires no action.
+
+### Security
+
+- **MOS updates now update Node.js too, starting with the October 2026 security fixes.** Each platform update installs the newest Node.js 22 release before restarting MOS services, beginning with 22.23.4. This closes the gap for older installations that missed remote code execution and certificate-check fixes. Diagnostics report the running version.
+
+### Fixed
+
+- **Backups finish safely and stay responsive when storage is unavailable.** Completion now waits for the drive's writes to finish. Backup & Restore and Updates report unreachable storage online promptly instead of hanging for minutes. An interrupted archive descriptor no longer causes a duplicate archive, and unreadable storage is reported as unreadable rather than empty.
+- **A restore continues when one app cannot start.** Other apps still recover, and Backup & Restore names those needing attention. Image downloads can take as long as necessary instead of failing after five minutes on a fresh server.
+- **App status and source errors explain what happened.** Stopped or repeatedly restarting apps say **Not running**. Failed app-source requests name the host and reason instead of returning an internal error.
+- **Signing in works while HTTPS is still being set up.** A previous secure cookie no longer blocks HTTP sign-in, and that sign-in carries over when HTTPS becomes available.
+- **Suite Manager restarts promptly during updates.** Open browser connections no longer hold shutdown up for 90 seconds.
+- **Suite Manager waits out an update instead of half-working through it.** Pages switch to the new version only when its server starts, after checking the build is complete, so they no longer fail with "This page could not load" or "Not found" mid-update; that holds from this update on. From the next update, every page also shows a full-screen panel while MOS updates, with the active step clearly marked, and opens the new version when it is done.
+
 ## [0.22.0] - 2026-10-15
 
 **This release is mostly behind the scenes: better infrastructure for app updates, and more automated testing to back it.** There aren't many new platform features this time, but this work matters for everything that comes next.

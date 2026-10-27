@@ -12,7 +12,7 @@ function fakeApp({ addresses = [OPEN], now, start } = {}) {
   const jobs = new AppInstallJobs({
     addToHomepage: async () => { calls.push('homepage'); state.homepageApplied = true; },
     now,
-    prepare: async (_id, config) => { calls.push(['prepare', config]); state.installed = true; },
+    prepare: async (_id, { config }) => { calls.push(['prepare', config]); state.installed = true; },
     progressOf: () => ({ ...state }),
     start: start || (async () => { calls.push('start'); state.runtimeApplied = true; }),
     waitForAddress: async () => { calls.push('address'); return addresses.length > 1 ? addresses.shift() : addresses[0]; },
@@ -63,6 +63,24 @@ test('a failed step is named and keeps its reason for the page to show', async (
   assert.equal(job.status, 'failed');
   assert.deepEqual(job.error, { code: 'APP_RUN_FAILED', message: 'The app container could not be started.' });
   assert.deepEqual(statuses(job), { address: 'pending', homepage: 'pending', prepare: 'complete', ready: 'pending', runtime: 'failed' });
+});
+
+test('a finished job is forgotten when the app is uninstalled, a running one once it settles', async () => {
+  let release;
+  const failing = fakeApp({ start: async () => { throw new Error('The app container could not be started.'); } });
+  failing.jobs.begin('jellyfin');
+  await failing.jobs.lastRun;
+  failing.jobs.forget('jellyfin');
+  assert.equal(failing.jobs.get('jellyfin'), null);
+
+  const { jobs } = fakeApp({ start: () => new Promise((resolve) => { release = resolve; }) });
+  jobs.begin('jellyfin');
+  jobs.forget('jellyfin');
+  assert.equal(jobs.get('jellyfin').status, 'running');
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  await jobs.lastRun;
+  assert.equal(jobs.get('jellyfin'), null);
 });
 
 test('an address still waiting for its certificate finishes the install with a notice, cleared once it opens', async () => {

@@ -1,21 +1,16 @@
-// The on-destination layout that surrounds a repository on a drive.
-//
-// MOS has one backup storage engine: restic, chosen 2026-09-06 after a
-// 15.4 GB measured comparison against Kopia on the lab VM (docs/decisions.md
-// records the numbers). The engine name is still written into every
-// destination's descriptor and every manifest, because a drive has to be able
-// to say what wrote it.
-//
-// Object-storage destinations reuse the same names inside a bucket but have no
-// files beside the repository; how a destination of either kind is opened and
-// what its restore points look like lives in ../destinations.cjs.
+// The on-drive layout of backup archives: any number side by side under
+// MOS-backups, each a repository, its restore points and a plaintext descriptor.
+// A bucket holds one archive per connection; ../destinations.cjs opens both.
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ENGINE_MISSING_MESSAGE, ResticEngine } = require('./engine-restic.cjs');
 
+// restic, chosen 2026-09-06 after a measured comparison (docs/decisions.md). Still
+// written into every descriptor and manifest so a drive can say what wrote it.
 const ENGINE_NAME = 'restic';
-const BACKUPS_DIRNAME = 'MOS-backups';
+const { ARCHIVE_DIR_PATTERN: ARCHIVE_NAME_PATTERN, BACKUPS_DIR: BACKUPS_DIRNAME } = require('../../../shared/storage-contract.cjs');
 const REPOSITORY_DIRNAME = 'repository';
 const RESTORE_POINTS_DIRNAME = 'restore-points';
 const REPOSITORY_SIDECAR_FILENAME = 'MOS-REPOSITORY.json';
@@ -24,42 +19,64 @@ function createEngine({ agentStateDir, binaryDir, keys, onKeyUsed } = {}) {
   return new ResticEngine({ agentStateDir, binaryDir, keys, onKeyUsed });
 }
 
-function backupsRoot(destinationId) { return path.join(destinationId, BACKUPS_DIRNAME); }
-function repositoryPathFor(destinationId) { return path.join(backupsRoot(destinationId), REPOSITORY_DIRNAME); }
-function restorePointsDir(destinationId) { return path.join(backupsRoot(destinationId), RESTORE_POINTS_DIRNAME); }
-function restorePointPath(destinationId, jobId) { return path.join(restorePointsDir(destinationId), `${jobId}.json`); }
-function repositorySidecarPath(destinationId) { return path.join(backupsRoot(destinationId), REPOSITORY_SIDECAR_FILENAME); }
+function backupsRoot(mountPath) { return path.join(mountPath, BACKUPS_DIRNAME); }
+function archiveRoot(mountPath, name) { return path.join(backupsRoot(mountPath), name); }
+function repositoryPathFor(root) { return path.join(root, REPOSITORY_DIRNAME); }
+function restorePointsDir(root) { return path.join(root, RESTORE_POINTS_DIRNAME); }
+function restorePointPath(root, jobId) { return path.join(restorePointsDir(root), `${jobId}.json`); }
+function repositorySidecarPath(root) { return path.join(root, REPOSITORY_SIDECAR_FILENAME); }
+function repositoryExists(root) { return fs.existsSync(path.join(repositoryPathFor(root), 'config')); }
 
-// A plaintext description of what the repository directory is, so a listing
-// can name the storage without invoking the engine, and a destination written
-// in a storage format this MOS does not speak is refused rather than corrupted.
-function readRepositoryDescriptor(destinationId) {
+// The name says nothing about which server owns the archive: the key that opens
+// it decides that, and a takeover changes the key, not the name.
+function newArchiveName() {
+  return `archive-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+// Every archive folder with either a descriptor or a repository in it: a torn
+// descriptor must not make a full repository invisible.
+function archiveNames(mountPath) {
   try {
-    return JSON.parse(fs.readFileSync(repositorySidecarPath(destinationId), 'utf8'));
+    return fs.readdirSync(backupsRoot(mountPath), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && ARCHIVE_NAME_PATTERN.test(entry.name))
+      .filter((entry) => fs.existsSync(repositorySidecarPath(archiveRoot(mountPath, entry.name))) || repositoryExists(archiveRoot(mountPath, entry.name)))
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+// Null when the descriptor is missing or will not parse: a stated fact the
+// listing carries, never a reason to treat the archive as empty.
+function readRepositoryDescriptor(root) {
+  try {
+    return JSON.parse(fs.readFileSync(repositorySidecarPath(root), 'utf8'));
   } catch {
     return null;
   }
 }
 
-function writeRepositoryDescriptor(destinationId, descriptor) {
-  fs.mkdirSync(backupsRoot(destinationId), { recursive: true });
-  fs.writeFileSync(repositorySidecarPath(destinationId), `${JSON.stringify(descriptor, null, 2)}\n`, 'utf8');
+// Staged and renamed in the same folder, so exFAT and NTFS never leave half a file.
+function writeRepositoryDescriptor(root, descriptor) {
+  fs.mkdirSync(root, { recursive: true });
+  const staged = `${repositorySidecarPath(root)}.next`;
+  fs.writeFileSync(staged, `${JSON.stringify(descriptor, null, 2)}\n`, 'utf8');
+  fs.renameSync(staged, repositorySidecarPath(root));
 }
 
-// What the encrypted store on a destination actually occupies, from the
-// filesystem alone — no engine invocation, no key. Restore points share the
-// repository's deduplicated data, so per-point data sizes must never be read
-// as additive; this is the one number that says what the drive really carries.
-function repositoryUsage(destinationId) {
-  const descriptor = readRepositoryDescriptor(destinationId);
-  if (!descriptor) return null;
+// What the archive occupies on disk, without an engine or a key. Restore points
+// share deduplicated data, so this is the only additive number there is.
+function repositoryUsage(root) {
+  const descriptor = readRepositoryDescriptor(root);
+  if (!descriptor && !repositoryExists(root)) return null;
   let restorePoints = 0;
   try {
-    for (const name of fs.readdirSync(restorePointsDir(destinationId))) {
-      if (name.endsWith('.json') && fs.existsSync(path.join(restorePointsDir(destinationId), `${name}.sha256`))) restorePoints += 1;
+    for (const name of fs.readdirSync(restorePointsDir(root))) {
+      if (name.endsWith('.json') && fs.existsSync(path.join(restorePointsDir(root), `${name}.sha256`))) restorePoints += 1;
     }
   } catch {}
-  return { engineName: descriptor.engineName || null, restorePoints, storedBytes: treeBytes(repositoryPathFor(destinationId)) };
+  return { engineName: descriptor?.engineName || null, restorePoints, storedBytes: treeBytes(repositoryPathFor(root)) };
 }
 
 function treeBytes(root) {
@@ -74,20 +91,25 @@ function treeBytes(root) {
   return total;
 }
 
-function assertRepositoryEngine(destinationId, engineName) {
-  const descriptor = readRepositoryDescriptor(destinationId);
+function assertRepositoryEngine(root, engineName) {
+  const descriptor = readRepositoryDescriptor(root);
   if (!descriptor || descriptor.engineName === engineName) return descriptor;
-  throw new Error(`This drive already holds a backup repository in a different storage format (${descriptor.engineName}). Use a different drive, or restore what is on this one before reusing it.`);
+  throw new Error(`This archive is in a different storage format (${descriptor.engineName}), which this MOS cannot read.`);
 }
 
 module.exports = {
+  ARCHIVE_NAME_PATTERN,
+  archiveNames,
+  archiveRoot,
   assertRepositoryEngine,
   BACKUPS_DIRNAME,
   createEngine,
   ENGINE_MISSING_MESSAGE,
   ENGINE_NAME,
+  newArchiveName,
   readRepositoryDescriptor,
   REPOSITORY_DIRNAME,
+  repositoryExists,
   repositoryPathFor,
   repositorySidecarPath,
   repositoryUsage,

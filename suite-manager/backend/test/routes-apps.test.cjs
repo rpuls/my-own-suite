@@ -23,8 +23,9 @@ test('the app list carries each app its public URL and jobs, and checks sources 
   const order = [];
   const services = {
     appPackages: {
+      containersDown: async () => (id) => id === 'notes',
       hostFacts: async () => ({ architecture: 'amd64' }),
-      listPackages: () => [{ id: 'notes' }, { id: 'vaultwarden' }],
+      listPackages: () => [{ id: 'notes', instance: { status: 'installed' } }, { id: 'vaultwarden' }],
     },
     appUrls,
     catalogService: { status: () => ({ state: 'fresh' }) },
@@ -40,8 +41,8 @@ test('the app list carries each app its public URL and jobs, and checks sources 
     assert.deepEqual(listed.json(), {
       catalog: { state: 'fresh' },
       packages: [
-        { id: 'notes', installJob: { status: 'running' }, publicUrl: URLS.publicUrl, updateJob: null },
-        { id: 'vaultwarden', installJob: null, publicUrl: '', updateJob: null },
+        { containersDown: true, id: 'notes', installJob: { status: 'running' }, instance: { status: 'installed' }, publicUrl: URLS.publicUrl, updateJob: null },
+        { containersDown: false, id: 'vaultwarden', installJob: null, publicUrl: '', updateJob: null },
       ],
     });
   });
@@ -99,8 +100,11 @@ test('App package icon and screenshot APIs serve the files the package service n
 test('each package action reaches the package service with the app URLs it needs', async () => {
   const calls = [];
   const appPackages = recordingPackages(calls);
+  const forgotten = [];
+  const installJobs = { forget: (id) => forgotten.push(['install', id]) };
+  const updateJobs = { forget: (id) => forgotten.push(['update', id]) };
 
-  await withRoutes({ appPackages, appUrls, homepageConfig }, async (call) => {
+  await withRoutes({ appPackages, appUrls, homepageConfig, installJobs, updateJobs }, async (call) => {
     for (const action of ['prepare-update', 'recover-update', 'add-to-homepage', 'apply-runtime', 'stop', 'enable', 'restart', 'uninstall', 'refresh-runtime-status']) {
       assert.equal((await call('POST', `/apps/packages/notes/${action}`)).status, 200, action);
     }
@@ -122,6 +126,7 @@ test('each package action reaches the package service with the app URLs it needs
     ['installPackage', 'notes', { config: { title: 'Notes' } }],
     ['savePackageEnvironment', 'notes', { variables: [] }, runtime],
   ]);
+  assert.deepEqual(forgotten, [['install', 'notes'], ['update', 'notes']], 'an uninstall drops the jobs that described the app');
 });
 
 test('install and update jobs answer at once with what they were handed', async () => {
@@ -130,7 +135,7 @@ test('install and update jobs answer at once with what they were handed', async 
   const updateJobs = { begin: (id, input) => { begun.push(['update', id, input]); return { status: 'running' }; } };
 
   await withRoutes({ installJobs, updateJobs }, async (call) => {
-    const install = await call('POST', '/apps/packages/notes/install-job', { body: { config: { title: 'Notes' }, showOnHomepage: 'yes' } });
+    const install = await call('POST', '/apps/packages/notes/install-job', { body: { config: { title: 'Notes' }, drive: '1A2B-3C4D', showOnHomepage: 'yes' } });
     assert.equal(install.status, 202);
     assert.deepEqual(install.json(), { installJob: { status: 'running' } });
     assert.equal((await call('POST', '/apps/packages/notes/install-job', { body: {} })).status, 202);
@@ -140,8 +145,8 @@ test('install and update jobs answer at once with what they were handed', async 
   });
 
   assert.deepEqual(begun, [
-    ['install', 'notes', { config: { title: 'Notes' }, showOnHomepage: false }],
-    ['install', 'notes', { config: {}, showOnHomepage: false }],
+    ['install', 'notes', { config: { title: 'Notes' }, drive: '1A2B-3C4D', showOnHomepage: false }],
+    ['install', 'notes', { config: {}, drive: null, showOnHomepage: false }],
     ['update', 'notes', { confirmationToken: 'token' }],
   ]);
 });
@@ -168,3 +173,4 @@ test('connecting two apps passes the slot field by field, and a guide takes only
     ['guide', 'notes', 'completed'],
   ]);
 });
+

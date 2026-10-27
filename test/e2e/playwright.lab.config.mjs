@@ -31,6 +31,8 @@ export default defineConfig({
     deviceScaleFactor: 2,
     headless: process.env.MOS_E2E_HEADED !== '1',
     ignoreHTTPSErrors: true,
+    // A lab whose address moved, without rewriting the hosts file, which needs an elevated shell.
+    launchOptions: process.env.MOS_E2E_HOST_RESOLVER_RULES ? { args: [`--host-resolver-rules=${process.env.MOS_E2E_HOST_RESOLVER_RULES}`] } : {},
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',

@@ -112,7 +112,7 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
   const jobs = new Map();
   const created = [];
   const state = { clock: new Date('2026-09-07T00:59:00.000Z'), createError: null, destinations, points, updating: false };
-  const primary = new PrimaryDestination({ agentStateDir: dir, now: () => state.clock, repositoryId: () => 'repo-1' });
+  const primary = new PrimaryDestination({ agentStateDir: dir, now: () => state.clock });
   primary.save({ destinationId: '/media/backup', label: 'Backup drive' });
   const scheduler = new BackupScheduler({
     agentStateDir: dir,
@@ -123,7 +123,7 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
       created.push(job);
       return job;
     },
-    destinations: async () => state.destinations,
+    places: async () => state.destinations,
     now: () => state.clock,
     primary,
     readJob: (id) => jobs.get(id) || null,
@@ -162,14 +162,42 @@ test('a disconnected drive holds the run open instead of failing it', async () =
   assert.match(scheduler.state().waiting.reason, /not connected/u);
   assert.equal(scheduler.state().lastResult, null, 'a drive in a drawer is not a failed backup');
 
-  // Hours later the drive comes back on a different mount path; the repository
-  // on it is what identifies it as the one the schedule was pointed at.
+  // Hours later the drive comes back, and the run that was owed starts.
   state.clock = new Date('2026-09-07T18:00:00.000Z');
-  state.destinations = [{ id: '/media/backup-2', label: 'Backup drive', writable: true }];
+  state.destinations = [{ id: '/media/backup', label: 'Backup drive', writable: true }];
   await scheduler.tick();
   assert.equal(created.length, 1);
-  assert.equal(created[0].destinationId, '/media/backup-2');
+  assert.equal(created[0].destinationId, '/media/backup');
   assert.equal(scheduler.state().waiting, null);
+});
+
+// The destination's reason is the storage module's own sentence, repeated verbatim.
+test('a drive that is here but cannot take backups waits with the storage module\'s reason, not as unplugged', async () => {
+  const reason = 'Your apps can read this drive, but nothing can be saved to it until it is checked. It was unplugged or lost power without being ejected.';
+  const { created, scheduler, state } = harness({ destinations: [{ id: '/media/backup', label: 'Backup drive', reason, state: 'read-only' }] });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  state.clock = new Date('2026-09-07T01:00:30.000Z');
+
+  await scheduler.tick();
+  assert.equal(created.length, 0);
+  assert.equal(scheduler.state().waiting.reason, reason);
+});
+
+test('storage that could not be read holds the run with that reason, never as a drive that was not connected', async () => {
+  const unreachable = { id: '/media/backup', label: 'Backup drive', reason: 'MOS could not read your storage right now.', state: 'unreachable' };
+  const { created, scheduler, state } = harness({ destinations: [unreachable] });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  state.clock = new Date('2026-09-07T01:00:30.000Z');
+
+  await scheduler.tick();
+  assert.equal(created.length, 0);
+  assert.equal(scheduler.state().waiting.reason, 'MOS could not read your storage right now.');
+  assert.equal(scheduler.state().lastResult, null);
+
+  state.destinations = [{ ...unreachable, reason: null, state: 'ready' }];
+  state.clock = new Date('2026-09-07T01:01:30.000Z');
+  await scheduler.tick();
+  assert.equal(created.length, 1, 'the owed run starts as soon as storage answers again');
 });
 
 test('a failed automatic backup is reported and waits for the next window', async () => {

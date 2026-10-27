@@ -22,7 +22,7 @@ function adapter(failures = {}, { parkedToken = 'parked_token_value_0987654321' 
     createCheckpoint: make('createCheckpoint'),
     discardParkedCredential: make('discardParkedCredential'),
     caddyModules: make('caddyModules', ['dns.providers.acmedns', 'dns.providers.cloudflare', 'http.handlers.reverse_proxy']),
-    certificateLog: make('certificateLog', ['{"msg":"will retry","identifier":"*.192-168-1-5.local.myownsuite.org"}']),
+    certificateLog: make('certificateLog', ['{"msg":"will retry","identifier":"*.1-5-kqmzrt.local.myownsuite.org"}']),
     ensureCaddyfile: make('ensureCaddyfile', true),
     installCandidate: make('installCandidate'),
     readParkedCredential: make('readParkedCredential', parkedToken),
@@ -43,9 +43,10 @@ const validInput = {
 
 const lanFacts = (overrides = {}) => () => ({
   bootstrapHost: 'home.mos.home',
+  easyDoorId: 'kqmzrt',
   frontDoor: 'usb-autoinstall',
   liveAddress: '192.168.1.5',
-  recorded: { host: 'home.192-168-1-5.local.myownsuite.org', kind: 'easy-door', scheme: 'http' },
+  recorded: { host: 'home.1-5-kqmzrt.local.myownsuite.org', kind: 'easy-door', scheme: 'http' },
   suiteManagerPort: '3100',
   ...overrides,
 });
@@ -68,7 +69,7 @@ test('agent applies only rendered configuration and returns an opaque rollback i
   assert.doesNotMatch(candidate.caddyfile, /token_value/u);
   assert.equal(candidate.cloudflareApiToken, validInput.cloudflareApiToken);
   // The domain joins the door: the Easy Door wildcard is still in the rendering.
-  assert.match(candidate.caddyfile, /https:\/\/\*\.192-168-1-5\.local\.myownsuite\.org/u);
+  assert.match(candidate.caddyfile, /https:\/\/\*\.1-5-kqmzrt\.local\.myownsuite\.org/u);
   assert.match(candidate.caddyfile, /http:\/\/home\.mos\.home \{/u);
 });
 
@@ -227,9 +228,9 @@ test('an apply restarts Caddy so the Cloudflare secret env is re-read', () => {
 test('ensure renders the machine\'s Caddyfile from its facts and does not wait for the certificate', async () => {
   const fake = adapter();
   const result = await new HttpsAgentCore(fake, { facts: lanFacts() }).ensure();
-  assert.deepEqual(result, { changed: true, easyDoorBase: '192-168-1-5.local.myownsuite.org' });
+  assert.deepEqual(result, { changed: true, easyDoorBase: '1-5-kqmzrt.local.myownsuite.org' });
   const caddyfile = fake.calls.find(([name]) => name === 'ensureCaddyfile')[1];
-  assert.match(caddyfile, /https:\/\/\*\.192-168-1-5\.local\.myownsuite\.org \{/u);
+  assert.match(caddyfile, /https:\/\/\*\.1-5-kqmzrt\.local\.myownsuite\.org \{/u);
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:3100/u);
   assert.equal(fake.calls.some(([name]) => name === 'awaitCertificate'), false);
 
@@ -259,8 +260,8 @@ test('an ensure waits for an apply in flight instead of rendering over its candi
 test('the Easy Door status carries Caddy\'s own lines about the wildcard, and nothing off a private network', async () => {
   const fake = adapter();
   const status = await new HttpsAgentCore(fake, { facts: lanFacts() }).easyDoorStatus();
-  assert.equal(status.easyDoorBase, '192-168-1-5.local.myownsuite.org');
-  assert.deepEqual(fake.calls.find(([name]) => name === 'certificateLog').slice(1), ['*.192-168-1-5.local.myownsuite.org']);
+  assert.equal(status.easyDoorBase, '1-5-kqmzrt.local.myownsuite.org');
+  assert.deepEqual(fake.calls.find(([name]) => name === 'certificateLog').slice(1), ['*.1-5-kqmzrt.local.myownsuite.org']);
   assert.equal(status.log.length, 1);
   assert.deepEqual(await new HttpsAgentCore(adapter(), { facts: lanFacts({ liveAddress: '203.0.113.9' }) }).easyDoorStatus(), { easyDoorBase: null, log: [] });
 });

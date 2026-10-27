@@ -12,18 +12,18 @@ class AppInstallJobs extends AppJobs {
     this.waitForAddress = waitForAddress;
   }
 
-  begin(packageId, { config = {}, showOnHomepage = false } = {}) {
-    return super.begin(packageId, { config, showOnHomepage });
+  begin(packageId, { config = {}, drive = null, showOnHomepage = false } = {}) {
+    return super.begin(packageId, { config, drive, showOnHomepage });
   }
 
   stepsFor({ showOnHomepage }) {
     return ['prepare', 'runtime', 'address', ...(showOnHomepage ? ['homepage'] : []), 'ready'];
   }
 
-  async perform(packageId, { config, showOnHomepage }, mark) {
+  async perform(packageId, { config, drive, showOnHomepage }, mark) {
     mark('prepare', 'running');
     const skipPrepare = this.progressOf(packageId).installed;
-    await this.prepare(packageId, config);
+    await this.prepare(packageId, { config, drive });
     mark('prepare', skipPrepare ? 'skipped' : 'complete');
 
     mark('runtime', 'running');

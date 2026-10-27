@@ -5,6 +5,18 @@ description: The technical architecture of My Own Suite — one origin, a pinned
 
 This section is for readers who want to see the machinery. Nothing here is required to use the suite — but all of it is inspectable in the [repository](https://github.com/rpuls/my-own-suite), and these docs are generated from the same source of truth the platform runs from.
 
+## What it is built from
+
+Nothing load-bearing in MOS is invented here. Each job goes to an established open-source project that has done it for years, and MOS is the layer that wires them together and puts a friendly screen in front:
+
+- **Ubuntu 24.04 LTS** is the operating system. Security fixes arrive from Ubuntu's own channel ([how updates work](/docs/guides/updates/)).
+- **Docker** runs every app in its own container, built from a digest-pinned [package snapshot](/docs/reference/app-packages/).
+- **Caddy** is the web server and the only public entry point. It obtains and renews every certificate.
+- **Let's Encrypt** issues those certificates, for the [generated address](/docs/install/easy-address/) and for [your own domain](/docs/guides/https-domain/) alike.
+- **restic** is the backup engine. Every backup is a plain restic repository, encrypted with your recovery key ([back up and restore](/docs/guides/backup-restore/)).
+- **LUKS** encrypts the disk on your own hardware, unlocked at boot by the machine's TPM ([own hardware](/docs/install/own-hardware/)).
+- **systemd** supervises the control plane, and small root-owned [host agents](/docs/reference/host-agents/) are the only things allowed to touch the host.
+
 ## One machine, one origin
 
 A MOS install is a single Ubuntu 24.04 machine running a small set of systemd services:

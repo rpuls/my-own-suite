@@ -75,17 +75,9 @@ function fingerprint(key) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex').slice(0, 12);
 }
 
-// True only for a key already in canonical form, which is the form MOS writes.
-// A pre-release 64-hex repository password fails it, and that is how the agent
-// recognises one at startup.
-function isRecoveryKey(value) {
-  return normalize(value).key === String(value ?? '').trim();
-}
-
 module.exports = {
   fingerprint,
   generate,
-  isRecoveryKey,
   MISTYPED_CHECKSUM,
   MISTYPED_SHAPE,
   normalize,

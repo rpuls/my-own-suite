@@ -483,6 +483,24 @@ const MIGRATIONS = [
     `,
     version: 20,
   },
+  {
+    // One row per folder rather than per app, so a folder can later move to
+    // another drive or be encrypted on its own without reshaping this table.
+    // Uninstall drops the rows; the folders themselves stay on the drive.
+    name: 'app-instance-folders',
+    sql: `
+      CREATE TABLE app_instance_folders (
+        instance_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        location_kind TEXT NOT NULL CHECK (location_kind IN ('drive')),
+        drive_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, name),
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 21,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {
@@ -1524,9 +1542,10 @@ class SuiteManagerStore {
   // is missing, and re-running the failed operation is not possible. It still
   // demands the exact candidate digest, so recovery can only ever commit the
   // update that actually promoted.
-  completeAppUpdate({ at, config = [], fromRecovery = false, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
+  completeAppUpdate({ at, config = [], folders = [], fromRecovery = false, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
     const expectedStatus = fromRecovery ? 'failed' : 'running';
     this.transaction(() => {
+      this.insertAppInstanceFolders(instanceId, folders, at);
       const operation = this.database.prepare(`
         SELECT candidate_digest AS candidateDigest FROM app_operations
         WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = ?
@@ -1756,7 +1775,31 @@ class SuiteManagerStore {
     });
   }
 
-  installAppInstance({ at, config = [], instance, operationId, projections, request = {} }) {
+  getAppInstanceFolders(instanceId) {
+    return this.database.prepare(`
+      SELECT drive_id AS driveId, location_kind AS locationKind, name
+      FROM app_instance_folders
+      WHERE instance_id = ?
+      ORDER BY name
+    `).all(instanceId).map((row) => ({ ...row }));
+  }
+
+  insertAppInstanceFolders(instanceId, folders, at) {
+    for (const folder of folders) {
+      this.database.prepare(`
+        INSERT INTO app_instance_folders (instance_id, name, location_kind, drive_id, created_at)
+        VALUES (?, ?, 'drive', ?, ?)
+      `).run(instanceId, folder.name, folder.driveId, at);
+    }
+  }
+
+  removeAppInstanceFolders(instanceId, names) {
+    for (const name of names) {
+      this.database.prepare('DELETE FROM app_instance_folders WHERE instance_id = ? AND name = ?').run(instanceId, name);
+    }
+  }
+
+  installAppInstance({ at, config = [], folders = [], instance, operationId, projections, request = {} }) {
     this.transaction(() => {
       this.database.prepare(`
         INSERT INTO app_instances (
@@ -1814,6 +1857,8 @@ class SuiteManagerStore {
           VALUES (?, ?, ?, ?, NULL, 'rendered', ?)
         `).run(instance.id, projection.kind, projection.contentJson, projection.digest, at);
       }
+
+      this.insertAppInstanceFolders(instance.id, folders, at);
 
       this.database.prepare(`
         INSERT INTO app_operations (

@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
-const { HOMEPAGE_FILES, HomepageConfigError, publicUrlFor, validateProxy } = require('../../../../shared/homepage-contract.cjs');
+const YAML = require('yaml');
+const { HOMEPAGE_FILES, HomepageConfigError, homeServiceHosts, publicUrlFor, validateProxy } = require('../../../../shared/homepage-contract.cjs');
 const { baseHostOf } = require('../../../../shared/suite-address.cjs');
 
 // The suite's recorded address in the shape the Homepage contract builds hosts
@@ -8,9 +9,16 @@ function domainStateFor(address) {
   return { baseDomain: baseHostOf(address), scheme: address.scheme };
 }
 
+// The agent reports content that is not YAML in its own words, so the address check skips it.
+function parsedOrNothing(content) {
+  try { return YAML.parse(String(content || '')) || []; } catch { return []; }
+}
+
 class HomepageService {
-  constructor({ agent, now = () => new Date(), store, suiteAddress }) {
+  // `appHosts` names the installed app on each subdomain an app is served at.
+  constructor({ agent, appHosts = () => new Map(), now = () => new Date(), store, suiteAddress }) {
     this.agent = agent;
+    this.appHosts = appHosts;
     this.now = now;
     this.store = store;
     this.suiteAddress = suiteAddress;
@@ -34,6 +42,9 @@ class HomepageService {
   validate(body) { return this.agent.validate(body?.file, body?.content); }
 
   async apply(body) {
+    if (body?.file === 'services.template.yaml') {
+      for (const subdomain of homeServiceHosts(parsedOrNothing(body?.content)).keys()) this.assertSubdomainFree(subdomain);
+    }
     return this.runOperation('raw-save', () => this.agent.apply({
       content: body?.content,
       domainState: this.domainState(),
@@ -42,7 +53,22 @@ class HomepageService {
     }));
   }
 
-  add(body, homeService) { return this.addEntry(body, { homeService }); }
+  add(body, homeService) {
+    if (homeService) this.assertSubdomainFree(body?.entry?.subdomain);
+    return this.addEntry(body, { homeService });
+  }
+
+  // Two sites on one address make Caddy refuse the change, with a message no owner can act on.
+  assertSubdomainFree(subdomain) {
+    const appName = this.appHosts().get(String(subdomain || '').trim().toLowerCase());
+    if (appName) throw new HomepageConfigError('DUPLICATE_PUBLIC_HOST', `${String(subdomain).trim().toLowerCase()} is ${appName}'s address. Pick another name.`, 409);
+  }
+
+  // The Homepage links that hold an address under the suite: subdomain to link name.
+  async homeServiceHosts() {
+    const { content } = await this.agent.read('services.template.yaml');
+    return homeServiceHosts(YAML.parse(content) || []);
+  }
 
   // Managed app tiles link to Suite Manager's own redirect rather than to an
   // absolute app address, so the dashboard is correct through whichever door the
@@ -76,7 +102,11 @@ class HomepageService {
     }));
   }
 
-  previewHomeService(body) {
+  async previewHomeService(body) {
+    this.assertSubdomainFree(body?.subdomain);
+    const subdomain = String(body?.subdomain || '').trim().toLowerCase();
+    const linkName = (await this.homeServiceHosts()).get(subdomain);
+    if (linkName) throw new HomepageConfigError('DUPLICATE_PUBLIC_HOST', `${subdomain} is already the address of ${linkName} on your Homepage. Pick another name.`, 409);
     const proxy = validateProxy({
       subdomain: body?.subdomain,
       upstream: `${body?.protocol}://${body?.host}:${body?.port}`,

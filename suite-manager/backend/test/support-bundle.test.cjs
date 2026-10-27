@@ -19,7 +19,7 @@ function healthyCollection() {
   return {
     collectedAt: '2026-09-01T12:00:00.000Z',
     containers: [{ image: 'mos-app-vaultwarden:1', labels: { 'mos.package': 'vaultwarden' }, log: 'started', name: 'mos-app-vaultwarden', state: 'running', status: 'Up 2 hours', troubled: false }],
-    host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0' },
+    host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0', node: 'v22.23.4' },
     incomplete: [],
     networks: [
       { containers: ['mos-app-paperless-ngx-broker', 'mos-app-paperless-ngx-paperless', 'mos-app-x-abcdef01-scan-bridge'], driver: 'bridge', name: 'mos-app-paperless-ngx' },
@@ -211,6 +211,12 @@ test('an update that worked and HTTPS that was never applied are one line each, 
   assert.ok(text.includes('Update check       ok at 2026-09-02T07:00:00.000Z\nLast update        succeeded at 2026-09-01T11:00:00.000Z\nLast HTTPS apply   never\n'));
 });
 
+test('the host section names the Node.js every MOS service runs on', () => {
+  const { text } = buildSupportBundle({ collection: healthyCollection(), now, platform: {}, secrets: ['x'] });
+  const host = text.slice(text.indexOf('HOST'), text.indexOf('HOST PATCHES'));
+  assert.ok(host.includes('Kernel:\nLinux mos 6.8.0\nNode.js:\nv22.23.4\n'));
+});
+
 // The catalog is the other conversation this server has with GitHub, and it was
 // in no section of this file: a server whose catalog had never once refreshed
 // exported "Nothing obviously wrong was detected".
@@ -300,4 +306,22 @@ test('the bundle carries the web server configuration, including the files that 
   assert.match(text, /reverse_proxy 127\.0\.0\.1:3100/u);
   // A missing routes file is a fact about the machine, not a failed read.
   assert.match(text, /mos-homepage-routes\.caddy\n {2}\(not present/u);
+});
+
+// An app reading an empty folder looks healthy everywhere else, so a drive that
+// would not open has to be named here, with the kernel line that says why.
+test('a drive its apps cannot use leads the summary, with the attach runs and kernel lines under STORAGE DRIVES', () => {
+  const collection = { ...healthyCollection(), storage: { attach: '[mos-storage] drive 20C2CDDCC2CDB676 mounted; restarted 2 container(s)', kernel: 'ntfs3: sdc1: volume is dirty and "force" flag is not set!' } };
+  const drives = [
+    { apps: ['immich', 'jellyfin'], detail: 'ntfs3: sdc1: volume is dirty and "force" flag is not set!', fileSystem: 'ntfs', id: '20C2CDDCC2CDB676', label: 'Ext HDD', reason: 'Your apps can read this drive, but nothing can be saved to it until it is checked.', state: 'read-only' },
+    { apps: [], fileSystem: 'exfat', id: '1A2B-3C4D', label: 'Spare', state: 'available' },
+  ];
+  const { text } = buildSupportBundle({ collection, drives, now, secrets: [] });
+
+  assert.match(text, /• Drive Ext HDD \(used by immich, jellyfin\) was opened read-only/u);
+  assert.match(text, /^STORAGE DRIVES$/mu);
+  assert.match(text, /^Ext HDD {2}· {2}read-only {2}· {2}ntfs {2}· {2}20C2CDDCC2CDB676$/mu);
+  assert.doesNotMatch(text, /^Spare/mu);
+  assert.match(text, /Drive events \(plug-ins, Eject, Check drive\):\n {2}\[mos-storage\] drive 20C2CDDCC2CDB676 mounted/u);
+  assert.match(text, /Kernel lines about drives:\n {2}ntfs3: sdc1: volume is dirty/u);
 });

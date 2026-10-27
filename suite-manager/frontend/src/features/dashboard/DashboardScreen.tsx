@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react';
 import { BetaNotice } from '../../components/disclaimers';
 import { Icon } from '../../components/ui';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
+import { STORAGE_SETTINGS_PATH } from '../../lib/navigation';
+import { StorageWidget } from '../storage/StorageWidget';
 import type { Owner } from '../setup/types';
 
 type DashboardScreenProps = {
-  onNavigate: (route: 'apps' | 'backups' | 'customize', path: string) => void;
+  onNavigate: (route: 'apps' | 'backups' | 'customize' | 'settings', path: string) => void;
   owner: Owner;
 };
 
@@ -102,11 +104,13 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
               <Icon name="customize" /><span>{hasApps ? 'Tidy up your dashboard' : '2. Add it to your Homepage'}</span>
             </button>
             <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('backups', '/suite-manager/backups')} type="button">
-              <Icon name="backup" /><span>{hasApps ? 'Check your backups' : '3. Make your first backup'}</span>
+              <Icon name="backup" /><span>{hasApps ? 'See your backups' : '3. Make your first backup'}</span>
             </button>
           </div>
         </section>
       </div>
+
+      <StorageWidget onManage={() => onNavigate('settings', STORAGE_SETTINGS_PATH)} />
 
       {/* Below what the owner came here to do. It is a caveat about the software,
           not a task, so it should not sit between them and their next step. */}

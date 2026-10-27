@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-05T22:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.8.3",
-    "packageDigest": "sha256:eba42e3717229b0cb6595427149ca7cb35cbc090c9dec0394e6e51fda049406b",
+    "packageVersion": "0.9.0",
+    "packageDigest": "sha256:d55b2364b555ce7fbbbe3a76942e5beb5d78b4219e08577dcc1be3b24132d2e7",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -279,9 +279,12 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f",
-    "repositoryCommit": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f",
-    "humanReviewed": false,
-    "humanReviewer": "Rasmus Puls"
+    "repositoryCommit": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f"
+  },
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-08-11",
+    "appVersion": "3.1.0"
   },
   "openQuestions": [
     "The runtime network captures behind this review were taken on Immich 3.1.0. For 3.2.4 the outbound list is carried forward on static evidence (image and source diffs) and a local upgrade drill without a capture. The lab E2E network step for this candidate is the first capture of 3.2.4.",

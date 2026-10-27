@@ -5,6 +5,7 @@ Durable working context for AI agent sessions (Codex, Claude Code, and others). 
 ## Project Habits
 
 - `staging` is the practical hardware-testing branch.
+- App packaging turns off optional usage telemetry by default while leaving useful integrations available to the owner. Prefer an explicit install choice for metadata lookups and an app's native opt-in flow for account-based sharing; do not use a blanket offline switch merely to obtain a better privacy badge.
 - GitHub Issues are preferred for task state, backlog, and roadmap-like planning.
 - Repo docs should hold context that still matters after an issue is closed.
 - Temporary branch plans are allowed for multi-session work, but must be deleted, converted to issues, or reduced to durable decisions before merge.

@@ -79,7 +79,35 @@ function unmetRequirements(manifest, peers) {
   return required.map((type) => ({ providers: peers.providersByType?.[type] || [], type }));
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, peers = null }) {
+function declaredFolderNames(manifest) {
+  return (Array.isArray(manifest.storage?.folders) ? manifest.storage.folders : []).map((folder) => folder.name);
+}
+
+// Folders a new version brings to an app with none on a drive yet. A drive it needs
+// is picked in the update dialog; an optional one is added in its settings later.
+function newStorage(installed, candidateManifest) {
+  const folders = Array.isArray(candidateManifest.storage?.folders) ? candidateManifest.storage.folders : [];
+  const required = candidateManifest.storage?.required === true;
+  if (!folders.length || installed.folders?.length || (declaredFolderNames(installed.manifest).length && !required)) return null;
+  const { description = null, label = null } = candidateManifest.storage;
+  return { description, folders: folders.map((folder) => ({ name: folder.name, service: folder.service })), label, required };
+}
+
+// An app that already keeps folders on a drive gets a new version's added folders
+// on that same drive, and a folder the new version drops keeps everything in it.
+function folderChanges(installed, candidateManifest) {
+  if (!installed.folders?.length) return [];
+  const before = declaredFolderNames(installed.manifest);
+  const after = declaredFolderNames(candidateManifest);
+  const added = after.filter((name) => !before.includes(name));
+  const dropped = before.filter((name) => !after.includes(name));
+  return [
+    ...(added.length ? [`${candidateManifest.name} now also keeps ${added.join(', ')} on the drive it already uses.`] : []),
+    ...(dropped.length ? [`${candidateManifest.name} no longer uses ${dropped.join(', ')}. Everything in ${dropped.length > 1 ? 'those folders' : 'that folder'} stays on the drive.`] : []),
+  ].map((summary) => ({ area: 'storage', classification: 'automatically-handled', summary }));
+}
+
+function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, host = {}, minimumMosMet = false, peers = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
@@ -99,6 +127,19 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   for (const volume of volumes(installed.manifest)) {
     if (!volumes(candidate.manifest).has(volume)) { breakingAreas.add('volumes'); changes.push({ area: 'volumes', classification: 'migration-required', summary: `Persistent volume ${volume} is no longer declared.` }); }
   }
+  const added = newStorage(installed, candidate.manifest);
+  const storage = added?.required ? added : null;
+  changes.push(...folderChanges(installed, candidate.manifest));
+  if (added) {
+    const names = added.folders.map((folder) => folder.name).join(', ');
+    changes.push({
+      area: 'storage',
+      classification: 'automatically-handled',
+      summary: added.required
+        ? `${candidate.manifest.name} now keeps ${names} on a drive you pick below.`
+        : `${candidate.manifest.name} can now also show ${names} from a drive. Add one in its settings after updating.`,
+    });
+  }
   for (const area of ['resources', 'routes', 'health', 'exports', 'integrations', 'usefulness']) {
     if (!equal(installed.manifest[area], candidate.manifest[area]) && !changes.some((change) => change.area === area)) {
       changes.push({ area, classification: 'automatically-handled', summary: `${area[0].toUpperCase()}${area.slice(1)} declarations changed.` });
@@ -111,7 +152,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
   // processor or HTTPS. Refusing here keeps that discovery in the preview
   // instead of in a build that cannot pull its images or an app that cannot work.
   const platformErrors = [
-    ...validatePlatformCompatibility(candidate.manifest, platformVersion),
+    ...(minimumMosMet ? [] : validatePlatformCompatibility(candidate.manifest, platformVersion)),
     ...unmetHostRequirements(declaredHostRequirements(candidate.manifest), host).map((unmet) => unmet.reason),
   ];
   const agentBlocker = describeAgentBlocker(agentContractVersion, candidate.manifest.update?.minimumAppAgentVersion || 1);
@@ -178,6 +219,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentContra
     requiredInput,
     requirements,
     schemaVersion: 1,
+    storage,
     updateStatus,
     validation: {
       errors: [

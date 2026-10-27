@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "appId": "navidrome",
+  "reviewedAt": "2026-10-27T11:29:25.282Z",
+  "expiresAt": "2027-01-25T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:e64a4eaf54080648de56fb828a077883fbac3f6bf49a83f2cc9b3b0eb0623649",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/navidrome",
+      "revision": "f391b9d68e079f62487c51ba579a2ff475fbb181",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Navidrome",
+        "version": "0.64.2",
+        "artifact": "docker.io/navidrome/navidrome",
+        "digest": "sha256:38dc2727bfcfd5ede290f8ada114fc90368146f265ae4701ddddbcbe2a44ee52"
+      }
+    ],
+    "clientsExcluded": [
+      "Native phone and desktop clients, including third-party Subsonic clients",
+      "External radio streams or external links the owner chooses to open",
+      "Upstream public demo and third-party hosted Navidrome services"
+    ]
+  },
+  "posture": "external-dependency",
+  "dimensions": {
+    "defaultEgress": "external-contact",
+    "control": "accepted-by-mos",
+    "accountDependency": "optional-upstream-account",
+    "dataProcessing": "optional-external",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "MOS sets ND_ENABLEINSIGHTSCOLLECTOR=false and ND_ENABLEGRAVATAR=false, and declares ND_GATRACKINGID as empty. These manifest-owned environment names cannot be replaced through MOS’s owner environment editor. Google Analytics initialises only when the server supplies a non-empty tracking ID. The package ships no configuration file setting one. External feature integrations remain available.",
+      "source": "apps/navidrome/manifest.json; upstream ui/src/App.jsx and conf/configuration.go",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/conf/configuration.go",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "configured",
+      "claim": "The install-time onlineMetadata checkbox defaults to true. When false, entrypoint.sh sets ND_AGENTS to an empty string unless the owner explicitly supplies ND_AGENTS. This selects local metadata without disabling the Last.fm or ListenBrainz scrobbler registrations. Plugins retain the upstream enabled default and none are preinstalled.",
+      "source": "apps/navidrome/manifest.json and entrypoint.sh; upstream core/agents/agents.go and adapters/listenbrainz/agent.go",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/core/agents/agents.go",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "The default metadata agents are Deezer, Last.fm and ListenBrainz. Deezer needs no owner API key; Last.fm needs server API credentials. ListenBrainz metadata uses MusicBrainz IDs without a user token, separately from sharing listening history.",
+      "source": "Navidrome external integration documentation",
+      "url": "https://www.navidrome.org/docs/usage/integration/external-services/",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "ListenBrainz listening-history sharing requires the user to enable Scrobble to ListenBrainz in Personal Settings and paste a user token. The source refuses NowPlaying and Scrobble submissions without a saved session key. Last.fm sharing likewise requires per-user authorisation in addition to server API credentials.",
+      "source": "Navidrome scrobbling documentation and versioned adapters/listenbrainz/agent.go",
+      "url": "https://www.navidrome.org/docs/usage/features/scrobbling/",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS sets ND_UILOGINBACKGROUNDURL to the shared MOS wallpaper SVG as an inline data URL. The upstream background handler is mounted only when the setting starts with a slash; this data URL therefore avoids both handler initialisation and its background-list download. The browser receives the image in the page configuration and needs no background-image HTTP request. MOS explicitly disables Gravatar.",
+      "source": "apps/navidrome/manifest.json; upstream cmd/root.go, conf/configuration.go and consts/consts.go",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/cmd/root.go",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Historical harness observation before the local-background override: A local shared-network-namespace tcpdump capture from 11:24:14 to 11:28:04 UTC on 2026-10-27 contained 6,236 packets. With default online metadata enabled, signing in and opening the fictional Harbour Lights artist contacted www.navidrome.org and Deezer hosts api.deezer.com, auth.deezer.com and pipe.deezer.com. Playwright recorded no off-site browser hosts. A deliberate example.com curl at 11:28:04 UTC appeared in DNS and TLS traffic and is control traffic, not app behaviour. This short local rig capture is not a MOS lab projection and does not exercise every agent or scheduled task.",
+      "source": "Local rig capture-owner-choice/network.pcap, server-hosts.txt and browser.har",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "The production-built shared MOS install dialog rendered actual checkboxes, honoured string and native boolean defaults, defaulted an unset boolean to unchecked, and submitted the strings false and true when unticked and ticked.",
+      "source": "Local isolated real-component harness check-form.cjs and capture-owner-choice/install-checkbox.png",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "With MOS_ONLINE_METADATA=false, the running process had ND_AGENTS empty and ND_ENABLEINSIGHTSCOLLECTOR=false. Personal Settings still offered Scrobble to ListenBrainz, initially unlinked, and Last.fm with an API-key-not-configured notice. Online metadata enabled also retained those controls.",
+      "source": "Local package image, configure-rig.cjs and check-online.cjs",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "The revised package discovered a generated WAV on the read-only Music drive, saved it to a playlist, played it in Chromium and retained both the playlist and playback after restart.",
+      "source": "Local rig check.mjs reusing apps/navidrome/e2e/index.mjs; capture/journey.json",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Deezer’s adapter fetches artwork from URLs returned by its API; upstream response fixtures identify the dzcdn.net image CDN. ListenBrainz source uses api.listenbrainz.org and labs.api.listenbrainz.org for metadata when MusicBrainz identifiers are present. The fictional capture library had no such identifiers, so those paths were established from source rather than observed.",
+      "source": "Navidrome v0.64.2 adapters/deezer and adapters/listenbrainz",
+      "url": "https://github.com/navidrome/navidrome/tree/v0.64.2/adapters",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "The pinned self-hosted distribution is GPL-3.0 software from the Navidrome project; ordinary local playback requires no upstream account. Optional scrobbling accounts and third-party clients are separate choices.",
+      "source": "Navidrome v0.64.2 license and self-hosting documentation",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/LICENSE",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Historical harness observation before the local-background override: The art-rich screenshot library used the package with online metadata enabled. Navidrome fetched artist portraits and biographies, including Miles Davis, and generated a playlist cover collage from local album covers. The packet capture recorded api.deezer.com, auth.deezer.com, pipe.deezer.com, cdn-images.dzcdn.net and www.navidrome.org. Album cover JPEGs and public track metadata were separately prefetched from Deezer into the disposable music fixture; this does not demonstrate automatic album-cover discovery by Navidrome. The browser made no off-site requests. No new receiver beyond the published outbound list was found.",
+      "source": "Local screenshot rig capture-art/network.pcap, server-hosts.txt and browser.har; seed-art.cjs and art-library.json",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "After declaring explicit ND_ENABLEGRAVATAR=false and an empty ND_GATRACKINGID in the manifest, the local package served an empty gaTrackingId in its parsed web configuration. Its authenticated Subsonic getAvatar response matched the SHA-256 of Navidrome’s bundled logo placeholder, with no external redirect. No Gravatar, Google Analytics or Google Tag Manager browser requests were recorded during sign-in and artist browsing. Both environment names were present in MOS’s managed-name set. This bounded harness check supplements, rather than replaces, the pending human runtime capture.",
+      "source": "Local rig check-avatar-analytics.cjs and avatar-analytics-check.json",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Historical harness observation using the previous inline PNG: With the local-background override applied, the login page decoded the embedded PNG at 200 by 200 pixels and made no request to the /backgrounds endpoint or any off-site browser host. Sign-in worked and the served Last.fm and ListenBrainz feature flags remained enabled. A fresh shared-namespace capture from 13:11:13 to 13:11:46 UTC on 2026-10-27 contained 964 packets and no www.navidrome.org DNS lookup. Its only external DNS name was example.com, deliberately injected at 13:11:46 UTC as a capture control. This short startup/sign-in check does not establish silence for music metadata or replace the human runtime session.",
+      "source": "Local rig check-local-background.cjs; capture-local-background/check.json, browser.har, network.pcap and server-hosts.txt",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "The shared MOS wallpaper decoded at 1920 by 1200 pixels on desktop and mobile. The served data URL matched the canonical generated SVG byte for byte. Neither browser session made off-site requests, and sign-in succeeded. This local screenshot rig does not replace the human runtime review.",
+      "source": "Local rig check-wallpaper.cjs; capture-wallpaper/check.json, desktop.har, mobile.har and login screenshots",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Human review item 3: the reviewer explicitly approved Deezer, MetaBrainz/ListenBrainz and Last.fm as providers for optional metadata features, stating personal familiarity with all three. This records acceptance of the disclosed providers, not completion of the runtime network review.",
+      "source": "Human review conversation, 2026-10-27",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Human-driven runtime session on 2026-10-27 used Suite Manager-generated, materialized MOS projection values with a logging CoreDNS resolver and a shared application-network-namespace packet capture. From 14:00:02.465 to 14:09:55.563 UTC, 6,688 packets recorded Deezer API hosts api.deezer.com, auth.deezer.com and pipe.deezer.com plus artwork host cdn-images.dzcdn.net. A deliberate example.com request at 14:00:09 UTC appeared in both resolver logs and DNS/TLS capture and is excluded from app findings. No Google Analytics, Gravatar or www.navidrome.org destination appeared. Initial bootstrap and music scanning preceded the human session; the human exercised browsing, artist details and playback. The one-minute scanner ran during the window; longer scheduled tasks and optional account integrations were not established by this session.",
+      "source": "Local human-review run: projections.json, materialized-runtime.json, session-preserved.pcap, packet-summary.json, resolver-session.log and app-session.log",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "The reviewer-saved HAR contains 101 entries from 14:05:28.141 to 14:09:48.753 UTC: 99 localhost HTTP entries, one inline SVG wallpaper entry and one browser request to the reviewer’s Vaultwarden host for /icons/127.0.0.1/icon.png. The latter is consistent with a password-manager extension but HAR attribution is absent, so reviewer confirmation is pending. Three local insights-status responses report lastRun=disabled. No browser request to Google Analytics, Gravatar or the Navidrome background service appears. HAR content was analysed locally without publishing headers, cookies or tokens.",
+      "source": "Local human-review run: reviewer.har (SHA-256 c4dd3ec2baeeb42cce45f2c40887cc337d556c0622e2ff905e06163b1b52734a), har-summary.json and served-controls.json",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "The human reviewer confirmed an active Bitwarden/Vaultwarden browser extension during the session. The browser-only request to the reviewer’s Vaultwarden host for /icons/127.0.0.1/icon.png is therefore attributed to that extension rather than Navidrome. This attribution combines the icon-request pattern with explicit reviewer confirmation; the HAR itself has no initiator metadata.",
+      "source": "Human review conversation, 2026-10-27; human-review/reviewer.har",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Human review item 5: during the saved runtime session, external provider traffic totalled 151,504 bytes outbound and 2,664,854 bytes inbound, measured by captured frame lengths. Local browser traffic, logging-resolver traffic and the deliberate example.com control are excluded. Inbound traffic was 17.6 times outbound, consistent with fetching artwork and metadata. Counts include protocol overhead and acknowledgements. TLS was not decrypted, so destination and volume do not establish request contents or prove that no user data was transmitted. The human reviewer accepted these measurements on the condition that the provider traffic was only Deezer; DNS and TLS SNI identify only Deezer API hosts and cdn-images.dzcdn.net after excluding the labelled control.",
+      "source": "Local human-review run: session-preserved.pcap, packets.tsv, packet-summary.json and flow-summary.json",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Human review item 6: the reviewer accepted the observed server/browser boundary. The tested Navidrome web interface used local app requests and inline wallpaper, while its server fetched Deezer metadata and artwork. The confirmed browser-extension request is excluded from Navidrome findings. Native clients, plugins, radio streams and connected scrobbling accounts were outside the exercised scope.",
+      "source": "Human review conversation, 2026-10-27; human-review/reviewer.har and session-preserved.pcap",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Human review item 7: the reviewer approved the MOS policy that telemetry is disabled while external app features remain available through explicit user choice. The package applies usage-reporting and Gravatar disable settings, supplies no Google Analytics ID and embeds the MOS wallpaper. Metadata is disclosed as an installation choice enabled by default; connected listening-history sharing requires account authorisation or a token. Plugins and manually configured integrations can introduce other destinations. These application controls are not firewall enforcement.",
+      "source": "Human review conversation, 2026-10-27; manifest.json and entrypoint.sh",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Human review item 8: the reviewer accepted the disclosed licence, publisher and external-service policy exposure. Navidrome is distributed under GPLv3 by the Navidrome project; no separate self-hosted terms or privacy policy was located. Deezer, MetaBrainz and Last.fm publish their own policies for the optional external integrations.",
+      "source": "Human review conversation, 2026-10-27; policies[] primary-source links",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Project-health check against the GitHub API on 2026-10-27: the repository was created 2016-02-24, is not archived, and was pushed 2026-10-26. GitHub lists 253 contributor accounts, 250 classified as User and three as Bot; these are historical code contributors, not a count of active maintainers. Deluan dominates recorded commits (4,168), followed by kgarner7 (97). The latest 100-commit sample contains 18 distinct author identities. Latest stable release remains v0.64.2, published 2026-09-24; ten stable releases were published between 2026-03-31 and 2026-09-24. No authoritative complete maintainer roster was established. Active development and longevity are documented; future continuity remains an inference with concentration around the lead maintainer.",
+      "source": "GitHub repository, contributors, commits and releases API; local project-health.json",
+      "url": "https://github.com/navidrome/navidrome",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Human review item 9: the reviewer approved external-dependency as the derived posture, with external-contact, accepted-by-mos, optional-upstream-account, optional-external and upstream-services-involved dimensions. Confidence remains documented because the overall assessment combines runtime observations with source-backed integrations that were not exercised. The reviewer accepted the stated scope and limitations.",
+      "source": "Human review conversation, 2026-10-27",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "observed",
+      "claim": "Unsigned Hyper-V lab test on 2026-10-27 used the working-tree package through normal Suite Manager UI. Install passed in run 20261027-144612-owner-install-navidrome-app-navidrome-ve. Its subsequent app step exposed a bootstrap-door versus configured-HTTPS tile expectation mismatch; a separate run without carried install state lacked setup credentials. Continuing the install state at the configured HTTPS address in run 20261027-144807-owner-app-navidrome-verify-navidrome-net passed owner sign-in, Navidrome sign-in, music-drive upload and replug, automatic music discovery, playlist creation, browser playback and repeat verification. The network check passed with capture controls and only api.deezer.com recorded for Navidrome. This was not a backup/restore or full app-cycle drill. The disposable lab alone was labelled candidate MOS 0.23.0 to exercise the existing storage contract; repository release metadata and signature enforcement were unchanged.",
+      "source": "test/e2e/results/20261027-144612-owner-install-navidrome-app-navidrome-ve/summary.json; test/e2e/results/20261027-144807-owner-app-navidrome-verify-navidrome-net/summary.json and network/report.md",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "Speaker playback advertised in the catalog requires a separate compatible client. Navidrome’s official client directory lists AirPlay-capable clients, including play:Sub and Dromify; Symfonium’s publisher documents Navidrome as a source and Sonos casting as an output. This is client-mediated compatibility, not a bundled Sonos or AirPlay transmitter in the MOS package. These clients and physical speaker playback were not exercised and remain outside this assessment’s runtime scope.",
+      "source": "Navidrome official Apps & Players directory; Symfonium official feature list at https://symfonium.app/",
+      "url": "https://www.navidrome.org/apps/",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "documented",
+      "claim": "The catalog distinguishes the self-hosted library from optional multi-source players. Navidrome’s official About page describes a streaming-service-style experience for owned files. Its built-in external agents supply metadata rather than streaming-service catalogue playback. Ampcast’s publisher lists Navidrome alongside Spotify, Apple Music and YouTube support; the catalog explicitly identifies Ampcast as a separately installed client with external account/subscription requirements. Such clients remain excluded from this package runtime assessment.",
+      "source": "https://www.navidrome.org/about/; https://www.navidrome.org/docs/usage/integration/external-services/; Ampcast publisher README",
+      "url": "https://github.com/rekkyrosso/ampcast",
+      "retrievedAt": "2026-10-27"
+    }
+  ],
+  "security": [
+    {
+      "type": "documented",
+      "claim": "Navidrome 0.64.2 fixes download Content-Disposition filename sanitisation, initial-admin failure handling and password logging in that failure path. This package pins that release.",
+      "source": "Navidrome v0.64.2 release notes",
+      "url": "https://github.com/navidrome/navidrome/releases/tag/v0.64.2",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "configured",
+      "claim": "The wrapper creates the initial administrator through the native API on loopback before binding the externally routed server. Existing users are preserved. Music is mounted read-only, so the app cannot modify the drive library.",
+      "source": "apps/navidrome/entrypoint.sh and manifest.json",
+      "retrievedAt": "2026-10-27"
+    }
+  ],
+  "outbound": [
+    {
+      "from": "server",
+      "host": "api.deezer.com",
+      "purpose": "Looks up artist details and artwork when online metadata is enabled; Deezer sees the server address and music lookup terms.",
+      "receiver": "Deezer"
+    },
+    {
+      "from": "server",
+      "host": "auth.deezer.com",
+      "purpose": "Obtains an anonymous session used by the metadata adapter, without an owner Deezer account.",
+      "receiver": "Deezer"
+    },
+    {
+      "from": "server",
+      "host": "pipe.deezer.com",
+      "purpose": "Requests metadata through Deezer’s alternate API used by the adapter.",
+      "receiver": "Deezer"
+    },
+    {
+      "from": "server",
+      "host": "*.dzcdn.net",
+      "purpose": "Downloads artist artwork returned by Deezer’s metadata API.",
+      "receiver": "Deezer"
+    },
+    {
+      "from": "server",
+      "host": "api.listenbrainz.org",
+      "purpose": "Retrieves artist and track metadata when files carry MusicBrainz identifiers and online metadata is enabled. Listening-history submissions additionally require the user to connect a token.",
+      "receiver": "MetaBrainz Foundation"
+    },
+    {
+      "from": "server",
+      "host": "labs.api.listenbrainz.org",
+      "purpose": "Looks up similar artists and recordings by MusicBrainz identifiers when online metadata is enabled.",
+      "receiver": "MetaBrainz Foundation"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "MOS sets ND_ENABLEINSIGHTSCOLLECTOR=false and ND_ENABLEGRAVATAR=false, and declares ND_GATRACKINGID as empty. These manifest-owned environment names cannot be replaced through MOS’s owner environment editor. Google Analytics initialises only when the server supplies a non-empty tracking ID. The package ships no configuration file setting one. External feature integrations remain available.",
+      "source": "apps/navidrome/manifest.json; upstream ui/src/App.jsx and conf/configuration.go",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/conf/configuration.go",
+      "retrievedAt": "2026-10-27"
+    },
+    {
+      "type": "configured",
+      "claim": "The login background uses the embedded MOS wallpaper SVG through ND_UILOGINBACKGROUNDURL, preventing the remote background handler from being created. Music metadata and account-based integrations remain available.",
+      "source": "apps/navidrome/manifest.json; upstream cmd/root.go",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/cmd/root.go",
+      "retrievedAt": "2026-10-27"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/navidrome/navidrome/blob/v0.64.2/LICENSE",
+      "retrievedAt": "2026-10-27",
+      "publisher": "Navidrome project (Deluan and contributors)"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://www.deezer.com/legal/personal-datas",
+      "retrievedAt": "2026-10-27",
+      "effectiveDate": "2025-09",
+      "publisher": "Deezer"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://metabrainz.org/privacy",
+      "retrievedAt": "2026-10-27",
+      "publisher": "MetaBrainz Foundation"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://www.last.fm/legal/privacy",
+      "retrievedAt": "2026-10-27",
+      "effectiveDate": "2026-05-26",
+      "publisher": "Last.fm Limited"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "OpenAI",
+    "model": "unknown",
+    "modelIdentifierSource": "unknown",
+    "skill": "assess-app-privacy",
+    "skillRevision": "18ba79bb7ce76b067076929896c7575048f1e7a5",
+    "repositoryCommit": "f391b9d68e079f62487c51ba579a2ff475fbb181"
+  },
+  "openQuestions": [
+    "Final human sign-off remains pending; lastHumanReview is unset.",
+    "The MOS lab installation, music journey and network check passed. A full backup/restore app-cycle remains unrun.",
+    "No separate self-hosted terms or privacy policy was located for the GPL distribution.",
+    "ListenBrainz metadata requests remain source-backed; the runtime music fixture had no MusicBrainz identifiers.",
+    "Plugins, internet radio, Last.fm credentials, ListenBrainz user tokens and third-party clients were not exercised.",
+    "The runtime window was approximately ten minutes. Longer scheduled tasks were not established by that capture, and TLS was not decrypted."
+  ]
+}

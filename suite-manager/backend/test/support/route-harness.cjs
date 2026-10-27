@@ -26,7 +26,7 @@ function send(port, method, requestPath, { body, headers = {}, signedIn = true }
       agent: false,
       headers: {
         Host: HOST,
-        ...(signedIn ? { Cookie: `mos_session=${OWNER_SESSION}` } : {}),
+        ...(signedIn ? { Cookie: `mos_session_http=${OWNER_SESSION}` } : {}),
         ...(payload ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
       },

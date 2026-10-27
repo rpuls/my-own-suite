@@ -7,6 +7,9 @@ const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { AppInstallJobs } = require('../apps/app-install-jobs.cjs');
+const { DriveJobs } = require('../apps/drive-jobs.cjs');
+const { FilesService } = require('../storage/files-service.cjs');
+const { StorageService } = require('../storage/storage-service.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
 const { AppPackageService } = require('../apps/app-package-service.cjs');
 const { AppUpdateJobs } = require('../apps/app-update-jobs.cjs');
@@ -81,11 +84,11 @@ function createOfficialCatalog({ limiter, logger, recordSecurityEvent, stateDir,
 }
 
 // Installs and updates that build for minutes run as jobs the page reads back.
-function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger }) {
+function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage }) {
   const installJobs = new AppInstallJobs({
     addToHomepage: (packageId) => appPackages.addPackageToHomepage(packageId, homepageConfig, appUrls.publicUrlOf(packageId)),
     logger,
-    prepare: (packageId, config) => appPackages.installPackage(packageId, { config }),
+    prepare: (packageId, input) => appPackages.installPackage(packageId, input),
     progressOf: (packageId) => appPackages.installProgressOf(packageId),
     start: (packageId) => appPackages.startPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
     waitForAddress: (packageId) => appAgent.waitForAddress({ publicUrl: appUrls.publicUrlOf(packageId).publicUrl }),
@@ -98,7 +101,9 @@ function createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger 
       publicUrlFor: appUrls.publicUrls(),
     }, onStage),
   });
-  return { installJobs, updateJobs };
+  const driveJobs = new DriveJobs({ logger, perform: (driveId, action) => storage.driveAction(driveId, action).finally(() => appPackages.forgetDriveFacts()) });
+  storage.driveJobs = driveJobs;
+  return { driveJobs, installJobs, updateJobs };
 }
 
 function createServices({
@@ -125,6 +130,7 @@ function createServices({
   stateDir = path.join(process.cwd(), '.state'),
   suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRootOf(stateDir)) }),
   detectAddress = undefined,
+  readEasyDoorId = undefined,
   probeEasyDoorCertificate = undefined,
   officialCatalog = null,
   externalSources = null,
@@ -140,6 +146,7 @@ function createServices({
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
+    appHosts: () => appPackages.appRouteHosts(),
     store: setup.store,
     suiteAddress,
   });
@@ -162,6 +169,7 @@ function createServices({
     catalogService,
     externalCatalog: () => externalSourceService?.catalogPackages() || [],
     externalClient: externalSourceClient,
+    homeLinks: () => homepageConfig.homeServiceHosts(),
     limiter: appOperationLimiter,
     store: setup.store,
     suiteAddress,
@@ -180,6 +188,7 @@ function createServices({
     bootstrapHost: homeHost,
     bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
     detectAddress,
+    easyDoorId: readEasyDoorId,
     frontDoor,
     installedApps: () => setup.store.getAppInstances().filter((instance) => instance.status === 'installed').map((instance) => instance.displayNameSnapshot || instance.packageId),
     probeCertificate: probeEasyDoorCertificate,
@@ -189,7 +198,9 @@ function createServices({
     suiteAddress,
   });
   addressService.start();
-  const { installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger });
+  const storage = new StorageService({ appAgent, backupAgent, names: () => appPackages.appNames(), onChanged: () => appPackages.forgetDriveFacts() });
+  const files = new FilesService({ appAgent, stateDir: setup.store.stateDir, storage });
+  const { driveJobs, installJobs, updateJobs } = createAppJobs({ appAgent, appPackages, appUrls, homepageConfig, logger, storage });
   externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -216,7 +227,9 @@ function createServices({
     consoleLogin,
     diagnosticsAgent,
     disposableLab,
+    driveJobs,
     externalSourceService,
+    files,
     frontDoor,
     frontendDistDir,
     handover,
@@ -230,6 +243,7 @@ function createServices({
     setup,
     signIn,
     smtpSettings,
+    storage,
     suiteAddress,
     updateJobs,
     updates,
@@ -245,9 +259,10 @@ async function startCatalogRefresh(catalogService) {
 }
 
 // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
-async function startServices({ addressService, appPackages, appUrls, catalogService, setup }) {
+async function startServices({ addressService, appPackages, appUrls, catalogService, files, setup }) {
   const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
   const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
+  await files.sweep().catch(() => {});
   void startCatalogRefresh(catalogService);
   addressService.watchEasyDoor();
   return { recoveries, sweptCandidates };

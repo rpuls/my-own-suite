@@ -152,8 +152,8 @@ const appsJson = JSON.stringify(
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] as string
     )
 
-  const icon = (app: AppData, extra = '') =>
-    `<span class="app-ico"${extra}><img src="${esc(app.icon)}" alt="" loading="lazy" /></span>`
+  const icon = (app: AppData, { solid = false } = {}) =>
+    `<span class="mos-app-icon app-ico${solid ? ' mos-app-icon-solid' : ''}"><img src="${esc(app.icon)}" alt="" loading="lazy" /></span>`
 
   function filtered(): AppData[] {
     const query = search.value.trim().toLowerCase()
@@ -252,7 +252,7 @@ const appsJson = JSON.stringify(
     <button type="button" class="app-hero-pill is-round" aria-label="Close" id="appDrawerClose"><svg width="15" height="15" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
   </div>
   <div class="app-drawer-hero-bottom">
-    ${icon(app)}
+    ${icon(app, { solid: app.screenshots.length > 0 })}
     <div class="app-drawer-headline">
       <h3>${esc(app.name)}</h3>
       <p class="app-drawer-replaces">${app.replacesShort ? `<span class="app-drawer-replaces-label">Replaces</span><strong>${esc(app.replacesShort)}</strong>` : ''}<span class="app-drawer-category">${esc(app.category)}</span></p>

@@ -11,6 +11,8 @@ const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 45 * 60_000;
 const APP_AGENT_APPLY_TIMEOUT_MS = 65 * 60_000;
 // Two of the agent's 15-minute health waits: the new version's, then the old one's if it never answers.
 const APP_AGENT_ACTIVATE_TIMEOUT_MS = 35 * 60_000;
+// Stopping a drive's apps, ntfsfix on a large drive, and starting them again.
+const APP_AGENT_DRIVE_TIMEOUT_MS = 20 * 60_000;
 // The agent gives an app's address five minutes before it reports it still waiting.
 const APP_AGENT_ADDRESS_TIMEOUT_MS = 6 * 60_000;
 
@@ -36,6 +38,24 @@ class AppAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
+  storageInventory() { return this.request('GET', '/v1/storage/inventory'); }
+  storageUsage() { return this.request('GET', '/v1/storage/usage'); }
+  containerStates() { return this.request('GET', '/v1/apps/containers'); }
+  checkDrive(input) { return this.request('POST', '/v1/storage/check', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  ejectDrive(input) { return this.request('POST', '/v1/storage/eject', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  useDrive(input) { return this.request('POST', '/v1/storage/use', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  forgetDrive(input) { return this.request('POST', '/v1/storage/forget', input); }
+  openDrive(input) { return this.request('POST', '/v1/storage/open', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  renameStorage(input) { return this.request('POST', '/v1/storage/rename', input); }
+  formatInstallerStick(input) { return this.request('POST', '/v1/storage/format-installer', input, { timeoutMs: APP_AGENT_DRIVE_TIMEOUT_MS }); }
+  filesCreateFolder(input) { return this.request('POST', '/v1/files/folder', input); }
+  filesRename(input) { return this.request('POST', '/v1/files/rename', input); }
+  filesMove(input) { return this.request('POST', '/v1/files/move', input); }
+  filesDelete(input) { return this.request('POST', '/v1/files/delete', input); }
+  filesUploadOffset(input) { return this.request('POST', '/v1/files/upload/offset', input); }
+  filesUploadAppend(input) { return this.request('POST', '/v1/files/upload/append', input); }
+  filesUploadFinish(input) { return this.request('POST', '/v1/files/upload/finish', input); }
+  filesUploadCancel(input) { return this.request('POST', '/v1/files/upload/cancel', input); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   waitForAddress(input) { return this.request('POST', '/v1/apps/address', input, { timeoutMs: APP_AGENT_ADDRESS_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }

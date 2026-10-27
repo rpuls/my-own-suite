@@ -9,15 +9,16 @@ import { OwnerAccountPanel } from './OwnerAccountPanel';
 import { SecurityActivityPanel } from './SecurityActivityPanel';
 import { SuiteAddressPanel } from './SuiteAddressPanel';
 import { TechnicalControlsPanel } from './TechnicalControlsPanel';
+import { StoragePanel } from '../storage/StoragePanel';
 
 type GroupId = 'advanced' | 'apps' | 'help' | 'security' | 'suite';
 
-type SettingId = 'activity' | 'address' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'technical';
+type SettingId = 'activity' | 'address' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
 const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
   { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
   { description: 'Who controls this suite and how it protects your data.', id: 'security', title: 'Account & security' },
-  { description: 'Where your apps come from.', id: 'apps', title: 'Apps' },
+  { description: 'Where your apps come from, and where your files and backups are kept.', id: 'apps', title: 'Apps & storage' },
   { description: 'Extra detail for people who want to see under the hood.', id: 'advanced', title: 'Advanced' },
   { description: 'For when something is not working.', id: 'help', title: 'Help' },
 ];
@@ -31,6 +32,7 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
+  { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
   { group: 'advanced', icon: 'settings', id: 'technical', keywords: 'technical controls advanced logs config developer overrides expert', title: 'Technical controls' },
   { group: 'help', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
 ];
@@ -51,6 +53,7 @@ const SETTING_CARDS: Record<SettingId, () => ReactNode> = {
   encryption: () => <EncryptionPanel />,
   password: () => <OwnerAccountPanel />,
   sources: () => <AppSourcesPanel />,
+  storage: () => <StoragePanel />,
   technical: () => <TechnicalControlsPanel />,
 };
 
@@ -159,6 +162,12 @@ export function SettingsScreen() {
     // A cleared search re-shows the target in the same render, so wait for it.
     window.requestAnimationFrame(() => scrollToAnchor(`set-${id}`));
   }
+
+  // A link from another screen names its card, as the start page's drives do.
+  useEffect(() => {
+    const linked = SETTINGS.find((setting) => window.location.hash === `#set-${setting.id}`);
+    if (linked) jump(linked.id);
+  }, []);
 
   return <section className="mos-shell mos-page mos-page-wider">
     <div className="suite-settings-layout">

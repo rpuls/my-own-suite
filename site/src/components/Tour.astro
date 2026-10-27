@@ -15,50 +15,38 @@ const shots = import.meta.glob<{ default: ImageMetadata }>('../assets/screenshot
 const tour = [
   {
     file: 'app-catalog',
-    title: 'A catalog you just tap through',
-    copy: 'Pick what you want from a curated shortlist and install it in a single tap. MOS quietly handles the database, the networking, and the secure connections in the background — no config files, no command line.',
+    title: "No need to know the app's name",
+    copy: 'Type what you want to replace, like Dropbox, or what you want to do, like photos, and the catalog finds the open-source app for it. One tap installs it; the database, the address and the padlock are sorted behind the scenes.',
     alt: 'The MOS App Catalog'
   },
   {
     file: 'app-detail-install',
     title: "Know exactly what you're getting",
-    copy: 'Every app has a plain-language page: what it does, the Big Tech product it replaces, how much it will ask of your machine, and how your data stays private. Decide with confidence, then install with a single click.',
+    copy: 'Every app has a plain-language page: what it does, what it replaces, what it asks of your machine, and how private it is.',
     alt: "An app's detail view with a one-click Install action and its privacy posture grade"
   },
   {
     file: 'privacy-posture',
-    title: 'The privacy grade, with receipts',
-    copy: "Every catalog app is assessed before it enters the catalog and wears an A-to-D privacy grade. Tap it and see why: telemetry, outside services, accounts, where your data is processed, and the policies that apply — a plain verdict on each, backed by published evidence.",
+    title: 'A privacy grade, with receipts',
+    copy: 'Every catalog app is assessed before it gets in and wears an A-to-D grade. Tap it to see why, dimension by dimension, backed by published evidence.',
     alt: "The privacy posture dialog showing an app's A-to-D grade and per-dimension verdicts"
   },
   {
     file: 'app-connect',
     title: 'Apps that plug into each other',
-    copy: 'Some apps are better together — connect Seafile to ONLYOFFICE and every document in your file cloud opens for editing in the browser. One button does it: MOS exchanges the secrets and wires the network, so you never copy keys between admin panels.',
+    copy: 'Connect Seafile to ONLYOFFICE and every document in your file cloud opens for editing in the browser. One button, and no keys to copy between admin panels.',
     alt: 'Two apps shown as a plug and socket with a one-click Connect action'
-  },
-  {
-    file: 'app-setup-guide',
-    title: 'Guided onto your other devices',
-    copy: "Some apps meet you on your phone or laptop — like pointing your calendar at your own server. Those come with a built-in setup guide: per-device steps and copyable values right where you need them, tracking what you've finished.",
-    alt: "A per-app setup guide with per-device steps beside the app's detail view"
   },
   {
     file: 'app-update-review',
     title: 'Updates you approve, not endure',
-    copy: 'Your server checks a signed catalog for app updates and shows you what would change before anything does — the versions, new settings, whether the app asks for more access, and whether its privacy grade moved. You decide; MOS keeps the old version running until the new one is ready.',
+    copy: 'See what an update changes before it happens, including whether the privacy grade moved. You press the button, and if it fails MOS puts the old version back.',
     alt: 'The update review dialog listing what an app update changes before it is applied'
   },
   {
-    file: 'platform-update',
-    title: 'The platform updates itself, on a track you choose',
-    copy: 'MOS keeps itself current from a track you pick — stable releases by default. It shows the version you are on, the one waiting, and the release notes for what is in it, then applies the update through a host-owned updater with live progress and diagnostics kept visible. Your apps keep running from the versions you installed; they update separately, one review at a time.',
-    alt: 'The Updates screen showing a stable-track platform update with its release notes'
-  },
-  {
     file: 'backups',
-    title: 'Back up your whole suite to storage you control',
-    copy: 'One button copies your suite to storage attached to the MOS server: an encrypted USB disk at home, or a mounted block-storage volume on a rented server. MOS verifies every archive before restore. Bundles are not encrypted by MOS, so protect the destination like the server itself.',
+    title: 'Backups that run themselves',
+    copy: 'On a schedule, to a drive you plug in or to storage online, encrypted with a recovery key only you hold. Under the hood is restic, the battle-tested open-source backup engine, so the archive opens anywhere. One button brings the whole suite back.',
     alt: 'Backup and restore page in Suite Manager'
   }
 ]

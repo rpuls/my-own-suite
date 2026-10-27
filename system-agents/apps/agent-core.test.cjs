@@ -1,8 +1,17 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const { unavailableHandler } = require('../../infrastructure/control-plane-runtime.cjs');
 const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
-const { AppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
+const { AppAgentCore: MachineAppAgentCore, AppRuntimeError, aliasedEasyDoorBase, renderAppRoutes } = require('./agent-core.cjs');
+
+// Without an Easy Door unless a test gives it one: the default reads this
+// machine's own address and id, which a test must not depend on or create.
+class AppAgentCore extends MachineAppAgentCore {
+  constructor(adapter, options = {}) {
+    super(adapter, { easyDoorBase: () => null, ...options });
+  }
+}
 
 const request = {
   appHost: 'example-tool.mos.home',
@@ -44,6 +53,23 @@ test('app agent answers for the architecture of the host it builds on', async ()
   const status = await new AppAgentCore({}).status();
   assert.equal(status.hostArchitecture, { arm64: 'arm64', x64: 'amd64' }[process.arch] || null);
   assert.ok(status.hostArchitecture === null || ['amd64', 'arm64'].includes(status.hostArchitecture));
+});
+
+// Suite Manager polls the inventory every few seconds while a storage page is
+// open; only a drive changing state is worth rewriting Caddy's paused pages for.
+test('reading the storage inventory writes paused pages only when a drive\'s state changed', async () => {
+  const synced = [];
+  let drives = [{ apps: ['jellyfin'], id: '1A2B-3C4D', state: 'ready' }, { apps: [], id: 'e1e1-0000', state: 'available' }];
+  const core = new AppAgentCore({ storage: { inventory: async () => ({ drives }) }, syncPausedPages: async (seen) => { synced.push(seen.map((drive) => drive.state)); } });
+
+  await core.storageInventory();
+  await core.storageInventory();
+  assert.deepEqual(synced, [['ready', 'available']], 'the first look syncs, the same answer does not');
+
+  drives = [{ ...drives[0], state: 'away' }, drives[1]];
+  assert.deepEqual((await core.storageInventory()).drives[0].state, 'away');
+  await core.storageInventory();
+  assert.deepEqual(synced, [['ready', 'available'], ['away', 'available']], 'a pulled drive is told within one read');
 });
 
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
@@ -159,12 +185,16 @@ test('app route rendering uses structured host and loopback upstream only', () =
   assert.equal(renderAppRoutes({
     appHost: 'example-tool.mos.home',
     reverseProxy: '127.0.0.1:18123',
-  }), 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
+  }), `http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n${unavailableHandler()}\n}\n`);
   assert.equal(renderAppRoutes({
     appHost: 'example-tool.mos.example.com',
     reverseProxy: '127.0.0.1:18123',
     scheme: 'https',
-  }), 'https://example-tool.mos.example.com {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
+  }), `https://example-tool.mos.example.com {\n  reverse_proxy http://127.0.0.1:18123\n${unavailableHandler()}\n}\n`);
+});
+
+test('an app address that cannot reach its app answers with the page MOS wrote for it, if MOS paused it', () => {
+  assert.match(renderAppRoutes({ appHost: 'films.mos.home', reverseProxy: '127.0.0.1:18125' }), /handle_errors \{\s*@mos-app-paused file/u);
 });
 
 test('app route rendering supports a structured tokenized iCal bridge', () => {
@@ -235,6 +265,29 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
     SERVER_HOST: 'http://example-tool.mos.home/',
   });
   assert.match(calls[0].caddyRoutes, /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
+});
+
+test('app apply passes a service its drive folders and refuses any that could name another path', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async applyAppServices(input) { calls.push(input); return { steps: [] }; } });
+  const withFolders = (folders) => ({ ...request, compose: { ...request.compose, services: [{ ...request.compose.services[0], folders }] } });
+  const movies = { drive: '1A2B-3C4D', name: 'Movies', path: '/media/movies' };
+
+  await core.apply(withFolders([movies]));
+  assert.deepEqual(calls[0].services[0].folders, [movies]);
+  await core.apply(request);
+  assert.equal('folders' in calls[1].services[0], false);
+
+  for (const folder of [
+    { ...movies, name: '../../etc' },
+    { ...movies, drive: '../root' },
+    { ...movies, path: 'relative' },
+    { ...movies, path: '/media/movies,readonly=false' },
+    { ...movies, source: '/etc' },
+  ]) {
+    await assert.rejects(() => core.apply(withFolders([folder])), AppRuntimeError);
+  }
+  await assert.rejects(() => core.apply(withFolders([])), AppRuntimeError);
 });
 
 test('app apply renders HTTPS Caddy routes when public URL is HTTPS', async () => {
@@ -526,13 +579,13 @@ const twoRoutes = {
 };
 
 test('every app route gets a second site on the Easy Door name', async () => {
-  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('123-45-kqmzrt.local.myownsuite.org');
 
   await core.apply(twoRoutes);
 
   assert.match(calls[0].caddyRoutes, /^http:\/\/example-tool\.mos\.home \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
   assert.equal((calls[0].caddyRoutes.match(/reverse_proxy http:\/\/127\.0\.0\.1:18123/gu) || []).length, 2);
 });
 
@@ -551,13 +604,14 @@ test('no Easy Door means no alias, so a public or DNS-01 install serves one site
 // door on every other kind — the live Caddyfile carries the door either way.
 test('the Easy Door alias follows the recorded address, not the live Caddyfile', async () => {
   const serverAddress = '192.168.123.45';
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }), null);
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.192-168-123-45.local.myownsuite.org', kind: 'easy-door', scheme: 'http' }, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  const id = 'kqmzrt';
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, id, serverAddress }), null);
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.123-45-kqmzrt.local.myownsuite.org', kind: 'easy-door', scheme: 'http' }, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
   // No recorded address yet is a fresh machine, which is exactly where the door matters.
-  assert.equal(aliasedEasyDoorBase({ address: null, serverAddress }), '192-168-123-45.local.myownsuite.org');
+  assert.equal(aliasedEasyDoorBase({ address: null, id, serverAddress }), '123-45-kqmzrt.local.myownsuite.org');
   // A public address never gets the door, whatever is recorded.
-  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, serverAddress: '203.0.113.9' }), null);
+  assert.equal(aliasedEasyDoorBase({ address: { host: 'home.mos.home', kind: 'lan-name', scheme: 'http' }, id, serverAddress: '203.0.113.9' }), null);
 
   const calls = [];
   const core = new AppAgentCore({
@@ -565,7 +619,7 @@ test('the Easy Door alias follows the recorded address, not the live Caddyfile',
       calls.push(input);
       return { steps: ['built'] };
     },
-  }, { easyDoorBase: () => aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, serverAddress }) });
+  }, { easyDoorBase: () => aliasedEasyDoorBase({ address: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' }, id, serverAddress }) });
 
   await core.apply({
     ...request,
@@ -579,12 +633,12 @@ test('the Easy Door alias follows the recorded address, not the live Caddyfile',
 test('installing while already on the Easy Door does not emit the same site twice', async () => {
   // Caddy refuses a duplicate site address, so an owner who installs an app from
   // the Easy Door must not get the alias they are already standing on.
-  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('123-45-kqmzrt.local.myownsuite.org');
 
   await core.apply({
     ...request,
-    appHost: 'example-tool.192-168-123-45.local.myownsuite.org',
-    publicUrl: 'http://example-tool.192-168-123-45.local.myownsuite.org/',
+    appHost: 'example-tool.123-45-kqmzrt.local.myownsuite.org',
+    publicUrl: 'http://example-tool.123-45-kqmzrt.local.myownsuite.org/',
   });
 
   assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 1);
@@ -611,9 +665,9 @@ test('the Easy Door alias follows an app through an update activation and its ro
 test('renderAppRoutes keeps the primary site first so the Stealth door stays the canonical address', () => {
   const rendered = renderAppRoutes({
     appHost: 'example-tool.mos.home',
-    easyDoorBase: '192-168-123-45.local.myownsuite.org',
+    easyDoorBase: '123-45-kqmzrt.local.myownsuite.org',
     routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }],
   });
 
-  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.123-45-kqmzrt\.local\.myownsuite\.org \{/u);
 });

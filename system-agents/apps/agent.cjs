@@ -3,13 +3,28 @@
 const { routeTable, serveOnSocket } = require('../lib/agent-server.cjs');
 const { AppAgentCore, AppRuntimeError } = require('./agent-core.cjs');
 const { AppApplyError, SystemAppAdapter } = require('./system-adapter.cjs');
+const { CodedError } = require('../../shared/coded-error.cjs');
+const { DriveFiles, filesRoutes } = require('./files.cjs');
+const { StorageError } = require('./storage.cjs');
 
 const socketPath = process.env.MOS_APP_AGENT_SOCKET || '/run/mos-app-agent/agent.sock';
 const adapter = new SystemAppAdapter();
 const core = new AppAgentCore(adapter);
+const files = new DriveFiles({ execute: adapter.execute, executeCapture: adapter.executeCapture, registry: adapter.storage.registry });
 
 const server = routeTable({
   'GET /v1/status': () => core.status(),
+  'GET /v1/storage/inventory': () => core.storageInventory(),
+  'GET /v1/storage/usage': () => core.storageUsage(),
+  'GET /v1/apps/containers': () => core.containerStates(),
+  'POST /v1/storage/check': (body) => core.checkDrive(body),
+  'POST /v1/storage/eject': (body) => core.ejectDrive(body),
+  'POST /v1/storage/use': (body) => core.useDrive(body),
+  'POST /v1/storage/open': (body) => core.openDrive(body),
+  'POST /v1/storage/forget': (body) => core.forgetDrive(body),
+  'POST /v1/storage/rename': (body) => core.renameStorage(body),
+  'POST /v1/storage/format-installer': (body) => core.formatInstallerStick(body),
+  ...filesRoutes(files),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
   'POST /v1/apps/check-health': (body) => core.checkHealth(body),
@@ -26,7 +41,7 @@ const server = routeTable({
 }, {
   bodyLimit: 64 * 1024,
   failure(error) {
-    const known = error instanceof AppRuntimeError || error instanceof AppApplyError;
+    const known = error instanceof AppRuntimeError || error instanceof AppApplyError || error instanceof StorageError || (error instanceof CodedError && Number.isInteger(error.statusCode));
     return {
       payload: {
         code: known ? error.code : 'APP_RUNTIME_APPLY_FAILED',
@@ -43,4 +58,6 @@ const server = routeTable({
 adapter.sweepInterruptedPromotions()
   .then((repaired) => { if (repaired) process.stdout.write(`[mos-app-agent] repaired ${repaired} interrupted snapshot promotion(s)\n`); })
   .catch(() => {})
+  .then(() => adapter.syncPausedPages())
+  .then(() => void files.sweepAll())
   .then(() => serveOnSocket(server, { name: 'mos-app-agent', socketPath }));

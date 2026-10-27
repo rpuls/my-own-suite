@@ -1,8 +1,13 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, TextArea, TextInput } from '../../components/ui';
 import { RecoveryKeySecret, type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
+import { postJson } from '../../lib/api';
+import { whenWords } from '../../lib/dates';
+import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
 import { type VaultStartup } from '../../lib/vault';
+import { pickerOffers, useStorage } from '../storage/model';
+import { StoragePicker } from '../storage/StoragePicker';
 import {
   RETENTION_OPTIONS,
   WEEKDAY_NAMES,
@@ -12,82 +17,118 @@ import {
   archiveKeyLine,
   destinationIconName,
   carriedDomain,
-  whenWords,
+  placeOf,
   writtenElsewhere,
+  type Archive,
   type ArchiveKey,
   type BackupEntry,
+  type AutomaticPlace,
   type BackupSchedule,
-  type BackupStatus,
-  type DestinationView,
-  type ObjectDraft,
   type RecoveryKeyState,
   type RotationResult,
 } from './model';
 
-// Taking a backup by hand. The destination is stated rather than asked: it was
-// chosen before this dialog opened, on the page or in the picker beside the
-// button, so all that is left is the note and the go-ahead.
-export function BackupDialog({ busy, note, onCancel, onChange, onStart, target }: {
+// The archive a key dialog is about: its id, the place it is on, and which kind of place that is.
+export type ArchiveRef = { id: string; label: string; placeKind: 'disk' | 'object' };
+
+const NO_STORAGE = <><strong>Nothing to back up to yet</strong><p className="suite-meta">Plug in a drive or connect storage online in <a className="mos-link" href={STORAGE_SETTINGS_PATH} onClick={openStorageSettings}>Settings → Storage</a>, and it is listed here.</p></>;
+
+// Shown inside the dialog that failed, which stays open over the page's own notice.
+function ActionError({ error }: { error: string }) {
+  return error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null;
+}
+
+// The place a picker starts on: the default backup destination when it can take
+// a backup now, else nothing. MOS never picks a place the owner did not choose.
+function startingPlace(storage: ReturnType<typeof useStorage>['storage'], names: ReturnType<typeof useStorage>['names'], preferred: string) {
+  const offers = pickerOffers(storage || [], 'backups', { backupsKnown: true, names }).filter((offer) => offer.selectable);
+  return offers.find((offer) => offer.entry.id === preferred)?.entry.id || '';
+}
+
+// Taking a backup by hand: where it goes, an optional note, and the go-ahead.
+// With no default backup destination yet, the place picked becomes it unless unticked.
+export function BackupNowDialog({ auto, busy, error, onCancel, onStart }: {
+  auto: AutomaticPlace | null;
   busy: string;
-  note: string;
+  error: string;
   onCancel: () => void;
-  onChange: (next: string) => void;
-  onStart: () => void;
-  target: DestinationView;
+  onStart: (choice: { destinationId: string; makePrimary: boolean; note: string }) => void;
 }) {
+  const { inventory, names, storage } = useStorage();
+  const [picked, setPicked] = useState('');
+  const [note, setNote] = useState('');
+  const [makePrimary, setMakePrimary] = useState(!auto);
+  const chosen = picked || startingPlace(storage, names, auto?.id || '');
+  const working = busy === 'backup';
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={onStart} type="button">
-        {busy === 'backup' ? <><Spinner />Starting</> : 'Start backup'}
+      <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={working || !chosen} onClick={() => onStart({ destinationId: chosen, makePrimary: makePrimary && !auto, note })} type="button">
+        {working ? <><Spinner />Starting</> : 'Start backup'}
       </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
-    onClose={() => { if (!busy) onCancel(); }}
+    onClose={() => { if (!working) onCancel(); }}
     title="Back up now"
   >
-    <p>This copies your whole suite to <strong>{target.label}</strong>. Your apps pause for a few minutes and come back on their own.</p>
+    <ActionError error={error} />
+    <StoragePicker
+      backupsKnown={inventory?.backupsKnown === true}
+      busy={working}
+      context="backups"
+      empty={NO_STORAGE}
+      label="Where this backup goes"
+      names={names}
+      onChange={setPicked}
+      question="Where should this backup go?"
+      storage={storage}
+      value={chosen}
+    >
+      <p className="suite-meta">A copy of your whole suite, encrypted so only your recovery key opens it. Your apps pause for a few minutes and come back on their own.</p>
+    </StoragePicker>
+    {auto ? null : <Checkbox checked={makePrimary} disabled={working} onChange={(event) => setMakePrimary(event.currentTarget.checked)}>
+      Also make this the default backup destination, for scheduled backups and the one before every MOS update.
+    </Checkbox>}
     <TextArea
-      helperText="Shown next to this backup later, so you can tell them apart."
+      helperText="Shown next to this restore point later, so you can tell them apart."
       label="Add a note (optional)"
       maxLength={200}
-      onChange={(event) => onChange(event.currentTarget.value)}
+      onChange={(event) => setNote(event.currentTarget.value)}
       placeholder="e.g. Before the holiday"
-      rows={3}
+      rows={2}
       value={note}
     />
   </Dialog>;
 }
 
-// Handing this machine the key to backups another server wrote. The same
-// forgiving entry as the kit promises: case, spaces and hyphens do not matter,
-// and a slip is answered as a slip.
-export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
+// Handing this server the key to backups another server wrote. Case, spaces and
+// hyphens do not matter, as the kit promises.
+export function UnlockDialog({ archive, busy, error, onCancel, onUnlock }: {
+  archive: ArchiveRef;
   busy: string;
   error: string;
   onCancel: () => void;
   onUnlock: (recoveryKey: string) => void;
-  view: DestinationView;
 }) {
   const [entered, setEntered] = useState('');
-  const working = busy === `unlock:${view.id}`;
+  const working = busy === `unlock:${archive.id}`;
 
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-primary" disabled={!entered.trim() || working} onClick={() => onUnlock(entered)} type="button">
-        {working ? <><Spinner />Opening</> : 'Open these backups'}
+        {working ? <><Spinner />Unlocking</> : 'Unlock'}
       </button>
       <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!working) onCancel(); }}
-    title="Enter recovery key"
+    title={`Unlock the backups on ${archive.label}`}
   >
-    <p>The backups in <strong>{view.label}</strong> were written by another server. Type that server&rsquo;s recovery key to read them. It starts with MOS-.</p>
-    <p className="suite-meta">MOS keeps the key here to open this {view.destination.kind === 'object' ? 'bucket' : 'drive'} and changes nothing in the backups themselves.</p>
+    <p>Another server made these. Enter <strong>that server&rsquo;s</strong> recovery key, from its recovery kit. This server&rsquo;s own key does not open them.</p>
+    <p className="suite-meta">Unlocking only reads: MOS keeps the key here to open these backups, and nothing in them changes. Lock again forgets the key.</p>
     <TextInput
       autoFocus
       disabled={working}
       helperText={error || "From that server's recovery kit. Capitals, spaces and dashes do not matter."}
-      label="Recovery key"
+      label="The other server's recovery key"
       onChange={(event) => setEntered(event.currentTarget.value)}
       onKeyDown={(event) => { if (event.key === 'Enter' && entered.trim() && !working) onUnlock(entered); }}
       placeholder="MOS-XXXX-XXXX-XXXX-XXXX"
@@ -97,22 +138,19 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
   </Dialog>;
 }
 
-// Who can open an archive, and taking one of them back out. Reading the key
-// list needs a key that already opens the archive, so the dialog asks for one
-// before it can show anything — which is also why this is not something a
-// passer-by can use to lock the owner out. The key doing the asking is never
-// offered for removal, and neither is the last one left.
-export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove, view }: {
+// Who can open an archive, and taking one of them back out. Reading the list needs
+// a key that already opens the archive; the asking key and the last one are never offered.
+export function ArchiveKeysDialog({ archive, busy, error, keys, onClose, onList, onRemove }: {
+  archive: ArchiveRef;
   busy: string;
   error: string;
   keys: ArchiveKey[] | null;
   onClose: () => void;
   onList: (recoveryKey: string) => void;
   onRemove: (recoveryKey: string, keyId: string) => void;
-  view: DestinationView;
 }) {
   const [entered, setEntered] = useState('');
-  const listing = busy === `keys:${view.id}`;
+  const listing = busy === `keys:${archive.id}`;
   const working = listing || busy.startsWith('key-remove:');
 
   return <Dialog
@@ -123,9 +161,9 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
       <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onClose} type="button">{keys ? 'Done' : 'Cancel'}</button>
     </>}
     onClose={() => { if (!working) onClose(); }}
-    title={`Keys that open ${view.label}`}
+    title={`Keys that open the backups on ${archive.label}`}
   >
-    <p>Anyone holding one of these keys can read the backups in <strong>{view.label}</strong>. To see them, enter a recovery key that already opens this {view.destination.kind === 'object' ? 'bucket' : 'drive'}.</p>
+    <p>Anyone holding one of these keys can read these backups on <strong>{archive.label}</strong>. To see them, enter a recovery key that already opens them.</p>
 
     {keys ? <>
       <Panel density="tight">
@@ -145,7 +183,7 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
         </PanelList>
       </Panel>
       {error ? <Notice title="That did not work" variant="error">{error}</Notice> : null}
-      <p className="suite-meta">Removing a key takes away that machine&rsquo;s access to these backups. Nothing stored here is changed or re-encrypted, and the other keys keep working.</p>
+      <p className="suite-meta">Removing a key takes away that server&rsquo;s access to these backups. Nothing stored here is changed or re-encrypted, and the other keys keep working.</p>
     </> : <TextInput
       autoFocus
       disabled={working}
@@ -159,14 +197,10 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
   </Dialog>;
 }
 
-// One dialog for both times an owner meets their recovery key: the first, where
-// MOS shows it unasked and will not take a backup until they say they have kept
-// it, and every later one, where a signed-in owner asks to see it again and
-// proves the owner password first. The two differ only in what has to happen
-// before the key appears, which is why they are not two dialogs. What it opens
-// is listed by name, because one key for the whole server is only reassuring
-// once you can see which places that covers.
-export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup, views }: {
+// One dialog for both times an owner meets their recovery key: the first, shown
+// unasked and gating the first backup, and every later one, behind the owner password.
+export function RecoveryKeyDialog({ archives, busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup }: {
+  archives: Archive[];
   busy: string;
   error: string;
   keyState: RecoveryKeyState | null;
@@ -179,15 +213,14 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
   revealed: RevealedRecoveryKey | null;
   rotation: RotationResult | null;
   startup: VaultStartup;
-  views: DestinationView[];
 }) {
   const [password, setPassword] = useState('');
   const [saved, setSaved] = useState(false);
   const locked = Boolean(busy);
-  const opens = views.filter((view) => !view.destination.locked);
-  const missing = views.filter((view) => view.destination.locked);
-  // A rotation ends in the same place a first handover does: a key on screen
-  // that has to be saved before the dialog is done with.
+  const opens = archives.filter((archive) => archive.owner === 'this');
+  const others = archives.filter((archive) => archive.owner === 'other');
+  const icon = (archive: Archive) => destinationIconName(placeOf(archive.placeKind));
+  // A rotation ends where a first handover does: a key on screen that has to be saved.
   const confirming = mode === 'save' || (mode === 'rotate' && Boolean(rotation));
 
   return <Dialog
@@ -202,7 +235,7 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     title={mode === 'rotate' && !rotation ? 'Change your recovery key' : 'Your recovery key'}
   >
     {mode === 'rotate' && !rotation ? <>
-      <p>MOS makes a new key, changes this server's disk over to it, and changes every backup it can reach over to it. The key you have now stops opening them.</p>
+      <p>MOS makes a new key, changes this server&rsquo;s system drive over to it, and changes every backup it can reach over to it. The key you have now stops opening them.</p>
       <p>You are shown the new key once here, with a new recovery kit to download. Nothing else about your backups changes and none of them are rewritten.</p>
       <TextInput
         autoFocus
@@ -236,13 +269,9 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     {revealed ? <RecoveryKeySecret revealed={revealed} startup={startup} /> : null}
 
     {rotation ? <>
-      {/* Said without hedging, because it is the one thing rotation does not
-          fix and the owner is the only one who can decide what to do about it.
-          The disk half has no equivalent: reaching what is under a LUKS
-          passphrase needs the disk in hand, and at that point the data is
-          already gone. */}
+      {/* The one thing rotation does not undo, said without hedging. */}
       <Notice title="What changing the key does not undo" variant="warning">
-        <p>Your disk and every backup from now on need the new key. Anyone who already had the old key <strong>and</strong> a copy of your bucket or drive can still read the backups that existed before today. If you think that happened, start a fresh archive rather than trusting this one.</p>
+        <p>Your system drive and every backup from now on need the new key. Anyone who already had the old key <strong>and</strong> a copy of your storage can still read the backups that existed before today. If you think that happened, start a fresh archive rather than trusting this one.</p>
       </Notice>
       {rotation.pending.length ? <Notice title="Some copies still open with your old key" variant="info">
         <p>{rotation.pending.map((entry) => entry.label).join(', ')} {rotation.pending.length === 1 ? 'was' : 'were'} not attached, so {rotation.pending.length === 1 ? 'it keeps' : 'they keep'} the old key until next plugged in. MOS finishes the change by itself then; keep your old kit until it has.</p>
@@ -250,16 +279,18 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     </> : null}
 
     <p className="suite-meta">{keyState?.adoptedAt
-      ? 'This key came from the server this one restored from. Taking that server\u2019s place made its key this key, so everything here opens with it.'
+      ? 'This key came from the server this one restored from. Taking that server’s place made its key this key, so everything here opens with it.'
       : 'This key was made on this server at your first backup. Backups another server wrote keep their own key: MOS holds that key to read them and never changes what is in them.'}</p>
 
     {opens.length ? <div className="suite-bk-key-list">
       <p className="mos-eyebrow">This key opens</p>
-      {opens.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>{view.foreign ? `Brought in from ${view.foreign} · opens with ${view.foreign}'s key, kept here` : 'Made here'}</span></p>)}
+      {opens.map((archive) => <p key={archive.id}><Icon name={icon(archive)} /><strong>{archive.placeLabel}</strong><span>This server&rsquo;s backups</span></p>)}
     </div> : null}
-    {missing.length ? <div className="suite-bk-key-list is-missing">
+    {others.length ? <div className="suite-bk-key-list is-missing">
       <p className="mos-eyebrow">This key does not open</p>
-      {missing.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>Needs the recovery key of the server that wrote it</span></p>)}
+      {others.map((archive) => <p key={archive.id}><Icon name={icon(archive)} /><strong>{archive.placeLabel}</strong><span>{archive.keyState === 'borrowed'
+        ? `Made by ${archive.writtenBy?.hostname || 'another server'} · opens with that server's key, kept here`
+        : 'Made by another server · needs that server’s recovery key'}</span></p>)}
     </div> : null}
 
     {confirming && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
@@ -267,56 +298,61 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     </Checkbox> : null}
 
     {mode === 'reveal' && revealed ? <>
-      <p className="suite-meta">If you think someone else has seen this key, change it. MOS makes a new one and moves this server's disk and every backup it can reach over to it.</p>
+      <p className="suite-meta">If you think someone else has seen this key, change it. MOS makes a new one and moves this server&rsquo;s system drive and every backup it can reach over to it.</p>
       <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={locked} onClick={onStartRotation} type="button">
         <Icon name="key" />
         Change recovery key
       </button>
     </> : null}
 
-
     {error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null}
 
     <AdvancedPanel facts={[
       { code: true, label: 'Key fingerprint', value: keyState?.fingerprint || 'unknown' },
       { code: true, label: 'Key file on this server', value: keyState?.keyFile || 'unknown' },
-      { label: 'Pre-release key kept for old repositories', value: keyState?.legacyKeyPresent ? 'yes' : 'no' },
     ]} reveal="technical-mode" />
   </Dialog>;
 }
 
-// When automatic backups run and how many are kept. Where they go is not asked
-// here: it is the place selected on the page, stated as a fact so the two
-// questions stay in the two boxes that answer them.
-export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
+// When automatic backups run and how many are kept. Where they go is the place
+// selected on the page, stated here as a fact.
+// When automatic backups run, how many they keep, and the default backup
+// destination they go to, which the backup before a MOS update uses too.
+export function ScheduleDialog({ auto, busy, error, onCancel, onSave, schedule }: {
+  auto: AutomaticPlace | null;
   busy: string;
+  error: string;
   onCancel: () => void;
-  onSave: (next: Partial<BackupSchedule>) => void;
+  onSave: (next: Partial<BackupSchedule> & { destinationId: string }) => void;
   schedule: BackupSchedule;
-  selected: DestinationView | null;
 }) {
+  const { inventory, names, storage } = useStorage();
   const [draft, setDraft] = useState<BackupSchedule>(schedule);
+  const [picked, setPicked] = useState('');
   const zone = draft.timeZone || browserTimeZone();
   const change = (next: Partial<BackupSchedule>) => setDraft((current) => ({ ...current, ...next }));
+  // A default that is not connected right now stays chosen until another is picked.
+  const destinationId = picked || (auto && !auto.place ? auto.id : startingPlace(storage, names, auto?.id || ''));
+  const working = busy === 'schedule';
 
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => onSave(draft)} type="button">
-        {busy === 'schedule' ? <><Spinner />Saving</> : 'Save'}
+      <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={working || (draft.enabled && !destinationId)} onClick={() => onSave({ ...draft, destinationId })} type="button">
+        {working ? <><Spinner />Saving</> : 'Save'}
       </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
-    onClose={() => { if (!busy) onCancel(); }}
+    onClose={() => { if (!working) onCancel(); }}
     title="Automatic backups"
   >
-    <Checkbox checked={draft.enabled} disabled={Boolean(busy) || !selected} onChange={(event) => change({ enabled: event.currentTarget.checked })}>
+    <ActionError error={error} />
+    <Checkbox checked={draft.enabled} disabled={working} onChange={(event) => change({ enabled: event.currentTarget.checked })}>
       Back up on a schedule
     </Checkbox>
-    {selected ? null : <Notice title="Pick a place first" variant="warning"><p>Choose where backups should go on the page behind this, then turn the schedule on.</p></Notice>}
 
     {draft.enabled ? <>
       <Select
-        disabled={Boolean(busy)}
+        disabled={working}
         label="How often"
         onChange={(event) => change({ frequency: event.currentTarget.value === 'weekly' ? 'weekly' : 'daily' })}
         value={draft.frequency}
@@ -325,7 +361,7 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         <option value="weekly">Once a week</option>
       </Select>
       {draft.frequency === 'weekly' ? <Select
-        disabled={Boolean(busy)}
+        disabled={working}
         label="Day"
         onChange={(event) => change({ weekday: Number(event.currentTarget.value) })}
         value={String(draft.weekday)}
@@ -333,7 +369,7 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         {WEEKDAY_NAMES.map((name, index) => <option key={name} value={String(index)}>{name}</option>)}
       </Select> : null}
       <TextInput
-        disabled={Boolean(busy)}
+        disabled={working}
         helperText={`Times are in ${zone}, the zone of the browser that set this.${browserTimeZone() === zone ? '' : ` This browser is on ${browserTimeZone()} time.`}`}
         label="At"
         onChange={(event) => {
@@ -345,35 +381,46 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
         value={clockValue(draft)}
       />
       <Select
-        disabled={Boolean(busy)}
-        helperText="Backups you took yourself are never removed."
+        disabled={working}
+        helperText="Restore points you took yourself are never removed."
         label="Keep"
         onChange={(event) => change({ keepLast: Number(event.currentTarget.value) })}
         value={String(draft.keepLast)}
       >
         {RETENTION_OPTIONS.map((option) => <option key={option.value} value={String(option.value)}>{option.label}</option>)}
       </Select>
-      <p className="suite-meta">They go to {selected ? selected.label : 'nowhere yet'} — the place selected on the page. Change that there, not here.</p>
     </> : null}
+
+    <StoragePicker
+      backupsKnown={inventory?.backupsKnown === true}
+      busy={working}
+      context="backups"
+      empty={NO_STORAGE}
+      label="Default backup destination"
+      names={names}
+      onChange={setPicked}
+      question="Default backup destination"
+      storage={storage}
+      value={destinationId}
+    >
+      <p className="suite-meta">Scheduled backups go here, and so does the one MOS takes before every update.{auto && !auto.place ? ` ${auto.label} is not connected right now; automatic backups wait for it.` : ''}</p>
+    </StoragePicker>
   </Dialog>;
 }
 
-// Putting a backup back. Everything that cannot be undone is said before the
-// confirmation field, and a restore onto another machine states what will
-// happen to the address the backup carried rather than asking. The question it
-// used to ask was answered blind — the consequences only became visible twenty
-// minutes later, on a screen the answer could take away.
-export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart, status }: {
+// Putting a restore point back. Everything that cannot be undone is said before the
+// confirmation field, and a restore onto another server states what happens to the address.
+export function RestoreDialog({ backup, busy, confirmation, error, onCancel, onConfirmation, onStart }: {
   backup: BackupEntry;
   busy: string;
   confirmation: string;
+  error: string;
   onCancel: () => void;
   onConfirmation: (next: string) => void;
   onStart: () => void;
-  status: BackupStatus;
 }) {
-  const elsewhere = writtenElsewhere(backup, status);
-  const domain = carriedDomain(backup, status);
+  const elsewhere = writtenElsewhere(backup);
+  const domain = carriedDomain(backup);
 
   return <Dialog
     footer={<>
@@ -382,30 +429,31 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
         disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || Boolean(busy)}
         onClick={onStart}
         type="button"
-      >{busy === 'restore' ? <><Spinner />Starting</> : 'Restore'}</button>
+      >{busy === 'restore' ? <><Spinner />Starting</> : elsewhere ? 'Restore and take over' : 'Restore'}</button>
       <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!busy) onCancel(); }}
-    title="Restore this backup"
+    title={elsewhere ? `Make this server ${elsewhere}?` : 'Restore from this restore point'}
   >
-    <p>This replaces everything on this machine with the backup from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
-    <p className="suite-meta">{backupDescription(backup)} · {backup.destinationLabel}</p>
-    {/* The estimate is the agent's: read off this machine's own jobs and app
-        build times, or a stated range when it has none, and it says which. */}
+    <ActionError error={error} />
+    <p>This replaces everything on this server with the restore point from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
+    <p className="suite-meta">{backupDescription(backup)} · {backup.placeLabel}</p>
+    {/* The estimate is the agent's, from this server's own jobs or a stated range. */}
     {backup.expect ? <p>{backup.expect.restore.sentence}</p> : null}
     {backup.expect?.restore.note ? <p className="suite-meta">{backup.expect.restore.note}</p> : null}
     <Notice title="A rescue copy is kept" variant="info">
-      <p>MOS saves a complete copy of what is on this machine now before it changes anything, so a restore that stops partway can be looked at rather than guessed about. Apps and app data added after this backup are removed, so the system matches the backup exactly.</p>
+      <p>MOS saves a complete copy of what is on this server now before it changes anything, so a restore that stops partway can be looked at rather than guessed about. Apps and app data added after this restore point are removed, so the system matches it exactly.</p>
     </Notice>
 
-    {elsewhere ? <Notice title={`This backup was written by ${elsewhere}`} variant="info">
-      <p>This machine will become that server. After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
+    {elsewhere ? <Notice title={`This restore point was made by ${elsewhere}`} variant="info">
+      <p>This server becomes that server. It takes over {elsewhere}&rsquo;s recovery key, for these backups and this server&rsquo;s encrypted system drive, and the key it was installed with stops opening anything. Keep {elsewhere}&rsquo;s recovery kit: from now on it is this server&rsquo;s, and {backup.placeLabel} becomes one of this server&rsquo;s backup places.</p>
+      <p>After restoring, sign in with that server&rsquo;s owner password. This server keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
     </Notice> : null}
 
     {domain ? <Notice title={`${domain} does not come with it`} variant="info">
-      <p>That is the address of the server this backup was written on, and a name points at one machine at a time. Your suite comes back on <strong>this machine&rsquo;s own address</strong> — the one you are reading this on — so you can sign in and use it as soon as the restore finishes.</p>
+      <p>That is the address of the server this restore point was written on, and a name points at one server at a time. Your suite comes back on <strong>this server&rsquo;s own address</strong> — the one you are reading this on — so you can sign in and use it as soon as the restore finishes.</p>
       <p>Anything set up against the old address keeps failing until that name points here: phone apps, desktop sync clients, browser extensions. Afterwards <strong>Settings</strong> offers <strong>{domain}</strong> back, and Backup &amp; Restore says what is left to do.</p>
-      <p className="suite-meta">If the server that wrote this backup is still running, turn it off before pointing the name here. Two machines answering for one suite means two copies of your data drifting apart.</p>
+      <p className="suite-meta">If the server that wrote this restore point is still running, turn it off before pointing the name here. Two servers answering for one suite means two copies of your data drifting apart.</p>
     </Notice> : null}
 
     <TextInput
@@ -419,26 +467,30 @@ export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirma
   </Dialog>;
 }
 
-export function DeleteDialog({ backup, busy, onCancel, onDelete }: {
+export function DeleteDialog({ backup, busy, error, onCancel, onDelete }: {
   backup: BackupEntry;
   busy: string;
+  error: string;
   onCancel: () => void;
   onDelete: () => void;
 }) {
+  const [understood, setUnderstood] = useState(false);
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={onDelete} type="button">
+      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-danger" disabled={Boolean(busy) || !understood} onClick={onDelete} type="button">
         {busy === `delete:${backup.path}` ? <><Spinner />Deleting</> : 'Delete'}
       </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!busy) onCancel(); }}
-    title="Delete this backup"
+    title="Delete this restore point?"
   >
-    <p>Delete the backup from <strong>{whenWords(backup.createdAt)}</strong>? It is removed from {backup.destinationLabel} and cannot be brought back.</p>
-    <p className="suite-meta">{backup.restorable === false
-      ? 'This backup is in the retired format and cannot be restored by this version of MOS. Deleting it frees the space its folder takes.'
-      : 'The space only this restore point was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.'}</p>
+    <ActionError error={error} />
+    <p>The restore point from <strong>{whenWords(backup.createdAt)}</strong> is removed from {backup.placeLabel} and cannot be brought back.</p>
+    <p className="suite-meta">The space only this restore point was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.</p>
+    <Checkbox checked={understood} disabled={Boolean(busy)} onChange={(event) => setUnderstood(event.currentTarget.checked)}>
+      I understand this restore point is gone for good.
+    </Checkbox>
   </Dialog>;
 }
 
@@ -461,7 +513,7 @@ export function NoteDialog({ backup, busy, onCancel, onChange, onSave, value }: 
     <p className="suite-meta">{whenWords(backup.createdAt)} · {backupDescription(backup)}</p>
     <TextArea
       autoFocus
-      helperText="Shown next to this backup so you can tell restore points apart. Leave it empty to remove the note."
+      helperText="Shown next to this restore point so you can tell them apart. Leave it empty to remove the note."
       label="What was happening when you took this backup?"
       maxLength={200}
       onChange={(event) => onChange(event.currentTarget.value)}
@@ -469,173 +521,5 @@ export function NoteDialog({ backup, busy, onCancel, onChange, onSave, value }: 
       rows={3}
       value={value}
     />
-  </Dialog>;
-}
-
-// Disconnecting a bucket. Refused while it is the selected place, because the
-// answer to "where do automatic backups go" must never become "nowhere" as a
-// side effect of tidying up.
-export function DisconnectDialog({ busy, onCancel, onDisconnect, view }: {
-  busy: string;
-  onCancel: () => void;
-  onDisconnect: () => void;
-  view: DestinationView;
-}) {
-  if (view.selected) {
-    return <Dialog
-      footer={<button className="mos-btn mos-btn-primary" onClick={onCancel} type="button">Got it</button>}
-      onClose={onCancel}
-      title="Choose another place first"
-    >
-      <p>This is where automatic backups go. Pick another place, then disconnect this one.</p>
-    </Dialog>;
-  }
-  return <Dialog
-    footer={<>
-      <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={onDisconnect} type="button">
-        {busy === `disconnect:${view.id}` ? <><Spinner />Disconnecting</> : 'Disconnect'}
-      </button>
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
-    </>}
-    onClose={() => { if (!busy) onCancel(); }}
-    title={`Disconnect ${view.label}?`}
-  >
-    <p>The backups stay in the storage. MOS just stops using it, and stops listing what is in it.</p>
-    <p className="suite-meta">Connecting it again with the same details brings the list back.</p>
-  </Dialog>;
-}
-
-const WIZARD_STEPS = ['Kind', 'Details', 'Name'];
-
-type WizardKind = '' | 'drive' | 'online';
-
-export type ConnectionTest = { locked?: boolean; message: string; ok: boolean } | null;
-
-// Reachable and empty, and reachable but holding another server's backups, are
-// both connections that worked. Only the second needs a recovery key later, and
-// that is a thing to do on the destination, not a reason to refuse it here.
-function connected(result: ConnectionTest) {
-  return Boolean(result && (result.ok || result.locked));
-}
-
-// Adding a place to keep backups, one question at a time. MOS finds drives on
-// its own, so the drive branch is a list of what it found rather than a form;
-// only storage rented online has details to type. Leaving the details step
-// tries the connection and stays put if it did not work, so the owner never
-// carries a wrong endpoint forward and finds out at the end. A kind MOS does
-// not support is not offered: the list is what this version can actually do.
-export function AddDestinationWizard({ busy, draft, drives, initialKind, onCancel, onChange, onFinish, onMount, onTest, testResult }: {
-  busy: string;
-  draft: ObjectDraft;
-  drives: DestinationView[];
-  initialKind: WizardKind;
-  onCancel: () => void;
-  onChange: (next: ObjectDraft) => void;
-  onFinish: (useForAutomatic: boolean) => void;
-  onMount: (view: DestinationView) => void;
-  onTest: () => Promise<ConnectionTest>;
-  testResult: ConnectionTest;
-}) {
-  const [kind, setKind] = useState<WizardKind>(initialKind);
-  const [step, setStep] = useState(initialKind ? 1 : 0);
-  const [useForAutomatic, setUseForAutomatic] = useState(true);
-  const editing = Boolean(draft.id);
-  const testing = busy === 'object-test';
-  const field = (key: keyof ObjectDraft) => (event: { currentTarget: { value: string } }) => onChange({ ...draft, [key]: event.currentTarget.value });
-  const complete = Boolean(draft.endpoint.trim() && draft.bucket.trim() && draft.accessKeyId.trim() && (draft.secretAccessKey.trim() || editing));
-  const titles: Array<[string, string]> = [
-    ['Where should the copy go?', 'Pick the kind of place. MOS then asks only for what that kind needs.'],
-    kind === 'drive'
-      ? ['A drive you plug in', 'MOS found these drives. Choose one to open — anything already on it is left alone.']
-      : ['Storage you rent online', 'Your provider gives you these when you create the storage. Copy them across exactly, and MOS will try them before going on.'],
-    ['Give it a name', 'This place answered and MOS can write to it. Name it and it joins the list.'],
-  ];
-  const [title, blurb] = titles[step] ?? titles[0] as [string, string];
-
-  // Leaving the details step is the moment the connection is tried, so a wrong
-  // endpoint is caught here rather than three screens later.
-  async function leaveDetails() {
-    if (connected(await onTest())) setStep(2);
-  }
-
-  const next = step === 0 || (step === 1 && kind === 'drive') ? ''
-    : step === 1 ? (testing ? 'Trying it now...' : 'Connect and continue')
-    : 'Add this destination';
-
-  return <Dialog
-    footer={<>
-      {step > 0 && !testing ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setStep(step - 1)} type="button">Back</button> : null}
-      {next ? <button
-        className="mos-btn mos-btn-primary"
-        disabled={Boolean(busy) || (step === 1 && !complete)}
-        onClick={() => { if (step === 1) void leaveDetails(); else onFinish(useForAutomatic); }}
-        type="button"
-      >{busy === 'object-save' ? <><Spinner />Adding</> : testing ? <><Spinner />{next}</> : next}</button> : null}
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
-    </>}
-    onClose={() => { if (!busy) onCancel(); }}
-    title="Add a backup destination"
-  >
-    <Stepper currentStepIndex={step} steps={WIZARD_STEPS} />
-    <div>
-      <h3 className="mos-card-title">{title}</h3>
-      <p className="suite-meta">{blurb}</p>
-    </div>
-
-    {step === 0 ? <div className="suite-bk-kinds">
-      <button className={`suite-bk-kind-card${kind === 'drive' ? ' is-picked' : ''}`} onClick={() => { setKind('drive'); setStep(1); }} type="button">
-        <span><Icon name="usb-drive" /><strong>A drive you plug in</strong>{drives.length ? <span className="suite-bk-chip">{drives.length} found</span> : null}</span>
-        <span>A USB drive or a disk in this server. Fastest to restore from, and you can put it in a drawer.</span>
-      </button>
-      <button className={`suite-bk-kind-card${kind === 'online' ? ' is-picked' : ''}`} onClick={() => { setKind('online'); setStep(1); }} type="button">
-        <span><Icon name="cloud-storage" /><strong>Storage you rent online</strong><span className="suite-bk-chip">S3-compatible</span></span>
-        <span>Storage from a provider, reached over the internet. The only kind that survives a fire or a theft at home.</span>
-      </button>
-      <p className="suite-meta">More kinds of place can be added to MOS later. When one arrives it appears in this list &mdash; nothing else on the page changes.</p>
-    </div> : null}
-
-    {step === 1 && kind === 'drive' ? (drives.length ? <Panel density="tight">
-      <PanelList>
-        {drives.map((view) => <PanelItem className="suite-bk-row" key={view.id}>
-          <span />
-          <div className="suite-bk-row-body">
-            <div className="suite-bk-row-title"><span className="suite-bk-row-icon"><Icon name={destinationIconName(view.destination)} /></span><strong>{view.label}</strong></div>
-            <p className="suite-bk-detail">{view.status}</p>
-          </div>
-          <div className="suite-bk-row-actions">
-            <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy)} onClick={() => onMount(view)} type="button">
-              {busy === `mount:${view.id}` ? <><Spinner />Opening</> : 'Open this drive'}
-            </button>
-          </div>
-        </PanelItem>)}
-      </PanelList>
-    </Panel> : <p className="suite-meta">No drive is waiting to be opened. Plug one into the server and it appears here within a few seconds.</p>) : null}
-
-    {step === 1 && kind === 'online' ? <>
-      <div className="suite-form-grid">
-        <TextInput disabled={testing} helperText="Your provider's S3 address, for example https://s3.eu-central-003.backblazeb2.com." label="Address" onChange={field('endpoint')} placeholder="https://s3.example.com" value={draft.endpoint} />
-        <TextInput disabled={testing} helperText="A bucket that already exists. MOS does not create one." label="Bucket" onChange={field('bucket')} placeholder="my-backups" value={draft.bucket} />
-        <TextInput disabled={testing} helperText="Optional. Lets one bucket hold the backups of more than one server." label="Folder (optional)" onChange={field('folder')} placeholder="home-server" value={draft.folder} />
-        <TextInput disabled={testing} helperText="Optional. Some providers need it; leave it empty if yours does not." label="Region" onChange={field('region')} placeholder="eu-central-1" value={draft.region} />
-        <TextInput disabled={testing} helperText="Use a key that can only reach this bucket." label="Access key id" onChange={field('accessKeyId')} placeholder="AKIA…" value={draft.accessKeyId} />
-        <TextInput disabled={testing} helperText={editing ? 'Leave empty to keep the key already saved.' : 'Stored on this server only, readable by root.'} label="Secret access key" onChange={field('secretAccessKey')} placeholder={editing ? 'Unchanged' : '••••••••'} type="password" value={draft.secretAccessKey} />
-      </div>
-      {testing ? <p className="suite-bk-working"><Spinner />Trying it now. This takes a few seconds.</p> : null}
-      {!testing && testResult && !connected(testResult) ? <Notice title="That did not work" variant="error">
-        <p>{testResult.message}</p>
-      </Notice> : null}
-    </> : null}
-
-    {step === 2 ? <>
-      <Notice title={testResult?.locked ? 'It works, and it already holds backups' : 'It works'} variant={testResult?.locked ? 'info' : 'success'}>
-        <p>{testResult?.locked
-          ? 'MOS reached this storage and can write to it. The backups already in it were written by another server — add it, then choose Enter recovery key on it to read them.'
-          : 'MOS reached this storage and can write to it. It holds no backups yet.'}</p>
-      </Notice>
-      <TextInput autoFocus helperText="The name you will see on this page." label="Call it" onChange={field('label')} placeholder="Off-site bucket" value={draft.label} />
-      <Checkbox checked={useForAutomatic} onChange={(event) => setUseForAutomatic(event.currentTarget.checked)}>
-        Send automatic backups here from now on.
-      </Checkbox>
-    </> : null}
   </Dialog>;
 }

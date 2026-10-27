@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { restoreGuaranteeFor } = require('../src/backups/restore-guarantee.cjs');
+const { restoreGuarantee } = require('../src/backups/restore-guarantee.cjs');
 const { withRoutes } = require('./support/route-harness.cjs');
 
 const OWNER_PASSWORD = 'correct horse battery';
@@ -9,16 +9,16 @@ const ownerSetup = { verifyOwnerPassword: async (password) => password === OWNER
 const inventory = { summary: { appCount: 0 } };
 
 test('backup status merges the agent, the inventory and the restore guarantee', async () => {
-  const backupAgent = { status: async () => ({ backups: [], destinations: [{ label: 'Backup Drive' }], recoveryKey: null }) };
+  const backupAgent = { status: async () => ({ backups: [], places: [{ label: 'Backup Drive' }], recoveryKey: null }) };
 
   await withRoutes({ backupAgent, backupInventory: { inventory: () => inventory } }, async (call) => {
     const status = await call('GET', '/backups/status');
 
     assert.equal(status.status, 200);
     assert.equal(status.json().serviceAvailable, true);
-    assert.equal(status.json().destinations[0].label, 'Backup Drive');
+    assert.equal(status.json().places[0].label, 'Backup Drive');
     assert.deepEqual(status.json().inventory, inventory);
-    assert.deepEqual(status.json().restoreGuarantee, restoreGuaranteeFor({ backups: [] }).restoreGuarantee);
+    assert.deepEqual(status.json().restoreGuarantee, restoreGuarantee().restoreGuarantee);
   });
 });
 
@@ -34,7 +34,7 @@ test('backup status says the agent is unavailable rather than failing the screen
     assert.equal(status.json().serviceAvailable, false);
     assert.equal(status.json().error, 'Backup system agent is unavailable.');
     assert.deepEqual(status.json().inventory, inventory);
-    assert.deepEqual(status.json().restoreGuarantee, restoreGuaranteeFor(null).restoreGuarantee);
+    assert.deepEqual(status.json().restoreGuarantee, restoreGuarantee().restoreGuarantee);
     assert.deepEqual(warnings, ['backup-agent-unavailable']);
   });
 });
@@ -60,22 +60,22 @@ test('backup actions reach the agent field by field', async () => {
       body: { enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 },
     })).status, 200);
     assert.equal((await call('POST', '/backups/primary', { body: { destinationId: '/media/backup', initiator: 'smuggled' } })).status, 200);
-    assert.equal((await call('POST', '/backups/destinations/object', {
+    assert.equal((await call('POST', '/storage/buckets', {
       body: { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', initiator: 'smuggled', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' },
     })).status, 200);
-    const tested = await call('POST', '/backups/destinations/object/test', {
+    const tested = await call('POST', '/storage/buckets/test', {
       body: { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', secretAccessKey: 'super-secret-value' },
     });
     assert.equal(tested.status, 200);
     assert.equal(tested.json().result.ok, true);
-    assert.equal((await call('POST', '/backups/destinations/object/remove', { body: { destinationId: 'object:abc123' } })).status, 200);
+    assert.equal((await call('POST', '/storage/buckets/remove', { body: { id: 'object:abc123' } })).status, 200);
 
     // Downloading and uploading a backup went with the tar formats.
     assert.equal((await call('GET', `/backups/download?path=${encodeURIComponent(backupPath)}`)).status, 404);
   });
 
   assert.deepEqual(calls, [
-    ['backup', { destinationId: '/media/backup', note: '' }],
+    ['backup', { destinationId: '/media/backup', makePrimary: false, note: '' }],
     ['restore', { backupPath, confirmation: 'RESTORE' }],
     ['schedule', { enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
     ['primary', { destinationId: '/media/backup' }],
@@ -101,7 +101,7 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
       calls.push(['reveal']);
       return { key: 'MOS-7K2F-9XQ4-0000-0000-0000-0000-0000-0000', kit: 'My Own Suite — recovery kit', kitFilename: 'mos-recovery-kit-lab-2026-09-07.txt' };
     },
-    async unlockDestination(input) {
+    async unlockArchive(input) {
       calls.push(['unlock', input]);
       return { result: { adopted: true, message: 'Unlocked.' } };
     },
@@ -128,8 +128,8 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
     assert.equal(again.status, 200);
     assert.match(again.json().key, /^MOS-/u);
 
-    const unlocked = await call('POST', '/backups/destinations/unlock', {
-      body: { destinationId: 'object:abc123', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' },
+    const unlocked = await call('POST', '/backups/archives/unlock', {
+      body: { archiveId: '1A2B-3C4D/archive-0000beef', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' },
     });
     assert.equal(unlocked.status, 200);
   });
@@ -138,6 +138,6 @@ test('the recovery key is shown freely until it is saved, and behind the owner p
     ['reveal'],
     ['acknowledge'],
     ['reveal'],
-    ['unlock', { destinationId: 'object:abc123', recoveryKey: 'mos 7k2f 9xq4' }],
+    ['unlock', { archiveId: '1A2B-3C4D/archive-0000beef', recoveryKey: 'mos 7k2f 9xq4' }],
   ]);
 });

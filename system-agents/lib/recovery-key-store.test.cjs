@@ -10,7 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { generate, isRecoveryKey } = require('../backup/recovery-key.cjs');
+const { generate, normalize } = require('../backup/recovery-key.cjs');
 const { RecoveryKeyStore } = require('./recovery-key-store.cjs');
 
 async function scratch() { return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-recovery-')); }
@@ -28,7 +28,7 @@ test('the key is a recovery key, generated once, kept root-only, and reused', as
   const keys = await store();
   assert.equal(keys.readKey(), null);
   const key = keys.ensureKey();
-  assert.equal(isRecoveryKey(key), true);
+  assert.equal(normalize(key).key, key);
   assert.equal(keys.ensureKey(), key);
   assert.equal(keys.readKey(), key);
   if (process.platform !== 'win32') assert.equal(fs.statSync(keys.keyPath).mode & 0o777, 0o600);

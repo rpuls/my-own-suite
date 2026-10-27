@@ -11,7 +11,7 @@
 // privacy-posture.ts (next to this file) and site/src/lib/privacy-posture.ts.
 // If you change look, copy, or logic here, mirror it in the siblings.
 
-import { Dialog, Notice } from '../../components/ui';
+import { Dialog, Notice, Tooltip } from '../../components/ui';
 import {
   ADVISORY_SEVERITY_STYLE,
   ADVISORY_TYPE_LABEL,
@@ -28,6 +28,7 @@ import {
   isNotAssessed,
   isRated,
   OUTBOUND_FROM_LABEL,
+  awaitingHumanReview,
   outboundChanged,
   outboundChanges,
   outboundHostLabel,
@@ -37,6 +38,7 @@ import {
   privacyChanged,
   provenanceLine,
   provenanceMethodLabel,
+  reviewDateLabel,
   shieldDashArray,
   sortedAdvisories,
   tileLabelFor,
@@ -56,9 +58,14 @@ function OutboundList({ outbound }: { outbound: OutboundDestination[] }) {
       <span className="suite-privacy-outbound-head">
         <code>{outboundHostLabel(item.host)}</code>
         <span className="suite-privacy-outbound-from">{OUTBOUND_FROM_LABEL[item.from]}</span>
+        <Tooltip label={<span className="suite-privacy-outbound-tip">
+          <strong>{outboundHostLabel(item.host)}</strong>
+          <span>{OUTBOUND_FROM_LABEL[item.from]}. {item.purpose}</span>
+          <span>Received by {item.receiver}</span>
+        </span>}>
+          <svg aria-label={`What ${outboundHostLabel(item.host)} is for`} className="suite-privacy-outbound-info" fill="none" role="img" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24"><path d={GLYPHS.info} /></svg>
+        </Tooltip>
       </span>
-      <span>{item.purpose}</span>
-      <span className="suite-privacy-outbound-receiver">Received by {item.receiver}</span>
     </li>)}
   </ul>;
 }
@@ -146,6 +153,19 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
+function AwaitingHumanReviewNotices({ privacy }: { privacy: PrivacyReviewSummary | null | undefined }) {
+  const findings = awaitingHumanReview(privacy);
+  if (!findings.length) return null;
+  const style = ADVISORY_SEVERITY_STYLE.medium;
+  return <div className="suite-privacy-advisories">
+    <span className="suite-privacy-advisories-label">Waiting for a human review</span>
+    {findings.map((item) => <div className="suite-privacy-advisory" key={`${item.appVersion}-${item.finding}`} style={{ background: style.soft, borderColor: style.border }}>
+      <p className="suite-privacy-advisory-summary">{item.finding}</p>
+      <p className="suite-privacy-advisory-remediation">Found by the AI review of version {item.appVersion} on {reviewDateLabel(item.date)}. A MOS maintainer has not checked it yet.</p>
+    </div>)}
+  </div>;
+}
+
 // Dialog body for an app MOS does not assess: why there is no grade, what MOS
 // guarantees regardless, what is left to weigh. Suite Manager only — every app
 // the public site lists carries a review, so there is no sibling.
@@ -222,6 +242,7 @@ export function PrivacyPostureDialog({ advisories, appName, appVersion, assessme
       </div>)}
     </div>}
     <OutboundSection privacy={privacy} />
+    <AwaitingHumanReviewNotices privacy={privacy} />
     <AdvisoryNotices advisories={advisories || []} />
     {packageId && isRated(privacy) ? <a
       className="suite-privacy-report-link"

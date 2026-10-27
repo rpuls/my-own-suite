@@ -61,7 +61,7 @@ const demoData = JSON.stringify({ apps, maxResults, terms: demoTerms }).replace(
         {initialApps.map((app) => (
           <div class="mos-panel hero-app-demo-app">
             <div class="app-top">
-              <span class="app-ico"><img src={app.icon} alt="" /></span>
+              <span class="mos-app-icon app-ico"><img src={app.icon} alt="" /></span>
               <span class="app-name-wrap">
                 <strong>{app.name}</strong>
                 <span class="app-sub">{app.category}</span>
@@ -123,7 +123,7 @@ const demoData = JSON.stringify({ apps, maxResults, terms: demoTerms }).replace(
         .map(
           (app) => `<div class="mos-panel hero-app-demo-app">
   <div class="app-top">
-    <span class="app-ico"><img src="${esc(app.icon)}" alt="" /></span>
+    <span class="mos-app-icon app-ico"><img src="${esc(app.icon)}" alt="" /></span>
     <span class="app-name-wrap">
       <strong>${esc(app.name)}</strong>
       <span class="app-sub">${esc(app.category)}</span>

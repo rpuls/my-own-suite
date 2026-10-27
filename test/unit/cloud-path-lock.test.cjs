@@ -118,25 +118,50 @@ const test = require('node:test');
 
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
+// Moved 2026-10-17, all five, for app folders on a storage drive (roadmap S2):
+// the installer writes the storage attach unit and its udev rule. No `echo` line
+// changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved 2026-10-18, all four: the installer's apt line gained ntfs-3g, for Check
+// drive's ntfsfix (roadmap S8), and the storage attach unit a SyslogIdentifier so the
+// diagnostics file can read every drive's runs. No `echo` line changed.
+//
+// Moved 2026-10-19, all four: the storage udev rule also names ext4, because a Linux
+// drive kept for backups is opened by the storage module when it is plugged back in.
+// One word in one rule; no `echo` line changed.
+//
+// Moved again the same day, all four: every site's error handler first serves the
+// page the app agent writes for an app it paused, so an app whose drive was ejected
+// says so at its own address. Caddyfile only; no `echo` line changed.
+//
+// Moved 2026-10-23, the default SSH bootstrap only: the Easy Door matcher names the
+// label with its install id. One Caddyfile line; the fifteen `echo` lines are unchanged.
+//
+// Moved 2026-10-25, all four: the Caddy module check reads list-modules into a file
+// once, because `grep -q` under pipefail failed it at random. No `echo` line changed.
+//
+// Moved 2026-10-27, all four: Suite Manager's unit swaps in the new pages as it starts
+// (ExecStartPre), so pages never run ahead of the server during an update. No `echo` line changed.
+
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 const lockedRenderings = [
   {
-    digest: 'f12676e6717d19b2fd6d006d3ac7959091c93f4f0e4f9d3430b5a324d905c31c',
+    digest: '3fa4ba380c9e1aa178a2efd84e0368df97e180a49bbc9729cdf8d17af910b42c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '51beeacf7a85e2293232d14a3566d90f15ec79af4b11a60308b5484fd1c06652',
+    digest: '71a4516cb39f048f4254c0ad14de9f45d093e55d580fabd3c51b76cf122e8988',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'b50be448e3880d099e240801880e087cc919f381265e67d831ff63ade3a3eeeb',
+    digest: 'be886aada9f4199fc8e81bd7acc4644d549e81d1d458be958fcb02ad73363aa7',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -144,9 +169,10 @@ const lockedRenderings = [
   {
     // The only locked rendering that writes `renderCaddyfile()` rather than
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
-    // here and nowhere else in this list. Moved once, for the Easy Door site
-    // block; nothing the installer prints changed.
-    digest: 'fb205807191769a0051381f4dbd26bacd4f3538ad9c1749a9c9f54708ec9ba13',
+    // here and nowhere else in this list. Moved for the Easy Door site block
+    // and for its install id; nothing the installer prints changed either time.
+    // All four moved for the drive coldplug at the end of the bootstrap, which prints nothing.
+    digest: '916b85b69f491f5f5946aed0277b7500ddcdb43ba8057b29afa654076e6518c7',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

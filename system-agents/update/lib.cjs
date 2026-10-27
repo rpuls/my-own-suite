@@ -453,6 +453,17 @@ async function checkoutReleaseTag(paths, version, log) {
   await runStep(paths.repoRoot, `git checkout ${tag}`, 'git', ['checkout', '--detach', `refs/tags/${tag}`]);
 }
 
+// The step a log line opens, or null for a line inside a step (such as the command it runs),
+// which must not move the job off the step it is in.
+function stageForLog(message) {
+  if (/Fetching|checkout|Fast-forwarding|Repository/u.test(message)) return 'updating-checkout';
+  if (/dependencies/u.test(message)) return 'installing-dependencies';
+  if (/frontend/u.test(message)) return 'building-frontend';
+  if (/Reconciling/u.test(message)) return 'reconciling-system';
+  if (/completed/u.test(message)) return 'succeeded';
+  return null;
+}
+
 async function runApply(paths, { log = () => {}, releaseLookup } = {}) {
   ensurePrerequisites(paths);
   await ensureCleanWorkingTree(paths);
@@ -487,6 +498,7 @@ module.exports = {
   resolveTrack,
   runApply,
   shortCommit,
+  stageForLog,
   summarizeJob,
   writeJson,
   writeUpdateTrack,

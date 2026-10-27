@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  APP_STATUS_ROOT,
   CADDY_REQUIRED_MODULES,
   HOMEPAGE_IMAGE,
   PROGRESS_FILENAME,
@@ -91,25 +92,25 @@ test('Caddy build pins the builder digest, Caddy version, and both DNS modules b
   assert.doesNotMatch(dockerfile, /latest/u);
 });
 
-test('an Easy Door address gets one wildcard through the ACME responder and a named HTTP door', () => {
-  const caddyfile = renderCaddyfile({ bootstrapHost: 'home.mos.home', easyDoorAddresses: ['192.168.68.123'], suiteManagerPort: '3100' });
+test('an Easy Door name gets one wildcard through the ACME responder and a named HTTP door', () => {
+  const caddyfile = renderCaddyfile({ bootstrapHost: 'home.mos.home', easyDoorBases: ['68-123-kqmzrt.local.myownsuite.org'], suiteManagerPort: '3100' });
 
-  assert.match(caddyfile, /^http:\/\/home\.192-168-68-123\.local\.myownsuite\.org \{\n[\s\S]*?reverse_proxy 127\.0\.0\.1:3100/mu);
-  assert.match(caddyfile, /^https:\/\/\*\.192-168-68-123\.local\.myownsuite\.org \{\n {2}tls \{\n {4}dns acmedns \{\n {6}server_url https:\/\/acme\.myownsuite\.org\n {6}subdomain 192-168-68-123\n/mu);
-  assert.match(caddyfile, /@mos-easy-door-home host home\.192-168-68-123\.local\.myownsuite\.org/u);
+  assert.match(caddyfile, /^http:\/\/home\.68-123-kqmzrt\.local\.myownsuite\.org \{\n[\s\S]*?reverse_proxy 127\.0\.0\.1:3100/mu);
+  assert.match(caddyfile, /^https:\/\/\*\.68-123-kqmzrt\.local\.myownsuite\.org \{\n {2}tls \{\n {4}dns acmedns \{\n {6}server_url https:\/\/acme\.myownsuite\.org\n {6}subdomain 68-123-kqmzrt\n/mu);
+  assert.match(caddyfile, /@mos-easy-door-home host home\.68-123-kqmzrt\.local\.myownsuite\.org/u);
   // No email and no global options before a domain: the box has no owner address at first boot.
   assert.doesNotMatch(caddyfile, /email|acme_dns|auto_https/u);
   assert.equal(caddyfile.match(/handle_errors/gu).length, 4);
 });
 
-test('only private Easy Door addresses render, each once, and never on a public cloud install', () => {
-  const caddyfile = renderCaddyfile({ easyDoorAddresses: ['192.168.1.5', '192.168.1.5', '203.0.113.9', '10.0.0.7'] });
-  assert.deepEqual(caddyfile.match(/^https:\/\/\S+/gmu), ['https://*.192-168-1-5.local.myownsuite.org', 'https://*.10-0-0-7.local.myownsuite.org']);
-  assert.doesNotMatch(renderCaddyfile({ easyDoorAddresses: ['192.168.1.5'], publicCloud: true }), /myownsuite\.org/u);
+test('each Easy Door name renders once, and never on a public cloud install', () => {
+  const caddyfile = renderCaddyfile({ easyDoorBases: ['1-5-kqmzrt.local.myownsuite.org', null, '1-5-kqmzrt.local.myownsuite.org', '10-0-0-7-kqmzrt.local.myownsuite.org'] });
+  assert.deepEqual(caddyfile.match(/^https:\/\/\S+/gmu), ['https://*.1-5-kqmzrt.local.myownsuite.org', 'https://*.10-0-0-7-kqmzrt.local.myownsuite.org']);
+  assert.doesNotMatch(renderCaddyfile({ easyDoorBases: ['1-5-kqmzrt.local.myownsuite.org'], publicCloud: true }), /myownsuite\.org/u);
 });
 
 test('a domain keeps its global Cloudflare challenge beside the Easy Door wildcard', () => {
-  const caddyfile = renderCaddyfile({ domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' }, easyDoorAddresses: ['192.168.1.5'] });
+  const caddyfile = renderCaddyfile({ domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' }, easyDoorBases: ['1-5-kqmzrt.local.myownsuite.org'] });
   assert.match(caddyfile, /^\{\n {2}email owner@example\.com\n {2}acme_dns cloudflare \{env\.CLOUDFLARE_API_TOKEN\}\n\}/u);
   assert.match(caddyfile, /dns acmedns \{/u);
   assert.match(caddyfile, /^https:\/\/home\.example\.com \{/mu);
@@ -122,20 +123,26 @@ test('a public server serves a domain without a DNS challenge, so the authority 
   assert.doesNotMatch(caddyfile, /^\{/u);
 });
 
-test('a machine\'s Caddyfile follows the live address and keeps the recorded Easy Door until the owner moves', () => {
-  const facts = { bootstrapHost: 'home.mos.home', frontDoor: 'usb-autoinstall', liveAddress: '192.168.1.9', suiteManagerPort: '3100' };
+test('a machine\'s Caddyfile follows the live name and keeps the recorded Easy Door until the owner moves', () => {
+  const facts = { bootstrapHost: 'home.mos.home', easyDoorId: 'kqmzrt', frontDoor: 'usb-autoinstall', liveAddress: '192.168.1.9', suiteManagerPort: '3100' };
   const sites = (caddyfile) => caddyfile.match(/^https:\/\/\S+/gmu);
 
-  assert.deepEqual(sites(renderMachineCaddyfile({ ...facts, recorded: { host: 'home.192-168-1-5.local.myownsuite.org', kind: 'easy-door', scheme: 'https' } })), [
+  assert.deepEqual(sites(renderMachineCaddyfile({ ...facts, recorded: { host: 'home.1-5-kqmzrt.local.myownsuite.org', kind: 'easy-door', scheme: 'https' } })), [
+    'https://*.1-9-kqmzrt.local.myownsuite.org',
+    'https://*.1-5-kqmzrt.local.myownsuite.org',
+  ]);
+  // A restore brought back another id, or the suite is still on a name of an earlier shape.
+  assert.deepEqual(sites(renderMachineCaddyfile({ ...facts, recorded: { host: 'home.192-168-1-9.local.myownsuite.org', kind: 'easy-door', scheme: 'https' } })), [
+    'https://*.1-9-kqmzrt.local.myownsuite.org',
     'https://*.192-168-1-9.local.myownsuite.org',
-    'https://*.192-168-1-5.local.myownsuite.org',
   ]);
   const onDomain = renderMachineCaddyfile({ ...facts, recorded: { acmeEmail: 'owner@example.com', baseDomain: 'example.com', host: 'home.example.com', kind: 'domain', scheme: 'https' } });
-  assert.deepEqual(sites(onDomain), ['https://*.192-168-1-9.local.myownsuite.org', 'https://home.example.com']);
+  assert.deepEqual(sites(onDomain), ['https://*.1-9-kqmzrt.local.myownsuite.org', 'https://home.example.com']);
   // An apply renders the domain it is about to record.
   const applying = renderMachineCaddyfile({ ...facts, domain: { acmeEmail: 'owner@example.com', baseDomain: 'new.example' }, recorded: null });
   assert.match(applying, /^https:\/\/home\.new\.example \{/mu);
-  assert.equal(renderMachineCaddyfile({ ...facts, frontDoor: 'cloud-init', liveAddress: '10.0.0.5', recorded: null }), renderCaddyfile({ bootstrapHost: 'home.mos.home', publicCloud: true, suiteManagerPort: '3100' }));
+  const neverAsked = () => assert.fail('a public cloud install has no Easy Door id');
+  assert.equal(renderMachineCaddyfile({ ...facts, easyDoorId: neverAsked, frontDoor: 'cloud-init', liveAddress: '10.0.0.5', recorded: null }), renderCaddyfile({ bootstrapHost: 'home.mos.home', publicCloud: true, suiteManagerPort: '3100' }));
 });
 
 test('Homepage runtime is pinned and reachable only through loopback', () => {
@@ -211,8 +218,11 @@ test('Homepage ships useful defaults and an editable source template without ove
 // drills found that an owner refreshing the page then met Caddy's bare 502 —
 // the one screen in recovery that explained nothing.
 test('every Suite Manager entrance answers a control-plane outage with the status page', () => {
+  // An app MOS paused gets its own page first, by the host asked for; anything else the status page.
   const expected = new RegExp(
-    String.raw`handle_errors \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*`
+    String.raw`handle_errors \{\s*@mos-app-paused file \{\s*root ${APP_STATUS_ROOT}\s*try_files /\{http\.request\.host\}\.html\s*\}\s*`
+    + String.raw`handle @mos-app-paused \{\s*root \* ${APP_STATUS_ROOT}\s*rewrite \* /\{http\.request\.host\}\.html[\s\S]*?\}\s*\}\s*`
+    + String.raw`handle \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*`
     + String.raw`rewrite \* /${UNAVAILABLE_PAGE_FILENAME}\s*`
     + String.raw`header Retry-After 15\s*`
     + String.raw`file_server \{\s*status 503`,
@@ -269,7 +279,7 @@ test('the progress file has its own route in every proxying block, ahead of the 
     cloud: renderCaddyfile({ publicCloud: true }),
     default: renderCaddyfile(),
     https: renderCaddyfile({ bootstrapHost: 'boot.example.com', domain: { acmeEmail: 'owner@example.com', baseDomain: 'example.com' } }),
-    easyDoor: renderCaddyfile({ easyDoorAddresses: ['192.168.1.5'] }),
+    easyDoor: renderCaddyfile({ easyDoorBases: ['1-5-kqmzrt.local.myownsuite.org'] }),
   };
   const proxyingBlocks = { cloud: 2, default: 2, easyDoor: 4, https: 3 };
   for (const [name, rendered] of Object.entries(renderings)) {

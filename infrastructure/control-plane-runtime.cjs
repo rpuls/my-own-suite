@@ -6,9 +6,10 @@ const {
   EASY_DOOR_CADDY_MARKER,
   EASY_DOOR_HOME_HOST_REGEXP,
   EASY_DOOR_ZONE,
-  easyDoorAddressOf,
   easyDoorBaseDomain,
+  easyDoorId,
 } = require('../shared/easy-door.cjs');
+const { baseHostOf } = require('../shared/suite-address.cjs');
 
 const HOMEPAGE_IMAGE = 'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c7734353701ccbaa24ed02dacb0d119114e50e4251e2005f3990a';
 const HOMEPAGE_PORT = 3200;
@@ -37,6 +38,9 @@ function caddyBuilderBaseImage() {
 
 const UNAVAILABLE_PAGE_ROOT = '/etc/caddy/mos-status';
 const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
+// One page per app address while MOS has paused that app, written by the app agent:
+// an app whose drive was ejected says so at its own address instead of the page above.
+const APP_STATUS_ROOT = `${UNAVAILABLE_PAGE_ROOT}/apps`;
 // Written by the backup agent while a job runs, removed when it ends, and
 // polled by the status page below. The agent decides the words; both surfaces
 // only render what it wrote.
@@ -106,15 +110,30 @@ function statusRoutes(indent = '  ') {
 // `handle_errors` catches only errors Caddy raises itself, which in a block that
 // nothing but reverse-proxies means an upstream it could not reach. A real 404
 // or 500 from Suite Manager is a response, not an error, and still reaches the
-// browser unchanged.
+// browser unchanged. The wildcard's handler also catches app addresses, so an app
+// MOS paused answers with the page the app agent wrote for it.
 function unavailableHandler(indent = '  ') {
   return [
     'handle_errors {',
-    `  root * ${UNAVAILABLE_PAGE_ROOT}`,
-    `  rewrite * /${UNAVAILABLE_PAGE_FILENAME}`,
-    '  header Retry-After 15',
-    '  file_server {',
-    '    status 503',
+    '  @mos-app-paused file {',
+    `    root ${APP_STATUS_ROOT}`,
+    '    try_files /{http.request.host}.html',
+    '  }',
+    '  handle @mos-app-paused {',
+    `    root * ${APP_STATUS_ROOT}`,
+    '    rewrite * /{http.request.host}.html',
+    '    header Retry-After 15',
+    '    file_server {',
+    '      status 503',
+    '    }',
+    '  }',
+    '  handle {',
+    `    root * ${UNAVAILABLE_PAGE_ROOT}`,
+    `    rewrite * /${UNAVAILABLE_PAGE_FILENAME}`,
+    '    header Retry-After 15',
+    '    file_server {',
+    '      status 503',
+    '    }',
     '  }',
     '}',
   ].map((line) => `${indent}${line}`).join('\n');
@@ -410,13 +429,12 @@ ${unavailableHandler()}
 }`;
 }
 
-// Trusted HTTPS on the Easy Door for one concrete LAN address: one wildcard,
-// proved through the ACME responder, so every app alias under it shares it and
-// none is ever ordered on its own. The named HTTP site is what keeps Caddy from
-// redirecting the home name to HTTPS before the certificate exists, or forever
-// when it never arrives. No ACME email of its own: the box has none at first boot.
-function easyDoorTlsSites(address, suiteManagerPort) {
-  const base = easyDoorBaseDomain(address);
+// Trusted HTTPS on one concrete Easy Door name: one wildcard, proved through the
+// ACME responder, so every app alias under it shares it and none is ever ordered
+// on its own. The named HTTP site is what keeps Caddy from redirecting the home
+// name to HTTPS before the certificate exists, or forever when it never arrives.
+// No ACME email of its own: the box has none at first boot.
+function easyDoorTlsSites(base, suiteManagerPort) {
   const homeHost = `home.${base}`;
   return `http://${homeHost} {
 ${statusRoutes()}
@@ -446,10 +464,10 @@ ${unavailableHandler()}
 }
 
 // Every Caddyfile MOS writes, as one function of the machine's facts. The
-// installer bakes it with no Easy Door address, because the image cannot know
-// the one it will get; the HTTPS agent re-renders it with the live address (and
-// the Easy Door address still recorded, until the owner moves), and with the
-// recorded domain when there is one.
+// installer bakes it with no Easy Door name, because the image cannot know the
+// one it will get; the HTTPS agent re-renders it with the live name (and the
+// Easy Door name still recorded, until the owner moves), and with the recorded
+// domain when there is one.
 //
 // The install-time name and the Easy Door stay open for Suite Manager beside a
 // domain: an owner who applied HTTPS from either door keeps a working page while
@@ -457,7 +475,7 @@ ${unavailableHandler()}
 function renderCaddyfile({
   bootstrapHost = '$MOS_HOME_HOST',
   domain = null,
-  easyDoorAddresses = [],
+  easyDoorBases = [],
   publicCloud = false,
   suiteManagerPort = '$MOS_SUITE_MANAGER_PORT',
 } = {}) {
@@ -466,9 +484,7 @@ function renderCaddyfile({
     sites.push(suiteManagerSite(`https://${bootstrapHost}`, suiteManagerPort));
   } else {
     sites.push(easyDoorSiteBlock(suiteManagerPort));
-    for (const address of new Set(easyDoorAddresses.filter((address) => easyDoorBaseDomain(address)))) {
-      sites.push(easyDoorTlsSites(address, suiteManagerPort));
-    }
+    for (const base of new Set(easyDoorBases.filter(Boolean))) sites.push(easyDoorTlsSites(base, suiteManagerPort));
   }
   if (domain) {
     const homeHost = `home.${domain.baseDomain}`;
@@ -487,22 +503,24 @@ import /etc/caddy/mos-app-routes.caddy
 }
 
 // An installed machine's Caddyfile from where its facts live: the install
-// contract, the recorded address and the live LAN address. Both writers render
-// through here, the update path on every managed update and the HTTPS agent
-// whenever they change, so neither can leave the file behind the other.
+// contract, the recorded address, the live LAN address and the install's Easy
+// Door id. Both writers render through here, the update path on every managed
+// update and the HTTPS agent whenever they change, so neither can leave the file
+// behind the other.
 //
-// The certificate follows the live address. The recorded Easy Door address
-// keeps its own until the owner moves the suite, because its app routes are
-// still served under it. `domain` is passed only by an apply that has not
-// recorded the domain yet.
-function renderMachineCaddyfile({ bootstrapHost, domain, frontDoor, liveAddress, recorded, suiteManagerPort }) {
+// The certificate follows the live name. The recorded Easy Door name keeps its
+// own until the owner moves the suite, because its app routes are still served
+// under it; that is also what carries a suite recorded on a name of an earlier
+// shape. `domain` is passed only by an apply that has not recorded the domain yet.
+function renderMachineCaddyfile({ bootstrapHost, domain, easyDoorId: id = easyDoorId, frontDoor, liveAddress, recorded, suiteManagerPort }) {
+  const publicCloud = hostingTrack(frontDoor) === 'public-server';
   const recordedDomain = recorded?.kind === 'domain' ? { acmeEmail: recorded.acmeEmail, baseDomain: recorded.baseDomain } : null;
-  const recordedEasyDoor = recorded?.kind === 'easy-door' ? easyDoorAddressOf(recorded.host) : null;
+  const recordedEasyDoor = recorded?.kind === 'easy-door' ? baseHostOf(recorded) : null;
   return renderCaddyfile({
     bootstrapHost,
     domain: domain === undefined ? recordedDomain : domain,
-    easyDoorAddresses: [liveAddress, recordedEasyDoor].filter(Boolean),
-    publicCloud: hostingTrack(frontDoor) === 'public-server',
+    easyDoorBases: publicCloud ? [] : [easyDoorBaseDomain(liveAddress, id), recordedEasyDoor],
+    publicCloud,
     suiteManagerPort,
   });
 }
@@ -533,6 +551,45 @@ Storage=persistent
 SystemMaxUse=200M
 SystemMaxFileSize=20M
 MaxRetentionSec=1month
+`;
+}
+
+// Every drive udev announces with a filesystem MOS can mount is mounted on sight,
+// at boot or when plugged in, so Storage can say what it holds. Only a drive the
+// storage module remembers gets its apps' containers restarted onto the fresh mount.
+const STORAGE_UDEV_RULE_PATH = '/etc/udev/rules.d/90-mos-storage.rules';
+const STORAGE_ATTACH_UNIT = 'mos-storage-attach@.service';
+// One name for every drive's runs: a finished instance is unloaded, so a
+// `journalctl -u 'mos-storage-attach@*'` glob finds nothing to read.
+const STORAGE_ATTACH_IDENTIFIER = 'mos-storage-attach';
+
+const STORAGE_FILESYSTEMS = ['exfat', 'ntfs', 'vfat', 'ext4'];
+
+function renderStorageUdevRule() {
+  return `ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="?*", ENV{ID_FS_TYPE}=="${STORAGE_FILESYSTEMS.join('|')}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mos-storage-attach@$env{ID_FS_UUID}.service"
+`;
+}
+
+// The rule only hears drives plugged in after it exists. A drive already in when the
+// install put the rule in place is announced again, as at boot.
+function storageColdplugArgs() {
+  return ['trigger', '--action=add', '--subsystem-match=block', ...STORAGE_FILESYSTEMS.map((type) => `--property-match=ID_FS_TYPE=${type}`)];
+}
+
+// The same claims and mounts as the app agent, so the vault holds them both.
+function renderStorageAttachUnit({ mosRoot = '$MOS_INSTALL_ROOT/repo', stateRoot = '$MOS_STATE_ROOT' } = {}) {
+  return `[Unit]
+Description=MOS app storage drive %i
+Requires=mos-vault.service
+After=mos-vault.service docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=${mosRoot}
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=MOS_APP_PACKAGE_ROOT=${stateRoot}/app-packages
+ExecStart=/usr/bin/node ${mosRoot}/system-agents/apps/storage-attach.cjs %i
+SyslogIdentifier=${STORAGE_ATTACH_IDENTIFIER}
 `;
 }
 
@@ -582,6 +639,14 @@ WantedBy=multi-user.target
 }
 
 module.exports = {
+  APP_STATUS_ROOT,
+  STORAGE_ATTACH_IDENTIFIER,
+  STORAGE_ATTACH_UNIT,
+  STORAGE_FILESYSTEMS,
+  STORAGE_UDEV_RULE_PATH,
+  renderStorageAttachUnit,
+  renderStorageUdevRule,
+  storageColdplugArgs,
   CADDY_BUILD_IMAGES,
   CADDY_REQUIRED_MODULES,
   CADDY_SERVICE_OVERRIDE_PATH,
@@ -599,6 +664,7 @@ module.exports = {
   renderCaddyfile,
   renderCaddyServiceOverride,
   renderUnavailablePage,
+  unavailableHandler,
   renderUnavailablePageScript,
   renderJournaldConfig,
   renderMachineCaddyfile,

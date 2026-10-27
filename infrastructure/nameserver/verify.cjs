@@ -57,14 +57,21 @@ function refuses(name, why) {
   });
 }
 
-// A private address encoded in the name resolves to itself, under any app label.
+// A private address encoded in the name resolves to itself, under any app label
+// and whatever the install id is: 192.168 by its last two numbers, the rest by four.
+resolves(`home.123-45-kqmzrt.${ZONE}`, '192.168.123.45');
+resolves(`seafile.123-45-kqmzrt.${ZONE}`, '192.168.123.45');
+resolves(`immich.123-45-abcdef.${ZONE}`, '192.168.123.45');
+resolves(`123-45-kqmzrt.${ZONE}`, '192.168.123.45');
+resolves(`home.10-0-0-5-kqmzrt.${ZONE}`, '10.0.0.5');
+resolves(`home.10-5-kqmzrt.${ZONE}`, '192.168.10.5');
+resolves(`home.172-16-4-9-kqmzrt.${ZONE}`, '172.16.4.9');
+resolves(`home.172-31-255-254-zyxwvu.${ZONE}`, '172.31.255.254');
+
+// The pre-0.23 names, without an id, until 1.0.
 resolves(`home.192-168-123-45.${ZONE}`, '192.168.123.45');
-resolves(`seafile.192-168-123-45.${ZONE}`, '192.168.123.45');
-resolves(`immich.192-168-123-45.${ZONE}`, '192.168.123.45');
-resolves(`192-168-123-45.${ZONE}`, '192.168.123.45');
 resolves(`home.10-0-0-5.${ZONE}`, '10.0.0.5');
 resolves(`home.172-16-4-9.${ZONE}`, '172.16.4.9');
-resolves(`home.172-31-255-254.${ZONE}`, '172.31.255.254');
 
 // The anti-phishing control: a public address under the MOS name is an open
 // redirector, so it must not exist. The 172 pair guards the range boundary.
@@ -74,14 +81,24 @@ refuses(`login.172-15-0-1.${ZONE}`, 'below the 172.16/12 range');
 refuses(`login.172-32-0-1.${ZONE}`, 'above the 172.16/12 range');
 refuses(`login.999-1-1-1.${ZONE}`, 'not an address');
 refuses(`nothing.${ZONE}`, 'no address in the name');
+refuses(`login.203-0-113-9-kqmzrt.${ZONE}`, 'public address with an id');
+refuses(`login.172-32-0-1-kqmzrt.${ZONE}`, 'above the 172.16/12 range, with an id');
+
+// One spelling per address: 192.168 is never written out in full with an id.
+refuses(`home.192-168-123-45-kqmzrt.${ZONE}`, '192.168 written with four numbers');
+refuses(`home.123-45-kqmzr.${ZONE}`, 'id one letter short');
+refuses(`home.123-45-kqmzrtx.${ZONE}`, 'id one letter long');
+refuses(`home.123-45-kqmzrl.${ZONE}`, 'id with a letter that is left out');
+refuses(`home.123-45-kqm2rt.${ZONE}`, 'id with a digit');
+refuses(`home.123-45.${ZONE}`, 'two numbers and no id');
 
 // A name that exists must return NODATA for other types, never NXDOMAIN: a stub
 // resolver asking AAAA alongside A would otherwise treat the whole lookup as dead.
 checks.push({
-  name: `AAAA home.192-168-123-45.${ZONE}`,
-  label: `AAAA home.192-168-123-45.${ZONE} -> NODATA, not NXDOMAIN`,
+  name: `AAAA home.123-45-kqmzrt.${ZONE}`,
+  label: `AAAA home.123-45-kqmzrt.${ZONE} -> NODATA, not NXDOMAIN`,
   run: async () => {
-    const { records, code } = await query('resolve6', `home.192-168-123-45.${ZONE}`);
+    const { records, code } = await query('resolve6', `home.123-45-kqmzrt.${ZONE}`);
     if (records) return `answered ${records.join(', ')}`;
     if (code === 'ENOTFOUND') return 'returned NXDOMAIN for a name that exists';
     if (code !== 'ENODATA') return `expected NODATA, got ${code}`;
@@ -91,16 +108,17 @@ checks.push({
 
 // The DNS-01 challenge name is a CNAME into the ACME responder's zone, for every
 // query type, and never also an A record. Public addresses get no challenge name.
-for (const method of ['resolveTxt', 'resolve4']) {
-  const name = `_acme-challenge.192-168-123-45.${ZONE}`;
+for (const [label, method] of [['123-45-kqmzrt', 'resolveTxt'], ['123-45-kqmzrt', 'resolve4'], ['10-0-0-5-kqmzrt', 'resolveTxt'], ['192-168-123-45', 'resolveTxt']]) {
+  const name = `_acme-challenge.${label}.${ZONE}`;
+  const target = `${label}.acme.myownsuite.org`;
   checks.push({
     name,
     label: `${method === 'resolveTxt' ? 'TXT' : 'A'} ${name} -> CNAME into acme.myownsuite.org`,
     run: async () => {
       const { records, code } = await query('resolveCname', name);
       if (code) return `expected a CNAME, got ${code}`;
-      if (records.length !== 1 || records[0] !== '192-168-123-45.acme.myownsuite.org') {
-        return `expected 192-168-123-45.acme.myownsuite.org, got ${records.join(', ')}`;
+      if (records.length !== 1 || records[0] !== target) {
+        return `expected ${target}, got ${records.join(', ')}`;
       }
       if (viaResolver) return null;
       const typed = await query(method, name);
@@ -110,6 +128,7 @@ for (const method of ['resolveTxt', 'resolve4']) {
   });
 }
 refuses(`_acme-challenge.203-0-113-9.${ZONE}`, 'no challenge name for a public address');
+refuses(`_acme-challenge.192-168-123-45-kqmzrt.${ZONE}`, 'no challenge name for a name of no valid shape');
 
 // The zone apex answers for itself, so resolvers see a real zone rather than a hole.
 checks.push({

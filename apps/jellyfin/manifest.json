@@ -1,0 +1,187 @@
+{
+  "manifestVersion": 1,
+  "id": "jellyfin",
+  "name": "Jellyfin",
+  "version": "0.1.2",
+  "appVersion": "12.3",
+  "minimumMosVersion": "0.23.0",
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "summary": "Your own films and series, streamed to every screen in the house, from a drive you fill yourself.",
+  "category": "media",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Jellyfin turns a drive full of films and series into your own streaming service. Copy your films onto the drive from any computer, plug it into your server, and Jellyfin finds them, fetches the posters and descriptions, and plays them in a browser, on a phone, or on the TV through the Jellyfin apps. Nobody tracks what you watch, nothing is removed because a licence ran out, and there is no subscription to cancel.",
+    "replaces": [
+      "Netflix",
+      "Plex",
+      "Emby",
+      "Disney+",
+      "Apple TV",
+      "HBO Max",
+      "Kodi",
+      "XBMC",
+      "Amazon Prime Video"
+    ],
+    "tags": [
+      "media",
+      "movies",
+      "series",
+      "tv",
+      "streaming",
+      "video",
+      "media-server",
+      "plex-alternative"
+    ],
+    "features": [
+      {
+        "title": "Your drive becomes a streaming service",
+        "body": "MOS makes a Movies and a Series folder on the drive you pick. Fill them from any computer, plug the drive back in, and the films are there with posters and descriptions, ready to play."
+      },
+      {
+        "title": "Every screen in the house",
+        "body": "Watch in any browser, or install the Jellyfin app on your phone, tablet, smart TV or streaming stick and sign in to your own server."
+      },
+      {
+        "title": "Picks up where you left off",
+        "body": "Jellyfin remembers how far you got in every film and episode, on every device, and shows what comes next in a series."
+      },
+      {
+        "title": "Nothing watches you watching",
+        "body": "No viewing history leaves your server, no recommendations are sold, and no title disappears because someone else's licence ended."
+      }
+    ],
+    "resourceHint": {
+      "level": "high",
+      "label": "High resources",
+      "description": "Quiet while nobody watches, but converting a film for a device that cannot play it directly keeps several cores busy. MOS gives Jellyfin no graphics card, so that conversion runs on the processor."
+    },
+    "privacy": {
+      "summary": "Your films and what you watch stay on your server. Jellyfin looks up posters and descriptions on public film databases, which learn the titles it asks about, and its pages load Google's Cast library for Chromecast.",
+      "notes": [
+        "Your films stay on your own drive and are only ever read: Jellyfin cannot change or delete them, and no subtitles or artwork are written beside them.",
+        "To show posters, cast lists and descriptions, Jellyfin asks TheMovieDb and OMDb about each title it finds. Those services see your server's address and the titles it looks up, never your viewing history. Each library's settings in Jellyfin can turn them off.",
+        "Jellyfin's pages load Google's Cast library in Chrome and similar browsers so you can send a film to a Chromecast. Google sees your browser's address when a Jellyfin page opens; MOS cannot turn this off without removing casting.",
+        "Jellyfin checks its plugin catalogue for updates. Playing a film never contacts anything outside your server."
+      ]
+    },
+    "links": {
+      "website": "https://jellyfin.org/",
+      "docs": "https://jellyfin.org/docs/",
+      "repository": "https://github.com/jellyfin/jellyfin"
+    }
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminName",
+        "type": "text",
+        "label": "Jellyfin username. You sign in with it in Jellyfin, on the TV and in the Jellyfin app.",
+        "required": true,
+        "default": "${owner.email}"
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Jellyfin administrator password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Jellyfin administrator password"
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "jellyfin": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 8096,
+        "env": {
+          "JELLYFIN_PUBLISHEDSERVERURL": "${app.publicUrl}",
+          "MOS_ADMIN_NAME": "${config.adminName}",
+          "MOS_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "MOS_LIBRARIES": "Movies|movies|/media/movies;Series|tvshows|/media/series"
+        },
+        "volumes": [
+          "config:/config",
+          "cache:/cache"
+        ],
+        "requires": {
+          "cpuCores": 0.1,
+          "memoryMb": 350,
+          "cpuPeakCores": 4,
+          "memoryPeakMb": 2048
+        }
+      }
+    }
+  },
+  "storage": {
+    "required": true,
+    "label": "Drive for your films and series",
+    "description": "Jellyfin plays the films and series you copy onto this drive from any computer.",
+    "folders": [
+      {
+        "name": "Movies",
+        "service": "jellyfin",
+        "path": "/media/movies"
+      },
+      {
+        "name": "Series",
+        "service": "jellyfin",
+        "path": "/media/series"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "host": "jellyfin",
+      "service": "jellyfin"
+    }
+  ],
+  "homepage": {
+    "group": "Media",
+    "name": "Jellyfin",
+    "description": "Your films and series.",
+    "icon": "jellyfin"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://jellyfin:8096/health"
+  },
+  "onboarding": {
+    "title": "Watch your first film",
+    "summary": "Jellyfin is set up with your administrator and your Movies and Series libraries. Put films on the drive and they appear.",
+    "sections": [
+      {
+        "id": "open",
+        "type": "steps",
+        "title": "Open Jellyfin",
+        "body": "Sign in with your email address and the Jellyfin password you chose when you installed it. If you changed the username in the install dialog, use that instead."
+      },
+      {
+        "id": "fill-the-drive",
+        "type": "steps",
+        "title": "Fill the drive",
+        "body": "Unplug the drive you picked and plug it into any computer. Copy films into MOS-files, apps, jellyfin, Movies, one folder per film, and series into the Series folder next to it. Plug the drive back into your server: Jellyfin finds what is new within a minute."
+      },
+      {
+        "id": "not-backed-up",
+        "type": "warning",
+        "title": "The drive is not backed up",
+        "body": "MOS backs up Jellyfin's settings and what you have watched, but not the films on your drive. Keep another copy of anything you could not replace."
+      },
+      {
+        "id": "apps",
+        "type": "steps",
+        "title": "Watch on your TV and phone",
+        "body": "Install the Jellyfin app on your TV, streaming stick or phone, enter your Jellyfin address, and sign in with the same username and password."
+      }
+    ]
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "safe"
+  }
+}

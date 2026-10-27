@@ -5,7 +5,7 @@ set -euo pipefail
 
 image="${1:?usage: inspect-image.sh <image.img>}"
 
-root_start_sector="$(sfdisk -J "$image" | tr -d ' "' | grep -A4 'node:.*2' | grep '^start:' | head -n1 | grep -o '[0-9]*')"
+root_start_sector="$(sfdisk -J "$image" | grep -o '"start": *[0-9]*' | sed -n 2p | grep -o '[0-9]*')"
 if [ -z "$root_start_sector" ]; then
   root_start_sector="$(sfdisk -d "$image" | awk '/2 :/ { gsub(",", "", $4); print $4 }' | head -n1)"
 fi

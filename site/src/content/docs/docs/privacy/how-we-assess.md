@@ -127,11 +127,19 @@ in the repository is the exact instruction set every assessment runs under -
 read it and you know precisely what the AI was told to do.
 
 The shield tells you which kind of review you are looking at. **AI-reviewed
-for MOS** means the assessment was AI-assisted and no human has signed it
-off - that is the honest state of every review published today. **Reviewed by
-MOS** appears only once a human has authored or checked the review, with the
-posture dialog spelling out the method (for example "AI-assisted review,
-human-checked"). AI assistance is never presented as human sign-off.
+for MOS** means no person has reviewed the app yet. **Reviewed by MOS** means
+one has, and the posture dialog names who, and at which version and month
+(for example "AI-assisted review, human-reviewed by Rasmus Puls at version 12.2
+in October 2026"). Updates after that are reviewed by AI under the same
+evidence rules, so the dialog's own version line shows how far the app has
+moved since a person looked.
+
+An AI review that finds a serious change - a new company receiving data, data
+that used to stay on your server now leaving it, a worse grade, or the project
+changing hands or licence - publishes it under **Waiting for a human review**
+until a person has checked it, and the shield says **Awaiting human review**
+meanwhile. Smaller changes do not raise it. AI assistance is never presented
+as human sign-off.
 
 ## Updates, expiry, and advisories
 

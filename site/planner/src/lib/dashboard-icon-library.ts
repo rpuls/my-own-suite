@@ -8,9 +8,9 @@ interface DashboardIconMetadata {
   colors?: IconSchemeVariants;
 }
 
-// The ids of a monochrome logo's colour variants, as staged from upstream
-// metadata: `light` is the light-coloured file (for a dark canvas), `dark`
-// the dark-coloured one (for a light canvas).
+// The sibling of a single-colour logo, keyed by the colour its file paints
+// (decided by scripts/svg-tone.mjs): `light` is for a dark canvas, `dark`
+// for a light one. Coloured logos have none and are never swapped.
 export interface IconSchemeVariants {
   light?: string;
   dark?: string;

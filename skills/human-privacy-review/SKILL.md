@@ -1,12 +1,12 @@
 ---
 name: human-privacy-review
-description: Walk a MOS app package's privacy assessment item by item with a human reviewer and record the outcome, converting an AI-authored review into one a person has actually verified. Use before setting provenance.humanReviewed to true, when an assessment's conclusions rest on documentation rather than observed behaviour, or when a review is challenged.
+description: Walk a MOS app package's privacy assessment item by item with a human reviewer and record the outcome, converting an AI-authored review into one a person has actually verified. Use before recording lastHumanReview, to clear findings in awaitingHumanReview, when an assessment's conclusions rest on documentation rather than observed behaviour, or when a review is challenged.
 ---
 
 # Human Privacy Review
 
-`provenance.humanReviewed: true` is a claim that a person examined this package
-and stands behind the result. It is not a formatting step and not a rubber
+`lastHumanReview` is a claim that a person examined this package at the version
+it names and stands behind the result. It is not a formatting step and not a rubber
 stamp on an agent's output.
 
 Run this when a package's assessment was written by an agent, when an existing
@@ -41,7 +41,7 @@ the failure it exists to prevent, now carrying a human's name.
 Run `assess-app-privacy` first and review its output. Write that draft from
 documentation, source and shipped configuration, before anything has been
 observed, so its claims are on record ahead of the evidence that will confirm or
-break them. Leave `provenance.humanReviewed` false and keep `confidence` at
+break them. Leave `lastHumanReview` unset and keep `confidence` at
 `documented` until the observed items are done. A draft written this way still
 derives a posture, because the two dimensions behind it are answerable from
 source; the capture in the later gates is what earns the right to state
@@ -200,7 +200,10 @@ Only after every item has an answer the reviewer has confirmed:
   actually observed.
 - Record what was not examined in `openQuestions`. Remove questions the run has
   answered; do not leave stale ones as hedging.
-- Set `provenance.humanReviewed: true` and name the reviewer.
+- Set `lastHumanReview` to the reviewer's name, today's date (YYYY-MM-DD) and the
+  `appVersion` reviewed, replacing any earlier one.
+- Empty `awaitingHumanReview`: each finding in it has now been checked, and what
+  the reviewer concluded is in the evidence and the grade.
 
 Then run `npm run apps:privacy:check`, regenerate the catalog with
 `npm run apps:catalog`, and check it with `npm run apps:catalog:check`.

@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "appVersion": "3.2.4",
-  "minimumMosVersion": "0.20.0",
+  "minimumMosVersion": "0.23.0",
   "architectures": [
     "amd64"
   ],
@@ -132,6 +132,21 @@
   "setup": {
     "fields": [
       {
+        "id": "adminEmail",
+        "type": "email",
+        "label": "Immich administrator email. If Immich is already set up, the email you sign in to Immich with.",
+        "required": true,
+        "default": "${owner.email}"
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Immich administrator password. If Immich is already set up, your current Immich password.",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Immich administrator password"
+      },
+      {
         "id": "postgresPassword",
         "type": "password",
         "label": "PostgreSQL password",
@@ -214,7 +229,9 @@
           "MOS_SMTP_FROM": "${smtp.fromAddress}",
           "MOS_SMTP_FROM_NAME": "${smtp.fromName}",
           "MOS_SMTP_IMPLICIT_TLS": "${smtp.implicitTls}",
-          "MOS_SMTP_ALLOW_INVALID_CERT": "${smtp.allowInvalidCert}"
+          "MOS_SMTP_ALLOW_INVALID_CERT": "${smtp.allowInvalidCert}",
+          "MOS_ADMIN_EMAIL": "${config.adminEmail}",
+          "MOS_ADMIN_PASSWORD": "${secret.adminPassword}"
         },
         "volumes": [
           "library:/usr/src/app/upload",
@@ -222,6 +239,18 @@
         ]
       }
     }
+  },
+  "storage": {
+    "required": false,
+    "label": "External photo library",
+    "description": "Also show photos you keep in your own folders on a drive. Immich only reads them, and never puts thumbnails or other files beside them.",
+    "folders": [
+      {
+        "name": "Photos",
+        "service": "immich-server",
+        "path": "/media/photos"
+      }
+    ]
   },
   "routes": [
     {
@@ -241,7 +270,7 @@
   },
   "onboarding": {
     "title": "Set up Immich",
-    "summary": "Create your admin account, then connect the mobile app for automatic photo backup.",
+    "summary": "Sign in with the administrator you chose at install, then connect the mobile app for automatic photo backup.",
     "sections": [
       {
         "id": "first-run",
@@ -250,16 +279,22 @@
         "body": "Immich will automatically prepare the database on first startup. This may take several minutes."
       },
       {
-        "id": "admin-account",
+        "id": "sign-in",
         "type": "steps",
-        "title": "Create admin account",
-        "body": "After Immich finishes starting, open the application and create your first admin user account directly in the Immich web interface."
+        "title": "Sign in",
+        "body": "After Immich finishes starting, open it and sign in with the administrator email and password you chose when you installed it."
       },
       {
         "id": "backup-reminder",
         "type": "warning",
         "title": "Backup important",
         "body": "Your photo library is stored in the Immich package volume. Ensure you run regular MOS backups before uploading large amounts of data."
+      },
+      {
+        "id": "photos-drive",
+        "type": "note",
+        "title": "Photos from your own drive",
+        "body": "Got photos on a drive? Plug it in and pick it under External photo library in Immich's settings in Suite Manager. Immich then shows everything in the drive's MOS-files, apps, immich, Photos folder as the Photos library, read where it is: Immich never changes or deletes those photos, and the suite backup does not include them."
       },
       {
         "id": "mobile-app",

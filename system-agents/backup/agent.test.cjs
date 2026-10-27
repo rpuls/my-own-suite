@@ -7,7 +7,29 @@ const test = require('node:test');
 
 const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { driveCandidates, isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, sha256, validatePackagePayloads } = require('./agent.cjs');
+
+// The agent reads its state roots at load, so they point at scratch before it is
+// required; its app-agent socket does not exist here, which is the case under test.
+const scratchRoot = fsSync.mkdtempSync(path.join(os.tmpdir(), 'mos-backup-agent-'));
+process.env.MOS_STATE_ROOT = scratchRoot;
+process.env.MOS_BACKUP_AGENT_STATE_DIR = path.join(scratchRoot, 'backup-agent');
+process.env.MOS_APP_AGENT_SOCKET = path.join(scratchRoot, 'no-such-agent.sock');
+const { RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, sha256, survey, validatePackagePayloads } = require('./agent.cjs');
+
+// The app agent restarts during every platform update. Its drives must not
+// vanish from the Backups screen then, and the schedule must not call a drive
+// "not connected" when the truth is that storage could not be read.
+test('the drives the agent knows stay listed as unreachable while the storage module cannot be asked', async () => {
+  fsSync.mkdirSync(process.env.MOS_BACKUP_AGENT_STATE_DIR, { recursive: true });
+  fsSync.writeFileSync(path.join(process.env.MOS_BACKUP_AGENT_STATE_DIR, 'last-backups.json'), JSON.stringify({ '1A2B-3C4D': '2026-10-20T03:00:00.000Z', 'object:0123456789ab': '2026-10-21T03:00:00.000Z' }));
+  fsSync.writeFileSync(path.join(process.env.MOS_BACKUP_AGENT_STATE_DIR, 'primary-destination.json'), JSON.stringify({ destinationId: '1A2B-3C4D', label: 'Backup drive', setAt: '2026-10-01T00:00:00.000Z' }));
+
+  const { archives, places } = await survey();
+  assert.deepEqual(archives, []);
+  assert.deepEqual(places.map((entry) => [entry.id, entry.kind, entry.state, entry.reason, entry.label, entry.lastBackupAt, entry.ownArchive]), [
+    ['1A2B-3C4D', 'disk', 'unreachable', 'MOS could not read your storage right now.', 'Backup drive', '2026-10-20T03:00:00.000Z', null],
+  ]);
+});
 
 // The gate exists so nobody ends up with backups only a machine they no longer
 // have can open. It must not reach any further than that: a machine in the
@@ -17,7 +39,7 @@ test('an unsaved recovery key blocks only what would create unopenable backups',
   assert.deepEqual([...RECOVERY_KEY_GATED_ROUTES].sort(), ['/v1/backups', '/v1/schedule']);
   // Connecting a bucket is deliberately open: a replacement machine has to
   // connect the surviving bucket before it can enter the key that opens it.
-  for (const open of ['/v1/backups/validate', '/v1/destinations/mount', '/v1/destinations/object', '/v1/destinations/object/test', '/v1/destinations/unlock', '/v1/recovery-key/reveal', '/v1/restores', '/v1/status']) {
+  for (const open of ['/v1/backups/validate', '/v1/destinations/object', '/v1/destinations/object/test', '/v1/archives/unlock', '/v1/recovery-key/reveal', '/v1/restores', '/v1/status']) {
     assert.equal(RECOVERY_KEY_GATED_ROUTES.includes(open), false, open);
   }
   assert.match(RECOVERY_KEY_UNACKNOWLEDGED, /recovery key/iu);
@@ -82,129 +104,3 @@ test('backup sha256 hashes files larger than one read chunk correctly', async ()
   assert.equal(sha256(file), expected);
 });
 
-// Regression: a drive formatted end to end (no partition table) was never
-// offered for mounting, because candidacy was decided by "not a disk". That is
-// also the shape a whole-disk drive comes back as after a restore drill, so such
-// a drive could not be re-attached from the UI at all.
-test('a whole-disk filesystem is a mount candidate, and a partitioned disk is not', () => {
-  const wholeDisk = { fstype: 'ext4', label: 'MOS Backup', path: '/dev/sdb', size: 512 * 1024 ** 3, type: 'disk' };
-  assert.equal(isWholeDiskFilesystem(wholeDisk), true);
-  assert.equal(mountBlockReason(wholeDisk), null);
-
-  const partitioned = { children: [{ fstype: 'ext4', path: '/dev/sdb1', type: 'part' }], path: '/dev/sdb', type: 'disk' };
-  assert.equal(isWholeDiskFilesystem(partitioned), false);
-  assert.match(mountBlockReason(partitioned), /not the whole device/u);
-
-  const blankDisk = { fstype: null, path: '/dev/sdc', type: 'disk' };
-  assert.equal(isWholeDiskFilesystem(blankDisk), false);
-  assert.match(mountBlockReason(blankDisk), /not the whole device/u);
-});
-
-test('whole-disk candidacy does not weaken the existing partition rules', () => {
-  assert.equal(mountBlockReason({ fstype: 'ext4', path: '/dev/sdb1', size: 512 * 1024 ** 3, type: 'part' }), null);
-  assert.match(mountBlockReason({ fstype: '', path: '/dev/sdb1', type: 'part' }), /no detected filesystem/u);
-  assert.match(mountBlockReason({ fstype: 'zfs_member', path: '/dev/sdb1', type: 'part' }), /not mounted automatically/u);
-  assert.match(mountBlockReason({ fstype: 'ext4', path: null, type: 'part' }), /device path was not reported/u);
-  assert.match(mountBlockReason({ fstype: 'squashfs', path: '/dev/loop0', type: 'loop' }), /not the whole device/u);
-});
-
-// A whole disk is now a candidate, so the system-drive guards have to hold for
-// one too — the root filesystem is exactly a mounted disk with a filesystem.
-test('a whole disk carrying the system is still refused', () => {
-  assert.match(
-    mountBlockReason({ fstype: 'ext4', mountpoints: ['/'], path: '/dev/sda', type: 'disk' }),
-    /system partition/u,
-  );
-  assert.match(
-    mountBlockReason({ fstype: 'vfat', label: 'EFI', path: '/dev/sda', size: 512 * 1024 * 1024, type: 'disk' }),
-    /system partition/u,
-  );
-  assert.match(
-    mountBlockReason({ fstype: 'ext4', mountpoints: ['/var/lib/docker/volumes'], path: '/dev/sda', type: 'disk' }),
-    /system partition/u,
-  );
-});
-
-// A drive pulled mid-backup leaves its mountpoint behind as a directory on the
-// system disk holding whatever was written afterwards — 34 MB in the drills,
-// invisible again the moment the drive is plugged back in.
-test('an unmounted mountpoint left behind by an interrupted backup is reclaimed', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-mountroot-'));
-  const leftover = path.join(root, 'backup-drive-sdb1');
-  await fsp.mkdir(path.join(leftover, 'MOS-backups', 'repository', 'data'), { recursive: true });
-  await fsp.writeFile(path.join(leftover, 'MOS-backups', 'repository', 'data', 'pack'), Buffer.alloc(4096, 3));
-  await fsp.writeFile(path.join(leftover, 'MOS-backups', 'repository', 'config'), 'x'.repeat(120));
-
-  const reclaimed = reclaimUnmountedDestinations(root);
-
-  assert.equal(reclaimed.length, 1);
-  assert.equal(reclaimed[0].path, leftover);
-  assert.equal(reclaimed[0].bytes, 4096 + 120);
-  assert.equal(fsSync.existsSync(leftover), false);
-});
-
-test('reclaiming touches nothing outside the mount root and leaves no empty directory behind', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-mountroot-'));
-  const sibling = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-elsewhere-'));
-  await fsp.writeFile(path.join(sibling, 'keep.txt'), 'untouched');
-  const empty = path.join(root, 'empty-drive-sdc1');
-  await fsp.mkdir(empty, { recursive: true });
-  await fsp.writeFile(path.join(root, 'not-a-directory.txt'), 'ignored');
-
-  const reclaimed = reclaimUnmountedDestinations(root);
-
-  // An empty mountpoint holds nothing worth reporting, but is still cleared.
-  assert.deepEqual(reclaimed, []);
-  assert.equal(fsSync.existsSync(empty), false);
-  assert.equal(fsSync.existsSync(path.join(root, 'not-a-directory.txt')), true);
-  assert.equal(fsSync.readFileSync(path.join(sibling, 'keep.txt'), 'utf8'), 'untouched');
-});
-
-test('a missing mount root is not an error', async () => {
-  const root = path.join(os.tmpdir(), `mos-mountroot-absent-${Date.now()}`);
-  assert.deepEqual(reclaimUnmountedDestinations(root), []);
-});
-
-// The delete is gated on proving the path is NOT the drive, so every uncertain
-// answer has to be "mounted" — otherwise a transient stat failure would delete
-// the backups on an attached drive.
-test('the mount test fails safe, answering mounted whenever it cannot tell', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-mounttest-'));
-  const ordinary = path.join(root, 'ordinary');
-  await fsp.mkdir(ordinary);
-
-  assert.equal(isMountPoint(ordinary), false);
-  assert.equal(isMountPoint(path.join(root, 'does-not-exist')), true);
-
-  // A path proved to be a mount is skipped rather than deleted.
-  const guarded = path.join(root, 'guarded');
-  await fsp.mkdir(guarded);
-  await fsp.writeFile(path.join(guarded, 'drive-data'), 'precious');
-  const originalStat = fsSync.statSync;
-  fsSync.statSync = (target, ...rest) => {
-    const stat = originalStat(target, ...rest);
-    if (String(target) === guarded) return { ...stat, dev: stat.dev + 1 };
-    return stat;
-  };
-  try {
-    assert.deepEqual(reclaimUnmountedDestinations(root), []);
-  } finally {
-    fsSync.statSync = originalStat;
-  }
-  assert.equal(fsSync.readFileSync(path.join(guarded, 'drive-data'), 'utf8'), 'precious');
-});
-
-test('a partition is named after the drive it is on, not its kernel name', () => {
-  // The HP lab's install stick, as lsblk reported it: only the disk has a model.
-  const stick = {
-    children: [
-      { fstype: 'vfat', name: 'sdb1', path: '/dev/sdb1', rm: true, size: 800000000, type: 'part', uuid: '21A9-69FB' },
-      { fstype: 'ext4', name: 'sdb2', path: '/dev/sdb2', rm: true, size: 7516192768, type: 'part', uuid: '723ed40b' },
-    ],
-    model: 'SanDisk 3.2Gen1', name: 'sdb', path: '/dev/sdb', rm: true, size: 30816600064, tran: 'usb', type: 'disk',
-  };
-  const data = driveCandidates([stick]).find((item) => item.devicePath === '/dev/sdb2');
-  assert.equal(data.label, 'SanDisk 3.2Gen1');
-  assert.equal(data.canMount, true);
-  assert.equal(data.storageKind, 'external');
-});

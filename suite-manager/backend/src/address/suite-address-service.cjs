@@ -14,11 +14,18 @@ const os = require('node:os');
 
 const { hostingTrack } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { HttpsSettingsError, normalizeBaseDomain, validBaseDomain, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
-const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
+const { detectServerAddress, easyDoorHomeHost, parseEasyDoorHost, readEasyDoorId: readMachineEasyDoorId } = require('../../../../shared/easy-door.cjs');
 const { tlsHandshake } = require('../../../../shared/tls-handshake.cjs');
 const { SuiteAddressError, addressForHost, domainAddress } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { HttpsAgentError } = require('../settings/https-agent-client.cjs');
+
+// Names from before the install id spelled the whole address: home.192-168-1-20.local.myownsuite.org.
+const ID_LESS_EASY_DOOR_HOST = /^(?:[^.]+\.)?(\d{1,3}(?:-\d{1,3}){3})\.local\.myownsuite\.org$/u;
+
+function addressInEasyDoorHost(host) {
+  return parseEasyDoorHost(host)?.address || ID_LESS_EASY_DOOR_HOST.exec(String(host || ''))?.[1].replace(/-/gu, '.') || null;
+}
 
 // The stages of a change, in order. `dns` only exists for a public server's
 // domain: the wait for the owner's record to reach this server. `caddy` only
@@ -80,6 +87,7 @@ class SuiteAddressService {
     detectAddress = detectServerAddress,
     dnsRecheckMs = 15_000,
     dnsWaitMs = 30 * 60_000,
+    easyDoorId: readEasyDoorId = () => readMachineEasyDoorId(),
     frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
     installedApps = () => [],
     logger = null,
@@ -97,6 +105,7 @@ class SuiteAddressService {
     this.detectAddress = detectAddress;
     this.dnsRecheckMs = dnsRecheckMs;
     this.dnsWaitMs = dnsWaitMs;
+    this.readEasyDoorId = readEasyDoorId;
     this.frontDoor = frontDoor;
     this.track = hostingTrack(frontDoor);
     this.installedApps = installedApps;
@@ -195,10 +204,11 @@ class SuiteAddressService {
   }
 
   // The Easy Door name this machine answers on right now, or null off a private
-  // network. Derived from the live address on every call because that is what
-  // it follows; a domain does not close it, because a door is not an address.
+  // network. Derived on every call because it follows the live address, and a
+  // restore can bring back the id of the machine it came from; a domain does not
+  // close it, because a door is not an address.
   easyDoorHost() {
-    return easyDoorHomeHost(this.detectAddress());
+    return easyDoorHomeHost(this.detectAddress(), this.readEasyDoorId);
   }
 
   // Every name Suite Manager itself answers on: the recorded address, both
@@ -221,12 +231,15 @@ class SuiteAddressService {
   }
 
   // The recorded kind is `easy-door` but the machine's live Easy Door name is
-  // another: its address moved under it, and everything published still names
-  // the old one.
+  // another, and everything published still names the old one. Either the LAN
+  // address moved under it, or the name itself did: a restore brought back the
+  // name of the machine it came from, or the suite was set up on an earlier shape.
   drift(address = this.address()) {
     if (address.kind !== 'easy-door') return null;
     const live = this.easyDoorHost();
-    return live && live !== address.host ? { from: address.host, to: live } : null;
+    if (!live || live === address.host) return null;
+    const recordedAddress = addressInEasyDoorHost(address.host);
+    return { addressMoved: Boolean(recordedAddress) && recordedAddress !== parseEasyDoorHost(live).address, from: address.host, to: live };
   }
 
   async status() {

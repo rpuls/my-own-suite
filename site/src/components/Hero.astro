@@ -9,7 +9,7 @@ import { GET_STARTED_PATH } from '../lib/links'
     <div>
       <span class="mos-eyebrow">A realistic path to digital independence</span>
       <h1 class="mos-display" style="font-size:clamp(2.4rem,5vw,4.2rem)">Your own private cloud, made simple.</h1>
-      <p class="hero-lede mos-body-lg mos-meta">Like Google Drive, Photos, and Docs — but you're in control, not a corporation. No tracking, no ads, no terms changing on you.</p>
+      <p class="hero-lede mos-body-lg mos-meta">Imagine a personal Netflix, Spotify and Google suite, built from open-source apps you own and control. No subscription, no tracking, no terms changing on you.</p>
       <div class="hero-cta">
         <a class="mos-btn mos-btn-primary" href={GET_STARTED_PATH} style="min-height:3.2rem;padding:0.85rem 1.5rem;font-size:1.05rem">Get started</a>
         <a class="mos-btn mos-btn-secondary" href="#how" style="min-height:3.2rem;padding:0.85rem 1.5rem">See how it works</a>
@@ -18,4 +18,45 @@ import { GET_STARTED_PATH } from '../lib/links'
     </div>
     <HeroAppSearch />
   </div>
+  {/* The install line sits under the pitch as a footnote, not beside it: it is
+      there for the developer who wants proof the install is one step, and must
+      not compete with the headline, the lede and the buttons for the first look. */}
+  <div class="shell hero-install">
+    <div class="cmd">
+      <span class="dollar">$</span>
+      <span class="cmd-text">curl -fsSL https://get.myownsuite.org | sudo bash</span>
+      <button
+        class="cmd-copy"
+        type="button"
+        aria-label="Copy install command"
+        data-copy="curl -fsSL https://get.myownsuite.org | sudo bash"
+      >
+        <svg class="icon-copy" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <svg class="icon-check" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </button>
+    </div>
+    <p class="mos-small mos-meta">That's the whole install on a fresh Ubuntu 24.04 server. Own hardware? Flash a USB stick.</p>
+  </div>
 </section>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.cmd-copy')) {
+    let resetTimer: ReturnType<typeof setTimeout> | undefined
+    button.addEventListener('click', async () => {
+      const text = button.dataset.copy
+      if (!text) return
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        return
+      }
+      button.classList.add('copied')
+      button.setAttribute('aria-label', 'Copied')
+      clearTimeout(resetTimer)
+      resetTimer = setTimeout(() => {
+        button.classList.remove('copied')
+        button.setAttribute('aria-label', 'Copy install command')
+      }, 2000)
+    })
+  }
+</script>

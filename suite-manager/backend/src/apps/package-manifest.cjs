@@ -204,6 +204,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       service: route?.service || '',
     })) : [],
     services,
+    storage: publicStorage(manifest.storage),
     setup: {
       fieldCount: Array.isArray(manifest.setup?.fields) ? manifest.setup.fields.length : 0,
       fields: Array.isArray(manifest.setup?.fields)
@@ -226,6 +227,16 @@ function publicPackageSummary(manifest, validationErrors = []) {
     },
     version: manifest.version || '',
     minimumMosVersion: manifest.minimumMosVersion || '',
+  };
+}
+
+function publicStorage(storage) {
+  if (!isRecord(storage) || !Array.isArray(storage.folders)) return null;
+  return {
+    description: hasText(storage.description) ? storage.description : null,
+    folders: storage.folders.filter((folder) => hasText(folder?.name)).map((folder) => ({ name: folder.name, service: folder.service || '' })),
+    label: hasText(storage.label) ? storage.label : null,
+    required: storage.required === true,
   };
 }
 

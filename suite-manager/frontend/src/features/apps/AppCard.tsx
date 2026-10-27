@@ -1,11 +1,12 @@
 import { useId } from 'react';
 
+import { pausedByDrive, type StorageEntry } from '../storage/model';
 import { appIconSrc, categoryLabel, initialsFor, primaryCategory, statusFor, summaryFor } from './model';
 import type { AppPackageSummary } from './types';
 
-export function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummary; ledVariant?: boolean }) {
+export function AppHealthIndicator({ app, ledVariant = false, paused = false }: { app: AppPackageSummary; ledVariant?: boolean; paused?: boolean }) {
   const tooltipId = useId();
-  const status = statusFor(app);
+  const status = statusFor(app, { paused });
   const label = `${app.name}: ${status.label}`;
   if (ledVariant) {
     return <span aria-describedby={tooltipId} aria-label={label} className="suite-app-health-led-wrap" role="img" tabIndex={0}>
@@ -19,14 +20,14 @@ export function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackag
   </span>;
 }
 
-export function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
+export function AppIcon({ app, large = false, solid = false }: { app: AppPackageSummary; large?: boolean; solid?: boolean }) {
   const icon = appIconSrc(app);
-  return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
+  return <span className={`mos-app-icon suite-app-icon${large ? ' suite-app-icon-large' : ''}${solid ? ' mos-app-icon-solid' : ''}`} aria-hidden="true">
     {icon ? <img alt="" src={icon} /> : <span>{initialsFor(app.name)}</span>}
   </span>;
 }
 
-export function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void }) {
+export function AppCard({ app, onOpen, storage }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void; storage: StorageEntry[] | null }) {
   return <article className={`suite-app-card${app.external ? ' is-external' : ''}`}>
     <button className="suite-app-card-main" onClick={() => onOpen(app)} type="button">
       <AppIcon app={app} />
@@ -45,7 +46,7 @@ export function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app:
       </span>
     </button>
     <div className="suite-app-card-actions">
-      <AppHealthIndicator app={app} ledVariant />
+      <AppHealthIndicator app={app} ledVariant paused={Boolean(pausedByDrive(app.id, storage))} />
       <button className="mos-btn mos-btn-primary" onClick={() => onOpen(app)} type="button">View</button>
     </div>
   </article>;

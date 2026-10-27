@@ -63,7 +63,8 @@ export default defineConfig({
             'docs/install/cloud-server',
             'docs/install/own-hardware',
             'docs/install/first-start',
-            'docs/install/easy-address'
+            'docs/install/easy-address',
+            'docs/install/cloud-address'
           ]
         },
         {
@@ -71,6 +72,7 @@ export default defineConfig({
           items: [
             'docs/guides/suite-manager',
             'docs/guides/apps',
+            'docs/guides/files-on-a-drive',
             'docs/guides/customize-homepage',
             'docs/guides/https-domain',
             'docs/guides/email-relay',

@@ -28,6 +28,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`appVersion`](#required-fields) | 0.20.0 | The app's own version, which owners see instead of the package version. |
 | [`routes[].kind`](#routes) | 0.21.0 | `api` marks an address only programs call: no Open button, no Homepage tile. |
 | [`requirements`](#server-requirements-requirements) | 0.21.0 | What the app needs from the server, starting with `https`; Suite Manager disables Install and says why on a server that lacks it. |
+| [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks, created and mounted by MOS. |
 
 ## A complete minimal manifest
 
@@ -82,7 +83,7 @@ Each key is a DNS-safe service id, which is also the container's hostname on the
 | `dockerfile` | yes | Package-root Dockerfile: `Dockerfile` for the primary service, `Dockerfile.<service>` for others. Base images must be pinned by immutable digest (`FROM image@sha256:…`) — floating tags are refused at review. |
 | `internalPort` | yes | The one TCP port the service listens on. |
 | `env` | no | Environment map: `UPPER_CASE` keys, string values, template references allowed (see the grammar below). |
-| `volumes` | no | Persistent storage as `<volume-name>:<absolute-container-path>`. **Named volumes only** — host paths, bind mounts, and device paths are refused by design (they break backup, restore, and isolation). Volume names are unique within the package; each volume belongs to exactly one service. |
+| `volumes` | no | Persistent storage as `<volume-name>:<absolute-container-path>`. **Named volumes only** — host paths, bind mounts, and device paths are refused by design (they break backup, restore, and isolation). Folders the owner fills from their own drive are declared under [`storage`](#folders-on-the-owners-drive-storage) instead. Volume names are unique within the package; each volume belongs to exactly one service. |
 | `requires` | no | What the service needs to run well — see below. |
 
 MOS does not order service startup. A service must tolerate its dependencies starting later and retry — every mainstream server image already does.
@@ -179,6 +180,35 @@ What the app needs from the server it is installed on. Suite Manager checks each
 
 `requirements` was added in MOS 0.21.0; a package using it declares `minimumMosVersion` 0.21.0 or later. `architectures` below predates it and is judged the same way.
 
+## Folders on the owner's drive (`storage`)
+
+Folders an app reads from a drive the owner picks, such as a media server's films. A `required` drive is picked in the install dialog; an optional one stays out of install and is added later in the app's settings. MOS creates each one as `MOS-files/apps/<id>/<name>` on that drive and mounts it **read-only** at `path` in the named service. The owner fills the folders from any computer: the drive is the way in. The app never learns where a folder lives, only its own path.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `folders[].name` | yes | The folder's name as the owner sees it on the drive, such as `Movies`: letters, digits, spaces, `_` and `-`. Unique within the package, ignoring case, because most drives ignore it. |
+| `folders[].service` | yes | The service the folder is mounted into. |
+| `folders[].path` | yes | Absolute path inside that service's container, without `:` or `,`. Must not be one of its volume paths. |
+| `required` | no | `true` when the app is no use without the folders. Suite Manager then disables **Install** with "Requires an extra storage device" until a drive formatted as exFAT, NTFS or FAT32 is plugged in. Omitted or `false` lets the owner install without a drive, and the folders are simply not mounted. |
+| `label` | no | What the drive choice is called where the owner picks it, such as `External photo library`. Defaults to "Drive for its files". |
+| `description` | no | One or two sentences under that choice while no drive is picked, saying what a drive adds in the owner's terms. Worth writing for an optional drive: the owner meets it in the app's settings with nothing else to explain it. |
+
+```json
+"storage": {
+  "required": true,
+  "label": "Drive for your films",
+  "folders": [
+    { "name": "Movies", "service": "media", "path": "/media/movies" }
+  ]
+}
+```
+
+These folders are not app volumes: the suite backup does not include them, and uninstalling the app leaves them on the drive. A drive that is not plugged in keeps the app from starting rather than letting it start against an empty folder. The manifest only says where the folders appear; making the app *use* them, for example by creating a library through its own API at first start, is the package's job, typically in `entrypoint.sh`. Packages from added sources may not declare `storage`.
+
+Folders only grow across package versions. A version may add folders, but never drop or rename one a published version declared: the owner's files stay in the old folder, and a version that stops declaring it stops mounting it, so the library looks empty after the update. To rename a folder, add the new one, keep the old one, and tell owners in the release note that they can move their files across. The official catalog refuses a version that drops a folder.
+
+`storage` was added in MOS 0.23.0, and unlike other additions the minimum is enforced: a package using it must declare `minimumMosVersion` 0.23.0 or later, because an older MOS would run the app without its folders.
+
 ## Other top-level fields
 
 - `architectures` — `["amd64"]` and/or `["arm64"]`. Omitted means unconstrained; incompatible hosts show Install disabled with the reason and refuse the install before building.
@@ -236,7 +266,7 @@ These work today for official packages but their shape is **not** frozen; avoid 
 
 ## What stays out — permanently
 
-These are refused by design, not omissions to work around: host paths and bind mounts, cross-package shared volumes, host networking, device passthrough, privileged containers, the Docker socket, raw Caddy/proxy directives, arbitrary scripts in guides, and OIDC/LDAP/SSO wiring (MOS is deliberately single-owner). If your app cannot be expressed without one of these, that is a platform conversation — open an issue rather than bending the package.
+These are refused by design, not omissions to work around: host paths and bind mounts a package chooses itself (the only host folders an app gets are its own `storage` folders, which MOS places), cross-package shared volumes and folders, host networking, device passthrough, privileged containers, the Docker socket, raw Caddy/proxy directives, arbitrary scripts in guides, and OIDC/LDAP/SSO wiring (MOS is deliberately single-owner). If your app cannot be expressed without one of these, that is a platform conversation — open an issue rather than bending the package.
 
 ## Validating a package
 
@@ -246,7 +276,7 @@ npm run apps:manifest:check                # every apps/<app>/
 npm run apps:manifest:check -- path/to/pkg # specific folder(s)
 ```
 
-Or validate structure alone against `apps/manifest.schema.json` with any JSON Schema validator. Semantic rules the schema cannot express (and the checker enforces): template references resolve against declared fields and namespaces; `routes[].service` and the `health` hostname name declared services; declared package files exist and none is inside `e2e/`; screenshots are declared in `packageFiles`; secret fields carry no defaults; volume names are unique per package.
+Or validate structure alone against `apps/manifest.schema.json` with any JSON Schema validator. Semantic rules the schema cannot express (and the checker enforces): template references resolve against declared fields and namespaces; `routes[].service` and the `health` hostname name declared services; declared package files exist and none is inside `e2e/`; screenshots are declared in `packageFiles`; secret fields carry no defaults; volume names are unique per package; `storage` folders name a declared service, are unique ignoring case, and never take a volume's path.
 
 ## Amendment policy
 

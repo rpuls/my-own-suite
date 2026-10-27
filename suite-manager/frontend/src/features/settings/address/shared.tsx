@@ -45,10 +45,10 @@ export function RebuildNotice({ apps }: { apps: string[] }) {
   </Notice>;
 }
 
-export function ContactNotices({ change, contact }: { change: AddressChange | null; contact: Contact }) {
+export function ContactNotices({ contact, movingTo }: { contact: Contact; movingTo: AddressChange['target'] }) {
   return <>
     {contact === 'signed-out' ? <Notice title="Your session ended" variant="warning"><p>Sign in again to see where the address change ended up.</p><a className="mos-btn mos-btn-primary" href="/suite-manager/">Sign in</a></Notice> : null}
-    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${change.target.scheme}://${change.target.host}/suite-manager/settings`}>{`${change.target.scheme}://${change.target.host}/`}</a>.</p></Notice> : null}
+    {contact === 'refused' && movingTo ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${movingTo.scheme}://${movingTo.host}/suite-manager/settings`}>{`${movingTo.scheme}://${movingTo.host}/`}</a>.</p></Notice> : null}
   </>;
 }
 

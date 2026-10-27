@@ -34,9 +34,9 @@ const NO_PRIMARY = 'No destination is set for automatic backups, so this backup 
 function isActive(job) { return Boolean(job && (job.status === 'queued' || job.status === 'running')); }
 
 class BackupScheduler {
-  constructor({ agentStateDir, createJob, destinations, log = () => {}, now = () => new Date(), primary, readJob, restorePoints, updateInProgress = async () => false }) {
+  constructor({ agentStateDir, createJob, log = () => {}, now = () => new Date(), places, primary, readJob, restorePoints, updateInProgress = async () => false }) {
     this.createJob = createJob;
-    this.destinations = destinations;
+    this.places = places;
     this.log = log;
     this.now = now;
     this.primary = primary;
@@ -136,13 +136,13 @@ class BackupScheduler {
     if (await this.updateInProgress()) return this.recordWaiting(schedule, occurrence, UPDATE_IN_PROGRESS);
     const chosen = this.primary.read();
     if (!chosen) return this.recordWaiting(schedule, occurrence, NO_PRIMARY);
-    const destination = this.primary.resolve(await this.destinations());
+    const destination = this.primary.resolve(await this.places());
     // A destination that is not there is the ordinary case — a backup disk
     // lives in a drawer, a home connection drops — rather than a failure: the
     // run stays owed and starts the moment it is back, up until the next
     // occurrence replaces it.
     if (!destination) return this.recordWaiting(schedule, occurrence, isObjectDestinationId(chosen.destinationId) ? STORAGE_UNREACHABLE : DRIVE_ABSENT);
-    if (!destination.writable) return this.recordWaiting(schedule, occurrence, 'The backup drive is connected but not writable, so this backup has not run.');
+    if (destination.reason) return this.recordWaiting(schedule, occurrence, destination.reason);
     let job = null;
     try {
       job = this.createJob('backup', { destinationId: destination.id, initiator: 'schedule' });
@@ -170,9 +170,6 @@ class BackupScheduler {
       if (!job || job.status !== 'succeeded') {
         return this.settle(schedule, { message: job?.error || 'The automatic backup did not finish. Its record is in the activity below.', status: 'failed' });
       }
-      // The repository identity is only knowable once a backup has written one,
-      // which is why it is captured here rather than when the primary is chosen.
-      this.primary.rememberRepository(schedule.pending.destinationId);
       return this.prune({ ...schedule, pending: { ...schedule.pending, phase: 'retention' } });
     }
     if (job && job.status !== 'succeeded') {

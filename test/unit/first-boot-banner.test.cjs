@@ -7,11 +7,12 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { execFileSync } = require('node:child_process');
 
-const { easyDoorHomeHost } = require('../../shared/easy-door.cjs');
+const { easyDoorHomeHost, easyDoorIdPath, readEasyDoorId } = require('../../shared/easy-door.cjs');
 const { renderCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 const { renderConsoleLoginInitScript } = require('../../scripts/installers/console-login.cjs');
 
@@ -332,17 +333,31 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
 });
 
 // The door is always open on a LAN machine — a domain does not close it — so the
-// banner prints it for any private address without reading the Caddyfile.
+// banner prints it for any private address without reading the Caddyfile. On a
+// fresh install the banner is the first to ask, so it is where the id is made.
 test('the Easy Door CLI answers with the name the host gate admits', () => {
-  const cli = (args) => execFileSync(process.execPath, [easyDoorModule, ...args], { encoding: 'utf8' }).trim();
+  const idFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-banner-')), 'mos-easy-door', 'id');
+  const cli = (args) => execFileSync(process.execPath, [easyDoorModule, ...args], { encoding: 'utf8', env: { ...process.env, MOS_EASY_DOOR_ID_FILE: idFile } }).trim();
 
-  for (const address of ['192.168.123.45', '10.0.0.5', '172.16.0.1']) {
-    assert.equal(cli(['home-host', address]), easyDoorHomeHost(address));
-  }
   // A public address has no Easy Door: the nameserver refuses those names, so
   // the banner must print the first door alone rather than a dead second one.
   assert.equal(cli(['home-host', '203.0.113.9']), '');
+  assert.equal(fs.existsSync(idFile), false, 'a machine without a door makes no id');
+  for (const address of ['192.168.123.45', '10.0.0.5', '172.16.0.1']) {
+    const printed = cli(['home-host', address]);
+    assert.equal(printed, easyDoorHomeHost(address, readEasyDoorId(idFile)));
+    assert.equal(cli(['home-host', address]), printed);
+  }
   assert.equal(renderCaddyfile().includes('# mos-easy-door'), true);
+});
+
+// The id names one machine. The bake VM is on a private address too, so an id
+// made while baking would be written into every download.
+test('the image ships without an Easy Door id, and the id lives outside the vault', () => {
+  const finalize = fs.readFileSync(path.resolve(__dirname, '..', '..', 'image-builder', 'payload', 'mos-image-finalize'), 'utf8');
+  const identity = finalize.slice(finalize.indexOf("stage 'Removing machine identity'"), finalize.indexOf("stage 'Arming the vault"));
+  assert.match(identity, new RegExp(`^rm -rf ${path.posix.dirname(easyDoorIdPath())}$`, 'mu'));
+  assert.equal(['/var/lib/docker', '/var/lib/containerd', '/var/lib/mos', '/etc/mos/secrets'].some((protectedPath) => `${easyDoorIdPath()}/`.startsWith(`${protectedPath}/`)), false);
 });
 
 // The banner runs on every boot whether the vault opened or not, so it may read

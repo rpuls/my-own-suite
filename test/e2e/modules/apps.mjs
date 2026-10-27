@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { apiJson } from '../support/api.mjs';
 import { catalogApps, loadAppModule, requireAppModule } from '../support/catalog.mjs';
+import { appDrive } from '../support/drive.mjs';
 import { fixtureMaker } from '../support/fixtures.mjs';
 import { waitForHomepageAvailable } from '../support/homepage.mjs';
 import {
@@ -36,7 +37,7 @@ function needsHttps(id) {
 
 // Null keeps what the dialog prefilled from the package's own default.
 function defaultSetupValue(app, field, env) {
-  if (typeof field.default === 'string') return null;
+  if (typeof field.default === 'string' || field.type === 'boolean') return null;
   if (field.type === 'email') return env.owner.email;
   if (field.type === 'password') return `${app.id}-${field.id}-test-password`;
   return `e2e-${field.id}`;
@@ -52,7 +53,10 @@ async function fillSetupFields(ctx, app, dialog) {
     if (field.generated) continue;
     const input = dialog.getByLabel(field.label, { exact: true });
     const value = module?.setupValue?.({ env: ctx.env, field }) ?? defaultSetupValue(app, field, ctx.env);
-    if (value === null) {
+    if (field.type === 'boolean') {
+      if (value !== null) await input.setChecked(value === true || value === 'true');
+      values[field.id] = String(await input.isChecked());
+    } else if (value === null) {
       values[field.id] = await input.inputValue();
     } else {
       await input.fill(value);
@@ -60,6 +64,40 @@ async function fillSetupFields(ctx, app, dialog) {
     }
   }
   return values;
+}
+
+// An app that can keep files on a drive gets the lab's, so its folders are
+// exercised whether the package requires them or only offers them. A `drive:<fs>`
+// step earlier in the run names the one to take.
+async function pickDrive(ctx, dialog, storage) {
+  const choice = dialog.getByRole('radiogroup', { name: storage?.label || 'Drive for its files' });
+  // The picker appears once the storage list has loaded; one that is required always does.
+  if (storage?.required) await choice.waitFor({ timeout: 30000 }).catch(() => undefined);
+  if (!await choice.isVisible().catch(() => false)) return null;
+  await expect(choice.getByRole('radio').first()).toBeVisible({ timeout: 30000 });
+  const offered = await choice.locator('input[type=radio]:not([disabled])').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+  const drive = offered.includes(ctx.labDrive) ? ctx.labDrive : offered[0];
+  if (drive) await choice.locator(`input[type=radio][value="${drive}"]`).check();
+  return drive || null;
+}
+
+// A drive an app can do without is never asked for at install; it is added the
+// way an owner adds it, in the running app's settings.
+async function addDriveInSettings(ctx, app) {
+  const { page } = ctx;
+  const details = await openAppDetails(page, app);
+  await details.getByRole('button', { name: 'More app actions' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: `${app.name} settings` });
+  await expect(dialog).toBeVisible({ timeout: 30000 });
+  const drive = await pickDrive(ctx, dialog, app.storage);
+  if (drive) {
+    await dialog.getByRole('button', { name: /^Save$/iu }).click();
+    await expect(dialog.getByText(/came back healthy/iu)).toBeVisible({ timeout: 600000 });
+  }
+  await dialog.getByRole('button', { name: /^(Done|Cancel)$/iu }).click();
+  await closeAppDetails(details);
+  return drive;
 }
 
 async function installViaUi(ctx, app) {
@@ -91,6 +129,7 @@ async function installViaUi(ctx, app) {
     const values = await fillSetupFields(ctx, app, dialog);
     ctx.state(app.id).setup = values;
     ctx.state(app.id).passwordFields = app.setup.fields.filter((field) => field.type === 'password' && field.id in values).map((field) => field.id);
+    ctx.state(app.id).drive = await pickDrive(ctx, dialog, app.storage);
     const shortcut = dialog.getByRole('switch', { name: 'Show on Homepage' });
     if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
     await dialog.getByRole('button', { name: /^Install$/iu }).click();
@@ -118,6 +157,10 @@ export async function install(ctx, id) {
   if (app.homepage && !hasTile(app)) {
     await apiJson(page, `/suite-manager/api/apps/packages/${encodeURIComponent(id)}/add-to-homepage`, { method: 'POST' });
     app = await packageById(page, id);
+  }
+  app = await packageById(page, id);
+  if (app.storage && !app.storage.required && !app.instance?.folders?.length) {
+    ctx.state(id).drive = await addDriveInSettings(ctx, app) || ctx.state(id).drive || null;
   }
   ctx.state(id).installedVersion = app.instance?.packageVersion || null;
 }
@@ -172,6 +215,7 @@ function appContext(ctx, id, module, opened, freshContexts) {
   const state = ctx.state(id);
   return {
     connected: opened.connected,
+    drive: appDrive(ctx, id),
     env: ctx.env,
     expect,
     // A browser with nothing stored, as a new device would be: proof that what
@@ -247,7 +291,9 @@ export async function update(ctx, id) {
   ctx.state(id).updatedFrom = before.instance?.packageVersion || null;
 
   const details = await openAppDetails(page, before);
+  const prepared = page.waitForResponse((response) => response.url().endsWith(`/packages/${encodeURIComponent(id)}/prepare-update`));
   await details.getByRole('button', { name: /^Review update$/iu }).first().click();
+  const { comparison } = await (await prepared).json();
   const dialog = page.getByRole('dialog', { name: `Review ${before.name} update` });
   await expect(dialog).toBeVisible({ timeout: 60000 });
   await takeShot(ctx, id, page, 'update-review', { fullPage: false });
@@ -259,6 +305,7 @@ export async function update(ctx, id) {
     if (!value) throw new Error(`The ${id} update asks for "${label}", and apps/${id}/e2e has no value for it.`);
     await input.fill(value);
   }
+  ctx.state(id).drive = await pickDrive(ctx, dialog, comparison.storage) || ctx.state(id).drive || null;
   await dialog.getByRole('button', { exact: true, name: 'Update' }).click();
   const said = await updateDialogOutcome(dialog, 25);
   // What the owner was told is checked apart from what happened, so a dialog

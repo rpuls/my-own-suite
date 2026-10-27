@@ -26,8 +26,8 @@ function fakeAgent(overrides = {}) {
     apply: record('apply', { rollbackId: 'rollback-one' }),
     commit: record('commit', { status: 'committed' }),
     discardParkedCredential: record('discardParkedCredential', { status: 'discarded' }),
-    easyDoorStatus: record('easyDoorStatus', { easyDoorBase: '192-168-30-104.local.myownsuite.org', log: ['{"msg":"will retry","identifier":"*.192-168-30-104.local.myownsuite.org"}'] }),
-    ensure: record('ensure', { changed: false, easyDoorBase: '192-168-30-104.local.myownsuite.org' }),
+    easyDoorStatus: record('easyDoorStatus', { easyDoorBase: '30-104-kqmzrt.local.myownsuite.org', log: ['{"msg":"will retry","identifier":"*.30-104-kqmzrt.local.myownsuite.org"}'] }),
+    ensure: record('ensure', { changed: false, easyDoorBase: '30-104-kqmzrt.local.myownsuite.org' }),
     rollback: record('rollback', { status: 'rolled-back' }),
     status: record('status', { capabilities: ['cloudflare-dns01.apply'] }),
     ...overrides,
@@ -43,6 +43,7 @@ function makeService({ address = null, agent = fakeAgent(), detectAddress = () =
     agent,
     bootstrapHost: 'home.mos.home',
     detectAddress,
+    easyDoorId: () => 'kqmzrt',
     frontDoor: 'ssh-bootstrap',
     now: () => new Date(Date.UTC(2026, 8, 20, 12, 0, tick++)),
     rebake,
@@ -67,7 +68,7 @@ test('the first start records the install-time name, and a later start leaves th
   const recorded = service.start();
   assert.deepEqual({ by: recorded.by, host: recorded.host, kind: recorded.kind, scheme: recorded.scheme }, { by: 'install', host: 'home.mos.home', kind: 'lan-name', scheme: 'http' });
 
-  service.recordDoor('home.192-168-30-104.local.myownsuite.org', { scheme: 'http' });
+  service.recordDoor('home.30-104-kqmzrt.local.myownsuite.org', { scheme: 'http' });
   assert.equal(service.start().kind, 'easy-door');
 
   const cloud = makeService({ bootstrapHost: 'home.203.0.113.5.sslip.io', bootstrapScheme: 'https' });
@@ -88,18 +89,18 @@ test('a change that was running when Suite Manager died is closed as failed on t
 // flight is moving to.
 test('the host gate admits the recorded address, both doors, and the target of a change in flight', () => {
   const { service, store } = makeService({ address: addressForHost('home.mos.home') });
-  assert.deepEqual([...service.allowedHosts()].sort(), ['home.192-168-30-104.local.myownsuite.org', 'home.mos.home']);
+  assert.deepEqual([...service.allowedHosts()].sort(), ['home.30-104-kqmzrt.local.myownsuite.org', 'home.mos.home']);
 
-  service.recordDoor('home.192-168-30-104.local.myownsuite.org', { scheme: 'http' });
-  assert.deepEqual([...service.allowedHosts()].sort(), ['home.192-168-30-104.local.myownsuite.org', 'home.mos.home']);
+  service.recordDoor('home.30-104-kqmzrt.local.myownsuite.org', { scheme: 'http' });
+  assert.deepEqual([...service.allowedHosts()].sort(), ['home.30-104-kqmzrt.local.myownsuite.org', 'home.mos.home']);
 
   store.beginAddressChange({ at: 'one', target: { host: 'home.mos.example.com', kind: 'domain' } });
-  assert.deepEqual([...service.allowedHosts()].sort(), ['home.192-168-30-104.local.myownsuite.org', 'home.mos.example.com', 'home.mos.home']);
+  assert.deepEqual([...service.allowedHosts()].sort(), ['home.30-104-kqmzrt.local.myownsuite.org', 'home.mos.example.com', 'home.mos.home']);
   store.failAddressChange({ at: 'two', errorCode: 'X' });
   assert.equal(service.allowedHosts().has('home.mos.example.com'), false);
 
   const domain = makeService({ address: { acmeEmail: 'o@example.com', baseDomain: 'mos.example.com', host: 'home.mos.example.com', kind: 'domain', provider: 'cloudflare', scheme: 'https' } });
-  assert.deepEqual([...domain.service.allowedHosts()].sort(), ['home.192-168-30-104.local.myownsuite.org', 'home.mos.example.com', 'home.mos.home']);
+  assert.deepEqual([...domain.service.allowedHosts()].sort(), ['home.30-104-kqmzrt.local.myownsuite.org', 'home.mos.example.com', 'home.mos.home']);
 
   // A public address has no Easy Door, which is what keeps cloud installs out.
   const cloud = makeService({ address: addressForHost('home.mos.home'), detectAddress: () => '203.0.113.10' });
@@ -203,7 +204,7 @@ test('a record that cannot be written rolls the web server back, and a rebake th
 
 test('an offered domain is served with the parked credential and the offer is cleared, or dismissed with its credential discarded', async () => {
   const agent = fakeAgent();
-  const { service, suiteAddress } = makeService({ address: addressForHost('home.192-168-30-104.local.myownsuite.org'), agent });
+  const { service, suiteAddress } = makeService({ address: addressForHost('home.30-104-kqmzrt.local.myownsuite.org'), agent });
   service.start();
   await assert.rejects(() => service.change({ kind: 'domain', useOffered: true }), (error) => error.code === 'NO_OFFERED_ADDRESS');
 
@@ -240,21 +241,21 @@ test('address drift is reported and following the Easy Door re-bakes without tou
   let live = '192.168.30.104';
   const agent = fakeAgent();
   const rebaked = [];
-  const { service, suiteAddress } = makeService({ address: addressForHost('home.192-168-30-104.local.myownsuite.org'), agent, detectAddress: () => live, rebake: async (address) => { rebaked.push(address.host); return { status: 'applied' }; } });
+  const { service, suiteAddress } = makeService({ address: addressForHost('home.30-104-kqmzrt.local.myownsuite.org'), agent, detectAddress: () => live, rebake: async (address) => { rebaked.push(address.host); return { status: 'applied' }; } });
   service.start();
   assert.equal((await service.status()).drifted, null);
 
   live = '192.168.30.120';
   let status = await service.status();
-  assert.deepEqual(status.drifted, { from: 'home.192-168-30-104.local.myownsuite.org', to: 'home.192-168-30-120.local.myownsuite.org' });
-  assert.equal(status.easyDoorUrl, 'http://home.192-168-30-120.local.myownsuite.org/');
+  assert.deepEqual(status.drifted, { addressMoved: true, from: 'home.30-104-kqmzrt.local.myownsuite.org', to: 'home.30-120-kqmzrt.local.myownsuite.org' });
+  assert.equal(status.easyDoorUrl, 'http://home.30-120-kqmzrt.local.myownsuite.org/');
 
   await service.change({ kind: 'easy-door' });
   status = await settled(service);
   assert.equal(status.lastChange.status, 'applied');
   assert.equal(status.drifted, null);
-  assert.equal(suiteAddress.read().host, 'home.192-168-30-120.local.myownsuite.org');
-  assert.deepEqual(rebaked, ['home.192-168-30-120.local.myownsuite.org']);
+  assert.equal(suiteAddress.read().host, 'home.30-120-kqmzrt.local.myownsuite.org');
+  assert.deepEqual(rebaked, ['home.30-120-kqmzrt.local.myownsuite.org']);
   assert.equal(agent.calls.some(([name]) => ['apply', 'commit', 'rollback'].includes(name)), false);
 
   // No drift is reported for the install-time name, and no Easy Door means no
@@ -263,6 +264,29 @@ test('address drift is reported and following the Easy Door re-bakes without tou
   lanName.service.start();
   assert.equal((await lanName.service.status()).drifted, null);
   await assert.rejects(() => lanName.service.change({ kind: 'easy-door' }), (error) => error.code === 'EASY_DOOR_UNAVAILABLE');
+});
+
+// The address stayed and the name moved: a restore brought back the id of the
+// machine it came from, or the suite was set up before names carried one. The
+// suite stays where it is, every name stays admitted, and moving is the owner's step.
+test('a name that moved without its address is drift the owner follows, not a moved server', async () => {
+  for (const [recorded, id] of [['home.30-104-kqmzrt.local.myownsuite.org', 'wbtnhd'], ['home.192-168-30-104.local.myownsuite.org', 'kqmzrt']]) {
+    const { service, suiteAddress } = makeService({ address: { host: recorded, kind: 'easy-door', scheme: 'https' }, easyDoorId: () => id });
+    service.start();
+    const live = `home.30-104-${id}.local.myownsuite.org`;
+
+    assert.deepEqual((await service.status()).drifted, { addressMoved: false, from: recorded, to: live });
+    assert.deepEqual([...service.allowedHosts()].sort(), [recorded, live, 'home.mos.home'].sort());
+    assert.equal(suiteAddress.read().host, recorded);
+  }
+});
+
+test('a name from before install ids whose address also moved is a moved server', async () => {
+  const recorded = 'home.192-168-30-104.local.myownsuite.org';
+  const { service } = makeService({ address: { host: recorded, kind: 'easy-door', scheme: 'https' }, detectAddress: () => '192.168.30.120', easyDoorId: () => 'kqmzrt' });
+  service.start();
+
+  assert.deepEqual((await service.status()).drifted, { addressMoved: true, from: recorded, to: 'home.30-120-kqmzrt.local.myownsuite.org' });
 });
 
 function publicServer({ records = {}, ...rest } = {}) {
@@ -402,7 +426,7 @@ test('status says whether a domain resolves to this machine, and says nothing fo
   assert.equal(doorStatus.agentAvailable, false);
 });
 
-const EASY_DOOR = 'home.192-168-30-104.local.myownsuite.org';
+const EASY_DOOR = 'home.30-104-kqmzrt.local.myownsuite.org';
 const held = async () => ({ valid_to: 'Dec 31 12:00:00 2026 GMT' });
 const missing = async () => { throw new Error('unable to verify the first certificate'); };
 

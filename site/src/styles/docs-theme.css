@@ -105,25 +105,10 @@ starlight-toc nav a[aria-current='true'] {
   margin-top: 1.25rem;
 }
 
+/* Size only: the plate itself is the shared .mos-app-icon. */
 .app-doc-head-ico {
-  display: grid;
-  place-items: center;
-  flex: none;
   width: 72px;
   height: 72px;
-  border-radius: var(--mos-radius-lg);
-  background: var(--mos-color-surface);
-  border: var(--mos-border-subtle);
-}
-
-/* Icons ship with inconsistent internal padding, so the tile always
-   adds breathing room of its own (matches the landing catalog). */
-.app-doc-head-ico img,
-.app-doc-card-ico img {
-  display: block;
-  width: 72%;
-  height: 72%;
-  object-fit: contain;
 }
 
 .app-doc-head-meta {
@@ -239,14 +224,8 @@ starlight-toc nav a[aria-current='true'] {
 }
 
 .app-doc-card-ico {
-  display: grid;
-  place-items: center;
-  flex: none;
   width: 52px;
   height: 52px;
-  border-radius: var(--mos-radius-md);
-  background: var(--mos-color-surface);
-  border: var(--mos-border-subtle);
 }
 
 .app-doc-card-body {
