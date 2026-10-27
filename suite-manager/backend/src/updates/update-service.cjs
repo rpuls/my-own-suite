@@ -246,6 +246,28 @@ class UpdateService {
     }
   }
 
+  // What every Suite Manager page polls so an update holds the whole app. The agent's
+  // summary reads files where status() asks the origin; an agent that does not answer
+  // is MOS restarting under an update, which the page tells apart from no update.
+  async progress() {
+    let summary;
+    try {
+      summary = await this.agent.summary();
+    } catch {
+      return { available: false, destinationLabel: null, job: null, track: { ref: null, type: null } };
+    }
+    const job = normalizeJob(summary?.currentJob);
+    const active = job?.status === 'queued' || job?.status === 'running';
+    const primary = active ? (await this.backupSummary())?.primaryDestination : null;
+    const track = summary?.track || {};
+    return {
+      available: true,
+      destinationLabel: typeof primary?.label === 'string' ? primary.label : null,
+      job,
+      track: { ref: typeof track.ref === 'string' ? track.ref : null, type: track.type === 'branch' || track.type === 'stable' ? track.type : null },
+    };
+  }
+
   // The restart a patched kernel needs. MOS said one was needed, so MOS performs
   // it; the owner confirmed it in the browser. Whether one is needed at all, and
   // whether an update or a backup is mid-write, is the privileged agent's own

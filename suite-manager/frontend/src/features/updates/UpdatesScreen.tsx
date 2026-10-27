@@ -1,33 +1,13 @@
 import { useEffect, useState } from 'react';
 
 import { Markdown } from '../../components/Markdown';
-import { AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner, Stepper } from '../../components/ui';
+import { AdvancedPanel, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Select, Stepper } from '../../components/ui';
 import type { IconName } from '../../components/ui';
-import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse, postJson } from '../../lib/api';
 import { readVaultView, startupOf } from '../../lib/vault';
 import { HostPatchesPanel } from './HostPatchesPanel';
 import type { HostPatches } from './HostPatchesPanel';
-
-type UpdateCheckpoint = {
-  backupId: string | null;
-  jobId: string | null;
-  requested: boolean;
-  status: string | null;
-  target: string | null;
-  waiting: { reason: string; since: string | null } | null;
-};
-
-type UpdateJob = {
-  checkpoint: UpdateCheckpoint | null;
-  error: string | null;
-  id: string;
-  logs?: Array<{ at?: string; message?: string }>;
-  output?: string | null;
-  stage: string | null;
-  status: string | null;
-  updatedAt: string | null;
-};
+import { isRunning, PROGRESS_STEPS, progressStep, UPDATE_STARTED_EVENT, type UpdateJob } from './progress';
 
 type UpdateStatus = {
   changeSummary: { items: string[]; source: string | null; title: string };
@@ -56,10 +36,6 @@ function shortCommit(value: string | null, length = 12) {
   return value ? value.slice(0, length) : 'Unknown';
 }
 
-function isRunning(job: UpdateJob | null) {
-  return Boolean(job && (job.status === 'queued' || job.status === 'running'));
-}
-
 const BACKUP_STAGES = new Set(['taking-checkpoint', 'waiting-for-backup-destination']);
 
 const STAGE_LABELS: Record<string, string> = {
@@ -70,15 +46,6 @@ const STAGE_LABELS: Record<string, string> = {
 function stageLabel(stage: string | null) {
   return (stage && STAGE_LABELS[stage]) || stage;
 }
-
-// The agent's stages, folded into the four an owner can follow.
-const PROGRESS_STEPS = ['Backup', 'Download', 'Build', 'Restart'];
-const STAGE_STEP: Record<string, number> = {
-  'updating-checkout': 1,
-  'installing-dependencies': 2,
-  'building-frontend': 2,
-  'reconciling-system': 3,
-};
 
 function checkpointNote(job: UpdateJob | null) {
   const checkpoint = job?.checkpoint;
@@ -127,7 +94,7 @@ function summarize(status: UpdateStatus, updating: boolean): Summary {
   const branch = status.track.type === 'branch';
   const version = status.latestRelease.version;
   const target = branch ? `the newest ${status.track.ref || 'branch'} commit` : `MOS ${version || 'the latest release'}`;
-  if (updating) return { icon: 'refresh', meta: 'Suite Manager may disconnect while MOS restarts. You can leave this page.', title: `Updating to ${target}` };
+  if (updating) return { icon: 'refresh', meta: 'Keep this page open. Suite Manager reloads by itself when MOS is back.', title: `Updating to ${target}` };
   if (!status.serviceAvailable) return { icon: 'update', meta: 'The update agent is not reachable from Suite Manager.', title: 'Updates are unavailable' };
   if (status.updateAvailable === null) return { icon: 'update', meta: checked, title: 'Could not check for updates' };
   if (status.updateAvailable) {
@@ -220,7 +187,6 @@ export function UpdatesScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [checking, setChecking] = useState(false);
-  const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
   // Read from the one route that answers it; a quiet vault agent says no, which
   // understates the interruption rather than promising it away.
@@ -228,7 +194,6 @@ export function UpdatesScreen() {
   const job = status?.currentJob || null;
   const running = isRunning(job);
   const updating = running || busy === 'update';
-  const jobStatus = job?.status || null;
   const waitingReason = running ? job?.checkpoint?.waiting?.reason || '' : '';
 
   async function load() {
@@ -248,20 +213,6 @@ export function UpdatesScreen() {
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
   }, [updating]);
-
-  // The owner started this update and watched it finish, so a reload is wanted —
-  // but only when the bundle actually changed. The delay lets the outcome be read.
-  useEffect(() => {
-    if (jobStatus !== 'succeeded') return undefined;
-    let cancelled = false;
-    let timer = 0;
-    void servedBuildId().then((served) => {
-      if (cancelled || !buildChanged(served)) return;
-      setReloading(true);
-      timer = window.setTimeout(() => window.location.reload(), 4000);
-    }).catch(() => undefined);
-    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
-  }, [jobStatus]);
 
   // A check takes seconds when the origin does not answer, and the agent retries
   // before giving up, so the button says it is working rather than seeming dead.
@@ -293,6 +244,7 @@ export function UpdatesScreen() {
   async function startUpdate() {
     await runAction('update', async () => {
       await jsonResponse(await fetch('/suite-manager/api/updates/start', { method: 'POST' }), 'Unable to start update.');
+      window.dispatchEvent(new Event(UPDATE_STARTED_EVENT));
     });
   }
 
@@ -333,9 +285,6 @@ export function UpdatesScreen() {
     <div className="suite-hero"><h1>Updates</h1></div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
-    {reloading ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />Reloading Suite Manager</span>} variant="success">
-      <p>The update brought a new version of this interface. Reloading so you are looking at it.</p>
-    </Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
     {waitingReason ? <Notice title="Waiting to back up before updating" variant="warning">
       <p>{waitingReason}</p>
@@ -390,7 +339,7 @@ export function UpdatesScreen() {
             {trackChanged && pickedTrack ? <p className="suite-meta suite-updates-track-help">{pickedTrack.name}: {pickedTrack.help} Switching checks again for updates on that track.</p> : null}
 
             {updating ? <div aria-live="polite" className="suite-updates-steps" role="status">
-              <Stepper currentStepIndex={STAGE_STEP[job?.stage || ''] ?? 0} steps={PROGRESS_STEPS} />
+              <Stepper currentStepIndex={progressStep(job?.stage || null)} steps={PROGRESS_STEPS} working />
             </div> : null}
           </div>
         </PanelBody>
