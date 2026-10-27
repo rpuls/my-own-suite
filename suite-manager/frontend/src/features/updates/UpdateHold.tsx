@@ -22,7 +22,7 @@ const WATCH_POLL_MS = 3_000;
 const RELOAD_DELAY_MS = 2_500;
 const RESTART_STEP = 3;
 
-const STEP_TITLES = ['Backing up your suite', 'Downloading the new version', 'Building the new version of MOS', 'Restarting MOS on the new version'];
+const STEP_TITLES = ['Backing up your suite', 'Downloading the new version (lab)', 'Building the new version of MOS', 'Restarting MOS on the new version'];
 
 async function readProgress(): Promise<UpdateProgress | null> {
   try {
