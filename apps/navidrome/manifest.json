@@ -1,0 +1,241 @@
+{
+  "manifestVersion": 1,
+  "id": "navidrome",
+  "name": "Navidrome",
+  "version": "0.1.0",
+  "appVersion": "0.64.2",
+  "minimumMosVersion": "0.23.0",
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "summary": "Your own music, with the streaming-service experience and no music subscription.",
+  "category": "media",
+  "icon": "icon.png",
+  "packageFiles": [
+    "entrypoint.sh",
+    "screenshots/albums.png",
+    "screenshots/album.png",
+    "screenshots/playlist.png",
+    "screenshots/artists.png"
+  ],
+  "catalog": {
+    "description": "Give the music you have collected over the years the streaming-service experience. Navidrome turns your albums, downloads and ripped CDs into a personal music service, with an artwork-rich library, instant search, playlists and favourites. Listen from your browser, phone or compatible speakers, with your files on your own server and no music subscription needed for your collection.",
+    "replaces": [
+      "Spotify",
+      "Apple music",
+      "YouTube Music",
+      "Music Assistant",
+      "Plexamp",
+      "iTunes"
+    ],
+    "tags": [
+      "music",
+      "audio",
+      "streaming",
+      "playlists",
+      "subsonic",
+      "plexamp-alternative"
+    ],
+    "features": [
+      {
+        "title": "Your own personal streaming service",
+        "body": "Put years of collected music back into everyday listening. Find an old favourite in seconds, explore an artist's albums and build a queue for the evening in a familiar streaming interface, powered by the files you already own."
+      },
+      {
+        "title": "Keep your collection without a monthly music bill",
+        "body": "Bring your purchased downloads, ripped CDs and rare recordings into one library. Your files stay on your drive, and listening to your own collection needs no Spotify or Apple Music subscription."
+      },
+      {
+        "title": "Take your library beyond your server",
+        "body": "Connect a compatible phone or desktop player and carry your collection with you. Clients with offline downloads let you take albums on a flight or keep listening without a connection; availability and pricing depend on the player you choose."
+      },
+      {
+        "title": "Play to Sonos and AirPlay speakers",
+        "body": "Let your own collection fill the house. Use a compatible client such as Symfonium for Sonos, or an AirPlay-capable iPhone, iPad or Mac player for supported speakers. These clients are installed separately."
+      },
+      {
+        "title": "Bring your collection and streaming accounts together",
+        "body": "Want one player for owned music and streaming services? A separate client such as Ampcast can connect Navidrome alongside Spotify, Apple Music and YouTube. Each service’s account and subscription requirements still apply."
+      },
+      {
+        "title": "Make your collection feel alive",
+        "body": "Choose online artwork and artist information to enrich your library, and connect Last.fm or ListenBrainz to keep a listening history. MOS disables usage reporting; the music integrations remain your choice."
+      }
+    ],
+    "screenshots": [
+      {
+        "src": "screenshots/albums.png",
+        "alt": "Navidrome album library with cover art for Bonobo, Khruangbin, Björk, Portishead, Radiohead and Miles Davis",
+        "caption": "Your collection, with every cover in view"
+      },
+      {
+        "src": "screenshots/artists.png",
+        "alt": "Miles Davis artist page in Navidrome with a fetched portrait, biography and the Kind Of Blue album cover",
+        "caption": "The artists behind the records"
+      },
+      {
+        "src": "screenshots/album.png",
+        "alt": "Radiohead’s In Rainbows album in Navidrome with its cover, track list and browser playback controls",
+        "caption": "Open an album and settle in"
+      },
+      {
+        "src": "screenshots/playlist.png",
+        "alt": "An Evening listening playlist in Navidrome with eight tracks and a collage made from their album covers",
+        "caption": "Put together a soundtrack for the evening"
+      }
+    ],
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "A small music server between visits; scanning a large collection and converting audio use more memory and processor time."
+    },
+    "privacy": {
+      "summary": "MOS disables usage reporting. Online metadata and artwork are your choice at installation; sharing listening history requires connecting an account yourself in Navidrome.",
+      "notes": [
+        "MOS explicitly disables Gravatar and anonymous usage reporting and supplies no Google Analytics tracking ID. Online metadata is enabled by default and can be unchecked during installation; music services receive lookup terms and your server address.",
+        "ListenBrainz listening-history sharing starts only after you enable it in Personal Settings and enter your token. Last.fm sharing similarly requires account authorisation and server API credentials.",
+        "The sign-in page uses the shared MOS wallpaper, with no background-image download. Plugins remain available; plugins or radio streams you add can contact their own services.",
+        "Phone and desktop clients have their own privacy settings. MOS backs up playlists and settings; music on your drive needs a separate backup."
+      ]
+    },
+    "links": {
+      "website": "https://www.navidrome.org/",
+      "docs": "https://www.navidrome.org/docs/",
+      "repository": "https://github.com/navidrome/navidrome"
+    }
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminName",
+        "type": "text",
+        "label": "Navidrome username",
+        "required": true,
+        "default": "${owner.email}"
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Navidrome administrator password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Navidrome administrator password"
+      },
+      {
+        "id": "onlineMetadata",
+        "type": "boolean",
+        "label": "Fetch online metadata and artwork. Allow music services to receive artist and album lookups; music playback and ListenBrainz sharing work without these lookups.",
+        "default": "true"
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "navidrome": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 4533,
+        "env": {
+          "MOS_ADMIN_NAME": "${config.adminName}",
+          "MOS_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "ND_DATAFOLDER": "/data",
+          "ND_MUSICFOLDER": "/music",
+          "ND_SCANNER_SCHEDULE": "@every 1m",
+          "ND_ENABLEINSIGHTSCOLLECTOR": "false",
+          "MOS_ONLINE_METADATA": "${config.onlineMetadata}",
+          "ND_ENABLEGRAVATAR": "false",
+          "ND_GATRACKINGID": "",
+          "ND_UILOGINBACKGROUNDURL": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEyMDAiIHZpZXdCb3g9IjAgMCAxOTIwIDEyMDAiIGZpbGw9Im5vbmUiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJjYW52YXMiIHgxPSIwIiB5MT0iMCIgeDI9IjE5MjAiIHkyPSIxMjAwIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiMwYjIxMzgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDYxNTI2Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50IGlkPSJnbG93IiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTYwIDg1MCkgc2NhbGUoODAwIDY1MCkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzYzZTJiMyIgc3RvcC1vcGFjaXR5PSIwLjA3Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzYzZTJiMyIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogIDwvZGVmcz4KICA8cGF0aCBmaWxsPSJ1cmwoI2NhbnZhcykiIGQ9Ik0wIDBoMTkyMHYxMjAwSDB6Ii8+CiAgPHBhdGggZmlsbD0idXJsKCNnbG93KSIgZD0iTTAgMGgxOTIwdjEyMDBIMHoiLz4KICA8c3ZnIHg9Ijc1MCIgeT0iNjQwIiB3aWR0aD0iNDIwIiBoZWlnaHQ9IjQyMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIG9wYWNpdHk9IjAuMTMiIHN0eWxlPSItLW1vcy1tYXJrLWNvbG9yOiAjNjNlMmIzOyI+CiAgICA8ZyBzdHJva2U9InZhcigtLW1vcy1tYXJrLWNvbG9yLCAjMGQ2ZTZlKSIgc3Ryb2tlLXdpZHRoPSI2LjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+CiAgICA8bGluZSB4MT0iNTAiIHkxPSIzNiIgeDI9IjUwIiB5Mj0iMjQiPjwvbGluZT4KICAgIDxsaW5lIHgxPSI1MCIgeTE9IjY0IiB4Mj0iNTAiIHkyPSI3NiI+PC9saW5lPgogICAgPGxpbmUgeDE9IjM2IiB5MT0iNTAiIHgyPSIyNCIgeTI9IjUwIj48L2xpbmU+CiAgICA8bGluZSB4MT0iNjQiIHkxPSI1MCIgeDI9Ijc2IiB5Mj0iNTAiPjwvbGluZT4KICAgIDxsaW5lIHgxPSIzNiIgeTE9IjM2IiB4Mj0iMjYiIHkyPSIyNiI+PC9saW5lPgogICAgPGxpbmUgeDE9IjY0IiB5MT0iMzYiIHgyPSI3NCIgeTI9IjI2Ij48L2xpbmU+CiAgICA8bGluZSB4MT0iMzYiIHkxPSI2NCIgeDI9IjI2IiB5Mj0iNzQiPjwvbGluZT4KICAgIDxsaW5lIHgxPSI2NCIgeTE9IjY0IiB4Mj0iNzQiIHkyPSI3NCI+PC9saW5lPgogIDwvZz4KICA8ZyBmaWxsPSJ2YXIoLS1tb3MtbWFyay1jb2xvciwgIzBkNmU2ZSkiPgogICAgPGNpcmNsZSBjeD0iMTgiIGN5PSIxOCIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iNTAiIGN5PSIxNiIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iODIiIGN5PSIxOCIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iMTYiIGN5PSI1MCIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iODQiIGN5PSI1MCIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iMTgiIGN5PSI4MiIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iNTAiIGN5PSI4NCIgcj0iMTMiPjwvY2lyY2xlPgogICAgPGNpcmNsZSBjeD0iODIiIGN5PSI4MiIgcj0iMTMiPjwvY2lyY2xlPgogIDwvZz4KICA8cmVjdCB4PSIzNyIgeT0iMzciIHdpZHRoPSIyNiIgaGVpZ2h0PSIyNiIgcng9IjMiIGZpbGw9Im5vbmUiIHN0cm9rZT0idmFyKC0tbW9zLW1hcmstY29sb3IsICMwZDZlNmUpIiBzdHJva2Utd2lkdGg9IjYuNSI+PC9yZWN0PgogIDwvc3ZnPgogIDx0ZXh0IHg9Ijk2MCIgeT0iMTEzMCIgZmlsbD0iI2I4YzlkZSIgZmlsbC1vcGFjaXR5PSIwLjQ2IiBmb250LWZhbWlseT0iJ09wZW4gU2FucycsIHN5c3RlbS11aSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjYwMCIgbGV0dGVyLXNwYWNpbmc9IjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPk1ZIE9XTiBTVUlURTwvdGV4dD4KPC9zdmc+Cg=="
+        },
+        "volumes": [
+          "data:/data"
+        ],
+        "requires": {
+          "cpuCores": 0.1,
+          "memoryMb": 128,
+          "cpuPeakCores": 2,
+          "memoryPeakMb": 512
+        }
+      }
+    }
+  },
+  "storage": {
+    "required": true,
+    "label": "Drive for your music",
+    "description": "Navidrome plays the music you add to this drive.",
+    "folders": [
+      {
+        "name": "Music",
+        "service": "navidrome",
+        "path": "/music"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "host": "navidrome",
+      "service": "navidrome"
+    }
+  ],
+  "homepage": {
+    "group": "Media",
+    "name": "Navidrome",
+    "description": "Your music, wherever you listen.",
+    "icon": "navidrome"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://navidrome:4533/ping"
+  },
+  "onboarding": {
+    "title": "Listen to your music",
+    "summary": "Your administrator is ready. Add your music to the drive to start listening.",
+    "sections": [
+      {
+        "id": "open",
+        "type": "steps",
+        "title": "Sign in",
+        "body": "Open Navidrome and use the username and password you chose during installation."
+      },
+      {
+        "id": "music",
+        "type": "steps",
+        "title": "Add your collection",
+        "body": "In Settings → Storage, browse the drive and add your music under MOS-files, apps, navidrome, Music. Or eject the drive, copy music there from another computer, and reconnect it. Albums appear after scanning; tags and artwork in your files organise the library."
+      },
+      {
+        "id": "backup",
+        "type": "warning",
+        "title": "Keep another copy of your music",
+        "body": "MOS backs up accounts, playlists and settings. Music on the drive is not included."
+      },
+      {
+        "id": "clients",
+        "type": "values",
+        "title": "Connect a music app",
+        "values": [
+          {
+            "label": "Server address",
+            "value": "${app.publicUrl}",
+            "copy": true
+          },
+          {
+            "label": "Username",
+            "value": "${config.adminName}",
+            "copy": true
+          },
+          {
+            "label": "Password",
+            "value": "Use the Navidrome password you chose during installation.",
+            "copy": false
+          }
+        ]
+      }
+    ]
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "not-guaranteed"
+  }
+}

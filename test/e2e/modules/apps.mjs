@@ -37,7 +37,7 @@ function needsHttps(id) {
 
 // Null keeps what the dialog prefilled from the package's own default.
 function defaultSetupValue(app, field, env) {
-  if (typeof field.default === 'string') return null;
+  if (typeof field.default === 'string' || field.type === 'boolean') return null;
   if (field.type === 'email') return env.owner.email;
   if (field.type === 'password') return `${app.id}-${field.id}-test-password`;
   return `e2e-${field.id}`;
@@ -53,7 +53,10 @@ async function fillSetupFields(ctx, app, dialog) {
     if (field.generated) continue;
     const input = dialog.getByLabel(field.label, { exact: true });
     const value = module?.setupValue?.({ env: ctx.env, field }) ?? defaultSetupValue(app, field, ctx.env);
-    if (value === null) {
+    if (field.type === 'boolean') {
+      if (value !== null) await input.setChecked(value === true || value === 'true');
+      values[field.id] = String(await input.isChecked());
+    } else if (value === null) {
       values[field.id] = await input.inputValue();
     } else {
       await input.fill(value);
