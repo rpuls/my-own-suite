@@ -10,6 +10,8 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-27
+
 ### Added
 
 - **This release is a big one.** Your files, your server, your apps. MOS can now give apps access to files on external drives, a long-awaited capability that opens the catalog to a whole new group of apps.
