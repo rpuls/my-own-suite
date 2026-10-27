@@ -11,7 +11,8 @@ export default defineConfig({
   root: path.join(suiteManagerRoot, 'frontend'),
   plugins: [react()],
   build: {
-    outDir: path.join(suiteManagerRoot, 'frontend', 'dist'),
+    // Beside the served pages; Suite Manager swaps them in as it starts (frontend-release.cjs).
+    outDir: path.join(suiteManagerRoot, 'frontend', 'dist-next'),
     emptyOutDir: true,
   },
   server: {

@@ -428,6 +428,7 @@ Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=$MOS_DISPOSABLE_LAB
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
+ExecStartPre=+/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/frontend-release.cjs $MOS_INSTALL_ROOT/repo/suite-manager/frontend/dist
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3

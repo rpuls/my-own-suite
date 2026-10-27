@@ -60,6 +60,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **App status and source errors explain what happened.** Stopped or repeatedly restarting apps say **Not running**. Failed app-source requests name the host and reason instead of returning an internal error.
 - **Signing in works while HTTPS is still being set up.** A previous secure cookie no longer blocks HTTP sign-in, and that sign-in carries over when HTTPS becomes available.
 - **Suite Manager restarts promptly during updates.** Open browser connections no longer hold shutdown up for 90 seconds.
+- **Pages opened during an update keep working.** Suite Manager switches to the new version's pages only when its new server starts, and only after checking the build is complete, so pages no longer fail with "This page could not load" or "Not found" while an update runs. This takes effect from this update on.
 
 ## [0.22.0] - 2026-10-15
 
