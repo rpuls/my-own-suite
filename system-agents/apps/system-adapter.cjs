@@ -404,6 +404,12 @@ class SystemAppAdapter {
   // still points at the old mount. Stopped apps have no containers to restart.
   // Every drive that appears is opened, so Storage can say what is on it and Backups
   // can list what another server left there; only a remembered one has containers.
+  // udev starts the attach unit for the system disk's own partitions too, and those are never a drive.
+  async attachOnSight(driveId) {
+    if (!(await this.storage.candidates()).some((drive) => drive.id === driveId)) return { attached: false, restarted: 0 };
+    return this.reattachDrive(driveId);
+  }
+
   async reattachDrive(driveId) {
     await this.storage.attach(driveId);
     if (!this.storage.isRemembered(driveId)) return { attached: true, restarted: 0 };

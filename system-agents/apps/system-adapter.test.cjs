@@ -1492,6 +1492,13 @@ test('every drive that appears is opened, and only the containers reading a reme
   ]);
 });
 
+test('a filesystem that is not a storage drive, like the system disk, is left alone on sight', async () => {
+  const storage = { attach: async () => assert.fail('the system disk is never attached'), candidates: async () => [{ id: '1A2B-3C4D' }] };
+  const adapter = new SystemAppAdapter({ storage });
+
+  assert.deepEqual(await adapter.attachOnSight('8725-B90B'), { attached: false, restarted: 0 });
+});
+
 function driveAdapter(storage) {
   const commands = [];
   const adapter = new SystemAppAdapter({

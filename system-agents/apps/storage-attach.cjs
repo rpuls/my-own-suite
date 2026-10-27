@@ -7,7 +7,7 @@ const { SystemAppAdapter } = require('./system-adapter.cjs');
 
 const driveId = process.argv[2];
 
-new SystemAppAdapter().reattachDrive(driveId)
+new SystemAppAdapter().attachOnSight(driveId)
   .then(({ attached, restarted }) => {
     if (attached) process.stdout.write(`[mos-storage] drive ${driveId} mounted; restarted ${restarted} container(s)\n`);
   })
