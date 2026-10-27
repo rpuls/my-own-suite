@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 
-import { AdvancedPanel, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Notice, Row, RowAction, RowInput, RowSwitch, RowTrailing, RowValue, Rows, TextArea } from '../../components/ui';
 import { DriveChoice, driveChoiceLabel, folderList, useDriveChoice } from './DriveChoice';
 import { rowLine } from '../storage/model';
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
@@ -121,7 +121,9 @@ export function initialSetupConfig(app: SetupSource, owner: Owner) {
   return Object.fromEntries(
     setupFieldsNeedInput(app).map((field) => [
       field.id,
-      typeof field.default === 'string' ? ownerDefault(field.default, owner) : field.type === 'email' ? owner.email : '',
+      typeof field.default === 'string' ? ownerDefault(field.default, owner)
+        : field.type === 'boolean' ? String(field.default === true)
+          : field.type === 'email' ? owner.email : '',
     ]),
   );
 }
@@ -431,6 +433,16 @@ export function AppConfigDialog({
               key={field.id}
               label={label}
             >{factValue(field, stored)}</Row>;
+          }
+          if (field.type === 'boolean') {
+            return <Row help={help || undefined} key={field.id} label={label}>
+              <Checkbox
+                aria-label={field.label}
+                checked={setupConfig[field.id] === 'true'}
+                disabled={busy}
+                onChange={(event) => { const value = String(event.currentTarget.checked); setSetupConfig((current) => ({ ...current, [field.id]: value })); }}
+              >Enabled</Checkbox>
+            </Row>;
           }
           return <Row
             help={field.secret ? `Set once. Later you change it inside ${appName}.` : help || undefined}

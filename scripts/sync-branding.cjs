@@ -10,6 +10,8 @@ const canonicalMarkSvgPath = path.join(canonicalDir, 'my-own-suite-mark.svg');
 const canonicalFaviconsDir = path.join(canonicalDir, 'favicons');
 const canonicalFontsDir = path.join(canonicalDir, 'fonts');
 const canonicalStylesPath = path.join(canonicalDir, 'styles', 'mos.css');
+const wallpaperTemplatePath = path.join(canonicalDir, 'mos-wallpaper.template.svg');
+const wallpaperPath = path.join(canonicalDir, 'mos-wallpaper.svg');
 const homepageCustomCssPath = path.join(repoRoot, 'infrastructure', 'homepage', 'custom.css');
 
 const destinations = {
@@ -96,6 +98,39 @@ function syncDirectory(sourceDir, destinationDir) {
     }
 
     copyFile(path.join(sourceDir, entry.name), path.join(destinationDir, entry.name));
+  }
+}
+
+function syncWallpaper() {
+  const styles = fs.readFileSync(canonicalStylesPath, 'utf8');
+  const mark = fs.readFileSync(canonicalMarkSvgPath, 'utf8').replace(/\r\n?/gu, '\n')
+    .replace(/^<svg\b[^>]*>\s*/u, '').replace(/\s*<\/svg>\s*$/u, '');
+  const values = {
+    ACCENT: extractBrandHex(styles, '--mos-color-accent'),
+    BG: extractBrandHex(styles, '--mos-color-bg'),
+    BG_SOFT: extractBrandHex(styles, '--mos-color-bg-soft'),
+    MARK: mark,
+    TEXT_MUTED: extractBrandHex(styles, '--mos-color-text-muted'),
+  };
+  const wallpaper = fs.readFileSync(wallpaperTemplatePath, 'utf8').replace(/\r\n?/gu, '\n')
+    .replace(/\{\{([A-Z_]+)\}\}/gu, (_, name) => {
+      if (!(name in values)) throw new Error(`Unknown wallpaper token: ${name}`);
+      return values[name];
+    });
+  fs.writeFileSync(wallpaperPath, wallpaper);
+  copyFile(wallpaperPath, path.join(destinations.sitePublicBrand, 'mos-wallpaper.svg'));
+  copyFile(wallpaperPath, path.join(destinations.suitePublicBrand, 'mos-wallpaper.svg'));
+  copyFile(wallpaperPath, path.join(destinations.homepageImages, 'mos-wallpaper.svg'));
+
+  const inlineTargets = [
+    { environment: 'ND_UILOGINBACKGROUNDURL', manifest: 'apps/navidrome/manifest.json', service: 'navidrome' },
+  ];
+  for (const target of inlineTargets) {
+    const manifestPath = path.join(repoRoot, target.manifest);
+    if (!fs.existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    manifest.resources.services[target.service].env[target.environment] = `data:image/svg+xml;base64,${Buffer.from(wallpaper).toString('base64')}`;
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 }
 
@@ -187,6 +222,7 @@ function syncBranding() {
   assertExists(canonicalFaviconsDir);
   assertExists(canonicalFontsDir);
   assertExists(canonicalStylesPath);
+  assertExists(wallpaperTemplatePath);
   assertExists(homepageCustomCssPath);
 
   copyFile(canonicalMarkPath, path.join(destinations.sitePublicBrand, 'my-own-suite-mark.png'));
@@ -194,6 +230,7 @@ function syncBranding() {
   copyFile(canonicalMarkPath, path.join(destinations.homepageImages, 'my-own-suite-mark.png'));
   copyFile(canonicalMarkSvgPath, path.join(destinations.sitePublicBrand, 'my-own-suite-mark.svg'));
   copyFile(canonicalMarkSvgPath, path.join(destinations.suitePublicBrand, 'my-own-suite-mark.svg'));
+  syncWallpaper();
 
   syncDirectory(canonicalFaviconsDir, destinations.sitePublicBrand);
   syncDirectory(canonicalFaviconsDir, destinations.suitePublicBrand);

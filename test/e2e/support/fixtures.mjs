@@ -25,6 +25,27 @@ function target(ctx, appId, file) {
 // them against an earlier one.
 export function fixtureMaker(ctx, appId) {
   return {
+    audio(name, { seconds = 4 } = {}) {
+      const rate = 22050;
+      const samples = Math.round(rate * seconds);
+      const wav = Buffer.alloc(44 + samples * 2);
+      wav.write('RIFF');
+      wav.writeUInt32LE(wav.length - 8, 4);
+      wav.write('WAVEfmt ', 8);
+      wav.writeUInt32LE(16, 16);
+      wav.writeUInt16LE(1, 20);
+      wav.writeUInt16LE(1, 22);
+      wav.writeUInt32LE(rate, 24);
+      wav.writeUInt32LE(rate * 2, 28);
+      wav.writeUInt16LE(2, 32);
+      wav.writeUInt16LE(16, 34);
+      wav.write('data', 36);
+      wav.writeUInt32LE(samples * 2, 40);
+      for (let i = 0; i < samples; i += 1) wav.writeInt16LE(Math.round(1000 * Math.sin(2 * Math.PI * 440 * i / rate)), 44 + i * 2);
+      const file = target(ctx, appId, `${name}.wav`);
+      fs.writeFileSync(file, wav);
+      return file;
+    },
     async pdf(name, html) {
       const file = target(ctx, appId, `${name}.pdf`);
       const page = await renderPage(html, { height: 1123, width: 794 });

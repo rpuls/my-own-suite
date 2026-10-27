@@ -33,6 +33,17 @@
         "status": "reviewed"
       }
     },
+    "navidrome": {
+      "appVersion": "0.64.2",
+      "minimumMosVersion": "0.23.0",
+      "packageDigest": "sha256:e64a4eaf54080648de56fb828a077883fbac3f6bf49a83f2cc9b3b0eb0623649",
+      "packageVersion": "0.1.0",
+      "path": "apps/navidrome",
+      "privacy": {
+        "posture": "external-dependency",
+        "status": "reviewed"
+      }
+    },
     "onlyoffice": {
       "appVersion": "9.3.1",
       "minimumMosVersion": "0.20.0",
