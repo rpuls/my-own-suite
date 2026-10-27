@@ -30,6 +30,7 @@ const { STORAGE_REGISTRY_FILENAME } = require('../shared/storage-contract.cjs');
 const { StorageRegistry } = require('../system-agents/lib/storage-registry.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../shared/suite-address.cjs');
+const { missingFromBuild, nextBuildDir } = require('../suite-manager/backend/src/server/frontend-release.cjs');
 
 function parseEnvFile(filePath) {
   try {
@@ -320,6 +321,7 @@ Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=${config.disposableLab}
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
+ExecStartPre=+/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/frontend-release.cjs ${config.mosRoot}/suite-manager/frontend/dist
 ExecStart=/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -493,6 +495,10 @@ function main() {
   if (typeof process.getuid === 'function' && process.getuid() !== 0 && !dryRun) {
     throw new Error('MOS system reconciliation must run as root.');
   }
+  // Before anything restarts: Suite Manager would start on its old pages rather than serve these.
+  const newPages = nextBuildDir(path.join(mosRoot, 'suite-manager', 'frontend', 'dist'));
+  const missingPages = fs.existsSync(newPages) ? missingFromBuild(newPages) : [];
+  if (missingPages.length) throw new Error(`The new Suite Manager pages are incomplete (missing ${missingPages.join(', ')}); nothing was restarted.`);
 
   log(`reconciling ${mosRoot}`);
   // Ubuntu's needrestart restarts every service on a replaced Node the moment apt

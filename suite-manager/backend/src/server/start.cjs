@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 
+const { promoteFrontendBuild } = require('./frontend-release.cjs');
 const { createMOSServer } = require('./http-app.cjs');
 const { createLogger } = require('./logger.cjs');
 const { createServices } = require('./services.cjs');
@@ -14,6 +15,11 @@ const frontendDistDir = process.env.MOS_FRONTEND_DIST_DIR
   || path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 
 const logger = createLogger();
+try {
+  promoteFrontendBuild(frontendDistDir, { log: (reason) => logger.warn('frontend-build-kept', { reason }) });
+} catch (error) {
+  logger.warn('frontend-build-promote-failed', { error: error.message });
+}
 const services = createServices({ frontendDistDir, homeHost, logger, stateDir });
 const server = createMOSServer(services);
 

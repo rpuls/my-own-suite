@@ -36,6 +36,8 @@ node_modules/
 
 # Frontend build output
 suite-manager/frontend/dist/
+suite-manager/frontend/dist-next/
+suite-manager/frontend/dist-previous/
 test/e2e/node_modules/
 test/e2e/playwright-report/
 test/e2e/test-results/
