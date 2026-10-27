@@ -9,6 +9,7 @@ import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
 import { FilesScreen } from '../files/FilesScreen';
 import { isFilesPath } from '../files/model';
+import { UpdateHold } from '../updates/UpdateHold';
 import { UpdatesScreen } from '../updates/UpdatesScreen';
 import type { Owner } from '../setup/types';
 
@@ -108,6 +109,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
           <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>
+      <UpdateHold />
     </div>
   );
 }

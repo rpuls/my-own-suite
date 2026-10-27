@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { execFileSync } = require('node:child_process');
 
-const { StepFailure, buildPaths, collectStatus, runApply, summarizeJob, writeUpdateTrack } = require('./lib.cjs');
+const { StepFailure, buildPaths, collectStatus, runApply, stageForLog, summarizeJob, writeUpdateTrack } = require('./lib.cjs');
 
 function run(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -309,4 +309,11 @@ test('a job summary carries the failure output only when there is one', () => {
   assert.equal(summarizeJob({ id: 'a', status: 'succeeded' }).output, null);
   assert.equal(summarizeJob({ id: 'a', output: '', status: 'failed' }).output, null);
   assert.equal(summarizeJob({ id: 'a', output: 'npm ERR! 404', status: 'failed' }).output, 'npm ERR! 404');
+});
+
+test('a command line inside an apply step keeps the job on that step', () => {
+  assert.equal(stageForLog('Building Suite Manager frontend'), 'building-frontend');
+  assert.equal(stageForLog('npm run build:client'), null);
+  assert.equal(stageForLog('node scripts/reconcile-system.cjs'), null);
+  assert.equal(stageForLog('Reconciling MOS host services and agents'), 'reconciling-system');
 });

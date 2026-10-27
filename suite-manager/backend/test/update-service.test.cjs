@@ -225,3 +225,30 @@ test('a post-patch check that could not run is not a suite that came back', () =
   assert.deepEqual(status.host.health.failures, []);
   assert.equal(status.host.health.reason, 'systemctl could not be run.');
 });
+
+test('progress tells the page an update is running, where its backup goes and what it updates to', async () => {
+  const service = new UpdateService({
+    agent: { summary: async () => ({ currentJob: { id: 'job-1', stage: 'building-frontend', status: 'running' }, track: { ref: 'staging', type: 'branch' } }) },
+    backupAgent: { summary: async () => summaryWith() },
+  });
+  const progress = await service.progress();
+  assert.equal(progress.available, true);
+  assert.equal(progress.job.stage, 'building-frontend');
+  assert.equal(progress.destinationLabel, 'Backup drive');
+  assert.deepEqual(progress.track, { ref: 'staging', type: 'branch' });
+});
+
+test('progress without a running update leaves the backup agent alone', async () => {
+  const service = new UpdateService({
+    agent: { summary: async () => ({ currentJob: { id: 'job-1', status: 'succeeded' }, track: {} }) },
+    backupAgent: { summary: async () => { throw new Error('not asked'); } },
+  });
+  assert.equal((await service.progress()).destinationLabel, null);
+});
+
+test('an update agent that does not answer is reported as unavailable, not as no update', async () => {
+  const service = new UpdateService({ agent: { summary: async () => { throw new Error('Update system agent is unavailable.'); } } });
+  const progress = await service.progress();
+  assert.equal(progress.available, false);
+  assert.equal(progress.job, null);
+});

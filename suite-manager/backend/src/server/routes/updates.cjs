@@ -13,6 +13,14 @@ function updateRoutes({ setup, updates }) {
       },
     },
     {
+      method: 'GET',
+      path: '/updates/progress',
+      signIn: 'Sign in to review updates.',
+      handler: async ({ response }) => {
+        jsonResponse(response, 200, await updates.progress(), { 'Cache-Control': 'no-store' });
+      },
+    },
+    {
       method: 'POST',
       path: '/updates/start',
       signIn: 'Sign in to update My Own Suite.',

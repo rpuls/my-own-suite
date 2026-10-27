@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 
-const { buildPaths, collectStatus, readJson, readLastStatus, runApply, summarizeJob, writeJson } = require('./lib.cjs');
+const { buildPaths, collectStatus, readJson, readLastStatus, runApply, stageForLog, summarizeJob, writeJson } = require('./lib.cjs');
 const { CANCELLED, CheckpointFailure, checkpointTarget, takeCheckpoint } = require('./checkpoint.cjs');
 const { BackupAgentClient } = require('../../suite-manager/backend/src/backups/backup-agent-client.cjs');
 
@@ -22,15 +22,6 @@ function updateJob(patch) {
   writeJson(jobFile, next);
   writeJson(paths.currentJobPath, summarizeJob(next));
   return next;
-}
-
-function mapStage(message) {
-  if (/Fetching|checkout|Fast-forwarding|Repository/u.test(message)) return 'updating-checkout';
-  if (/dependencies/u.test(message)) return 'installing-dependencies';
-  if (/frontend/u.test(message)) return 'building-frontend';
-  if (/Reconciling/u.test(message)) return 'reconciling-system';
-  if (/completed/u.test(message)) return 'succeeded';
-  return 'running';
 }
 
 // A checkpoint failure keeps its own stage rather than the flat "failed": the
@@ -106,7 +97,7 @@ async function main() {
         const current = readJson(jobFile);
         updateJob({
           logs: [...(current.logs || []), { at: new Date().toISOString(), message }].slice(-100),
-          stage: mapStage(message),
+          stage: stageForLog(message) || current.stage,
         });
       },
     });

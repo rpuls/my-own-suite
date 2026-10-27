@@ -696,8 +696,31 @@ export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ar
   </>;
 }
 
-export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {
-  return <div className="suite-stepper" aria-label="Progress">{steps.map((step, index) => <span aria-current={index === currentStepIndex ? 'step' : undefined} className={index === currentStepIndex ? 'is-active' : ''} key={step}>{index + 1}. {step}</span>)}</div>;
+export function Stepper({ currentStepIndex, steps, working = false }: { currentStepIndex: number; steps: string[]; working?: boolean }) {
+  return <ol className="suite-stepper" aria-label="Progress">{steps.map((step, index) => {
+    const done = index < currentStepIndex;
+    const active = index === currentStepIndex;
+    return <li aria-current={active ? 'step' : undefined} className={done ? 'is-done' : active ? 'is-active' : ''} key={step}>
+      {done ? <Icon name="check" /> : active && working ? <Spinner /> : null}
+      {done ? step : `${index + 1}. ${step}`}
+    </li>;
+  })}</ol>;
+}
+
+// For a moment the whole of Suite Manager must wait out, such as a MOS update: portalled
+// and modal like Dialog, but with nothing that closes it, since nothing behind it may be used.
+export function ScreenHold({ children, label, tone = 'info' }: { children: ReactNode; label: string; tone?: 'error' | 'info' | 'success' | 'warning' }) {
+  const holdRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    holdRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Tab' && holdRef.current) keepFocusInside(holdRef.current, event); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+  return createPortal(
+    <div className="suite-modal-backdrop suite-hold-backdrop" role="presentation"><section ref={holdRef} aria-label={label} aria-live="polite" aria-modal="true" className={`suite-hold mos-panel is-${tone}`} role="dialog" tabIndex={-1}>{children}</section></div>,
+    document.body,
+  );
 }
 
 export function Spinner() {
