@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "actual-budget",
   "name": "Actual Budget",
-  "version": "0.2.2",
-  "appVersion": "26.8.1",
+  "version": "0.2.3",
+  "appVersion": "26.11.0",
   "minimumMosVersion": "0.21.0",
   "requirements": {
     "https": true
@@ -86,7 +86,7 @@
       "summary": "Actual Budget keeps your accounts, transactions and budgets in a file on your own server. The image carries no analytics or crash reporting, and no bank is contacted unless you set up a bank connection yourself.",
       "notes": [
         "Bank sync is optional and off by default. GoCardless, SimpleFIN, Enable Banking, Pluggy.ai and Akahu each need API credentials you sign up for and enter yourself; with none entered, nothing reaches out to a bank.",
-        "MOS turns off Actual's release check, which asked GitHub for its latest version and announced releases MOS does not offer yet. You get new versions through MOS.",
+        "MOS turns off Actual's release check and its news feed, which asked GitHub for the latest version and release highlights and announced releases MOS does not offer yet. You get new versions through MOS.",
         "Sync between your devices can be end-to-end encrypted with a password only you hold. Bank-sync API keys, if you add any, are stored on the server outside that encryption.",
         "Budget files, the account database and sessions live in one package-owned MOS volume. Back it up before this becomes the only record of your finances."
       ]

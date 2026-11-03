@@ -17,6 +17,8 @@ The package sets none. Every upstream default is correct for the way MOS runs th
 - `ACTUAL_LOGIN_METHOD` (default `password`): the server prompts for a password on first open. `openid` and `header` are upstream options this package does not configure.
 - `ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB` (default 20), `ACTUAL_UPLOAD_SYNC_ENCRYPTED_FILE_SYNC_SIZE_LIMIT_MB` (default 50): sync payload ceilings. A budget with many years of transactions can grow past 20 MB; raising the limit is the fix if sync starts failing on upload.
 
+- `ACTUAL_SIMPLEFIN_ALLOWED_NETWORKS` (since 26.11.0, default unset): a self-run SimpleFIN bridge on a private address is refused unless its network is listed here. The public `bridge.simplefin.org` needs no entry, and MOS sets none.
+
 The server reads `/data/config.json` if present, and environment variables override it. MOS does not write that file.
 
 ## First Start And The Bootstrap Window
@@ -35,9 +37,16 @@ This single volume is the backup target; losing it loses the budgets. Disable st
 
 Actual is local-first: each browser holds its own copy of the budget and syncs changes to the server. A restored server volume is authoritative, but a client that still has newer local changes will try to sync them on next open.
 
-## Release Check Turned Off
+## Release Check And News Feed Turned Off
 
-The web client asks `https://api.github.com/repos/actualbudget/actual/releases/latest` for Actual's latest version, gated on the browser preference `notifyWhenUpdateIsAvailable`, which defaults to on, and announces any newer release in a banner. Owners get new versions through MOS, so the `Dockerfile` patches the compiled client in `/app/node_modules/@actual-app/web/build`. The preference now defaults to off, in the `kcab` worker, and the check itself never runs. The build stops if upstream renames either line. The Settings checkbox for update notifications still shows but does nothing.
+Owners get new versions through MOS, so the `Dockerfile` patches the compiled client in `/app/node_modules/@actual-app/web/build` to stop two browser requests to GitHub. The build stops if upstream renames any line it changes.
+
+- **Release check:** `https://api.github.com/repos/actualbudget/actual/releases/latest`, gated on the browser preference `notifyWhenUpdateIsAvailable`, announced any newer release in a banner. The preference now defaults to off, in the `kcab` worker, and the check itself never runs.
+- **News feed (since 26.10.0):** `https://raw.githubusercontent.com/actualbudget/actual/master/packages/desktop-client/src/data/news.json`, gated on the browser preference `showNewsFeed`, filled the Notifications page with release highlights and announced newer releases. The preference now defaults to off, and `useNewsFeed`, the feed query's only caller, is always disabled. The Notifications page says "Nothing new to show yet".
+
+The Settings checkboxes for update notifications and the news feed still show but do nothing.
+
+The tour offer added in 26.9.0 ("Welcome to Actual!") is local and stays as upstream ships it.
 
 ## HTTPS Requirement
 
@@ -58,14 +67,9 @@ The server makes no outbound request on its own. The upstream hosts compiled int
 - `bankaccountdata.gocardless.com`, `bridge.simplefin.org`, `api.enablebanking.com`, and the Pluggy.ai and Akahu endpoints: bank sync, each requiring API credentials the owner obtains and enters.
 - `raw.githubusercontent.com`, `api.github.com`, `github.com`: the experimental plugin store, fetched through the server's `/cors-proxy` route. That route requires a valid session, is rate limited to 25 requests per minute, resolves and rejects private, loopback and link-local targets, and only forwards to repositories on the upstream plugin allowlist. Nothing is fetched until the browser asks for it.
 
-The **web client** does make one request by default. `getLatestVersion()` fetches `https://api.github.com/repos/actualbudget/actual/releases/latest` and compares the tag with the running client's version, so the About screen can say a newer release exists. Points worth being precise about:
+As upstream ships it, the **web client** makes two requests by default, both from the owner's browser to GitHub and both without an identifier: the release check and the news feed. This package patches both out (see above), so as MOS ships it the browser contacts nothing outside the server.
 
-- It comes from the owner's browser, not from the server, so the address disclosed to GitHub is the owner's, not the box's.
-- It carries no identifier: no install id, no version, no usage data. It is a read of a public URL.
-- It is gated on the global preference `notifyWhenUpdateIsAvailable`, which defaults to on and is exposed as "Display a notification when updates are available" in Settings.
-- Observed firing on first load of the budget during the screenshot capture session, which is how it was found rather than inferred.
-
-Because it is a client-side preference rather than a server setting, there is no environment variable for this package to pin, and MOS does not disable it.
+Other GitHub URLs in the client are fetched only on an owner's action: `customThemeCatalog.json` and theme stylesheets on `raw.githubusercontent.com`, when browsing or installing a custom theme.
 
 ## Upgrades
 
