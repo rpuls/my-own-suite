@@ -79,7 +79,8 @@ async function skipTour(page) {
 }
 
 async function createLoginItem(page, item) {
-  await page.getByRole('button', { name: /^New/iu }).first().click();
+  // Web vault 2026.10 renamed the toolbar's "New" button to "Add".
+  await page.getByRole('button', { name: /^(?:New|Add|Add item)$/iu }).first().click();
   await page.getByRole('menuitem', { name: /^Login$/iu }).or(page.getByRole('button', { name: /^Login$/iu })).first().click();
   const dialog = page.getByRole('dialog').last();
   await expect(dialog).toBeVisible({ timeout: 30000 });
@@ -122,7 +123,9 @@ export default {
       await page.getByText(state.item.name).first().click();
       const view = page.getByRole('dialog', { name: 'View Login' });
       await expect(view.getByRole('textbox', { name: 'Username' })).toHaveValue(state.item.username, { timeout: 30000 });
-      await expect(view.getByRole('textbox', { name: 'Password' })).toHaveValue(state.item.password);
+      // Since web vault 2026.10 the field holds a mask until it is revealed; revealing hides the input.
+      await view.getByRole('button', { name: 'Toggle visibility' }).first().click();
+      await expect(view.getByTestId('login-password')).toHaveValue(state.item.password);
       await view.getByRole('button', { name: 'Close' }).first().click();
     });
   },
