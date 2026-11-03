@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "vaultwarden",
-  "reviewedAt": "2026-10-06T17:10:00.000Z",
+  "reviewedAt": "2026-11-03T12:45:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.2",
-    "packageDigest": "sha256:a8408a18bdbf7d01ce16e725be12bb29338041b8d1056076d68089a63c8b2dc8",
+    "packageVersion": "0.4.3",
+    "packageDigest": "sha256:158d60bc6044fdd6965c509d5007259cd157ad035c59cb9d7ae5cc08b942c654",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Vaultwarden",
-        "version": "1.37.4",
+        "version": "1.37.5",
         "artifact": "docker.io/vaultwarden/server",
-        "digest": "sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055"
+        "digest": "sha256:4fe17f415f90087377d37c755e0ea3cf189dcc6794e49cdd2a9adbb4937d9e1f"
       }
     ],
     "clientsExcluded": [
@@ -40,15 +40,15 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only ADMIN_TOKEN, DOMAIN, SIGNUPS_ALLOWED=true, and WEBSOCKET_ENABLED=true; it sets no analytics or telemetry variables because Vaultwarden defines none.",
+      "claim": "The MOS package projects ADMIN_TOKEN, DOMAIN, SIGNUPS_ALLOWED=true and WEBSOCKET_ENABLED=true, plus the optional shared email relay; it sets no analytics or telemetry variables because Vaultwarden defines none, and it sets no EXPERIMENTAL_CLIENT_FEATURE_FLAGS.",
       "source": "apps/vaultwarden/manifest.json"
     },
     {
       "type": "documented",
-      "claim": "The Vaultwarden 1.37.4 configuration template defines no telemetry, analytics, usage-reporting, crash-reporting, or phone-home settings.",
-      "source": "Vaultwarden .env.template (1.37.4)",
-      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.4/.env.template",
-      "retrievedAt": "2026-10-06"
+      "claim": "The Vaultwarden 1.37.5 configuration template defines no telemetry, analytics, usage-reporting, crash-reporting, or phone-home settings.",
+      "source": "Vaultwarden .env.template (1.37.5)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.5/.env.template",
+      "retrievedAt": "2026-11-03"
     },
     {
       "type": "documented",
@@ -60,16 +60,16 @@
     {
       "type": "documented",
       "claim": "ICON_SERVICE defaults to 'internal' and DISABLE_ICON_DOWNLOAD defaults to false, so the server fetches website favicons directly from third-party sites for saved vault URLs; MOS does not override these defaults.",
-      "source": "Vaultwarden .env.template (1.37.4)",
-      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.4/.env.template",
-      "retrievedAt": "2026-10-06"
+      "source": "Vaultwarden .env.template (1.37.5)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.5/.env.template",
+      "retrievedAt": "2026-11-03"
     },
     {
       "type": "documented",
       "claim": "Mobile push notifications (PUSH_ENABLED) default to false and HaveIBeenPwned breach checking requires an unset HIBP_API_KEY, so both optional Bitwarden and HIBP integrations are inactive in the packaged default. That covers the server's own integrations; the web vault's breach checks run in the browser and are recorded below.",
-      "source": "Vaultwarden .env.template (1.37.4)",
-      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.4/.env.template",
-      "retrievedAt": "2026-10-06"
+      "source": "Vaultwarden .env.template (1.37.5)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.5/.env.template",
+      "retrievedAt": "2026-11-03"
     },
     {
       "type": "configured",
@@ -82,6 +82,13 @@
       "source": "git diff 1.37.0..1.37.4 of dani-garcia/vaultwarden (src, .env.template), and the /web-vault scripts of both pinned images",
       "url": "https://github.com/dani-garcia/vaultwarden/compare/1.37.0...1.37.4",
       "retrievedAt": "2026-10-06"
+    },
+    {
+      "type": "observed",
+      "claim": "Between 1.37.4 and 1.37.5 the server source adds one external URL: FILL_ASSIST_RULES_URL, defaulting to https://fillassist.bitwarden.com. The server never fetches it; it only hands it to clients as environment.fillAssistRules in /api/config. The 1.37.5 image as MOS runs it returned that URL with featureStates holding only pm-19148-innovation-archive, so the fill-assist-targeting-rules flag is off. In the bundled web vault 2026.10.1, fill assist stays disabled unless that flag is on, and the server's Content-Security-Policy connect-src for the web vault lists 'self', api.pwnedpasswords.com, api.2fa.directory and the email-alias forwarders but not fillassist.bitwarden.com, so the browser would refuse the request even if it were attempted. Compared with 2026.7.0, the web vault's scripts add fillassist.bitwarden.com as the only new https host. .env.template adds no telemetry setting and leaves the ICON_SERVICE, DISABLE_ICON_DOWNLOAD, PUSH_ENABLED and HIBP_API_KEY defaults unchanged.",
+      "source": "git diff 1.37.4..1.37.5 of dani-garcia/vaultwarden (src, .env.template); /api/config and response headers of the 1.37.5 package image run locally; /web-vault scripts of both pinned images",
+      "url": "https://github.com/dani-garcia/vaultwarden/compare/1.37.4...1.37.5",
+      "retrievedAt": "2026-11-03"
     },
     {
       "type": "observed",
@@ -108,16 +115,16 @@
     {
       "type": "documented",
       "claim": "Vaultwarden ships no telemetry or analytics, so no telemetry-disabling configuration is required or applied by the package.",
-      "source": "Vaultwarden .env.template (1.37.4)",
-      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.4/.env.template",
-      "retrievedAt": "2026-10-06"
+      "source": "Vaultwarden .env.template (1.37.5)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.37.5/.env.template",
+      "retrievedAt": "2026-11-03"
     }
   ],
   "policies": [
     {
       "kind": "license",
-      "url": "https://github.com/dani-garcia/vaultwarden/blob/1.37.4/LICENSE.txt",
-      "retrievedAt": "2026-10-06",
+      "url": "https://github.com/dani-garcia/vaultwarden/blob/1.37.5/LICENSE.txt",
+      "retrievedAt": "2026-11-03",
       "publisher": "Vaultwarden (dani-garcia)"
     }
   ],
@@ -127,14 +134,23 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "f093b5467cbfd9ba360f4e4a002450e25677570c",
-    "repositoryCommit": "f093b5467cbfd9ba360f4e4a002450e25677570c",
-    "humanReviewed": false
+    "skillRevision": "3ea1d957d3d381658941618985f125536a57705b",
+    "repositoryCommit": "3ea1d957d3d381658941618985f125536a57705b"
   },
   "openQuestions": [
     "With the default ICON_SERVICE=internal and DISABLE_ICON_DOWNLOAD=false, the server fetches favicons from third-party websites for saved vault URLs, which can reveal saved domains to those sites; the package does not currently set DISABLE_ICON_DOWNLOAD=true, and a future revision could harden this default.",
     "Optional Bitwarden push relay and HaveIBeenPwned breach checking are inactive by default but become external dependencies if an operator later enables them.",
     "The 2026-10-05 capture saved no login with a website address, so the server's icon fetching remains documented rather than observed.",
-    "The bitwarden-gov.com region entries in web vault 2026.7.0 are inferred from its scripts to stay unused on a self-hosted vault; the next E2E network capture should confirm the browser never contacts them."
+    "The bitwarden-gov.com region entries in web vault 2026.7.0 are inferred from its scripts to stay unused on a self-hosted vault; the next E2E network capture should confirm the browser never contacts them.",
+    "The fill-assist URL that web vault 2026.10.1 receives from the server is inferred from its scripts, the off feature flag and the CSP to stay uncontacted; the next E2E network capture should confirm the browser never requests fillassist.bitwarden.com. Bitwarden browser extensions, which are out of scope, may use it if the flag is ever turned on."
+  ],
+  "security": [
+    {
+      "type": "documented",
+      "claim": "1.37.5 fixes GHSA-x9cq-f669-vrr4 in website icon fetching (medium, CVSS 5.3) and GHSA-9pjj-f9g5-3x4c in emergency access (medium, CVSS 4.3). Both are reachable in this package: it leaves the server's icon downloading on, and emergency access is a standard account feature. The advisories are private pending CVE assignment, so their details are not yet published; this package runs 1.37.5.",
+      "source": "Vaultwarden 1.37.5 release notes",
+      "url": "https://github.com/dani-garcia/vaultwarden/releases/tag/1.37.5",
+      "retrievedAt": "2026-11-03"
+    }
   ]
 }
