@@ -10,6 +10,12 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+### Security
+
+- **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
+- **Vaultwarden fixes two security flaws in website icons and emergency access.** Package 0.4.3, app 1.37.5, bundles web vault 2026.10.1, which newer Bitwarden apps need to turn two-step login on or off and to take over an account through emergency access.
+  - The first start adds a column to the vault database. Vaultwarden 1.37.5 cannot undo this, so going back to package 0.4.2 means restoring a backup taken before the update.
+
 ## [0.23.0] - 2026-10-27
 
 ### Added
@@ -54,7 +60,6 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 ### Security
 
 - **MOS updates now update Node.js too, starting with the October 2026 security fixes.** Each platform update installs the newest Node.js 22 release before restarting MOS services, beginning with 22.23.4. This closes the gap for older installations that missed remote code execution and certificate-check fixes. Diagnostics report the running version.
-- **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
 
 ### Fixed
 

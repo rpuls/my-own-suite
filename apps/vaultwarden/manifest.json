@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.4.2",
-  "appVersion": "1.37.4",
+  "version": "0.4.3",
+  "appVersion": "1.37.5",
   "minimumMosVersion": "0.21.0",
   "requirements": {
     "https": true
