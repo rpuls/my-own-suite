@@ -10,6 +10,10 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+### Changed
+
+- **Actual Budget 26.11.0 secures server sign-in and keeps budgets from being half-saved.** Package 0.2.3 signs out other sessions when the server password changes, requires the current password to change it, keeps credentials out of server logs, and stops a failed save from leaving a budget file half-written. MOS turns off the new in-app news feed, which fetched release highlights from GitHub, so Actual still contacts nothing outside your server.
+
 ### Security
 
 - **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
@@ -55,7 +59,6 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **Paperless-ngx and Radicale receive security and compatibility updates.**
   - **Paperless-ngx package 0.3.6, app 3.3.4:** updates Pillow and aiohttp, removes withdrawn emSign certificates, and fixes document permissions, searches and exports. First startup rebuilds the search index, which can take longer for large archives. There are no database migrations; reverting the package remains safe.
   - **Radicale package 0.5.5, app 3.8.3:** restores standards-compliant free-busy responses without event details and excludes transparent recurring events. Calendar sharing and groups remain disabled.
-- **Actual Budget 26.11.0 secures server sign-in and keeps budgets from being half-saved.** Package 0.2.3 signs out other sessions when the server password changes, requires the current password to change it, keeps credentials out of server logs, and stops a failed save from leaving a budget file half-written. MOS turns off the new in-app news feed, which fetched release highlights from GitHub, so Actual still contacts nothing outside your server.
 - **Suite Manager runs on React 19.3.1.** This dependency update requires no action.
 
 ### Security
