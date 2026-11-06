@@ -1,10 +1,10 @@
 {
   "packages": {
     "actual-budget": {
-      "appVersion": "26.8.1",
+      "appVersion": "26.11.0",
       "minimumMosVersion": "0.21.0",
-      "packageDigest": "sha256:7029022c5308ac25ff4e6d82a7e3758c4623378de92ee105bb9ad1fb891e231d",
-      "packageVersion": "0.2.2",
+      "packageDigest": "sha256:726bb04594f7f61526cfc9da84d017a10d815603e4e0e5cf6075aec72bf98219",
+      "packageVersion": "0.2.3",
       "path": "apps/actual-budget",
       "privacy": {
         "posture": "privacy-configured",
