@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-10-25T12:00:00.000Z",
+  "reviewedAt": "2026-10-30T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.7",
-    "packageDigest": "sha256:37d9c06668703644d0b58d5ff1c018f905a193cc480c1c862e22035e787da801",
+    "packageVersion": "0.3.8",
+    "packageDigest": "sha256:6ca1a92b3729dede061278af5e13acc6b6c0d12a457a0d365716f784472cd498",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Paperless-ngx",
-        "version": "3.3.4",
+        "version": "3.4.0",
         "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
-        "digest": "sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969"
+        "digest": "sha256:7c1d98afd200def9e2bad3a377d30829e8d486554b3c818995af5860114ea17f"
       },
       {
         "name": "Valkey",
@@ -168,6 +168,19 @@
       "claim": "A packet capture inside the 3.3.4 package container's network namespace, attached about a second after it started on volumes left by 3.3.0, covered the search index rebuild, an upload with Dutch and English OCR, search, the suggestions, thumbnail, preview and download endpoints, and the settings, config, tasks, statistics and status endpoints. The only DNS name it resolved was the internal alias 'broker', and every conversation was with the broker, Docker's resolver or the published port. A control request to example.org from the same container appeared in a second capture, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
       "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.3.4, observed 2026-10-25",
       "retrievedAt": "2026-10-25"
+    },
+    {
+      "type": "documented",
+      "claim": "Paperless-ngx 3.3.4 to 3.4.0 adds no outbound endpoint. The set of http(s) hosts in the server's Python source is identical in the two pinned images, and the compiled en-US web client gains only http://fake, the base an Angular URL helper parses relative links against and never fetches. RemoteVersionView remains the only hardcoded fetch. The changed server files are thumbnail rendering through Poppler's pdftoppm instead of ImageMagick, permission-helper refactors, workflow and barcode fixes, and an optional skip of local two-factor for trusted OIDC logins, which needs a social account MOS does not configure. A search for sentry, posthog, matomo and google-analytics finds no library. The dependency changes are security bumps (django-allauth 65.16.1 to 65.20.1, oauthlib 3.3.1 to 4.0.0, djangorestframework 3.18.1 to 3.18.3, brotli, msgpack, filelock, setuptools) and the removal of ImageMagick from the image.",
+      "source": "diff of /usr/src/paperless/src between the pinned 3.3.4 (sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969) and 3.4.0 (sha256:7c1d98afd200def9e2bad3a377d30829e8d486554b3c818995af5860114ea17f) images, and the v3.4.0 release notes",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.0",
+      "retrievedAt": "2026-10-30"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture inside the 3.4.0 package container's network namespace, attached about twenty seconds after it started on volumes left by 3.3.4, covered a start with no migrations and no index rebuild, a form sign-in through the allauth login page, an upload with Dutch and English OCR, search, the thumbnail, preview, download and suggestions endpoints, and the settings, config, statistics, status and mail-account endpoints. The only DNS names it resolved were the internal alias 'broker' and the control host example.org, and the only public address it reached was the control host's, contacted once by a request the reviewer sent from inside the container, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
+      "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.4.0, observed 2026-10-30",
+      "retrievedAt": "2026-10-30"
     }
   ],
   "outbound": [],
@@ -200,8 +213,8 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933"
+    "skillRevision": "c79c4c619d1c3a6dfa5c82d62da799076a86a080",
+    "repositoryCommit": "c79c4c619d1c3a6dfa5c82d62da799076a86a080"
   },
   "lastHumanReview": {
     "reviewer": "Rasmus Puls",
@@ -222,6 +235,13 @@
       "source": "Paperless-ngx security advisories and the v3.3.2 and v3.3.4 release notes",
       "url": "https://github.com/paperless-ngx/paperless-ngx/security/advisories/GHSA-c8f3-pqr2-rr24",
       "retrievedAt": "2026-10-25"
+    },
+    {
+      "type": "documented",
+      "claim": "3.4.0 updates django-allauth, which serves the login page every owner signs in through, djangorestframework, which serves the API, and brotli, msgpack, filelock and frontend packages, all described upstream as security fixes without naming advisories. It also removes ImageMagick from the image, so that parser no longer reads uploaded files. This package runs 3.4.0.",
+      "source": "Paperless-ngx v3.4.0 release notes and installed package metadata in the pinned image",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.0",
+      "retrievedAt": "2026-10-30"
     }
   ]
 }
