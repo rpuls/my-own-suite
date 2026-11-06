@@ -33,8 +33,8 @@ async function openBudget(page, env, { firstVisit }) {
     await page.waitForTimeout(3000);
   }
   await expect(addAccount, 'Actual should open a budget').toBeVisible({ timeout: 60000 });
-  // Actual announces its own new releases in a banner, which sits over the screen.
-  await page.getByRole('alert').filter({ hasText: 'new version' }).getByRole('button', { name: 'Close' }).click({ timeout: 3000 }).catch(() => undefined);
+  // Since 26.9 a first visit gets a sticky "Welcome to Actual!" tour offer, which sits over the screen.
+  await page.getByRole('alert').filter({ hasText: /new version|Welcome to/u }).first().getByRole('button', { name: 'Close' }).click({ timeout: 3000 }).catch(() => undefined);
 }
 
 async function addTransaction(page, payee, notes) {

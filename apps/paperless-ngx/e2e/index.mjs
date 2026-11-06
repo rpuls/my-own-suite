@@ -38,6 +38,12 @@ async function expectFiles(page, url, id) {
   expect(thumbnail.status(), 'the generated thumbnail is served').toBe(200);
 }
 
+// Since 3.4.0 the upload notification naming the file stays in the DOM, hidden.
+async function expectListed(page, title) {
+  await page.getByRole('link', { exact: true, name: 'Documents' }).click();
+  await expect(page.getByText(title).filter({ visible: true }).first(), 'the document is listed').toBeVisible({ timeout: 30000 });
+}
+
 async function waitForDocument(page, query, minutes = 4) {
   await expect.poll(() => apiCount(page, query), { intervals: [3000], message: `Paperless should consume the upload (${query})`, timeout: minutes * 60 * 1000 }).toBe(1);
 }
@@ -74,8 +80,7 @@ export default {
     });
     await step('its original and thumbnail are stored', async () => expectFiles(page, url, await documentId(page, title)));
     Object.assign(state, { reference, title });
-    await page.getByRole('link', { exact: true, name: 'Documents' }).click();
-    await expect(page.getByText(title).first()).toBeVisible({ timeout: 30000 });
+    await expectListed(page, title);
     await shot('documents');
   },
 
@@ -88,8 +93,7 @@ export default {
       expect(await apiCount(page, `query=${encodeURIComponent(state.reference)}`), 'a full-text match on its contents').toBe(1);
       await expectFiles(page, url, await documentId(page, state.title));
     });
-    await page.getByRole('link', { exact: true, name: 'Documents' }).click();
-    await expect(page.getByText(state.title).first()).toBeVisible({ timeout: 30000 });
+    await expectListed(page, state.title);
     await shot('documents');
   },
 };

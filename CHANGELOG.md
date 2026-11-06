@@ -10,6 +10,18 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+### Changed
+
+- **Actual Budget 26.11.0 secures server sign-in and keeps budgets from being half-saved.** Package 0.2.3 signs out other sessions when the server password changes, requires the current password to change it, keeps credentials out of server logs, and stops a failed save from leaving a budget file half-written. MOS turns off the new in-app news feed, which fetched release highlights from GitHub, so Actual still contacts nothing outside your server.
+
+### Security
+
+- **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
+- **Vaultwarden fixes two security flaws in website icons and emergency access.** Package 0.4.3, app 1.37.5, bundles web vault 2026.10.1, which newer Bitwarden apps need to turn two-step login on or off and to take over an account through emergency access.
+  - The first start adds a column to the vault database. Vaultwarden 1.37.5 cannot undo this, so going back to package 0.4.2 means restoring a backup taken before the update.
+
+## [0.23.0] - 2026-10-27
+
 ### Added
 
 - **This release is a big one.** Your files, your server, your apps. MOS can now give apps access to files on external drives, a long-awaited capability that opens the catalog to a whole new group of apps.
