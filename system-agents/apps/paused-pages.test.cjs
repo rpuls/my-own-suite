@@ -26,7 +26,7 @@ test('only apps whose drive is out are paused, and only while it is', () => {
     { apps: ['jellyfin'], name: 'Movies drive', state: 'ejected' },
     { apps: ['immich'], label: 'PHOTOS', name: null, state: 'read-only' },
   ];
-  assert.deepEqual([...pausedByDrives(drives)], [['jellyfin', { driveName: 'Movies drive', state: 'ejected' }]]);
+  assert.deepEqual([...pausedByDrives(drives)], [['jellyfin', { driveName: 'Movies drive', kind: 'drive', state: 'ejected' }]]);
 });
 
 // Every address an app answers on, read from its own routes block, gets the page;

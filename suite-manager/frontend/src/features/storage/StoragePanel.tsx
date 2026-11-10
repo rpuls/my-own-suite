@@ -13,6 +13,7 @@ import {
   freeLine,
   isAttention,
   rowLine,
+  shareDraftOf,
   stateLabel,
   statePill,
   storageIcon,
@@ -22,18 +23,20 @@ import {
   type AppNames,
   type BucketDraft,
   type InstallerStick,
+  type ShareDraft,
   type OtherServerArchive,
   type StorageEntry,
   type StorageUsage,
 } from './model';
-import { CheckDialog, DisconnectDialog, EjectDialog, FormatStickDialog, RenameDialog, UseAgainDialog } from './StorageDialogs';
+import { CheckDialog, DisconnectDialog, EjectDialog, ForgetDialog, FormatStickDialog, RenameDialog, UseAgainDialog } from './StorageDialogs';
 import { CloudUsage, UsageBar, usageSegments } from './UsageBar';
 
 type Flow =
   | { kind: 'add' }
-  | { kind: 'check' | 'disconnect' | 'eject' | 'rename' | 'use'; id: string }
+  | { kind: 'check' | 'disconnect' | 'eject' | 'forget' | 'rename' | 'use'; id: string }
   | { archiveId: string; id: string; kind: 'erase' }
   | { kind: 'edit'; draft: BucketDraft }
+  | { kind: 'edit-share'; draft: ShareDraft }
   | { kind: 'format'; stick: InstallerStick };
 
 type Facts = { backupsKnown: boolean; names: AppNames };
@@ -49,6 +52,15 @@ function technicalFacts(entry: StorageEntry): AdvancedFact[] {
     ];
   }
   if (entry.kind === 'system') return [{ label: 'Encrypted', value: entry.encrypted ? 'yes' : 'no' }];
+  if (entry.kind === 'share' && entry.share) {
+    return [
+      { code: true, label: 'Address', value: entry.share.address },
+      ...(entry.share.folder ? [{ code: true, label: 'Folder', value: entry.share.folder }] : []),
+      { code: true, label: 'Signed in as', value: entry.share.username },
+      { code: true, label: 'Opened at', value: entry.mountPath || 'not open' },
+      { code: true, label: 'Storage id', value: entry.id },
+    ];
+  }
   return [
     { label: 'Format', value: entry.fileSystem || 'unknown' },
     { code: true, label: 'Filesystem UUID', value: entry.id },
@@ -81,16 +93,18 @@ function stickLine(stick: InstallerStick) {
 }
 
 function RowDetails({ backupsKnown, entry, onRename, usage }: { backupsKnown: boolean; entry: StorageEntry; onRename: () => void; usage: StorageUsage | null }) {
-  const contents = entry.kind === 'drive' ? contentsLine(entry, usage, backupsKnown) : '';
-  const portable = entry.capabilities.holdsAppFolders ? 'opens on any computer' : 'opens only on Linux';
+  const holdsFiles = entry.kind === 'drive' || entry.kind === 'share';
+  const contents = holdsFiles ? contentsLine(entry, usage, backupsKnown) : '';
+  const here = entry.kind === 'share' ? 'in this shared folder' : 'on this drive';
+  const portable = entry.kind === 'share' ? 'the size is what the NAS allows this folder' : entry.capabilities.holdsAppFolders ? 'opens on any computer' : 'opens only on Linux';
   return <div className="suite-storage-details">
     {entry.kind === 'bucket' ? <CloudUsage entry={entry} /> : <UsageBar entry={entry} segments={usageSegments(entry, usage)} variant="full" />}
     {entry.kind === 'system' ? <p className="suite-meta">Your apps keep their own data here, and that data is part of your MOS backups.{entry.encrypted ? ' Encrypted, so it cannot be read if the server is stolen.' : ''}</p> : null}
-    {entry.kind === 'drive' && contents ? <p className="suite-meta">On this drive: <span className="suite-storage-contents">{contents}</span></p> : null}
-    {entry.kind === 'drive' && !contents && entry.connected && backupsKnown ? <p className="suite-meta">Nothing MOS keeps is on this drive yet. Pick it when you install an app that keeps files on a drive, or as a place for backups.</p> : null}
+    {holdsFiles && contents ? <p className="suite-meta">{entry.kind === 'share' ? 'In this shared folder' : 'On this drive'}: <span className="suite-storage-contents">{contents}</span></p> : null}
+    {holdsFiles && !contents && entry.connected && backupsKnown ? <p className="suite-meta">Nothing MOS keeps is {here} yet. Pick it when you install an app that keeps files on a drive, or as a place for backups.</p> : null}
     {entry.kind !== 'system' && !backupsKnown ? <p className="suite-storage-warning">{BACKUPS_UNKNOWN_LINE}</p> : null}
     {entry.kind === 'bucket' && backupsKnown && !entry.backups?.ours ? <p className="suite-meta">This server&apos;s backups go here once you back up to it from Backup &amp; Restore.</p> : null}
-    {entry.kind === 'drive' ? <p className="suite-storage-note">
+    {holdsFiles ? <p className="suite-storage-note">
       {entry.apps.length ? 'App files here are not part of MOS backups · ' : ''}{portable}
       {entry.capabilities.renamable ? <> · <button className="mos-link suite-link-button" onClick={onRename} type="button">Rename</button></> : null}
     </p> : null}
@@ -109,9 +123,12 @@ function StorageRow({ entry, expanded, facts, onFlow, onToggle, usage }: {
   const label = stateLabel(entry);
   const running = entry.job?.status === 'running';
   const bucket = entry.bucket;
-  const others = facts.backupsKnown && entry.kind === 'drive' && entry.connected ? entry.backups?.otherServers || [] : [];
+  const others = facts.backupsKnown && (entry.kind === 'drive' || entry.kind === 'share') && entry.connected ? entry.backups?.otherServers || [] : [];
+  const isShare = entry.kind === 'share';
   const menu = [
     ...entry.capabilities.renamable ? [{ label: 'Rename', onSelect: () => onFlow({ id: entry.id, kind: 'rename' }) }] : [],
+    ...isShare && !entry.capabilities.ejectable ? [{ label: 'Edit connection', onSelect: () => onFlow({ draft: shareDraftOf(entry), kind: 'edit-share' }) }] : [],
+    ...entry.capabilities.forgettable ? [{ label: 'Forget', onSelect: () => onFlow({ id: entry.id, kind: 'forget' }) }] : [],
     ...entry.kind === 'bucket' && bucket ? [
       { label: 'Edit connection', onSelect: () => onFlow({ draft: { ...bucket, id: entry.id, label: entry.name, secretAccessKey: '' }, kind: 'edit' }) },
       { label: 'Disconnect', onSelect: () => onFlow({ id: entry.id, kind: 'disconnect' }) },
@@ -121,11 +138,12 @@ function StorageRow({ entry, expanded, facts, onFlow, onToggle, usage }: {
   const trailing = <>
     {running ? <span className="suite-meta suite-storage-flow-working"><Spinner />Working</span> : null}
     {!running && entry.capabilities.checkable ? <button className="mos-btn mos-btn-primary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'check' })} type="button">Check drive</button> : null}
-    {!running && entry.state === 'ejected' && entry.connected ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'use' })} type="button">Use it again</button> : null}
-    {!running && expanded && entry.kind === 'drive' && entry.capabilities.holdsAppFolders ? (entry.capabilities.browsable
+    {!running && entry.state === 'ejected' && entry.connected ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'use' })} type="button">{isShare ? 'Connect again' : 'Use it again'}</button> : null}
+    {!running && isShare && (entry.state === 'unreachable' || entry.state === 'failed') ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'use' })} type="button">Try now</button> : null}
+    {!running && expanded && entry.capabilities.holdsAppFolders ? (entry.capabilities.browsable
       ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => navigateTo(filesPath(entry.id))} type="button">Browse files</button>
       : <Tooltip label={browseReason(entry)}><button className="mos-btn mos-btn-secondary mos-btn-sm" disabled type="button">Browse files</button></Tooltip>) : null}
-    {!running && expanded && entry.capabilities.ejectable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'eject' })} type="button">Eject</button> : null}
+    {!running && expanded && entry.capabilities.ejectable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => onFlow({ id: entry.id, kind: 'eject' })} type="button">{isShare ? 'Disconnect' : 'Eject'}</button> : null}
     {expanded && menu.length ? <ActionMenu ariaLabel={`More actions for ${entry.name}`} items={menu} /> : null}
     {!expanded && (entry.kind === 'system' || entry.state === 'ready') ? <span className="suite-storage-glance">
       {entry.kind !== 'bucket' ? <UsageBar entry={entry} segments={[]} variant="compact" /> : null}
@@ -204,6 +222,8 @@ export function StoragePanel() {
 
     {flow?.kind === 'add' ? <AddStorageDialog onClose={close} onConnected={close} /> : null}
     {flow?.kind === 'edit' ? <AddStorageDialog editing={flow.draft} onClose={close} onConnected={close} /> : null}
+    {flow?.kind === 'edit-share' ? <AddStorageDialog editingShare={flow.draft} onClose={close} onConnected={close} /> : null}
+    {flowEntry && flow?.kind === 'forget' ? <ForgetDialog entry={flowEntry} onClose={close} onForgotten={close} /> : null}
     {flow?.kind === 'format' ? <FormatStickDialog onClose={close} onFormatted={() => { setFormatted(true); close(); }} stick={flow.stick} /> : null}
     {flowEntry && flow?.kind === 'eject' ? <EjectDialog act={act} appNames={appNamesFor(flowEntry, names)} entry={flowEntry} onClose={close} /> : null}
     {flowEntry && flow?.kind === 'use' ? <UseAgainDialog act={act} appNames={appNamesFor(flowEntry, names)} entry={flowEntry} onClose={close} /> : null}

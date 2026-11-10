@@ -470,6 +470,33 @@ class SystemAppAdapter {
     return { restarted };
   }
 
+  // Kept, then opened like a drive plugged in, so the apps already reading it
+  // start again on the new mount.
+  async saveShare(input) {
+    const id = await this.storage.saveShare(input);
+    const { restarted } = await this.reattachDrive(id);
+    await this.logDriveEvent(`shared folder ${id} connected from Suite Manager; restarted ${restarted} container(s)`);
+    return { id, restarted };
+  }
+
+  // A shared folder has no plug-in event: every minute, each one that should be
+  // open and is answering is opened again, which is how a share that was away at
+  // boot, or while the NAS restarted, comes back by itself.
+  async reconnectShares() {
+    if (this.reconnecting) return;
+    this.reconnecting = true;
+    try {
+      for (const id of await this.storage.sharesWaiting()) {
+        await this.reattachDrive(id).then(
+          ({ restarted }) => this.logDriveEvent(`shared folder ${id} opened again; restarted ${restarted} container(s)`),
+          (error) => this.logDriveEvent(`shared folder ${id}: ${error.message}`),
+        );
+      }
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
   async formatInstallerStick(devicePath) {
     await this.storage.formatInstallerStick(devicePath);
     await this.logDriveEvent(`install stick ${devicePath} formatted for storage`);

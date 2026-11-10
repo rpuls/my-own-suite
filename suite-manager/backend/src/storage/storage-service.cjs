@@ -12,9 +12,9 @@ const WATCH_INTERVAL_MS = 3_000;
 
 // A drive's own files can be browsed while it is plugged in, in a format any
 // computer reads; one MOS keeps nothing on yet is opened by the first look.
-// They change only while it is open read-write.
+// They change only while it is open read-write. A shared folder is a drive here.
 function capabilitiesOf(entry) {
-  const none = { browsable: false, checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false };
+  const none = { browsable: false, checkable: false, ejectable: false, forgettable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false };
   if (entry.kind === 'system') return none;
   if (entry.kind === 'bucket') return { ...none, holdsBackups: true, renamable: true };
   const open = entry.connected && (entry.state === 'ready' || entry.state === 'read-only') && Boolean(entry.mountPath);
@@ -22,6 +22,7 @@ function capabilitiesOf(entry) {
     browsable: entry.holdsAppFoldersFormat === true && (open || (entry.connected && entry.state === 'available')),
     checkable: entry.connected && entry.fileSystem === 'ntfs' && (entry.state === 'read-only' || entry.state === 'failed'),
     ejectable: open,
+    forgettable: !open && !entry.apps.length && (entry.kind === 'share' || !entry.connected),
     holdsAppFolders: entry.holdsAppFoldersFormat === true,
     holdsBackups: entry.holdsBackupsFormat === true,
     renamable: true,
@@ -59,7 +60,7 @@ function driveEntry(drive, status) {
     holdsAppFoldersFormat: drive.holdsAppFoldersFormat,
     holdsBackupsFormat: drive.holdsBackupsFormat,
     id: drive.id,
-    kind: 'drive',
+    kind: drive.kind === 'share' ? 'share' : 'drive',
     label: drive.label,
     model: drive.model || null,
     mountPath: drive.mountPath || null,
@@ -67,6 +68,7 @@ function driveEntry(drive, status) {
     named: Boolean(drive.name),
     reason: drive.reason || null,
     removable: drive.removable === true,
+    ...(drive.share ? { share: drive.share } : {}),
     sizeBytes: drive.sizeBytes,
     state: drive.state,
     transport: drive.transport || null,
@@ -239,7 +241,8 @@ class StorageService {
     return this.appAgent.useDrive({ drive: id });
   }
 
-  // A drive that is away and that no app reads, unless automatic backups go there.
+  // A drive that is away, or a share that is not open, that no app reads, unless
+  // automatic backups go there.
   async forgetDrive(driveId) {
     const entry = await this.entry(driveId);
     if (entry?.backups?.primary) throw Object.assign(new Error('Automatic backups go to this drive. Choose another place for them first.'), { code: 'STORAGE_IS_PRIMARY', statusCode: 409 });

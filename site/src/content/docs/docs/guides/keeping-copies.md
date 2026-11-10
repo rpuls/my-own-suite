@@ -29,6 +29,8 @@ MOS writes to your storage online with credentials it keeps on the server. That 
 
 It is also the limit. Anything MOS can write to, MOS can delete, and anything running on your server with the same access can delete it too. Ransomware does not even have to delete anything: it can encrypt your live data and wait while MOS faithfully backs up the encrypted version, until the good copies age out on their own.
 
+The same is true of a shared folder on your NAS: MOS signs in to it with a password it keeps, so it can delete what it wrote there. What protects that copy is the NAS itself. Snapshots on the NAS, which MOS cannot reach, keep older copies even if everything in the folder is deleted. And a NAS in the same house as the server does not survive the same fire.
+
 There is no clever setting in MOS that fixes this. Any protection MOS can undo from the server, an attacker on that server can undo as well. Be suspicious of anyone who tells you otherwise about any product.
 
 ## The drive you unplug

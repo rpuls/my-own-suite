@@ -29,7 +29,7 @@ test('a record that is missing, unreadable or of another version reads as empty'
   assert.deepEqual(Object.keys(kept.read().drives), ['DRIVE-0001']);
   for (const other of [version - 1, version + 1]) {
     const foreign = registry({ buckets: { [BUCKET.id]: BUCKET }, drives: { 'DRIVE-0001': DRIVE }, version: other });
-    assert.deepEqual(foreign.read(), { buckets: {}, drives: {}, version });
+    assert.deepEqual(foreign.read(), { buckets: {}, drives: {}, shares: {}, version });
   }
 });
 

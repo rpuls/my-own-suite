@@ -35,7 +35,7 @@ const { driveMountPath } = require('./storage.cjs');
 const SUITE_MANAGER_STATE_DIR = process.env.MOS_STATE_DIR || path.join(process.env.MOS_STATE_ROOT || '/var/lib/mos', 'suite-manager');
 const MAX_PATHS_PER_REQUEST = 200;
 const SWEEP_EVERY_MS = 10 * 60_000;
-const WRITABLE_KERNEL_FILESYSTEMS = ['exfat', 'ntfs3', 'vfat'];
+const WRITABLE_KERNEL_FILESYSTEMS = ['cifs', 'exfat', 'ntfs3', 'smb3', 'vfat'];
 const NO_FOLLOW = fs.constants.O_NOFOLLOW || 0;
 
 function filesError(code, message, statusCode = 409, details) {
@@ -103,7 +103,7 @@ class DriveFiles {
     const target = driveMountPath(driveId, this.mountRoot);
     const mount = await this.mountOf(target);
     if (!mount) throw filesError('FILES_DRIVE_AWAY', 'The drive is not connected, so nothing was changed.');
-    if (!WRITABLE_KERNEL_FILESYSTEMS.includes(mount.fileSystem)) throw filesError('FILES_DRIVE_UNSUITED', 'Files can only be added to drives formatted as exFAT, NTFS or FAT32.');
+    if (!WRITABLE_KERNEL_FILESYSTEMS.includes(mount.fileSystem)) throw filesError('FILES_DRIVE_UNSUITED', 'Files can only be added to shared folders and to drives formatted as exFAT, NTFS or FAT32.');
     if (mount.readOnly) throw filesError('FILES_DRIVE_READ_ONLY', READ_ONLY_SENTENCE);
     const filesRoot = filesRootOf(target);
     return { claimed: this.claimedApps(driveId), driveId, filesRoot, rooted: Boolean(await openRoot(filesRoot)), target };

@@ -10,6 +10,11 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ## [Unreleased]
 
+### Added
+
+- **A shared folder on your NAS or another computer can be storage, like a drive.** In Settings → Storage, choose **Add storage**, then **A shared folder on your network**, and enter its address and a user for MOS. MOS tests the folder first, then lets apps keep files there, back up to it and browse it. When the NAS is off, Storage says so, and MOS reconnects by itself once it answers again.
+  - **Compatibility:** the platform installs `cifs-utils` and connects with SMB 3 only. Shares are mounted under `/media/mos-storage/share-<id>`, and their connection, password included, is kept in the root-only `storage.json`, which is not backed up. The app agent gains `POST /v1/storage/shares` and `/v1/storage/shares/test`.
+
 ### Changed
 
 - **Actual Budget 26.11.0 secures server sign-in and keeps budgets from being half-saved.** Package 0.2.3 signs out other sessions when the server password changes, requires the current password to change it, keeps credentials out of server logs, and stops a failed save from leaving a budget file half-written. MOS turns off the new in-app news feed, which fetched release highlights from GitHub, so Actual still contacts nothing outside your server.

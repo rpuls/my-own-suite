@@ -10,7 +10,7 @@ import type { AppJob, DriveStep } from '../apps/types';
 
 export type StorageState = 'available' | 'away' | 'ejected' | 'failed' | 'read-only' | 'ready' | 'unreachable';
 export type DriveAction = 'check' | 'eject' | 'use';
-export type StorageKind = 'bucket' | 'drive' | 'system';
+export type StorageKind = 'bucket' | 'drive' | 'share' | 'system';
 export type AppNames = Map<string, string>;
 
 // An archive another server made here, which this server reads and never writes.
@@ -38,7 +38,7 @@ export type StorageEntry = {
   availableBytes: number | null;
   backups: StorageBackups | null;
   bucket?: { accessKeyId: string; bucket: string; endpoint: string; folder: string; region: string };
-  capabilities: { browsable: boolean; checkable: boolean; ejectable: boolean; holdsAppFolders: boolean; holdsBackups: boolean; renamable: boolean; writable: boolean };
+  capabilities: { browsable: boolean; checkable: boolean; ejectable: boolean; forgettable: boolean; holdsAppFolders: boolean; holdsBackups: boolean; renamable: boolean; writable: boolean };
   connected: boolean;
   // The kernel's, the command's or the provider's own words when it is not working.
   detail: string | null;
@@ -56,6 +56,7 @@ export type StorageEntry = {
   named: boolean;
   reason: string | null;
   removable?: boolean;
+  share?: ShareFacts;
   sizeBytes: number | null;
   state: StorageState;
   systemUsage?: { appsBytes: number; systemBytes: number } | null;
@@ -79,7 +80,21 @@ export type StorageUsage = {
 
 export type BucketDraft = { accessKeyId: string; bucket: string; endpoint: string; folder: string; id?: string; label: string; region: string; secretAccessKey: string };
 export const EMPTY_BUCKET_DRAFT: BucketDraft = { accessKeyId: '', bucket: '', endpoint: '', folder: '', label: '', region: '', secretAccessKey: '' };
-export type ConnectionTest = { locked?: boolean; message: string; ok: boolean } | null;
+export type ConnectionTest = { availableBytes?: number | null; holdsBackups?: boolean; locked?: boolean; message: string; ok: boolean } | null;
+
+export type ShareFacts = { address: string; folder: string; server: string; share: string; username: string };
+export type ShareDraft = { address: string; folder: string; id?: string; label: string; password: string; username: string };
+export const EMPTY_SHARE_DRAFT: ShareDraft = { address: '', folder: '', label: '', password: '', username: '' };
+
+export function shareDraftOf(entry: StorageEntry): ShareDraft {
+  return { address: entry.share?.address || '', folder: entry.share?.folder || '', id: entry.id, label: entry.name, password: '', username: entry.share?.username || '' };
+}
+
+// "truenas.local/mos/home-server": where a share is, without Windows' backslashes.
+export function sharePlace(entry: Pick<StorageEntry, 'share'>) {
+  const share = entry.share;
+  return share ? [share.server, share.share, share.folder].filter(Boolean).join('/') : '';
+}
 
 export const WINDOWS_CHECK_STEPS = 'Plug it into a Windows computer, open the drive\'s Properties, choose Tools and then Check, and eject it before plugging it back in here.';
 export const BACKUPS_UNKNOWN_LINE = 'MOS could not read what backups are here.';
@@ -87,6 +102,7 @@ export const BACKUPS_UNKNOWN_LINE = 'MOS could not read what backups are here.';
 export function storageIcon(entry: StorageEntry): IconName {
   if (entry.kind === 'bucket') return 'cloud-bucket';
   if (entry.kind === 'system') return 'hard-drive';
+  if (entry.kind === 'share') return 'network-drive';
   if (entry.removable) return 'usb-stick';
   return entry.transport === 'usb' ? 'usb-drive' : 'hard-drive';
 }
@@ -101,6 +117,7 @@ export function isAttention(entry: Pick<StorageEntry, 'state'>) {
 }
 
 type Condition = Pick<StorageEntry, 'connected' | 'kind' | 'reason' | 'state'>;
+type Labelled = Pick<StorageEntry, 'connected' | 'state'> & { kind?: StorageKind };
 
 // The one word for a condition, on every pill and at the head of every row.
 const STATE_LABELS: Record<StorageState, string> = {
@@ -113,7 +130,8 @@ const STATE_LABELS: Record<StorageState, string> = {
   unreachable: 'Cannot connect',
 };
 
-export function stateLabel(entry: Pick<Condition, 'connected' | 'state'>) {
+export function stateLabel(entry: Labelled) {
+  if (entry.state === 'ejected' && entry.kind === 'share') return 'Disconnected';
   return entry.state === 'ejected' && entry.connected ? 'Safe to unplug' : STATE_LABELS[entry.state];
 }
 
@@ -128,7 +146,9 @@ export function stateSentence(entry: Condition) {
     case 'read-only': return entry.reason || 'Apps can read it; nothing can be saved to it until it is checked.';
     case 'failed': return entry.reason || 'MOS could not open this drive.';
     case 'away': return 'Plug it in to use it again.';
-    case 'ejected': return entry.connected ? 'Use it again, or unplug it.' : 'Plug it back in to use it again.';
+    case 'ejected':
+      if (entry.kind === 'share') return 'Connect it again to use it.';
+      return entry.connected ? 'Use it again, or unplug it.' : 'Plug it back in to use it again.';
     case 'unreachable': return entry.reason || (entry.kind === 'bucket' ? 'MOS could not reach this storage. Check the internet connection, then look again.' : 'MOS could not read your storage right now.');
     default: return '';
   }
@@ -142,6 +162,7 @@ function transportWord(entry: StorageEntry) {
 
 // "Seagate Expansion · USB · 1 TB": what the drive is, before anything about its state.
 export function hardwareLine(entry: StorageEntry) {
+  if (entry.kind === 'share') return ['Shared folder', sharePlace(entry), entry.sizeBytes !== null ? formatBytes(entry.sizeBytes) : ''].filter(Boolean).join(' · ');
   const model = entry.model && entry.model !== entry.name ? entry.model : '';
   return [model, transportWord(entry), entry.sizeBytes !== null ? formatBytes(entry.sizeBytes) : ''].filter(Boolean).join(' · ');
 }
@@ -175,6 +196,9 @@ export function rowLine(entry: StorageEntry, { backupsKnown, names }: RowFacts) 
     case 'away':
       if (!apps.length) return `${label} — plug it in to use it again`;
       return `${label} — ${joinNames(apps)} ${apps.length === 1 ? 'gets its' : 'get their'} files back when it returns`;
+    case 'unreachable': return apps.length
+      ? `${label} — nothing answered at ${entry.share?.server || 'it'}. ${joinNames(apps)} ${apps.length === 1 ? 'gets its' : 'get their'} files back when it answers`
+      : `${label} — nothing answered at ${entry.share?.server || 'it'}. MOS keeps trying every minute`;
     case 'ejected': return entry.connected
       ? `${label} — ${apps.length ? `${joinNames(apps)} ${apps.length > 1 ? 'are' : 'is'} paused` : 'nothing is using it'} until it is back`
       : `${label} — plug it back in to use it again`;
@@ -195,7 +219,9 @@ export function browseReason(entry: StorageEntry) {
   if (entry.capabilities.browsable) return '';
   switch (entry.state) {
     case 'away': return 'Plug the drive in to browse its files.';
-    case 'ejected': return entry.connected ? 'Use the drive again to browse its files.' : 'Plug the drive back in to browse its files.';
+    case 'ejected':
+      if (entry.kind === 'share') return 'Connect the shared folder again to browse its files.';
+      return entry.connected ? 'Use the drive again to browse its files.' : 'Plug the drive back in to browse its files.';
     default: return entry.reason || 'MOS could not open this drive.';
   }
 }
@@ -209,6 +235,7 @@ function spaceFact(entry: StorageEntry) {
 
 export function kindFact(entry: StorageEntry) {
   if (entry.kind === 'bucket') return 'Storage online';
+  if (entry.kind === 'share') return 'Shared folder';
   return entry.transport === 'usb' || entry.transport === 'removable' ? 'USB drive' : 'Drive';
 }
 
@@ -216,6 +243,7 @@ export function kindFact(entry: StorageEntry) {
 function stateFact(entry: StorageEntry) {
   if (entry.state === 'read-only' || (entry.state === 'failed' && entry.capabilities.checkable)) return 'Needs a check first — check it in Storage, then pick it here';
   if (entry.state === 'failed') return entry.reason || 'MOS could not open this drive.';
+  if (entry.state === 'ejected' && entry.kind === 'share') return 'Disconnected — connect it again in Storage, then pick it here';
   if (entry.state === 'ejected') return entry.connected ? 'Ejected — use it again in Storage, then pick it here' : 'Ejected — plug it back in first';
   if (entry.state === 'away') return 'Not connected — plug it in first';
   if (entry.state === 'unreachable') return 'Cannot connect — look at it in Storage';
@@ -252,7 +280,7 @@ export function pickerOffers(storage: StorageEntry[], context: PickerContext, { 
 // The drive an app's folders are on while it is not simply working, which pauses
 // the app. The one answer for the card and the detail.
 export function pausedByDrive(appId: string, storage: StorageEntry[] | null) {
-  return storage?.find((entry) => entry.apps.includes(appId) && (entry.state === 'ejected' || entry.state === 'away' || entry.state === 'failed')) || null;
+  return storage?.find((entry) => entry.apps.includes(appId) && ['away', 'ejected', 'failed', 'unreachable'].includes(entry.state)) || null;
 }
 
 export type AppDriveNotice = { body: string; linkLabel: string; title: string; variant: 'info' | 'warning' };
@@ -265,7 +293,9 @@ export function appDriveNotice(appName: string, entry: StorageEntry | undefined,
   switch (entry.state) {
     case 'read-only': return { body: `${appName} can show what is in ${folders}, but nothing can be saved there until ${drive} is checked.`, linkLabel: 'Check it in Settings → Storage', title: `${appName} can read its ${drive} but not save to it`, variant: 'warning' };
     case 'away': return { body: `${appName} cannot show your ${folders} until ${drive} is plugged back in.`, linkLabel: 'See it in Settings → Storage', title: `${appName}'s ${drive} is not connected`, variant: 'warning' };
-    case 'ejected': return { body: `Plug the drive back in and ${appName} returns on its own. Or use the drive again without touching the cable.`, linkLabel: 'Use it again in Settings → Storage', title: `${appName} is paused — its ${drive} was ejected`, variant: 'info' };
+    case 'unreachable': return { body: `${appName} cannot show your ${folders} until ${drive} answers again. MOS keeps trying every minute.`, linkLabel: 'See it in Settings → Storage', title: `${appName}'s ${drive} is not answering`, variant: 'warning' };
+    case 'ejected': if (entry.kind === 'share') return { body: `Connect ${drive} again and ${appName} returns on its own.`, linkLabel: 'Connect it in Settings → Storage', title: `${appName} is paused — its ${drive} was disconnected`, variant: 'info' };
+      return { body: `Plug the drive back in and ${appName} returns on its own. Or use the drive again without touching the cable.`, linkLabel: 'Use it again in Settings → Storage', title: `${appName} is paused — its ${drive} was ejected`, variant: 'info' };
     default: return { body: `${appName} cannot show your ${folders}. ${stateSentence(entry)}`, linkLabel: 'See it in Settings → Storage', title: `${appName}'s ${drive} could not be opened`, variant: 'warning' };
   }
 }

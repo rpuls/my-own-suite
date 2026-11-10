@@ -34,33 +34,51 @@ function useDriveJob(entry: StorageEntry, act: Act) {
 type DriveJob = ReturnType<typeof useDriveJob>;
 
 // How "use it again" went, said the same way from the eject flow and from the row.
-function UseAgainOutcome({ appNames, using }: { appNames: string[]; using: DriveJob }) {
-  if (using.phase === 'working') return <p className="suite-storage-flow-working"><Spinner />Opening the drive again…</p>;
-  if (using.phase === 'done') return <Notice title="In use again" variant="success"><p>{appNames.length ? `${joinNames(appNames)} ${appNames.length > 1 ? 'are' : 'is'} starting again.` : 'The drive is open again.'}</p></Notice>;
-  if (using.phase === 'failed') return <Notice title="The drive was not opened" variant="warning"><p>{using.failure} Unplug it and plug it back in.</p></Notice>;
+function UseAgainOutcome({ appNames, share, using }: { appNames: string[]; share: boolean; using: DriveJob }) {
+  const thing = share ? 'shared folder' : 'drive';
+  if (using.phase === 'working') return <p className="suite-storage-flow-working"><Spinner />{share ? 'Connecting the shared folder…' : 'Opening the drive again…'}</p>;
+  if (using.phase === 'done') return <Notice title="In use again" variant="success"><p>{appNames.length ? `${joinNames(appNames)} ${appNames.length > 1 ? 'are' : 'is'} starting again.` : `The ${thing} is open again.`}</p></Notice>;
+  if (using.phase === 'failed') return <Notice title={`The ${thing} was not opened`} variant="warning"><p>{using.failure}{share ? '' : ' Unplug it and plug it back in.'}</p></Notice>;
   return null;
 }
 
+function EjectQuestion({ appNames, entry }: { appNames: string[]; entry: StorageEntry }) {
+  if (entry.kind !== 'share') {
+    return appNames.length
+      ? <><p>These apps pause while the drive is out, and come back when it returns:</p><ul className="suite-storage-flow-list">{appNames.map((name) => <li key={name}>{name}</li>)}</ul></>
+      : <p>Nothing on this server is using it, so nothing pauses.</p>;
+  }
+  const many = appNames.length > 1;
+  return <>
+    <p>MOS closes the shared folder and stops using it. Nothing in it is deleted, and it stays listed: connect it again whenever you like, or forget it from the menu.</p>
+    {appNames.length ? <Notice title={`${joinNames(appNames)} ${many ? 'pause' : 'pauses'}`} variant="info"><p>{many ? 'They keep' : 'It keeps'} files here, so {many ? 'they stop' : 'it stops'} until the shared folder is connected again.</p></Notice> : null}
+    {entry.backups?.primary ? <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice> : null}
+  </>;
+}
+
+// Eject for a drive, Disconnect for a shared folder: the same job either way.
 export function EjectDialog({ act, appNames, entry, onClose }: { act: Act; appNames: string[]; entry: StorageEntry; onClose: () => void }) {
   const { failure, phase, start } = useDriveJob(entry, act);
   const using = useDriveJob(entry, act);
+  const share = entry.kind === 'share';
+  const thing = share ? 'shared folder' : 'drive';
   const working = phase === 'working' || using.phase === 'working';
   const footer = phase === 'ask'
-    ? <><button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" onClick={() => void start('eject')} type="button">Eject</button></>
+    ? <><button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" onClick={() => void start('eject')} type="button">{share ? 'Disconnect' : 'Eject'}</button></>
     : phase === 'done' && using.phase !== 'done'
-      ? <><button className="mos-btn mos-btn-secondary" disabled={working} onClick={() => void using.start('use')} type="button">{using.phase === 'working' ? <><Spinner />Opening it</> : 'Use it again'}</button><button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">Done</button></>
+      ? <><button className="mos-btn mos-btn-secondary" disabled={working} onClick={() => void using.start('use')} type="button">{using.phase === 'working' ? <><Spinner />Opening it</> : share ? 'Connect again' : 'Use it again'}</button><button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">Done</button></>
       : <button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">{phase === 'failed' ? 'Close' : 'Done'}</button>;
-  return <Dialog footer={footer} onClose={() => { if (!working) onClose(); }} title={`Eject the ${entry.name}?`}>
-    {phase === 'ask' ? (appNames.length
-      ? <><p>These apps pause while the drive is out, and come back when it returns:</p><ul className="suite-storage-flow-list">{appNames.map((name) => <li key={name}>{name}</li>)}</ul></>
-      : <p>Nothing on this server is using it, so nothing pauses.</p>) : null}
+  return <Dialog footer={footer} onClose={() => { if (!working) onClose(); }} title={share ? `Disconnect ${entry.name}?` : `Eject the ${entry.name}?`}>
+    {phase === 'ask' ? <EjectQuestion appNames={appNames} entry={entry} /> : null}
     {phase === 'working' ? <>
-      <p className="suite-storage-flow-working"><Spinner />Ejecting…</p>
-      <p className="suite-meta">{appNames.length ? `Pausing ${joinNames(appNames)}, then closing the drive.` : 'Closing the drive.'}</p>
+      <p className="suite-storage-flow-working"><Spinner />{share ? 'Disconnecting…' : 'Ejecting…'}</p>
+      <p className="suite-meta">{appNames.length ? `Pausing ${joinNames(appNames)}, then closing the ${thing}.` : `Closing the ${thing}.`}</p>
     </> : null}
-    {phase === 'done' && using.phase === 'ask' ? <Notice title="Safe to unplug" variant="success"><p>Plug it back in any time — the apps return on their own. Or use it again without touching the cable.</p></Notice> : null}
-    {phase === 'done' ? <UseAgainOutcome appNames={appNames} using={using} /> : null}
-    {phase === 'failed' ? <Notice title="The drive was not ejected" variant="warning"><p>{failure}</p></Notice> : null}
+    {phase === 'done' && using.phase === 'ask' ? (share
+      ? <Notice title="Disconnected" variant="success"><p>Nothing in it was deleted. Connect it again from Storage whenever you like.</p></Notice>
+      : <Notice title="Safe to unplug" variant="success"><p>Plug it back in any time — the apps return on their own. Or use it again without touching the cable.</p></Notice>) : null}
+    {phase === 'done' ? <UseAgainOutcome appNames={appNames} share={share} using={using} /> : null}
+    {phase === 'failed' ? <Notice title={share ? 'The shared folder was not disconnected' : 'The drive was not ejected'} variant="warning"><p>{failure}</p></Notice> : null}
   </Dialog>;
 }
 
@@ -78,9 +96,9 @@ export function UseAgainDialog({ act, appNames, entry, onClose }: { act: Act; ap
   return <Dialog
     footer={<button className="mos-btn mos-btn-primary" disabled={working} onClick={onClose} type="button">{using.phase === 'failed' ? 'Close' : 'Done'}</button>}
     onClose={() => { if (!working) onClose(); }}
-    title={`Using the ${entry.name} again`}
+    title={entry.kind === 'share' ? `Connecting ${entry.name}` : `Using the ${entry.name} again`}
   >
-    {working ? <UseAgainOutcome appNames={appNames} using={{ ...using, phase: 'working' }} /> : <UseAgainOutcome appNames={appNames} using={using} />}
+    <UseAgainOutcome appNames={appNames} share={entry.kind === 'share'} using={working ? { ...using, phase: 'working' } : using} />
   </Dialog>;
 }
 
@@ -119,7 +137,7 @@ export function RenameDialog({ entry, onClose, onRenamed }: { entry: StorageEntr
     }
   }
   return <Dialog
-    footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" disabled={busy || (entry.kind === 'bucket' && !name.trim())} onClick={() => void save()} type="button">{busy ? <><Spinner />Saving</> : 'Save'}</button></>}
+    footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" disabled={busy || ((entry.kind === 'bucket' || entry.kind === 'share') && !name.trim())} onClick={() => void save()} type="button">{busy ? <><Spinner />Saving</> : 'Save'}</button></>}
     onClose={() => { if (!busy) onClose(); }}
     title={`Rename ${entry.name}`}
   >
@@ -205,5 +223,32 @@ export function DisconnectDialog({ entry, onClose, onDisconnected }: { entry: St
     <p>MOS forgets how to reach this storage. Nothing in it is deleted: connect it again and the backups in it are listed again.</p>
     {entry.backups?.primary ? <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice> : null}
     {error ? <Notice title="Still connected" variant="error"><p>{error}</p></Notice> : null}
+  </Dialog>;
+}
+
+// Only for storage nothing reads and MOS does not have open, so nothing pauses
+// and nothing on it is touched.
+export function ForgetDialog({ entry, onClose, onForgotten }: { entry: StorageEntry; onClose: () => void; onForgotten: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function forget() {
+    setBusy(true);
+    try {
+      await postJson(`/suite-manager/api/storage/drives/${encodeURIComponent(entry.id)}/forget`, {}, 'MOS could not forget it.');
+      onForgotten();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'MOS could not forget it.');
+      setBusy(false);
+    }
+  }
+  return <Dialog
+    footer={<><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="mos-btn mos-btn-primary" disabled={busy} onClick={() => void forget()} type="button">{busy ? <><Spinner />Forgetting</> : 'Forget'}</button></>}
+    onClose={() => { if (!busy) onClose(); }}
+    title={`Forget ${entry.name}?`}
+  >
+    <p>{entry.kind === 'share'
+      ? 'MOS stops listing this shared folder and forgets how to reach it. Nothing in it is deleted: connect it again and the backups in it are listed again.'
+      : 'MOS stops listing this drive. Nothing on it is deleted: plug it in again and it is listed again.'}</p>
+    {error ? <Notice title="Not forgotten" variant="error"><p>{error}</p></Notice> : null}
   </Dialog>;
 }

@@ -44,7 +44,7 @@ test('one list holds the system drive, every drive and every bucket, each with w
     ['object:0123456789ab', 'bucket', 'ready'],
   ]);
   const [system, films, linux, drawer, bucket] = storage;
-  assert.deepEqual(system.capabilities, { browsable: false, checkable: false, ejectable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false });
+  assert.deepEqual(system.capabilities, { browsable: false, checkable: false, ejectable: false, forgettable: false, holdsAppFolders: false, holdsBackups: false, renamable: false, writable: false });
   assert.equal(system.encrypted, true);
   assert.deepEqual([system.sizeBytes, system.diskSizeBytes, system.systemUsage], [450e9, 500e9, { appsBytes: 200e9, systemBytes: 14e9 }]);
   assert.deepEqual([films.capabilities.holdsAppFolders, films.capabilities.ejectable, films.capabilities.checkable], [true, true, false]);
@@ -141,4 +141,15 @@ test('a drive plugged in just after a page opened is told as a change', async ()
   await storage.watch();
   assert.equal(told, 1);
   unsubscribe();
+});
+
+test('a shared folder is listed as a drive that can hold everything, and can be forgotten once closed', async () => {
+  const share = { ...FILMS, apps: [], devicePath: null, fileSystem: 'cifs', id: 'share-0123456789ab', kind: 'share', name: 'NAS backups', share: { address: '\\\\nas\\backups', folder: '', server: 'nas', share: 'backups', username: 'mos' }, transport: 'network' };
+  const listing = (drive) => new StorageService({ appAgent: { storageInventory: async () => ({ buckets: [], drives: [drive], installerSticks: [], system: null }) }, backupAgent: { status: async () => null } }).inventory();
+  const [, open] = (await listing(share)).storage;
+  assert.deepEqual([open.kind, open.share.server, open.capabilities.holdsAppFolders, open.capabilities.holdsBackups, open.capabilities.ejectable, open.capabilities.checkable, open.capabilities.forgettable], ['share', 'nas', true, true, true, false, false]);
+  const [, closed] = (await listing({ ...share, mountPath: null, state: 'ejected' })).storage;
+  assert.equal(closed.capabilities.forgettable, true);
+  const [, used] = (await listing({ ...share, apps: ['jellyfin'], mountPath: null, state: 'unreachable' })).storage;
+  assert.equal(used.capabilities.forgettable, false);
 });

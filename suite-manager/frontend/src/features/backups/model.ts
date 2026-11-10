@@ -27,7 +27,7 @@ export type BackupPlace = {
   region?: string;
   sizeBytes: number | null;
   state: StorageState;
-  storageKind: 'external' | 'local' | 'object';
+  storageKind: 'external' | 'local' | 'network' | 'object';
 };
 
 // One set of backups — an encrypted repository and its restore points — and whose

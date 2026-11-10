@@ -20,7 +20,18 @@ function bucketInput(input) {
   };
 }
 
-function storageRoutes({ backupAgent, driveJobs, storage }) {
+function shareInput(input) {
+  return {
+    address: String(input.address || ''),
+    folder: String(input.folder || ''),
+    label: String(input.label || ''),
+    password: String(input.password || ''),
+    username: String(input.username || ''),
+    ...(input.id ? { id: String(input.id) } : {}),
+  };
+}
+
+function storageRoutes({ appAgent, backupAgent, driveJobs, storage }) {
   return [
     {
       method: 'GET',
@@ -107,6 +118,24 @@ function storageRoutes({ backupAgent, driveJobs, storage }) {
       bodyLimit: 4 * 1024,
       handler: async ({ body, response }) => {
         jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String((await body()).id || '') }));
+      },
+    },
+    {
+      method: 'POST',
+      path: '/storage/shares',
+      signIn: MANAGE,
+      bodyLimit: 8 * 1024,
+      handler: async ({ body, response }) => {
+        jsonResponse(response, 200, await appAgent.saveShare(shareInput(await body())));
+      },
+    },
+    {
+      method: 'POST',
+      path: '/storage/shares/test',
+      signIn: MANAGE,
+      bodyLimit: 8 * 1024,
+      handler: async ({ body, response }) => {
+        jsonResponse(response, 200, await appAgent.testShare(shareInput(await body())));
       },
     },
     // Erases the stick into an ordinary drive, as a job the page reads back with the

@@ -8,6 +8,7 @@ const { DriveFiles, filesRoutes } = require('./files.cjs');
 const { StorageError } = require('./storage.cjs');
 
 const socketPath = process.env.MOS_APP_AGENT_SOCKET || '/run/mos-app-agent/agent.sock';
+const SHARE_RECONNECT_INTERVAL_MS = 60_000;
 const adapter = new SystemAppAdapter();
 const core = new AppAgentCore(adapter);
 const files = new DriveFiles({ execute: adapter.execute, executeCapture: adapter.executeCapture, registry: adapter.storage.registry });
@@ -24,6 +25,8 @@ const server = routeTable({
   'POST /v1/storage/forget': (body) => core.forgetDrive(body),
   'POST /v1/storage/rename': (body) => core.renameStorage(body),
   'POST /v1/storage/format-installer': (body) => core.formatInstallerStick(body),
+  'POST /v1/storage/shares/test': (body) => core.testShare(body),
+  'POST /v1/storage/shares': (body) => core.saveShare(body),
   ...filesRoutes(files),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
@@ -60,4 +63,8 @@ adapter.sweepInterruptedPromotions()
   .catch(() => {})
   .then(() => adapter.syncPausedPages())
   .then(() => void files.sweepAll())
-  .then(() => serveOnSocket(server, { name: 'mos-app-agent', socketPath }));
+  .then(() => serveOnSocket(server, { name: 'mos-app-agent', socketPath }))
+  .then(() => {
+    void adapter.reconnectShares();
+    setInterval(() => void adapter.reconnectShares(), SHARE_RECONNECT_INTERVAL_MS);
+  });
