@@ -153,3 +153,11 @@ test('a shared folder is listed as a drive that can hold everything, and can be 
   const [, used] = (await listing({ ...share, apps: ['jellyfin'], mountPath: null, state: 'unreachable' })).storage;
   assert.equal(used.capabilities.forgettable, false);
 });
+
+test('forgetting the place backups default to clears that default rather than refusing', async () => {
+  const calls = [];
+  const backupAgent = { setPrimaryDestination: async (input) => { calls.push(['primary', input]); }, status: async () => ({ ...STATUS, primaryDestination: { destinationId: DRAWER.id } }) };
+  const appAgent = { forgetDrive: async (input) => { calls.push(['forget', input]); return { forgotten: true }; }, storageInventory: async () => ({ buckets: [], drives: [DRAWER], installerSticks: [], system: null }) };
+  await new StorageService({ appAgent, backupAgent }).forgetDrive(DRAWER.id);
+  assert.deepEqual(calls, [['forget', { drive: DRAWER.id }], ['primary', { destinationId: null }]]);
+});

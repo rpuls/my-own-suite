@@ -52,7 +52,7 @@ function EjectQuestion({ appNames, entry }: { appNames: string[]; entry: Storage
   return <>
     <p>MOS closes the shared folder and stops using it. Nothing in it is deleted, and it stays listed: connect it again whenever you like, or forget it from the menu.</p>
     {appNames.length ? <Notice title={`${joinNames(appNames)} ${many ? 'pause' : 'pauses'}`} variant="info"><p>{many ? 'They keep' : 'It keeps'} files here, so {many ? 'they stop' : 'it stops'} until the shared folder is connected again.</p></Notice> : null}
-    {entry.backups?.primary ? <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice> : null}
+    {entry.backups?.primary ? <BackupsStopNotice /> : null}
   </>;
 }
 
@@ -221,7 +221,7 @@ export function DisconnectDialog({ entry, onClose, onDisconnected }: { entry: St
     title={`Disconnect ${entry.name}?`}
   >
     <p>MOS forgets how to reach this storage. Nothing in it is deleted: connect it again and the backups in it are listed again.</p>
-    {entry.backups?.primary ? <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice> : null}
+    {entry.backups?.primary ? <BackupsStopNotice /> : null}
     {error ? <Notice title="Still connected" variant="error"><p>{error}</p></Notice> : null}
   </Dialog>;
 }
@@ -249,6 +249,11 @@ export function ForgetDialog({ entry, onClose, onForgotten }: { entry: StorageEn
     <p>{entry.kind === 'share'
       ? 'MOS stops listing this shared folder and forgets how to reach it. Nothing in it is deleted: connect it again and the backups in it are listed again.'
       : 'MOS stops listing this drive. Nothing on it is deleted: plug it in again and it is listed again.'}</p>
+    {entry.backups?.primary ? <BackupsStopNotice /> : null}
     {error ? <Notice title="Not forgotten" variant="error"><p>{error}</p></Notice> : null}
   </Dialog>;
+}
+
+function BackupsStopNotice() {
+  return <Notice title="Automatic backups stop" variant="warning"><p>Automatic backups and the backup before each MOS update go here. Until you choose another place under Backups, MOS backs up only when you ask it to.</p></Notice>;
 }

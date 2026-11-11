@@ -241,12 +241,13 @@ class StorageService {
     return this.appAgent.useDrive({ drive: id });
   }
 
-  // A drive that is away, or a share that is not open, that no app reads, unless
-  // automatic backups go there.
+  // A drive that is away, or a share that is not open, that no app reads. Backups
+  // stop defaulting to it, as when a bucket is disconnected.
   async forgetDrive(driveId) {
     const entry = await this.entry(driveId);
-    if (entry?.backups?.primary) throw Object.assign(new Error('Automatic backups go to this drive. Choose another place for them first.'), { code: 'STORAGE_IS_PRIMARY', statusCode: 409 });
-    return this.appAgent.forgetDrive({ drive: driveId });
+    const result = await this.appAgent.forgetDrive({ drive: driveId });
+    if (entry?.backups?.primary) await this.backupAgent.setPrimaryDestination({ destinationId: null });
+    return result;
   }
 
   async formatInstallerStick(devicePath) {
