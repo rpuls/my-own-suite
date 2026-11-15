@@ -22,6 +22,9 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ### Security
 
+- **Immich 3.4.1 closes a batch of sharing and access leaks.** Package 0.9.1 fixes shared links that exposed metadata and album members, partner timelines and locked photos showing to people they should not, and missing access checks on duplicates and Live Photos. It also brings faster people, explore and shared-link pages, people sharing and birthday memories, and moves Valkey to 9.1.2. MOS turns off the usage reporting to Microsoft that Immich's machine-learning runtime gained, and keeps the new FUTO Backups feature switched off.
+  - **Take a backup first:** Immich migrates its database on the first start and cannot go back to 3.2 afterwards. Machine learning switches to Immich's optimised v2 models, so it downloads its models from Hugging Face again the first time it runs (about 1.7 GB on disk with the default models). Results stay the same and no jobs need to run again.
+  - Symbolic links in the Photos folder on your drive are no longer imported. Photos already imported through one stay.
 - **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
 - **Vaultwarden fixes two security flaws in website icons and emergency access.** Package 0.4.3, app 1.37.5, bundles web vault 2026.10.1, which newer Bitwarden apps need to turn two-step login on or off and to take over an account through emergency access.
   - The first start adds a column to the vault database. Vaultwarden 1.37.5 cannot undo this, so going back to package 0.4.2 means restoring a backup taken before the update.

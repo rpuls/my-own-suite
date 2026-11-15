@@ -1,4 +1,7 @@
 {
+  "backup": {
+    "beta": false
+  },
   "newVersionCheck": {
     "enabled": false
   }

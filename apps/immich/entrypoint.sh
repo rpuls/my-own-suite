@@ -5,7 +5,7 @@ set -euo pipefail
 # notification email lives in Immich's system config — so MOS writes the owner's
 # shared relay (${smtp.*}, projected in as MOS_SMTP_*) into the JSON config file
 # the server reads at startup (IMMICH_CONFIG_FILE). The baked base config, which
-# only disables Immich's own version check, is merged with a notifications.smtp
+# disables Immich's own version check and FUTO Backups, is merged with a notifications.smtp
 # block generated from the environment on every start. With no relay the block is
 # omitted, so any SMTP the owner set inside Immich's admin UI is left untouched.
 # Immich reads this file fresh each boot, so regenerating it here — before the
