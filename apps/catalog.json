@@ -78,10 +78,10 @@
       }
     },
     "radicale": {
-      "appVersion": "3.8.3",
+      "appVersion": "3.9.1",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:868fe17fec3d5a5ee5b9c157a736ae5b06c104eca21bcdd547ff7203a94b4122",
-      "packageVersion": "0.5.5",
+      "packageDigest": "sha256:3222de0b221dbcdaaa062035cbb0596d1bafc1a1df2295b04337021480ab99f8",
+      "packageVersion": "0.5.6",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",
