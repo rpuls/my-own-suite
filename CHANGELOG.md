@@ -19,6 +19,8 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 ### Changed
 
 - **Actual Budget 26.11.0 secures server sign-in and keeps budgets from being half-saved.** Package 0.2.3 signs out other sessions when the server password changes, requires the current password to change it, keeps credentials out of server logs, and stops a failed save from leaving a budget file half-written. MOS turns off the new in-app news feed, which fetched release highlights from GitHub, so Actual still contacts nothing outside your server.
+- **Radicale 3.9.1 fixes calendar searches and saves that phone and desktop clients rely on.** Package 0.5.6 fixes date-range searches on events with a time zone, reminders and tasks, empty text searches, saves sent with `If-Match: *` and contact searches, and lists calendar data about ten times faster. Free/busy views now list each busy period as its own event. Sharing, groups and the new iTIP invitations stay off.
+  - **Compatibility:** Radicale 3.9.1 rejects usernames containing `$` or a backtick. An install with such a username fails to start on 3.9.1, so its update rolls back instead of locking you out. Usernames containing `'`, `"`, `*` or `?` could not sign in on Radicale 3.8 either, and now fail at start with the reason too. The default username, your email address, is normally unaffected.
 
 ### Security
 
