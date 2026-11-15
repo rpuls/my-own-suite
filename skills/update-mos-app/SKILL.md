@@ -23,6 +23,8 @@ Do not rely on semver or an upstream "breaking" label. Check:
 
 Classify each relevant change as automatically handled, migration required, operator action required, unsupported, or unresolved. Block the update when no safe, truthful path exists.
 
+Staying current is the default, so resolve before you block. New telemetry or a phone-home feature is switched off with the app's own supported setting (environment variable or config key) and recorded in the privacy review; a new feature MOS does not ship is pinned off the same way; something unresolved is settled by reading upstream source or running the image. Patching upstream code or blocking hosts is not a fix. Block only when no supported setting or package change gives owners a safe path.
+
 ## Workflow
 
 1. Establish the previous and candidate app-package versions, exact upstream versions/digests, and all intervening upstream releases.
