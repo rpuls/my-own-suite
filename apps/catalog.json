@@ -36,8 +36,8 @@
     "memos": {
       "appVersion": "26.11.0",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:e638c79e4ef5acff991abef54b832c8da868f34c6c6308cb65c168425336bc24",
-      "packageVersion": "0.1.0",
+      "packageDigest": "sha256:156b54680adc17df3830d6dd1af02a769783b880f42a57665cc5361498be8578",
+      "packageVersion": "0.1.1",
       "path": "apps/memos",
       "privacy": {
         "posture": "external-dependency",
