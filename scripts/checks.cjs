@@ -134,7 +134,12 @@ const CHECKS = [
     lane: 'site',
     id: 'accessibility',
     title: 'Check accessibility',
-    command: 'npx --yes pa11y-ci@4.1.1 --config site/.pa11yci.json',
+    // Chrome is installed through pa11y-ci's own puppeteer on every run, not
+    // left to puppeteer's postinstall: CI's npm cache keeps the npx package
+    // but not ~/.cache/puppeteer, so a restored cache skips the postinstall
+    // and pa11y finds no Chrome. The install is a no-op when Chrome is there.
+    command:
+      'npx --yes -p pa11y-ci@4.1.1 -c "puppeteer browsers install chrome && pa11y-ci --config site/.pa11yci.json"',
     // pa11y drives its own Chromium download, which is not something a push
     // should trigger on a laptop. CI always runs it; locally ask for --heavy.
     heavy: true,
