@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.5.5",
-  "appVersion": "3.8.3",
+  "version": "0.5.6",
+  "appVersion": "3.9.1",
   "minimumMosVersion": "0.20.0",
   "packageFiles": [
     "entrypoint.sh"
