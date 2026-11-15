@@ -1,0 +1,123 @@
+{
+  "manifestVersion": 1,
+  "id": "memos",
+  "name": "Memos",
+  "version": "0.1.0",
+  "appVersion": "26.11.0",
+  "minimumMosVersion": "0.20.0",
+  "summary": "Quick notes and checklists for the whole household, kept on your own server.",
+  "category": "office",
+  "icon": "icon.png",
+  "packageFiles": [
+    "registration.json",
+    "screenshots/timeline.png",
+    "screenshots/checklist.png",
+    "screenshots/calendar.png"
+  ],
+  "catalog": {
+    "description": "Memos is where the small things go: the shopping list, the plumber's phone number, the idea you had on the train, the list of what still needs doing before the holiday. You type a line and press save, and it lands on a timeline under today's date, the way a sticky note lands on the fridge. Tags with a # keep related notes together, checklists tick off where you left them, and a calendar shows which days you wrote something down. Everything you write is private unless you choose to share it, and it stays on your own server.",
+    "replaces": [
+      "Google Keep",
+      "Apple Notes",
+      "Microsoft OneNote",
+      "Evernote",
+      "Microsoft Sticky Notes",
+      "Simplenote",
+      "Notion"
+    ],
+    "screenshots": [
+      {
+        "src": "screenshots/timeline.png",
+        "alt": "The Memos timeline with short household notes under their dates, tagged #home, #shopping and #garden",
+        "caption": "Write it down the moment you think of it"
+      },
+      {
+        "src": "screenshots/checklist.png",
+        "alt": "A Memos note with a packing checklist, some items ticked off",
+        "caption": "Lists that remember what is already done"
+      },
+      {
+        "src": "screenshots/calendar.png",
+        "alt": "The Memos calendar for one month, each day showing the start of the notes written on it",
+        "caption": "Find it again by the day you wrote it"
+      }
+    ],
+    "tags": [
+      "notes",
+      "memos",
+      "checklists",
+      "sticky-notes",
+      "markdown",
+      "google-keep-alternative"
+    ],
+    "features": [
+      {
+        "title": "One line is enough",
+        "body": "Open it, type, save. There are no notebooks to create first and no blank page to fill: a note can be a single sentence, and it is kept with the day you wrote it."
+      },
+      {
+        "title": "Checklists and tags",
+        "body": "Shopping lists and packing lists tick off as you go. Put a #tag anywhere in a note and Memos gathers every note with that tag in one place."
+      },
+      {
+        "title": "An account for everyone at home",
+        "body": "Each person gets their own notes. Share a note with the household, or a single note by link, only when you mean to."
+      }
+    ],
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "One small service with its notes in a single database file. It idles quietly between visits."
+    },
+    "privacy": {
+      "summary": "Memos keeps your notes in a database on your own server, and contains no analytics or crash reporting. Three features reach the internet when you use them: adding a location, the map, and link previews.",
+      "notes": [
+        "Adding a location to a note sends your position to the OpenStreetMap Foundation. When you choose Add location and allow your browser to share where you are, your current coordinates go to its Nominatim service to be turned into a street address, before you click anything. Decline the browser's prompt and pick a point on the map instead to send only that point.",
+        "The Map view and the location picker load map tiles from OpenFreeMap, through Cloudflare, or from OpenStreetMap if OpenFreeMap is unavailable. These services see your IP address, the area you look at, and which Memos server you use.",
+        "When a note is nothing but a web address, Memos shows a preview card: your server fetches that page, and your browser loads its preview image. Switch it off under Settings → Preferences → Link preview.",
+        "MOS turns sign-up off, so nobody can create an account on your server by finding its address. The first person to open Memos after the install becomes its admin, so open it straight away; invite the rest of the household under Settings → Member.",
+        "Single sign-on, AI features, S3 attachment storage and webhooks all stay off until you set them up yourself."
+      ]
+    },
+    "links": {
+      "website": "https://usememos.com/",
+      "docs": "https://usememos.com/docs",
+      "repository": "https://github.com/usememos/memos"
+    }
+  },
+  "resources": {
+    "services": {
+      "memos": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 5230,
+        "env": {
+          "MEMOS_INSTANCE_URL": "${app.publicUrl}"
+        },
+        "volumes": [
+          "data:/var/opt/memos"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "memos",
+      "service": "memos"
+    }
+  ],
+  "homepage": {
+    "group": "Office",
+    "name": "Memos",
+    "description": "Quick notes, lists and reminders.",
+    "icon": "memos"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://memos:5230/healthz"
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "safe"
+  }
+}

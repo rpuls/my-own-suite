@@ -33,6 +33,17 @@
         "status": "reviewed"
       }
     },
+    "memos": {
+      "appVersion": "26.11.0",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:e638c79e4ef5acff991abef54b832c8da868f34c6c6308cb65c168425336bc24",
+      "packageVersion": "0.1.0",
+      "path": "apps/memos",
+      "privacy": {
+        "posture": "external-dependency",
+        "status": "reviewed"
+      }
+    },
     "navidrome": {
       "appVersion": "0.64.2",
       "minimumMosVersion": "0.23.0",

@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "appId": "memos",
+  "reviewedAt": "2026-11-15T18:00:00.000Z",
+  "expiresAt": "2027-02-15T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:e638c79e4ef5acff991abef54b832c8da868f34c6c6308cb65c168425336bc24",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/memos",
+      "revision": "b1a09c0a6f93725cc8762292b1026e58b564d539",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Memos",
+        "version": "26.11.0",
+        "artifact": "ghcr.io/usememos/memos",
+        "digest": "sha256:087e7dc6b76b31fcd1107a5767398b2a310ced209adb791efd8760c745dc8034"
+      }
+    ],
+    "clientsExcluded": [
+      "Third-party mobile and desktop clients and the Memos browser extension (web-clipper), which MOS does not ship; this package serves the web client embedded in the server binary",
+      "Identity providers, AI providers, S3-compatible storage and webhook receivers an admin configures after installation"
+    ]
+  },
+  "posture": "external-dependency",
+  "dimensions": {
+    "defaultEgress": "external-contact",
+    "control": "accepted-by-mos",
+    "accountDependency": "local-only",
+    "dataProcessing": "optional-external",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "verified"
+  },
+  "evidence": [
+    {
+      "type": "observed",
+      "claim": "With no memo content linking anywhere, the server container opened no connection to any public address. A packet capture on the container's network namespace, filtered to DNS and to TCP SYNs on any port other than 5230, recorded nothing through first boot, admin creation, writing and reading memos with tags, links inside sentences and checklists, the settings pages and the calendar. A control connection made from inside the container appeared in the same capture, so the silence is a measurement.",
+      "source": "tcpdump in a sidecar sharing the network namespace of a container built from apps/memos/Dockerfile (Memos 26.11.0), on a local Docker rig",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The browser requested nothing outside the server during first-run setup, sign-in, the timeline, tag filtering, the calendar, settings, and memos whose links sat inside a sentence. The first off-site request came from opening the Map view, which loaded vector tiles and fonts from tiles.openfreemap.org.",
+      "source": "Playwright request log over the same session against the rig",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "observed",
+      "claim": "Link previews follow memo content and are on by default. When a memo's content contains a bare link, the web client calls MemoService/GetLinkMetadata and the server fetches that page (the capture showed the server connecting to the linked site's address); the browser then loads the preview image from the linked site. The Link preview switch under Settings > Preferences > This device is stored per browser and defaults to on.",
+      "source": "packet capture and Playwright request log against the rig, with a memo whose content was a bare link; the switch state read from the Preferences page",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "observed",
+      "claim": "Link-preview fetching is not an open proxy. GetLinkMetadata answers 'authentication required' to a signed-out caller, and for a signed-in one refuses loopback, Docker bridge and CGNAT addresses ('internal IP addresses are not allowed') and fails for the package-network hostname. The server identifies itself to linked sites as MemosBot/1.0 (+https://usememos.com).",
+      "source": "direct Connect calls to /memos.api.MemoService/GetLinkMetadata against the rig; user agent string in the 26.11.0 binary",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "documented",
+      "claim": "The binary, which embeds the web client, carries no analytics or crash-reporting library or endpoint. Its compiled-in hosts that are ever contacted are owner-configured services (OAuth templates for GitHub, GitLab and Google; OpenAI and Gemini for AI features; AWS S3 and Google Cloud credentials for attachment storage; Cloudflare Turnstile and hCaptcha for sign-in captcha), map services (tiles.openfreemap.org, tile.openstreetmap.org, nominatim.openstreetmap.org), and plain links to usememos.com and GitHub that the browser follows only when clicked. A sponsor memo with an image on raw.githubusercontent.com is part of the demo seed, used only with --demo, which this package does not set.",
+      "source": "extraction of every http(s) host literal from /usr/local/memos/memos in the pinned image, with the code around each read",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "observed",
+      "claim": "Opening Add location in the editor asks the browser for the device's position. With that permission granted, the browser sent the device's own coordinates to https://nominatim.openstreetmap.org/reverse before anything was clicked, and clicking a point on the picker sent that point's coordinates in a second lookup. Nominatim and tile.openstreetmap.org resolve to Fastly addresses (151.101.0.0/16, X-Served-By cache-ams); tiles.openfreemap.org answers through Cloudflare.",
+      "source": "agent-driven Playwright pass with a recorded HAR and an emulated position, against the capture rig; geocoding query read in the web client of the 26.11.0 binary; response headers and DNS of the three hosts",
+      "retrievedAt": "2026-11-13"
+    },
+    {
+      "type": "observed",
+      "claim": "The Map draws OpenFreeMap's vector tiles and falls back to raster tiles from tile.openstreetmap.org when the OpenFreeMap style fails to load, errors, takes over 15 seconds, or the browser has no WebGL or loses its context. With tiles.openfreemap.org blocked, the Map view loaded 24 tiles from tile.openstreetmap.org at once.",
+      "source": "BasemapLayer chunk of the 26.11.0 web client; agent-driven Playwright pass with tiles.openfreemap.org aborted, HAR recorded",
+      "retrievedAt": "2026-11-13"
+    },
+    {
+      "type": "observed",
+      "claim": "Map tile, map style and Nominatim requests carry the Memos server's own origin in their Origin and Referer headers, so those services learn which server the viewer is using. Link preview images are requested without a Referer.",
+      "source": "request headers in the reviewer's Firefox 159 HAR and the agent-driven HARs",
+      "retrievedAt": "2026-11-13"
+    },
+    {
+      "type": "inferred",
+      "claim": "When a person allows the location prompt, the browser or operating system works out the position with its own location service, which can involve a request to that vendor (Google for Chrome, for example). Memos does not choose or see that service; the capture emulated the position, so the request was not observed.",
+      "source": "navigator.geolocation.getCurrentPosition call in the location picker of the 26.11.0 web client",
+      "retrievedAt": "2026-11-13"
+    },
+    {
+      "type": "observed",
+      "claim": "In a fifteen-minute reviewer session in Firefox 159 covering first-run setup, tagged notes, checklists, comments, reactions, an image attachment, a bare-link note and a link inside a sentence, the Map, calendar, search, Explore, Archive, dark mode, every settings section, a second member, an avatar upload and an export, the browser contacted only the server, tiles.openfreemap.org (231 requests, about 90 KB sent and 33 MB received) and thumb.wikimedia.org for the one link preview image. Over the same window the server resolved and contacted only en.wikipedia.org for that link preview, sending about 8 KB and receiving about 101 KB, besides the injected example.com controls.",
+      "source": "reviewer HAR, dnsmasq query log and per-namespace packet capture of the MOS runtime projection rendered by Suite Manager's renderInstanceProjections, run 2026-11-12 22:45 to 23:08 UTC",
+      "retrievedAt": "2026-11-13"
+    },
+    {
+      "type": "observed",
+      "claim": "Left running from first boot for 67 hours, the server resolved no name besides en.wikipedia.org for the reviewer's link preview and the injected controls: no update check, no scheduled job and no other lookup. A closing control injected from the application container at the end was logged, so the resolver was recording throughout.",
+      "source": "timestamped dnsmasq query log, 2026-11-12 22:45 to 2026-11-15 17:47 UTC, with controls at both ends",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS sets one environment variable, MEMOS_INSTANCE_URL, to the app's own public address, and adds a declarative configuration file that turns user registration off at first start. Neither touches outbound behaviour. The projection is one service built from the package Dockerfile, one named volume at /var/opt/memos, and one route.",
+      "source": "apps/memos/manifest.json, apps/memos/Dockerfile and apps/memos/registration.json",
+      "retrievedAt": "2026-11-12"
+    },
+    {
+      "type": "documented",
+      "claim": "OpenFreeMap states it sets no cookies, uses no tracking and keeps no IP addresses in its access logs; error logs may hold an IP for up to seven days, and IP logging may be switched on for up to thirty days during an attack. The OpenStreetMap Foundation states it records the IP address, browser, operating system, referring page and requested resource for use of its services, including tiles and Nominatim, stored in the United Kingdom and the Netherlands, and names no retention period for those records.",
+      "source": "the OpenFreeMap and OpenStreetMap Foundation privacy policies listed under policies",
+      "url": "https://osmfoundation.org/wiki/Privacy_Policy",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "documented",
+      "claim": "Normal use needs no upstream account or service. The first account is created on the instance's own first-run screen, passwords and sessions are stored in the SQLite database in the package volume, and there is no licence check, activation or registration with the Memos project. Memos is MIT-licensed.",
+      "source": "first-run flow observed on the rig; https://usememos.com/docs/faq",
+      "url": "https://usememos.com/docs/faq",
+      "retrievedAt": "2026-11-12"
+    }
+  ],
+  "outbound": [
+    {
+      "from": "server",
+      "host": "*",
+      "purpose": "When a note is nothing but a web address, fetches that page to show a preview card with its title, description and image. The website sees this server's address. Off under Settings → Preferences → Link preview.",
+      "receiver": "the websites linked in notes"
+    },
+    {
+      "from": "browser",
+      "host": "*",
+      "purpose": "Loads the image of a link preview card from the linked website. The website sees the viewer's address.",
+      "receiver": "the websites linked in notes"
+    },
+    {
+      "from": "browser",
+      "host": "nominatim.openstreetmap.org",
+      "purpose": "Turns coordinates into a street address when a location is added to a note. Opening Add location and allowing the browser's location prompt sends your current position; clicking the map sends the clicked point. The service also sees the viewer's address and which Memos server sent them.",
+      "receiver": "OpenStreetMap Foundation (Nominatim), through Fastly"
+    },
+    {
+      "from": "browser",
+      "host": "tiles.openfreemap.org",
+      "purpose": "Loads map tiles, fonts and icons when the Map view or the location picker is opened. The service sees the viewer's address, the map area shown and which Memos server sent them.",
+      "receiver": "OpenFreeMap, through Cloudflare"
+    },
+    {
+      "from": "browser",
+      "host": "tile.openstreetmap.org",
+      "purpose": "Backup map tiles, used only when OpenFreeMap fails to load or the browser cannot draw its map. Sees the same as OpenFreeMap.",
+      "receiver": "OpenStreetMap Foundation, through Fastly"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "documented",
+      "claim": "Memos has no telemetry to disable. Link previews are a per-browser switch under Settings > Preferences that each person can turn off. The Map view and the location lookup have no setting at all; MOS reviewed them and keeps them as features worth their outside contact, which is why control is accepted-by-mos. Turning a location into a street address sends coordinates to Nominatim, which is why data processing is optional-external.",
+      "source": "the Preferences page of the 26.11.0 web client",
+      "retrievedAt": "2026-11-12"
+    }
+  ],
+  "security": [
+    {
+      "type": "configured",
+      "claim": "Upstream leaves sign-up open, so anyone who finds a fresh install's address can create an account. This package turns it off at first start with a declarative configuration file and verifies that a signed-out POST /api/users is refused. The owner can reopen sign-up under Settings > System. The first-run admin screen is unaffected, so the first visitor after install becomes admin until the owner has opened the app.",
+      "source": "apps/memos/registration.json; behaviour observed on the rig",
+      "retrievedAt": "2026-11-12"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/usememos/memos/blob/main/LICENSE",
+      "retrievedAt": "2026-11-15",
+      "publisher": "usememos organisation"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://usememos.com/privacy",
+      "retrievedAt": "2026-11-15",
+      "publisher": "Memos Team"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://openfreemap.org/privacy/",
+      "retrievedAt": "2026-11-15",
+      "publisher": "OpenFreeMap"
+    },
+    {
+      "kind": "terms",
+      "url": "https://openfreemap.org/tos/",
+      "retrievedAt": "2026-11-15",
+      "publisher": "OpenFreeMap"
+    },
+    {
+      "kind": "privacy",
+      "url": "https://osmfoundation.org/wiki/Privacy_Policy",
+      "retrievedAt": "2026-11-15",
+      "publisher": "OpenStreetMap Foundation"
+    },
+    {
+      "kind": "terms",
+      "url": "https://operations.osmfoundation.org/policies/tiles/",
+      "retrievedAt": "2026-11-15",
+      "publisher": "OpenStreetMap Foundation"
+    },
+    {
+      "kind": "terms",
+      "url": "https://operations.osmfoundation.org/policies/nominatim/",
+      "retrievedAt": "2026-11-15",
+      "publisher": "OpenStreetMap Foundation"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "claude-opus-5-5",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "18ba79bb7ce76b067076929896c7575048f1e7a5",
+    "repositoryCommit": "b1a09c0a6f93725cc8762292b1026e58b564d539"
+  },
+  "openQuestions": [
+    "The browser's own location service, used when the location prompt is allowed, was not observed: the capture emulated the position.",
+    "TLS payloads were not decrypted; server-side claims rest on destinations and connection attempts, not on body contents.",
+    "The packet capture recorded the first forty minutes from first boot; the 67 hours after rest on the DNS resolver alone, so a connection to a hard-coded IP address in that stretch would not have been seen."
+  ],
+  "lastHumanReview": {
+    "reviewer": "Rasmus Puls",
+    "date": "2026-11-15",
+    "appVersion": "26.11.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "instanceSettings": [
+    {
+      "name": "instance/settings/GENERAL",
+      "generalSetting": {
+        "disallowUserRegistration": true
+      }
+    }
+  ],
+  "lifecycle": [
+    {
+      "resource": "instance/settings/GENERAL",
+      "ignoreChanges": ["generalSetting"]
+    }
+  ]
+}
