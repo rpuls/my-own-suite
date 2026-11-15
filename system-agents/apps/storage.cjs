@@ -4,10 +4,12 @@ const path = require('node:path');
 const { APP_FOLDER_FILESYSTEMS, ARCHIVE_DIR_PATTERN, BACKUPS_DIR, BACKUP_FILESYSTEMS, FILES_DIR, FORMATTED_DRIVE_LABEL, STORAGE_MOUNT_ROOT } = require('../../shared/storage-contract.cjs');
 const { LSBLK_ARGS, directorySize, holdsSystem, isWholeDiskFilesystem } = require('../lib/block-devices.cjs');
 const { StorageRegistry, isRememberedDrive, publicBucket } = require('../lib/storage-registry.cjs');
+const { NetworkShares, isShareId } = require('./shares.cjs');
+const { StorageError } = require('./storage-error.cjs');
 
 // The drives side of the storage module: every drive plugged in, found by its
-// filesystem UUID and mounted under MOS's own root when something is kept on it.
-// An app sees only its folder; where that lives is known here alone.
+// filesystem UUID, and every shared folder the owner connected, each mounted under
+// MOS's own root. An app sees only its folder; where that lives is known here alone.
 
 const STORAGE_DRIVE_LABEL = 'mos.storage-drive';
 // lsblk's filesystem name, and the kernel driver that mounts it.
@@ -33,14 +35,6 @@ const EFI_PARTITION_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b';
 // The file the image builder writes on the stick's EFI partition, which is how the
 // stick knows itself. A disk this does not prove is never offered for formatting.
 const INSTALLER_IMAGE_ID = 'mos-image.json';
-
-class StorageError extends Error {
-  constructor(message) {
-    super(message);
-    this.code = 'APP_STORAGE_UNAVAILABLE';
-    this.statusCode = 409;
-  }
-}
 
 function driveMountPath(driveId, root = STORAGE_MOUNT_ROOT) {
   if (!UUID_PATTERN.test(String(driveId))) throw new StorageError('That drive id is not valid.');
@@ -164,12 +158,13 @@ function awayDrive(id, claim) {
 }
 
 class AppStorage {
-  constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, registryPath }) {
+  constructor({ execute, executeCapture, mountRoot = STORAGE_MOUNT_ROOT, probe, registryPath }) {
     this.registry = new StorageRegistry({ registryPath });
     this.execute = execute;
     this.executeCapture = executeCapture;
     this.mountRoot = mountRoot;
     this.provenSticks = new Map();
+    this.shares = new NetworkShares({ execute, holdsArchive, mountOn: (target) => this.mountOn(target), mountRoot, probe, registry: this.registry });
   }
 
   async blockDevices() {
@@ -231,6 +226,7 @@ class AppStorage {
     for (const [id, claim] of Object.entries(claims)) {
       if (!listed.some((drive) => drive.id === id) && isRememberedDrive(claim)) listed.push(awayDrive(id, claim));
     }
+    for (const record of this.shares.records()) listed.push(await this.shares.describe(record));
     return listed;
   }
 
@@ -326,9 +322,10 @@ class AppStorage {
   async usage() {
     const folders = [];
     const backups = [];
+    const openShares = new Set((await Promise.all(this.shares.records().map((record) => this.shares.describe(record)))).filter((share) => share.mountPath).map((share) => share.id));
     for (const driveId of readDirectoryNames(this.mountRoot)) {
       const target = driveMountPath(driveId, this.mountRoot);
-      if (!await this.mountOn(target)) continue;
+      if (isShareId(driveId) ? !openShares.has(driveId) : !await this.mountOn(target)) continue;
       const appsDir = path.join(target, FILES_DIR, 'apps');
       for (const app of readDirectoryNames(appsDir)) {
         for (const name of readDirectoryNames(path.join(appsDir, app))) {
@@ -341,6 +338,7 @@ class AppStorage {
   }
 
   async connectedDrive(driveId) {
+    if (isShareId(driveId)) return this.shares.descriptor(this.shares.record(driveId));
     const drive = (await this.candidates()).find((item) => item.id === driveId);
     if (!drive) throw new StorageError('That drive is not connected.');
     if (!drive.holdsBackupsFormat) throw new StorageError(drive.reason);
@@ -350,6 +348,7 @@ class AppStorage {
   // Replaces a mount a pulled drive left behind. A drive Windows would check first
   // opens read-only, so its apps keep their files. Folders are made only after this.
   async attach(driveId) {
+    if (isShareId(driveId)) return this.shares.attach(driveId);
     const target = driveMountPath(driveId, this.mountRoot);
     const drive = await this.connectedDrive(driveId);
     const current = await this.mountOn(target);
@@ -398,6 +397,7 @@ class AppStorage {
   // NTFS is marked clean only when its last mount goes, and a lazy unmount reports
   // success while the drive is still in use, so every mount goes and none lazily.
   async closeDrive(drive) {
+    if (isShareId(drive.id)) return this.shares.close(drive.id);
     const target = driveMountPath(drive.id, this.mountRoot);
     const points = [...new Set([...(await this.mountOn(target) ? [target] : []), ...drive.mountpoints])];
     try {
@@ -453,15 +453,22 @@ class AppStorage {
     return binds;
   }
 
-  remember(drives, driveId, drive) {
+  remember(record, driveId, drive) {
+    if (isShareId(driveId)) {
+      const share = record.shares[driveId];
+      if (!share) throw new StorageError('MOS does not know that shared folder.');
+      share.apps ||= [];
+      return share;
+    }
+    const { drives } = record;
     const current = drives[driveId] || {};
     drives[driveId] = { ...current, apps: current.apps || [], fileSystem: drive.fileSystem, label: drive.label, model: drive.model, sizeBytes: drive.sizeBytes, transport: drive.transport };
     return drives[driveId];
   }
 
   claim(driveId, packageId, drive) {
-    this.registry.update(({ drives }) => {
-      const entry = this.remember(drives, driveId, drive);
+    this.registry.update((record) => {
+      const entry = this.remember(record, driveId, drive);
       if (!entry.apps.includes(packageId)) entry.apps = [...entry.apps, packageId].sort();
     });
   }
@@ -471,12 +478,13 @@ class AppStorage {
     const candidate = await this.connectedDrive(driveId);
     if (!candidate.holdsAppFoldersFormat) throw new StorageError(candidate.reason);
     const { drive, readOnly } = await this.attach(driveId);
-    this.registry.update(({ drives }) => { this.remember(drives, driveId, drive).keepOpen = true; });
+    this.registry.update((record) => { this.remember(record, driveId, drive).keepOpen = true; });
     return { readOnly };
   }
 
   // Only a drive that is not plugged in: one that is goes through Eject first.
   async forget(driveId) {
+    if (isShareId(driveId)) return this.shares.forget(driveId);
     if ((await this.candidates()).some((drive) => drive.id === driveId)) throw new StorageError('Eject the drive before forgetting it.');
     if (!this.registry.forgetDrive(driveId)) throw new StorageError('An app keeps its files on this drive, so MOS keeps it.');
   }
@@ -485,9 +493,10 @@ class AppStorage {
   // each drive is kept open so they are still there to see after a restart.
   release(packageId, keptDrives = []) {
     const letGo = (driveId, claim) => !keptDrives.includes(driveId) && claim.apps?.includes(packageId);
-    if (!Object.entries(this.registry.read().drives).some(([driveId, claim]) => letGo(driveId, claim))) return;
-    this.registry.update(({ drives }) => {
-      for (const [driveId, claim] of Object.entries(drives)) {
+    const claims = ({ drives, shares }) => [...Object.entries(drives), ...Object.entries(shares)];
+    if (!claims(this.registry.read()).some(([driveId, claim]) => letGo(driveId, claim))) return;
+    this.registry.update((record) => {
+      for (const [driveId, claim] of claims(record)) {
         if (!letGo(driveId, claim)) continue;
         claim.apps = claim.apps.filter((app) => app !== packageId);
         claim.keepOpen = true;
@@ -501,6 +510,18 @@ class AppStorage {
 
   rename(id, name) {
     return { name: this.registry.rename(id, name) };
+  }
+
+  testShare(input) {
+    return this.shares.test(input);
+  }
+
+  saveShare(input) {
+    return this.shares.save(input);
+  }
+
+  sharesWaiting() {
+    return this.shares.waiting();
   }
 }
 

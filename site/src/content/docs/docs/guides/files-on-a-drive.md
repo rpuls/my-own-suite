@@ -19,6 +19,8 @@ Together, this is what lets a server be replaced. Install MOS on a new server, r
 
 A drive formatted as exFAT, NTFS or FAT32 — the way portable drives come, readable by Windows, macOS and Linux alike. The drive MOS runs from cannot hold app files, and neither can a drive formatted for Linux, though that one can hold backups.
 
+A shared folder on your network works too. In **Settings → Storage**, choose **Add storage**, then **A shared folder on your network**, and give it the folder's address, such as `\\nas\media`, with a user your NAS or Windows PC made for MOS. From then on it is a drive like any other: apps keep files there, backups can go there, and **Browse files** opens it. While the NAS is off, an app cannot show what it keeps there; MOS reconnects by itself when the NAS answers again.
+
 ## Installing an app with a drive
 
 An app that needs a drive, like Jellyfin, says **Requires an extra storage device** until one is plugged in; then its install asks which drive. An app that can use a drive but does not need one, like Immich, offers it in its settings. MOS makes the app's folders on the drive, such as `MOS-files/apps/jellyfin/Movies`, and the app starts with them already set up — no library to configure.

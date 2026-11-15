@@ -356,10 +356,10 @@ function refreshCaddyBinary() {
 }
 
 // Here as well as in the installer, which an updated machine never runs again:
-// bzip2 unpacks restic's only Linux build, ntfs-3g's ntfsfix is Check drive, and
-// exfatprogs formats the install stick for storage.
+// bzip2 unpacks restic's only Linux build, ntfs-3g's ntfsfix is Check drive,
+// exfatprogs formats the install stick for storage, and cifs-utils opens shared folders.
 // Without a network, the feature that needs one reports the real failure.
-const HOST_TOOLS = [['bzip2', 'bzip2'], ['ntfsfix', 'ntfs-3g'], ['mkfs.exfat', 'exfatprogs']];
+const HOST_TOOLS = [['bzip2', 'bzip2'], ['ntfsfix', 'ntfs-3g'], ['mkfs.exfat', 'exfatprogs'], ['mount.cifs', 'cifs-utils']];
 
 function ensureHostTools() {
   const missing = HOST_TOOLS.filter(([tool]) => {

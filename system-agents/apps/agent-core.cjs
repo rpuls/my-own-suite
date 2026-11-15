@@ -81,6 +81,17 @@ const FOLDER_DRIVE_PATTERN = /^[A-Za-z0-9-]{4,64}$/u;
 const STORAGE_ID_PATTERN = /^(?:[A-Za-z0-9-]{4,64}|object:[0-9a-f]{12})$/u;
 const CONTAINER_PATH_PATTERN = /^\/[^:,\u0000]+$/u;
 
+const SHARE_FIELDS = ['address', 'folder', 'password', 'username'];
+
+// The share form as typed; what each field may hold is the share module's to say.
+function shareConnectionOf(input) {
+  if (!allowedKeys(input, { optional: ['id', 'label'], required: SHARE_FIELDS }) || Object.values(input).some((value) => typeof value !== 'string')
+    || (input.id !== undefined && !/^share-[0-9a-f]{12}$/u.test(input.id))) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A shared folder is given by its address, folder, username and password.');
+  }
+  return input;
+}
+
 function driveOf(input) {
   if (!exactKeys(input, ['drive']) || !FOLDER_DRIVE_PATTERN.test(String(input.drive))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A drive request names one drive by its id.');
@@ -488,6 +499,14 @@ class AppAgentCore {
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A rename names one drive or bucket and its new name.');
     }
     return this.adapter.storage.rename(input.id, input.name);
+  }
+
+  async testShare(input) {
+    return { result: await this.adapter.storage.testShare(shareConnectionOf(input)) };
+  }
+
+  async saveShare(input) {
+    return { ...await this.adapter.saveShare(shareConnectionOf(input)), status: 'connected' };
   }
 
   async formatInstallerStick(input) {

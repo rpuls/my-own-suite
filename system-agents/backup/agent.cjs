@@ -158,7 +158,7 @@ async function survey() {
       reason: open ? null : drive.state !== 'available' && drive.reason ? drive.reason : 'MOS has not opened this drive yet. Unplug it and plug it back in.',
       sizeBytes: drive.sizeBytes ?? null,
       state: open ? 'ready' : drive.state,
-      storageKind: drive.transport === 'usb' || drive.removable ? 'external' : 'local',
+      storageKind: drive.kind === 'share' ? 'network' : drive.transport === 'usb' || drive.removable ? 'external' : 'local',
       transport: drive.transport || null,
     });
   }

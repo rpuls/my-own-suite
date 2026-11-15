@@ -107,6 +107,13 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   owner-visible settings, install-flow UI built from the shared primitives, and a review contract
   that can express a posture conditional on a choice rather than one fixed at packaging time.
   *(Medium)*
+- **B5 — Stop app pages telling third parties which server sent the visitor.** The Memos review
+  found map tile and geocoding requests carrying the app's own origin in `Origin` and `Referer`, so
+  OpenFreeMap and the OpenStreetMap Foundation learn the install's domain along with the viewer's IP.
+  Any app that embeds a third-party resource does the same. Caddy could send
+  `Referrer-Policy: no-referrer` on every app route, which drops the `Referer` and turns a CORS
+  `Origin` into `null`. Check app by app that no embed or sign-in flow depends on the header before
+  shipping it platform-wide. *(Small)*
 
 ### C. What a tester hits in the first hour
 

@@ -31,7 +31,7 @@ export function StorageWidget({ onManage }: { onManage: () => void }) {
         <span className="suite-storage-icon"><Icon name={storageIcon(entry)} /></span>
         <div className="suite-storage-widget-body">
           <strong>{entry.name}</strong>
-          {entry.kind === 'drive' ? <UsageBar entry={entry} segments={[]} variant="compact" /> : null}
+          {entry.kind === 'drive' || entry.kind === 'share' ? <UsageBar entry={entry} segments={[]} variant="compact" /> : null}
           <span className={isAttention(entry) ? 'suite-storage-warning' : 'suite-meta'}>{glanceLine(entry)}</span>
         </div>
         {entry.capabilities.checkable ? <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => setChecking(entry.id)} type="button">Check drive</button> : null}

@@ -27,13 +27,15 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/gu, (character) => `&#${character.charCodeAt(0)};`);
 }
 
-function pausedSentence({ appName, driveName, state }) {
+function pausedSentence({ appName, driveName, kind, state }) {
+  if (kind === 'share' && state === 'ejected') return `Its ${driveName} was disconnected. Open Suite Manager to connect it again.`;
+  if (state === 'unreachable') return `Its ${driveName} is not answering. ${appName} returns on its own when it does.`;
   if (state === 'ejected') return `Its ${driveName} was ejected. Plug the drive back in, or open Suite Manager to use it again without replugging.`;
   if (state === 'away') return `Its ${driveName} is not connected. Plug the drive back in and ${appName} returns on its own.`;
   return `Its ${driveName} could not be opened. Open Suite Manager to see why.`;
 }
 
-function pausedPage({ appName, driveName, host, state }) {
+function pausedPage({ appName, driveName, host, kind, state }) {
   const suiteManager = `//home.${host.split('.').slice(1).join('.')}/suite-manager/settings#set-storage`;
   return `<!doctype html>
 <html lang="en">
@@ -54,7 +56,7 @@ small { display: block; margin-top: 20px; color: #8fa3bd; }
 <body>
 <main>
 <h1>${escapeHtml(appName)} is paused</h1>
-<p>${escapeHtml(pausedSentence({ appName, driveName, state }))}</p>
+<p>${escapeHtml(pausedSentence({ appName, driveName, kind, state }))}</p>
 <a href="${escapeHtml(suiteManager)}">Open Suite Manager</a>
 <small>This page checks again every 15 seconds.</small>
 </main>
@@ -78,7 +80,7 @@ class PausedPages {
     const wanted = new Map();
     for (const [packageId, drive] of paused) {
       const appName = this.appNameOf(packageId) || packageId;
-      for (const host of hosts.get(packageId) || []) wanted.set(`${host}.html`, pausedPage({ appName, driveName: drive.driveName, host, state: drive.state }));
+      for (const host of hosts.get(packageId) || []) wanted.set(`${host}.html`, pausedPage({ appName, driveName: drive.driveName, host, kind: drive.kind, state: drive.state }));
     }
     // Caddy reads these as its own user; the agent's umask would keep it out.
     fs.mkdirSync(this.root, { recursive: true });
@@ -102,8 +104,8 @@ class PausedPages {
 function pausedByDrives(drives) {
   const paused = new Map();
   for (const drive of drives) {
-    if (!['away', 'ejected', 'failed'].includes(drive.state)) continue;
-    for (const app of drive.apps || []) paused.set(app, { driveName: drive.name || drive.label, state: drive.state });
+    if (!['away', 'ejected', 'failed', 'unreachable'].includes(drive.state)) continue;
+    for (const app of drive.apps || []) paused.set(app, { driveName: drive.name || drive.label, kind: drive.kind || 'drive', state: drive.state });
   }
   return paused;
 }

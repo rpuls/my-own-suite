@@ -24,6 +24,21 @@ Consequences:
 
 - **A broken link fails nothing.** It shows only in the CI job summary, so someone has to read it there.
 
+## 2026-11-11: A Shared Folder On The Network Is A Drive, Reached Over SMB 3
+
+Decision: A shared folder on a NAS or another computer is a third kind of storage beside drives and buckets, and above `system-agents/apps/shares.cjs` it is a drive. The app agent owns it: it writes the share's record (`shares` in `storage.json`, password included, root-only like bucket keys), mounts it with `mount.cifs` at `/media/mos-storage/<share-id>` with the same readable-by-any-container permissions an exFAT drive gets, and lists it in the drive inventory with `kind: 'share'`. App folders, backup archives, Browse files, Eject (shown as Disconnect), Use it again, paused app pages and the storage picker all take it through the drive paths, and every capability a drive has, a share has. SMB 3 is the only protocol: NFS was declined, because it authenticates hosts rather than users and so cannot keep one platform's folder from another.
+
+Reason: The owner's storage should be wherever they keep things, and a NAS with one isolated folder and one user per platform is the common home setup. Treating it as a new consumer-facing type would have meant teaching backups, app folders and the file browser a fourth thing; giving it a drive's shape below the inventory meant none of them changed.
+
+Consequences:
+
+- **A share has no plug-in event, so the app agent reconnects.** Once a minute it opens every share that should be open and is answering, then restarts the containers reading it, so a NAS that was off at boot comes back by itself. A refusal retrying cannot fix (wrong password, no such folder, SMB older than 3) is not retried until the owner acts, because a NAS can lock an account that keeps failing.
+- **A NAS that went away must never stall MOS.** Every look into a share is preceded by a two-second probe of port 445; one that does not answer is `unreachable`, its mount path is withheld, and nothing reads its free space, folders or archives. The mount is `soft` with a ten-second echo, so an app reading it gets errors rather than hanging.
+- **The password never appears in argv.** It reaches `mount.cifs` through a root-only `credentials=` file that exists only for the mount; the inventory and Suite Manager carry the address and username, never the password.
+- **How an open share is reached is not changed in place.** Edit connection is offered once it is disconnected or not answering, so editing never has to stop and restart apps inside one request.
+- **What protects the copy is the NAS.** MOS can delete what it wrote to a share, as with a bucket; snapshots on the NAS are what an attacker on the server cannot undo, and the form and the Keeping copies guide say so.
+- `cifs-utils` is a host tool the reconciler installs, beside `ntfs-3g` and `exfatprogs`.
+
 ## 2026-10-24: Backups Look In Every Place, And Only The Default Backup Destination Is Chosen
 
 Decision: There is no backup destination any more. Storage lists places, every connected drive in a format that holds backups and every bucket connection, and the backup agent treats them alike: it looks for archives in all of them and sorts what it finds into this server's and other servers'. **Back up now** picks any place; the first backup there creates this server's archive beside whatever other servers keep. The one stored choice is the **default backup destination** (`primary-destination.json`), set from the schedule or with a backup taken by hand, and used by scheduled backups and the backup before a MOS update; when it is not connected they wait and say so. A bucket holds any number of archives as a drive does, at `MOS-backups/archive-<8 hex>/repository`. Because a bucket has no folders to list and MOS speaks no S3 itself, each bucket keeps a catalog beside them, `MOS-backups/catalog`: a restic repository with a published password, holding one tagged snapshot per archive that names the server which made it, written before the archive's repository, as a drive's descriptor is. The archive 0.22 left at `MOS-backups/repository` is read where it lies, as the archive named `repository`. Storage adds and manages places; Backups never sets storage up.

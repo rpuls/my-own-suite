@@ -1,9 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-// The storage module's record: every drive and bucket MOS knows, keyed by its
-// identity, with the owner's name for it and what claims it. Bucket entries carry
-// their keys, so the file is root-only, machine-local and never in a backup.
+// The storage module's record: every drive, shared folder and bucket MOS knows,
+// keyed by its identity, with the owner's name for it and what claims it. Bucket
+// and share entries carry their keys, so the file is root-only, machine-local and
+// never in a backup.
 
 const RECORD_VERSION = 2;
 // A process holds the lock for one synchronous read and write, so a lock this old
@@ -13,7 +14,7 @@ const LOCK_WAIT = new Int32Array(new SharedArrayBuffer(4));
 const MAX_NAME_LENGTH = 60;
 
 function emptyRecord() {
-  return { buckets: {}, drives: {}, version: RECORD_VERSION };
+  return { buckets: {}, drives: {}, shares: {}, version: RECORD_VERSION };
 }
 
 function normalizeName(value) {
@@ -29,14 +30,14 @@ class StorageRegistry {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.registryPath, 'utf8'));
       if (parsed?.version !== RECORD_VERSION) return emptyRecord();
-      return { buckets: parsed.buckets || {}, drives: parsed.drives || {}, version: RECORD_VERSION };
+      return { buckets: parsed.buckets || {}, drives: parsed.drives || {}, shares: parsed.shares || {}, version: RECORD_VERSION };
     } catch {
       return emptyRecord();
     }
   }
 
-  // Drives are written by the app agent and its plug-in unit, buckets by the
-  // backup agent that holds their keys; each in a process of its own.
+  // Drives and shares are written by the app agent and its plug-in unit, buckets
+  // by the backup agent that holds their keys; each in a process of its own.
   update(change) {
     const lock = `${this.registryPath}.lock`;
     fs.mkdirSync(path.dirname(this.registryPath), { recursive: true });
@@ -60,26 +61,30 @@ class StorageRegistry {
     }
   }
 
+  // A shared folder is a drive to everything that keeps files on one.
   drive(driveId) {
-    return this.read().drives[driveId] || null;
+    const { drives, shares } = this.read();
+    return drives[driveId] || shares[driveId] || null;
   }
 
   // Fields set to undefined are removed; a drive MOS does not remember is left alone.
   recordDrive(driveId, fields) {
-    this.update(({ drives }) => {
-      if (!drives[driveId]) return;
-      const next = { ...drives[driveId], ...fields };
+    this.update((record) => {
+      const map = holderOf(record, driveId);
+      if (!map) return;
+      const next = { ...map[driveId], ...fields };
       for (const [key, value] of Object.entries(fields)) if (value === undefined) delete next[key];
-      drives[driveId] = next;
+      map[driveId] = next;
     });
   }
 
-  // A drive nothing claims any more, forgotten so it is neither listed nor
-  // opened when plugged in. One an app still reads stays.
+  // A drive or share nothing claims any more, forgotten so it is neither listed
+  // nor opened again. One an app still reads stays.
   forgetDrive(driveId) {
-    return this.update(({ drives }) => {
-      if (!drives[driveId] || drives[driveId].apps?.length) return false;
-      delete drives[driveId];
+    return this.update((record) => {
+      const map = holderOf(record, driveId);
+      if (!map || map[driveId].apps?.length) return false;
+      delete map[driveId];
       return true;
     });
   }
@@ -92,10 +97,11 @@ class StorageRegistry {
   // back. Naming a drive does not make MOS keep anything on it.
   rename(id, value) {
     const name = normalizeName(value);
-    return this.update(({ buckets, drives }) => {
-      if (buckets[id]) {
+    return this.update(({ buckets, drives, shares }) => {
+      const named = buckets[id] || shares[id];
+      if (named) {
         if (!name) throw new Error('Give it a name.');
-        buckets[id].label = name;
+        named.label = name;
         return name;
       }
       const next = { ...drives[id] };
@@ -105,6 +111,11 @@ class StorageRegistry {
       return name;
     });
   }
+}
+
+function holderOf({ drives, shares }, id) {
+  if (drives[id]) return drives;
+  return shares[id] ? shares : null;
 }
 
 // What leaves an agent about a bucket. The access key ID stays: it is an identifier
