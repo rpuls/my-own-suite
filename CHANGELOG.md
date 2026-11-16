@@ -28,6 +28,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 - **Paperless-ngx 3.4.0 brings security updates to sign-in and its API.** Package 0.3.8 updates the sign-in and API libraries that upstream flagged for security fixes, and creates thumbnails with Poppler now that ImageMagick has been removed. It also fixes barcode tagging, reindexing after workflows and task status. There are no database migrations and no search index rebuild; reverting the package remains safe.
 - **Vaultwarden fixes two security flaws in website icons and emergency access.** Package 0.4.3, app 1.37.5, bundles web vault 2026.10.1, which newer Bitwarden apps need to turn two-step login on or off and to take over an account through emergency access.
   - The first start adds a column to the vault database. Vaultwarden 1.37.5 cannot undo this, so going back to package 0.4.2 means restoring a backup taken before the update.
+- **Jellyfin 12.4 fixes a .NET flaw that a film database's reply could trigger.** Package 0.1.3 moves Jellyfin to .NET 10.0.14, fixing a Brotli decoding flaw (CVE-2026-111497) reachable through the replies Jellyfin downloads when it looks up films and plugins. Nothing else changes: there are no migrations, and reverting to package 0.1.2 remains safe.
 
 ## [0.23.0] - 2026-10-27
 

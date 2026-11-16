@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
   "appId": "jellyfin",
-  "reviewedAt": "2026-10-25T12:00:00.000Z",
+  "reviewedAt": "2026-11-16T12:00:00.000Z",
   "expiresAt": "2027-01-17T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.1.2",
-    "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
+    "packageVersion": "0.1.3",
+    "packageDigest": "sha256:19cb0e2253d2de2e15fb3aa8deb870284aa76df053123a97819ca656479394b5",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/jellyfin",
-      "revision": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0",
+      "revision": "b8a8314781c7382048716108d8d0cc39d59b38b0",
       "trust": "mos-reviewed"
     },
     "components": [
       {
         "name": "Jellyfin",
-        "version": "12.3",
+        "version": "12.4",
         "artifact": "docker.io/jellyfin/jellyfin",
-        "digest": "sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5"
+        "digest": "sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771"
       }
     ],
     "clientsExcluded": [
@@ -86,15 +86,29 @@
       "source": "Jellyfin v12.3 server and web release notes; package image built from apps/jellyfin and compared with the 12.2 package image under Docker",
       "url": "https://github.com/jellyfin/jellyfin/releases/tag/v12.3",
       "retrievedAt": "2026-10-25"
+    },
+    {
+      "type": "observed",
+      "claim": "Jellyfin 12.4 changes no feature: the server only moves its .NET runtime from 10.0.13 to 10.0.14 and the web client only takes @jellyfin/sdk 1.0.2, a websocket fix. Its image has the same entrypoint, user, ports, volumes, environment and ffmpeg as 12.3 and bundles the same metadata plugins, including OMDb; its web client names the same external URLs, including the Cast sender library. A package image started on 12.3 data kept its administrator and libraries with no migration, and 12.3 started again on the 12.4 data.",
+      "source": "Jellyfin v12.3...v12.4 server and web comparisons; package images built from apps/jellyfin for 12.3 and 12.4, compared and run under Docker",
+      "url": "https://github.com/jellyfin/jellyfin/releases/tag/v12.4",
+      "retrievedAt": "2026-11-16"
     }
   ],
   "security": [
     {
       "type": "documented",
-      "claim": "Jellyfin's 2026 advisories include a critical path traversal that could delete or move directories before first-run setup was finished (GHSA-6828-c7cx-hvqm) and an FFmpeg argument injection through subtitle file names (GHSA-wwwm-px48-fpvq). Each is fixed in 10.11.10 or 12.0; this package runs 12.2. Only the newest stable release receives security fixes, so the package follows Jellyfin's releases.",
+      "claim": "Jellyfin's 2026 advisories include a critical path traversal that could delete or move directories before first-run setup was finished (GHSA-6828-c7cx-hvqm) and an FFmpeg argument injection through subtitle file names (GHSA-wwwm-px48-fpvq). Each is fixed in 10.11.10 or 12.0; this package runs 12.4. Only the newest stable release receives security fixes, so the package follows Jellyfin's releases.",
       "source": "Jellyfin security advisories and security policy",
       "url": "https://github.com/jellyfin/jellyfin/security/advisories",
       "retrievedAt": "2026-10-17"
+    },
+    {
+      "type": "documented",
+      "claim": "CVE-2026-111497, an out-of-bounds write in .NET's Brotli decoder rated High (CVSS 8.1), affects HttpClient when automatic decompression includes Brotli. Jellyfin sets it to All for the clients that fetch metadata and plugins, so a malicious or compromised remote server could send a crafted reply. Jellyfin 12.3 bundled the affected .NET 10.0.13; 12.4 bundles the fixed 10.0.14. Jellyfin compresses responses but does not decompress requests, so the flaw is not reachable from visitors.",
+      "source": "Microsoft security advisory; Jellyfin.Server/Startup.cs at v12.4; jellyfin.deps.json in the 12.3 and 12.4 images",
+      "url": "https://github.com/dotnet/announcements/issues/494",
+      "retrievedAt": "2026-11-16"
     },
     {
       "type": "configured",
@@ -167,8 +181,8 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "008fe9bd8810baf87526c710eddfaf96282e16eb",
-    "repositoryCommit": "c51f02165fcb71e9fc85aebcde1b98ec5c8882c0"
+    "skillRevision": "b8a8314781c7382048716108d8d0cc39d59b38b0",
+    "repositoryCommit": "b8a8314781c7382048716108d8d0cc39d59b38b0"
   },
   "lastHumanReview": {
     "reviewer": "Rasmus Puls",
