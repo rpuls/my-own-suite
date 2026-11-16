@@ -142,6 +142,9 @@ const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-cont
 //
 // Moved 2026-10-27, all four: Suite Manager's unit swaps in the new pages as it starts
 // (ExecStartPre), so pages never run ahead of the server during an update. No `echo` line changed.
+//
+// Moved 2026-11-16, all four: Caddy 2.11.9, so the `docker image rm` line names the
+// caddy:2.11.9-builder image and digest. That one line; no `echo` line changed.
 
 function digest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -149,19 +152,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '3fa4ba380c9e1aa178a2efd84e0368df97e180a49bbc9729cdf8d17af910b42c',
+    digest: '72be3369901b411e0988533188091ea55f9e91bcd5b76ac9aa2993c95192efe1',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '71a4516cb39f048f4254c0ad14de9f45d093e55d580fabd3c51b76cf122e8988',
+    digest: 'd66fb7bea007adc416e40a766ac3d10dc91f4a20a4a8a176fe9bf6cf2b61a465',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'be886aada9f4199fc8e81bd7acc4644d549e81d1d458be958fcb02ad73363aa7',
+    digest: '20a8112a86fe182cc09580c014f447626e469ba137813a3726db0e958e6441bd',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -172,7 +175,7 @@ const lockedRenderings = [
     // here and nowhere else in this list. Moved for the Easy Door site block
     // and for its install id; nothing the installer prints changed either time.
     // All four moved for the drive coldplug at the end of the bootstrap, which prints nothing.
-    digest: '916b85b69f491f5f5946aed0277b7500ddcdb43ba8057b29afa654076e6518c7',
+    digest: '020da835927655686c0ae68a77fba28191979f8b80797993c3e8e59175a238c6',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',
