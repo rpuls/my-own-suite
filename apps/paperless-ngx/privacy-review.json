@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-10-30T12:00:00.000Z",
+  "reviewedAt": "2026-11-16T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.8",
-    "packageDigest": "sha256:6ca1a92b3729dede061278af5e13acc6b6c0d12a457a0d365716f784472cd498",
+    "packageVersion": "0.3.9",
+    "packageDigest": "sha256:dbe8f85bc92b803a580349872a827200c76443bbb703fe55b544f9db32601400",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Paperless-ngx",
-        "version": "3.4.0",
+        "version": "3.4.2",
         "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
-        "digest": "sha256:7c1d98afd200def9e2bad3a377d30829e8d486554b3c818995af5860114ea17f"
+        "digest": "sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84"
       },
       {
         "name": "Valkey",
@@ -181,6 +181,19 @@
       "claim": "A packet capture inside the 3.4.0 package container's network namespace, attached about twenty seconds after it started on volumes left by 3.3.4, covered a start with no migrations and no index rebuild, a form sign-in through the allauth login page, an upload with Dutch and English OCR, search, the thumbnail, preview, download and suggestions endpoints, and the settings, config, statistics, status and mail-account endpoints. The only DNS names it resolved were the internal alias 'broker' and the control host example.org, and the only public address it reached was the control host's, contacted once by a request the reviewer sent from inside the container, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
       "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.4.0, observed 2026-10-30",
       "retrievedAt": "2026-10-30"
+    },
+    {
+      "type": "documented",
+      "claim": "Paperless-ngx 3.4.0 to 3.4.2 adds no outbound endpoint. The set of http(s) hosts in the server's Python source and in the compiled en-US web client is identical in the two pinned images, and RemoteVersionView remains the only hardcoded fetch. The changed server files are lazy imports, a PAPERLESS_URL hostname check, loading of bulk-edit tasks in Celery workers, workflow, barcode and mail-OAuth error handling fixes. The web client replaces ngx-bootstrap-icons with icons bundled in the app, so no icon is fetched from elsewhere. The dependency changes are Django 5.2.17 to 5.2.18, django-filter 26.2, django-guardian 3.5.2, drf-spectacular-sidecar 2026.10.1, filelock 4.2.6 and turbohtml 1.15.3.",
+      "source": "diff of /usr/src/paperless/src and /etc/s6-overlay between the pinned 3.4.0 (sha256:7c1d98afd200def9e2bad3a377d30829e8d486554b3c818995af5860114ea17f) and 3.4.2 (sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84) images, and the v3.4.1 and v3.4.2 release notes",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.2",
+      "retrievedAt": "2026-11-16"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture inside the 3.4.2 package container's network namespace, attached as it started on volumes left by 3.4.0, covered a start with no migrations and no index rebuild, an upload with Dutch and English OCR, search, the thumbnail, preview and suggestions endpoints for documents made on both versions, a bulk edit, and the settings, config, statistics, status, tasks and mail-account endpoints. The only addresses it reached were the broker, the Docker network gateway and the control host example.org, contacted once by a request the reviewer sent from inside the container, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
+      "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.4.2, observed 2026-11-16",
+      "retrievedAt": "2026-11-16"
     }
   ],
   "outbound": [],
@@ -213,8 +226,8 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "c79c4c619d1c3a6dfa5c82d62da799076a86a080",
-    "repositoryCommit": "c79c4c619d1c3a6dfa5c82d62da799076a86a080"
+    "skillRevision": "ee359ccdb5a6099484d6649414059f3d4c1dc25c",
+    "repositoryCommit": "ee359ccdb5a6099484d6649414059f3d4c1dc25c"
   },
   "lastHumanReview": {
     "reviewer": "Rasmus Puls",
@@ -242,6 +255,13 @@
       "source": "Paperless-ngx v3.4.0 release notes and installed package metadata in the pinned image",
       "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.0",
       "retrievedAt": "2026-10-30"
+    },
+    {
+      "type": "documented",
+      "claim": "3.4.2 updates Django, which handles every request to Paperless, to 5.2.18, along with django-guardian, which enforces per-document permissions, and filelock for access-control fixes. Upstream names no advisory for them. This package runs 3.4.2.",
+      "source": "Paperless-ngx v3.4.2 release notes and requirements.txt in the pinned image",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.2",
+      "retrievedAt": "2026-11-16"
     }
   ]
 }
