@@ -1,6 +1,6 @@
-FROM caddy:2.11.6-builder@sha256:f5b1a66449d305280e559dba0ab9f7ce9a2a14c527c79d7c6fb48abc8f895818 AS builder
+FROM caddy:2.11.9-builder@sha256:345264d8c6b50f44f4a4d507d4e6b6bcae40eef2f210d70f76e717fd8cc31baf AS builder
 
-RUN xcaddy build v2.11.6 \
+RUN xcaddy build v2.11.9 \
   --with github.com/caddy-dns/cloudflare@v0.2.4 \
   --with github.com/caddy-dns/acmedns@v0.7.0 \
   --output /out/caddy
