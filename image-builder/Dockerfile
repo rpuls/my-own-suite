@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV MTOOLS_SKIP_CHECK=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils zerofree \
+  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils zerofree cryptsetup-bin \
   && rm -rf /var/lib/apt/lists/*
 
 COPY check-image-payload.sh /usr/local/bin/check-image-payload.sh
