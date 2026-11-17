@@ -41,7 +41,7 @@ if [ -f "$installer" ]; then
   else
     fail 'the installer can end without restarting'
   fi
-  if grep -q 'refuse_unfinished_copy "$stick"' "$installer" && grep -q '^  erase_unfinished_copy$' "$installer"; then
+  if grep -q '^  refuse_unfinished_copy$' "$installer" && grep -q '^  erase_unfinished_copy$' "$installer"; then
     pass 'an unfinished copy is erased, never started in place of the installer'
   else
     fail 'an unfinished copy on the disk can start instead of the installer'
