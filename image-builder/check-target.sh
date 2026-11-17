@@ -48,7 +48,7 @@ check_kit_opens_vault() {
   local escrow="$1" vault_dev kit
   [ -s "$escrow" ] || return 0
   vault_dev="$(losetup -f --show -r -o $(( $(sfdisk -d "$image" | awk '/img3 *:/ { gsub(",", "", $4); print $4 }') * 512 )) "$image")"
-  if ! tr -d '\n' < "$escrow" | cryptsetup open --readonly --key-file - "$vault_dev" mos-check-vault 2>/dev/null; then
+  if ! tr -d '\n' < "$escrow" | cryptsetup open --readonly --disable-external-tokens --key-file - "$vault_dev" mos-check-vault 2>/dev/null; then
     fail "the escrowed key does not open the vault"
     losetup -d "$vault_dev"; return 0
   fi

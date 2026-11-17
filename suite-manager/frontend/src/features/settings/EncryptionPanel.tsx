@@ -109,6 +109,14 @@ export function EncryptionPanel() {
         : unencryptedSentence}</p>
     </PanelHead>
 
+    {/* early-image-repair */}
+    {view.kitNeedsReplacing ? <PanelBand
+      icon="key"
+      note="This server was installed from an early disk image whose recovery kit does not open its disk; only the security chip does. Change your recovery key in Backup & Restore and save the new kit."
+      title="Your recovery key does not open this server"
+      tone="warning"
+    /> : null}
+
     {view.encrypted && view.chipNeedsRepair ? <PanelBand
       icon="key"
       note="Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit."
