@@ -1,1 +1,5 @@
-FROM ghcr.io/immich-app/immich-machine-learning:v3.2.4@sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20
+FROM ghcr.io/immich-app/immich-machine-learning:v3.4.1@sha256:0fd58356ac250e2fc306f89a56a431181d708677d63ba2867c8b205484856652
+
+# onnxruntime 1.29+ sends usage telemetry to Microsoft unless this is set. Immich
+# only defaults it in Python; setting it on the image keeps it off for every process.
+ENV ORT_DISABLE_TELEMETRY=1

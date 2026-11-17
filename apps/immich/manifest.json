@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.9.0",
-  "appVersion": "3.2.4",
+  "version": "0.9.1",
+  "appVersion": "3.4.1",
   "minimumMosVersion": "0.23.0",
   "architectures": [
     "amd64"
@@ -120,7 +120,8 @@
         "Only the Immich web service is exposed through HTTPS; the database, cache, and machine learning services remain internal.",
         "MOS disables the enabled-by-default new-version check, so the server makes no scheduled release-check requests to version.immich.cloud.",
         "MOS keeps the map switched on, and that outside dependency is why this app is marked External dependency. Opening the map asks Immich's tile service for plain map imagery, requested by grid square from tiles.immich.cloud and static.immich.cloud, both served via Cloudflare. Your photo locations never leave your server: the markers you see are drawn in your browser from your own server's data. What the tile service can tell is which square of the world map you are looking at, and the smallest square it serves spans about 1.2 km — a neighbourhood, not an address, and never a photo. Immich's privacy policy says it logs the requested tile, your IP address and timing. Requests happen only while the map is open and carry no cookie or account identity.",
-        "Machine learning models are downloaded on first use, from Hugging Face for smart search and face recognition and from Alibaba Cloud's ModelScope for text recognition. The downloads are unauthenticated, and your photos are never sent out for processing."
+        "Machine learning models are downloaded once from Hugging Face, the first time smart search, face recognition or text recognition needs them. The downloads are unauthenticated, and your photos are never sent out for processing. MOS also turns off the usage reporting to Microsoft built into the machine-learning runtime.",
+        "Immich's new FUTO Backups feature, which can send your library to FUTO's backup service, is switched off. MOS backs Immich up with the rest of your suite."
       ]
     },
     "links": {
@@ -196,6 +197,9 @@
       "immich-machine-learning": {
         "dockerfile": "Dockerfile.machine-learning",
         "internalPort": 3003,
+        "env": {
+          "MACHINE_LEARNING_MODEL_REVISION": "v2"
+        },
         "volumes": [
           "model-cache:/cache"
         ]
@@ -307,7 +311,8 @@
   "update": {
     "backupRequired": true,
     "migrations": [
-      "Immich migrates its database the first time 3.2 starts, including restructuring how people and faces are stored, then vacuums the database. Large libraries take longer to come back."
+      "Immich migrates its database the first time 3.4 starts, adding people sharing, passkeys and new indexes, and cannot go back to 3.2 afterwards. Large libraries take longer to come back.",
+      "The machine-learning service switches to Immich's optimised v2 models and downloads them once from Hugging Face the first time each is needed. Results stay the same, so no jobs need to run again."
     ],
     "rollback": "unsupported"
   }
