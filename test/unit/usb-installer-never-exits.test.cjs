@@ -16,6 +16,32 @@ test('the installer exits only when the machine started from its own internal di
   assert.match(lines[exitAt - 1], /\$transport" != "usb" \] && \[ "\$removable" != "1" \]/u);
 });
 
+test('a machine running from a copy that still carries the stick\'s identifiers never runs MOS from it', () => {
+  const lines = code(read('mos-self-install'));
+  const guardAt = lines.findIndex((line) => /stick_copy_of_root\)"; then$/u.test(line));
+  const exitAt = lines.findIndex((line) => line.trim() === 'exit 0');
+
+  assert.ok(guardAt > 0 && guardAt < exitAt);
+  assert.equal(lines[guardAt + 1].trim(), 'refuse_unfinished_copy "$stick"');
+});
+
+test('an install that stops after the copy began erases the copy before restarting', () => {
+  const lines = code(read('mos-self-install'));
+  const stopHere = lines.findIndex((line) => line.startsWith('stop_here() {'));
+  const startedAt = lines.findIndex((line) => line.trim() === 'copy_started=yes');
+
+  assert.equal(lines[stopHere + 1].trim(), 'erase_unfinished_copy');
+  assert.match(lines[startedAt + 1], /^dd if=/u);
+});
+
+test('the installer closes whatever holds the target disk open before copying onto it', () => {
+  const lines = code(read('mos-self-install'));
+  const releaseAt = lines.findIndex((line) => line.startsWith('release_holders "$target"'));
+  const copyAt = lines.findIndex((line) => line.startsWith('dd if='));
+
+  assert.ok(releaseAt > 0 && releaseAt < copyAt);
+});
+
 test('every restart in the installer holds the machine if the restart itself fails', () => {
   const lines = code(read('mos-self-install'));
   const reboots = lines.filter((line) => /\breboot\b/u.test(line));
