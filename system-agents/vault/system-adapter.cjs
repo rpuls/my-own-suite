@@ -707,7 +707,9 @@ class SystemVaultAdapter {
     // which takes minutes, and the owner is looking at a form. Not `quiet`: a
     // systemd that would not take the job is the one failure here worth a line
     // in the journal.
-    await run('systemctl', ['start', '--no-block', 'default.target']);
+    // multi-user.target named as well: on Ubuntu Server the default is graphical.target, and
+    // starting that while it is active queued nothing for the units multi-user.target wants.
+    await run('systemctl', ['start', '--no-block', 'multi-user.target', 'default.target']);
     // Caddy stays up while the vault is locked so it can serve the page that
     // asks for the key, which means it started without the secrets that live in
     // the vault. Now that they are there, it gets to read them.

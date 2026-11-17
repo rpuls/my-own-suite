@@ -25,7 +25,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 
 ### Fixed
 
-- **A recovery key that does not open the disk can no longer cost the server its security chip.** The unlock page now checks a typed recovery key against the disk itself, where a chip that happened to answer used to open the vault and report the key as accepted. MOS no longer re-teaches the chip with a key the disk refuses: that attempt failed and wiped the chip's working slot, so the next restart could not open at all. A chip that refuses early in startup is asked once more before the page asks for the key.
+- **A recovery key that does not open the disk can no longer cost the server its security chip.** The unlock page now checks a typed recovery key against the disk itself, where a chip that happened to answer used to open the vault and report the key as accepted. MOS no longer re-teaches the chip with a key the disk refuses: that attempt failed and wiped the chip's working slot, so the next restart could not open at all. A chip that refuses early in startup is asked once more before the page asks for the key. After the key opens a locked server, its apps and Suite Manager now start; on Ubuntu Server they stayed stopped until the next restart.
 
 ### Security
 
