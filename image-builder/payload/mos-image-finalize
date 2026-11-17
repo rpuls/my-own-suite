@@ -253,6 +253,10 @@ rm -f /var/lib/dbus/machine-id
 # The bake VM sits on a private address, so anything that named its Easy Door
 # made an id; left in, every machine flashed from this image would share one name.
 rm -rf /var/lib/mos-easy-door
+# Made when the bake started the backup agent. Left in, every download shares one
+# backup key, and the vault gets a different key the owner is never shown.
+systemctl stop mos-backup-agent.service
+rm -f /var/lib/mos/backup-agent/engine-key /var/lib/mos/backup-agent/recovery-key.json /var/lib/mos/backup-agent/install-id
 
 stage 'Checking no vault was created during the bake'
 # A vault created in here would be written to every machine that downloads this
@@ -266,6 +270,10 @@ stage 'Checking no vault was created during the bake'
 # build never gets to read, waiting on a machine that is never coming back.
 if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ] || [ -e /etc/mos/vault-recovery-key ]; then
   log 'FATAL: this bake has vault state on it.'
+  false
+fi
+if [ -e /var/lib/mos/backup-agent/engine-key ]; then
+  log 'FATAL: this bake has a recovery key on it.'
   false
 fi
 if lsblk -no FSTYPE 2>/dev/null | grep -q crypto_LUKS; then

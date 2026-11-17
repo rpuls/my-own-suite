@@ -356,6 +356,37 @@ test('a key that is valid but from another machine is named as exactly that', as
   assert.match(result.sentence, /not the one this machine/u);
 });
 
+// Issue #345: the chip answered on the retry, the page said the key worked, and
+// that unchecked key then re-sealed the chip and wiped its slot.
+test('a typed key is checked against the disk even when the chip would answer', async () => {
+  const fake = adapter({
+    descriptor: { device: '/dev/sda3', tpm: { mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED }, version: 1 },
+    storedKey: OTHER_KEY,
+    tpmUnlocks: true,
+  });
+  const result = await new VaultAgentCore(fake).open({ key: KEY });
+
+  assert.equal(result.opened, false);
+  assert.equal(result.reason, 'wrong-key');
+  assert.equal(named(fake.calls, 'luksOpenWithTpm').length, 0);
+  assert.equal(named(fake.calls, 'mount').length, 0);
+});
+
+test('a chip is never enrolled with a key the disk refuses, so a working slot survives', async () => {
+  const descriptor = {
+    device: '/dev/sda3',
+    tpm: { enrolledAt: '2026-09-17T09:00:00Z', mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED },
+    version: 1,
+  };
+  const fake = adapter({ descriptor, diskKey: OTHER_KEY, mounted: true });
+  const result = await new VaultAgentCore(fake).enrollChip({ mode: TPM_MODES.PASSWORD, pin: PASSWORD });
+
+  assert.deepEqual(result, { ok: false, reason: 'own-key-rejected', slot: TPM_SLOTS.ENROLLED, vault: true });
+  assert.equal(named(fake.calls, 'enrollTpm').length, 0);
+  assert.equal(named(fake.calls, 'wipeTpmEnrollment').length, 0);
+  assert.deepEqual(fake.state.descriptor, descriptor);
+});
+
 test('an already mounted vault is left alone', async () => {
   const fake = adapter({
     descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },

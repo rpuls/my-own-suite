@@ -249,9 +249,9 @@ class VaultAgentCore {
   }
 
   /**
-   * The chip where the chip can answer, the owner's password where the mode
-   * says the chip needs one, the typed recovery key behind both — and, until
-   * the owner has been handed that key, the escrowed copy behind everything.
+   * A typed recovery key on its own; otherwise the chip where the chip can
+   * answer, the owner's password where the mode says the chip needs one — and,
+   * until the owner has been handed the key, the escrowed copy behind both.
    *
    * The chip is never tried in password mode without a password: it would only
    * fail slowly, and on a mode-`password` machine `mos-vault.service` calls
@@ -260,6 +260,13 @@ class VaultAgentCore {
    */
   async unlockMapper(descriptor, { key = null, pin = null } = {}) {
     if (await this.adapter.mapperExists(MAPPER_NAME)) return { by: 'already-open', ok: true };
+
+    // Never waved through by a chip that happens to answer: this key re-seals
+    // the chip next, and an owner told it worked must hold one that opens the disk.
+    if (key) {
+      const viaKey = await this.adapter.luksOpen({ device: descriptor.device, key, mapper: MAPPER_NAME });
+      return viaKey.ok ? { by: 'key', ok: true } : { ok: false, reason: 'wrong-key' };
+    }
 
     const chip = chipState(descriptor);
     let refused;
@@ -277,11 +284,6 @@ class VaultAgentCore {
       refused = { ok: false, reason: 'tpm-refused' };
     } else {
       refused = { ok: false, reason: lockedReason(descriptor) };
-    }
-
-    if (key) {
-      const viaKey = await this.adapter.luksOpen({ device: descriptor.device, key, mapper: MAPPER_NAME });
-      return viaKey.ok ? { by: 'key', ok: true } : { ok: false, reason: 'wrong-key' };
     }
 
     const escrowed = await this.adapter.readEscrow();
@@ -344,6 +346,11 @@ class VaultAgentCore {
 
     const authorising = key || await this.adapter.readOwnKey();
     if (!authorising) return { ok: false, reason: 'own-key-unreadable' };
+    // A key the disk refuses makes the enrollment fail before it starts, and the
+    // wipe that follows a failure would then take a working chip slot with it.
+    if (!await this.adapter.opensWith({ device: descriptor.device, key: authorising })) {
+      return { ok: false, reason: 'own-key-rejected', slot: chip.slot, vault: true };
+    }
 
     const enrolled = await this.adapter.enrollTpm({
       device: descriptor.device,

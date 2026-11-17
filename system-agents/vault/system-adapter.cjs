@@ -676,12 +676,12 @@ class SystemVaultAdapter {
   /**
    * Hands the key to the backup agent by writing it where the agent already
    * looks for one. The agent generates its own on first start if that file is
-   * absent, so writing it here — before the agent has ever run — is what makes
-   * the disk key and the backup key the same key, with no change to the backup
-   * agent and no second secret for the owner to keep.
+   * absent, so writing it here is what makes the disk key and the backup key
+   * the same key, with no change to the backup agent and no second secret for
+   * the owner to keep. A key already there can only have come in with the
+   * image, and keeping it hands the owner a kit that does not open their disk.
    */
   async publishRecoveryKey({ key }) {
-    if (this.keys.readKey()) return { published: false, reason: 'already-present' };
     this.keys.writeKey(key);
     return { fingerprint: fingerprint(key), published: true };
   }
