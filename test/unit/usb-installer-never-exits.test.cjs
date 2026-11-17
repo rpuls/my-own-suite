@@ -16,13 +16,17 @@ test('the installer exits only when the machine started from its own internal di
   assert.match(lines[exitAt - 1], /\$transport" != "usb" \] && \[ "\$removable" != "1" \]/u);
 });
 
-test('a machine running from a copy that still carries the stick\'s identifiers never runs MOS from it', () => {
+test('a disk holding an unfinished copy of the installer never runs MOS', () => {
   const lines = code(read('mos-self-install'));
-  const guardAt = lines.findIndex((line) => /stick_copy_of_root\)"; then$/u.test(line));
+  const refuseAt = lines.findIndex((line) => line === '  refuse_unfinished_copy');
   const exitAt = lines.findIndex((line) => line.trim() === 'exit 0');
+  const markAt = lines.findIndex((line) => line.includes('> "$unfinished_copy_mark"'));
+  const copyAt = lines.findIndex((line) => line.startsWith('dd if='));
 
-  assert.ok(guardAt > 0 && guardAt < exitAt);
-  assert.equal(lines[guardAt + 1].trim(), 'refuse_unfinished_copy "$stick"');
+  assert.ok(refuseAt > 0 && refuseAt < exitAt);
+  assert.match(lines[refuseAt - 1], /"\$\(cat "\$unfinished_copy_mark".*= "\$root_uuid" \]; then$/u);
+  assert.ok(markAt > 0 && markAt < copyAt);
+  assert.ok(lines.some((line) => line.startsWith('rm -f') && line.includes('"$target_root$unfinished_copy_mark"')));
 });
 
 test('an install that stops after the copy began erases the copy before restarting', () => {

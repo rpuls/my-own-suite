@@ -129,31 +129,19 @@ partitions_of() {
 }
 partition_number() { cat "/sys/class/block/$(basename "$1")/partition" 2>/dev/null || true; }
 
-# The stick's own root, found on a USB disk while this one runs from an internal
-# disk, means the firmware started the stick and its boot landed on a copy that
-# never got identifiers of its own. Erasing is offered, never done unasked: a
-# backup clone of a finished install looks the same.
-stick_copy_of_root() {
-  local root_uuid disk part
-  root_uuid="$(blkid -p -s UUID -o value "$root_source" 2>/dev/null || true)"
-  [ -n "$root_uuid" ] || return 1
-  while read -r disk; do
-    [ "$disk" != "$root_disk" ] && is_external "$disk" || continue
-    while read -r part; do
-      [ "$(blkid -p -s UUID -o value "$part" 2>/dev/null || true)" = "$root_uuid" ] || continue
-      printf '%s\n' "$disk"
-      return 0
-    done < <(partitions_of "$disk")
-  done < <(lsblk -dnpo NAME)
-  return 1
-}
+# Written onto the stick just before the copy and removed from the disk once it
+# has identifiers of its own. The stick cannot be looked for instead: a USB disk
+# shows up seconds after an internal one, which is why the stick's boot lands on
+# the copy in the first place, and long after this script has run.
+unfinished_copy_mark=/etc/mos-unfinished-copy
+root_uuid="$(blkid -p -s UUID -o value "$root_source" 2>/dev/null || true)"
 
 refuse_unfinished_copy() {
   printf '\n  My Own Suite installer\n  ----------------------\n\n'
-  printf '  The USB stick %s has the same identifiers as %s, the disk this\n' "$(basename "$1")" "$root_parent"
-  printf '  machine is running from. That disk holds an install that never finished.\n\n'
-  printf '  Type ERASE to erase %s and restart into the installer, or remove the\n' "$root_parent"
-  printf '  USB stick and press Enter to restart without it.\n  > '
+  printf '  %s holds a copy of the installer that never finished installing,\n' "$root_parent"
+  printf '  so it cannot run.\n\n'
+  printf '  Type ERASE to erase %s, then start the machine from the USB stick to\n' "$root_parent"
+  printf '  install again. Press Enter to restart without erasing.\n  > '
   local answer
   read -r answer || while :; do sleep 3600; done
   if [ "${answer,,}" = 'erase' ]; then
@@ -162,8 +150,9 @@ refuse_unfinished_copy() {
   restart_machine
 }
 
-if ! is_external "$root_disk" && stick="$(stick_copy_of_root)"; then
-  refuse_unfinished_copy "$stick"
+if ! is_external "$root_disk" && [ -n "$root_uuid" ] \
+  && [ "$(cat "$unfinished_copy_mark" 2>/dev/null || true)" = "$root_uuid" ]; then
+  refuse_unfinished_copy
 fi
 
 # The only way this script ends without a restart: the machine started from its
@@ -344,6 +333,7 @@ quiet_for_copy
 # The stick is a live, writable root while it is copied, and remounting a running
 # root read-only fails, so the filesystem is frozen instead: writes wait until the
 # copy is done, and the copy is one consistent moment rather than a smear.
+printf '%s\n' "$root_uuid" > "$unfinished_copy_mark"
 sync
 hold_udev
 fsfreeze -f /
@@ -452,7 +442,7 @@ mount_error="$(mount "$esp_partition" "$target_root/boot/efi" 2>&1)" || fail_aft
 # identity: its SSH host keys, its machine-id and its journal so far. Cleared
 # here so the disk's first boot makes its own, as a fresh install would, and
 # two machines installed from one stick never share a host key or a DHCP id.
-rm -f "$target_root"/etc/ssh/ssh_host_*
+rm -f "$target_root"/etc/ssh/ssh_host_* "$target_root$unfinished_copy_mark"
 : > "$target_root/etc/machine-id"
 rm -f "$target_root/var/lib/dbus/machine-id"
 rm -rf "$target_root"/var/log/journal/*
