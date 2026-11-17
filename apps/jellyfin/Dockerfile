@@ -1,5 +1,5 @@
-# Jellyfin 12.3 (tag 12.3.20261023-013714), multi-arch index.
-FROM jellyfin/jellyfin@sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5
+# Jellyfin 12.4 (tag 12.4.20261026-211555), multi-arch index.
+FROM jellyfin/jellyfin@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
 
 COPY entrypoint.sh /mos-entrypoint.sh
 RUN sed -i 's/\r$//' /mos-entrypoint.sh && chmod +x /mos-entrypoint.sh

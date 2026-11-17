@@ -12,10 +12,10 @@
       }
     },
     "immich": {
-      "appVersion": "3.2.4",
+      "appVersion": "3.4.1",
       "minimumMosVersion": "0.23.0",
-      "packageDigest": "sha256:d55b2364b555ce7fbbbe3a76942e5beb5d78b4219e08577dcc1be3b24132d2e7",
-      "packageVersion": "0.9.0",
+      "packageDigest": "sha256:1af35be5421b7e33620c0e722d190ee6c161c055d49e62c6283a431addf031b8",
+      "packageVersion": "0.9.1",
       "path": "apps/immich",
       "privacy": {
         "posture": "external-dependency",
@@ -23,10 +23,10 @@
       }
     },
     "jellyfin": {
-      "appVersion": "12.3",
+      "appVersion": "12.4",
       "minimumMosVersion": "0.23.0",
-      "packageDigest": "sha256:42ea4510af480fac3359811a5d3e13cf13c3b3096c22159cfc2e258265e4b056",
-      "packageVersion": "0.1.2",
+      "packageDigest": "sha256:19cb0e2253d2de2e15fb3aa8deb870284aa76df053123a97819ca656479394b5",
+      "packageVersion": "0.1.3",
       "path": "apps/jellyfin",
       "privacy": {
         "posture": "external-dependency",
@@ -67,10 +67,10 @@
       }
     },
     "paperless-ngx": {
-      "appVersion": "3.4.0",
+      "appVersion": "3.4.2",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:6ca1a92b3729dede061278af5e13acc6b6c0d12a457a0d365716f784472cd498",
-      "packageVersion": "0.3.8",
+      "packageDigest": "sha256:dbe8f85bc92b803a580349872a827200c76443bbb703fe55b544f9db32601400",
+      "packageVersion": "0.3.9",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",

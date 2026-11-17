@@ -29,12 +29,14 @@ High performance self-hosted photo and video backup solution.
 | `PUBLIC_HOSTNAME` | Runtime app route |
 | `POSTGRES_INITDB_ARGS` | Enables data checksums for Immich database initialization |
 | `MOS_ADMIN_EMAIL`, `MOS_ADMIN_PASSWORD` | The administrator login from the two setup fields |
+| `MACHINE_LEARNING_MODEL_REVISION` | `v2` on `immich-machine-learning`: Immich's optimised model exports, all from Hugging Face. They are cached under `/cache/<task>/<model>/v2`, and models cached by an earlier package stay beside them unused |
+| `ORT_DISABLE_TELEMETRY` | `1`, baked into `Dockerfile.machine-learning`, so onnxruntime never sends usage telemetry to Microsoft |
 
 ## Photos Folder On The Owner's Drive
 
 The manifest declares one optional folder under `storage`. Install never asks for it: the owner picks a drive later in the app's settings in Suite Manager, and MOS creates `MOS-files/apps/immich/Photos` on it and mounts it read-only at `/media/photos` in `immich-server`. It is not an app volume: the suite backup does not include it and uninstall leaves it on the drive. Without a drive Immich runs as before and the folder is simply not mounted.
 
-Read-only means Immich can neither delete those photos nor write XMP sidecars beside them. Assets whose files go missing while the drive is away are shown offline, not removed, and return when the drive does.
+Read-only means Immich can neither delete those photos nor write XMP sidecars beside them. From Immich 3.4 the scan does not follow symbolic links, so a link in the folder is not imported; files imported through a link before 3.4 stay. Assets whose files go missing while the drive is away are shown offline, not removed, and return when the drive does.
 
 ## First Start
 
@@ -52,8 +54,9 @@ Endpoint: `GET /api/server/ping` (returns `{"res":"pong"}`; the same path the up
 
 ## Notes
 
-- The server and machine-learning images are pinned to the amd64 manifests for Immich v3.2.4. The database and Valkey images follow the digests pinned by the official Immich v3.2.4 Docker Compose file rather than their moving tags, so the package runs the combination upstream tests.
-- Immich database migrations are forward-only. Once a v3.2.4 instance has started and migrated, repinning the images to an earlier Immich version is not supported by upstream.
+- The server and machine-learning images are pinned to the amd64 manifests for Immich v3.4.1. The database and Valkey images follow the amd64 manifests of the digests pinned by the official Immich v3.4.1 Docker Compose file (Valkey 9.1.2) rather than their moving tags, so the package runs the combination upstream tests.
+- Immich database migrations are forward-only. Once a v3.4.1 instance has started and migrated, repinning the images to an earlier Immich version is not supported by upstream.
+- `immich-config.json` sets `backup.beta` to `false`, so the FUTO Backups screens stay hidden. The server still loads the FUTO Backups module, adds its empty `futo_backups_*` tables to the database and logs a harmless warning that both `/data` and `/usr/src/app/upload` exist. Media stays in `/usr/src/app/upload`.
 - Machine learning requires CPU with AVX2 support for optimal performance
 - All services are internal except the main Immich server port
 - Startup may take several minutes on first run while database is initialized

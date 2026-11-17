@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "immich",
-  "reviewedAt": "2026-10-05T22:00:00.000Z",
+  "reviewedAt": "2026-11-15T20:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.9.0",
-    "packageDigest": "sha256:d55b2364b555ce7fbbbe3a76942e5beb5d78b4219e08577dcc1be3b24132d2e7",
+    "packageVersion": "0.9.1",
+    "packageDigest": "sha256:1af35be5421b7e33620c0e722d190ee6c161c055d49e62c6283a431addf031b8",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,15 +16,15 @@
     "components": [
       {
         "name": "Immich Server",
-        "version": "3.2.4",
+        "version": "3.4.1",
         "artifact": "ghcr.io/immich-app/immich-server",
-        "digest": "sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13"
+        "digest": "sha256:4351dd621899ecc8ed317ae87cdcaeb968ec8ba4f9d8053d913a73eb6f6dd7c2"
       },
       {
         "name": "Immich Machine Learning",
-        "version": "3.2.4",
+        "version": "3.4.1",
         "artifact": "ghcr.io/immich-app/immich-machine-learning",
-        "digest": "sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20"
+        "digest": "sha256:0fd58356ac250e2fc306f89a56a431181d708677d63ba2867c8b205484856652"
       },
       {
         "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
@@ -36,7 +36,7 @@
         "name": "Valkey",
         "version": "9",
         "artifact": "docker.io/valkey/valkey",
-        "digest": "sha256:c7f03d95d897f97eef7ec2d4a6a1e2c0cbe62a36a56b00f304aa536cbe3ec9c1"
+        "digest": "sha256:ac9c858b86dc81f3482d53a9d854547379a5f41e012500f839ab257c399063e0"
       }
     ],
     "clientsExcluded": [
@@ -57,27 +57,40 @@
   "evidence": [
     {
       "type": "observed",
-      "claim": "Immich 3.2.4 adds no outside host to what the 3.1.0 capture recorded. Every https:// host embedded in the built web client and server of the pinned 3.2.4 image matches the 3.1.0 image, except two that make no request: the f-droid.org app-store link was removed, and wiki.openstreetmap.org appears only inside the map's WebGL error message. The map style URLs (tiles.immich.cloud) and the version-check endpoints (version.immich.cloud, version.dev.immich.cloud) are unchanged. The server and web source at v3.2.4 add no external URL and no new fetch call site.",
-      "source": "grep of /build/www and /usr/src/app/server/dist in immich-server v3.2.4 (sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13) against v3.1.0 (sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa), and server/src and web/src at v3.1.0 and v3.2.4",
-      "retrievedAt": "2026-10-05"
+      "claim": "Immich 3.4.1 adds no outside host that the server or web client contacts on its own. Against 3.2.4, the https:// hosts embedded in the built web client and server add docs.futo.cloud (two help links on the FUTO Backups screens), simplewebauthn.dev (inside a developer error message of the passkey library) and two .invalid placeholders. None is requested in normal use. The map style URLs (tiles.immich.cloud, static.immich.cloud) and the version-check endpoints (version.immich.cloud, version.dev.immich.cloud) are unchanged.",
+      "source": "grep of /build/www and /usr/src/app/server/dist in immich-server v3.4.1 (sha256:4351dd621899ecc8ed317ae87cdcaeb968ec8ba4f9d8053d913a73eb6f6dd7c2) against v3.2.4 (sha256:04225d8995a221de3b73a6131fe25eed14448830e54998f30877a70f48c6ac13)",
+      "retrievedAt": "2026-11-15"
     },
     {
       "type": "observed",
-      "claim": "The MOS controls still hold on 3.2.4. A 3.1.0 instance built from this package with a test relay was upgraded in place to the 3.2.4 build. All eight 3.2 migrations ran, and afterwards /api/system-config reported newVersionCheck.enabled=false, the MOS-written SMTP relay, and the same map style URLs. This drill did not capture network traffic. The lab E2E network step for this candidate is the capture.",
-      "source": "Local upgrade drill of apps/immich 0.8.2 (Immich v3.1.0) to the 0.8.3 candidate (Immich v3.2.4), 2026-10-05",
-      "retrievedAt": "2026-10-05"
+      "claim": "Upgrade drill with capture. A 3.2.4 instance built from package 0.9.0 was given a test relay, an uploaded photo and a Photos library, and ran its machine-learning jobs. It was then restarted on the 3.4.1 build of this package. All eight 3.3/3.4 migrations ran. The entrypoint reused its stored API key, and /api/system-config reported newVersionCheck.enabled=false, backup.beta=false and the MOS-written relay. /api/server/features reported backups=false. A fresh 3.4.1 install then created the administrator, its API key and the Photos library. A packet capture inside the server's network namespace recorded no connection to any public address across both boots, the uploads, library scans and ML jobs. This was a local drill; the lab E2E network step for this candidate is the capture of record.",
+      "source": "Local upgrade and fresh-install drill of apps/immich 0.9.0 (Immich v3.2.4) to this candidate (Immich v3.4.1), tcpdump in the immich-server and immich-machine-learning network namespaces, 2026-11-15",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "observed",
+      "claim": "The machine-learning image moved from onnxruntime 1.26.0 to 1.31.0. Its native library contains the mobile.events.data.microsoft.com telemetry endpoint and reads ORT_DISABLE_TELEMETRY. Upstream turns telemetry off only with os.environ.setdefault('ORT_DISABLE_TELEMETRY', '1') in immich_ml/__init__.py, added in 3.3.6 after a 3.3.x release had sent it to Microsoft by default. In the drill the 3.4.1 machine-learning container opened no connection to Microsoft's address. It reached only AWS addresses that resolve for Hugging Face's huggingface.co, us.aws.cdn.hf.co and xethub hosts.",
+      "source": "onnxruntime.__version__ and grep of onnxruntime/capi/*.so in immich-machine-learning v3.2.4 (sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20) and immich-machine-learning v3.4.1 (sha256:0fd58356ac250e2fc306f89a56a431181d708677d63ba2867c8b205484856652), machine-learning/immich_ml/__init__.py at v3.4.1, the v3.3.6 release notes, and the 2026-11-15 drill capture",
+      "url": "https://github.com/immich-app/immich/releases/tag/v3.3.6",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "observed",
+      "claim": "With MACHINE_LEARNING_MODEL_REVISION=v2, which this package sets, every model comes from the immich-app organisation on Hugging Face, the OCR models included. The rapidocr path that downloaded OCR models from Alibaba Cloud's ModelScope runs only with the legacy 'main' revision. In the drill, 3.2.4 reached www.modelscope.cn (47.251.62.57) for OCR. After the update the v2 models downloaded into new v2 folders under /cache, and no ModelScope address was contacted. OCR text and smart-search embeddings were produced as before.",
+      "source": "machine-learning/immich_ml/models/base.py and models/ocr/legacy.py at v3.4.1, apps/immich/manifest.json, and the 2026-11-15 drill capture",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "observed",
+      "claim": "FUTO Backups is a new backup subsystem in 3.4.0: the @futo-org/backups-orchestrator-api 1.16.0 module plus restic and restic-proxy binaries. It loads on every start, whatever the config says. It creates eleven futo_backups_* tables in Immich's database and logs 'Found 0 backends, 0 repositories, and 0 active schedules'. It writes nothing to the library volume until it is configured. backup.beta (default false) only hides it: the web client shows its menu entries only when the beta is on. It talks to FUTO only once it is used. It reads https://meta.futo.cloud/.well-known/yucca.json for its service endpoints (backups.futo.cloud/api). It signs in to a FUTO account through an OIDC device flow, sends structured error logs to that backend only once one is connected, and probes docs.futo.cloud only to explain a failed connection. The admin-only /api/futo-backups/* routes still answer with the beta off. Calling /api/futo-backups/config in the drill made the server fetch meta.futo.cloud. Nothing in normal use calls those routes, and none was contacted without that call.",
+      "source": "server/src/app.module.ts, server/src/services/futo-backups.service.ts, server/src/dtos/config.dto.ts and web/src/lib/components/layouts/AdminPageLayout.svelte at v3.4.1, node_modules/@futo-org/backups-orchestrator-api/dist (const.js, wellKnown.js, services/auth.service.js, services/telemetry.service.js, utils/connectivity.js) in immich-server v3.4.1 (sha256:4351dd621899ecc8ed317ae87cdcaeb968ec8ba4f9d8053d913a73eb6f6dd7c2), and the 2026-11-15 drill",
+      "retrievedAt": "2026-11-15"
     },
     {
       "type": "documented",
-      "claim": "Model downloads are unchanged in 3.2.4: models still come from the immich-app organisation on Hugging Face through huggingface_hub.snapshot_download, and text recognition still uses rapidocr. The 3.2.4 machine-learning image sets HF_HOME=/cache/hf-cache, which sits inside the package's model-cache volume. Insightface is no longer a dependency because its face-alignment code is now ported into Immich, and it contacted no host in this package anyway.",
-      "source": "machine-learning/immich_ml and machine-learning/pyproject.toml at v3.1.0 and v3.2.4, and the image config of immich-machine-learning v3.2.4 (sha256:7909f11a1ce217ed660afb02545f26e4adf72a5282633db436972abdfa026d20)",
-      "retrievedAt": "2026-10-05"
-    },
-    {
-      "type": "documented",
-      "claim": "Upstream policy and licence did not change across 3.1.0 to 3.2.4. The Immich privacy policy still reads 'Last updated: April 6, 2026', and the LICENSE file is byte-identical at v3.1.0 and v3.2.4. The 3.2.0 to 3.2.4 release notes announce no telemetry, account or hosted-service change. The new docker compose builder is a page on immich.app, not something the server contacts.",
-      "source": "https://immich.app/privacy-policy/, LICENSE at v3.1.0 and v3.2.4, and the v3.2.0, v3.2.1, v3.2.2 and v3.2.4 release notes",
-      "retrievedAt": "2026-10-05"
+      "claim": "Immich itself is still AGPL-3.0. The LICENSE file is byte-identical at v3.2.4 and v3.4.1, and the privacy policy still reads 'Last updated: April 6, 2026'. The bundled FUTO Backups orchestrator is not open source. Its package declares the Source First License 1.1 of FUTO Holdings, Inc., which permits use and modification 'only for non-commercial purposes'. The orchestrator code is in every immich-server image from 3.4.0 on, including when the feature is off.",
+      "source": "LICENSE at v3.2.4 and v3.4.1, https://immich.app/privacy-policy/, and node_modules/@futo-org/backups-orchestrator-api/{package.json,LICENSE} in immich-server v3.4.1 (sha256:4351dd621899ecc8ed317ae87cdcaeb968ec8ba4f9d8053d913a73eb6f6dd7c2)",
+      "retrievedAt": "2026-11-15"
     },
     {
       "type": "observed",
@@ -172,7 +185,7 @@
     },
     {
       "type": "documented",
-      "claim": "The OCR model download endpoint is chosen by a third-party dependency rather than by Immich or MOS. Immich's OCR feature is enabled by default (machineLearning.ocr.enabled, model PP-OCRv5_mobile), and its TextDetector._download() resolves the URL through the rapidocr package instead of the Hugging Face path every other model uses. That package's bundled default_models.yaml hardcodes www.modelscope.cn URLs for every PP-OCR artifact and pins a SHA256 for each, so the downloads are integrity-checked against an unexpected host rather than merely trusted. MOS keeps OCR enabled because in-photo text search is a substantive feature, and discloses the operator by name instead.",
+      "claim": "The OCR model download endpoint is chosen by a third-party dependency rather than by Immich or MOS. Immich's OCR feature is enabled by default (machineLearning.ocr.enabled, model PP-OCRv5_mobile), and its TextDetector._download() resolves the URL through the rapidocr package instead of the Hugging Face path every other model uses. That package's bundled default_models.yaml hardcodes www.modelscope.cn URLs for every PP-OCR artifact and pins a SHA256 for each, so the downloads are integrity-checked against an unexpected host rather than merely trusted. MOS keeps OCR enabled because in-photo text search is a substantive feature, and discloses the operator by name instead. From this package version on this applies only to the legacy model revision, which the package no longer uses.",
       "source": "machine-learning/immich_ml/models/ocr/detection.py at v3.1.0, and rapidocr/default_models.yaml as installed in the pinned machine-learning image",
       "retrievedAt": "2026-08-10"
     },
@@ -213,7 +226,7 @@
     {
       "from": "server",
       "host": "huggingface.co",
-      "purpose": "Downloads the machine-learning models for smart search and face recognition the first time they are needed.",
+      "purpose": "Downloads the machine-learning models for smart search, face recognition and text recognition (OCR) the first time they are needed.",
       "receiver": "Hugging Face"
     },
     {
@@ -221,12 +234,6 @@
       "host": "*.hf.co",
       "purpose": "Hugging Face's download servers, which serve those model files. Which ones answer depends on where the server is.",
       "receiver": "Hugging Face"
-    },
-    {
-      "from": "server",
-      "host": "*.modelscope.cn",
-      "purpose": "Downloads the text-recognition (OCR) models the first time they are needed.",
-      "receiver": "ModelScope (Alibaba Cloud)"
     },
     {
       "from": "browser",
@@ -251,6 +258,18 @@
     },
     {
       "type": "configured",
+      "claim": "MOS sets ORT_DISABLE_TELEMETRY=1 on the machine-learning image, so onnxruntime's usage telemetry to Microsoft stays off for every process in the container. It does not depend on Immich's in-code default, which another entry point or an upstream change could skip.",
+      "source": "apps/immich/Dockerfile.machine-learning",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS does not ship FUTO Backups. The baked config sets backup.beta=false, and IMMICH_CONFIG_FILE stops the admin web page from turning the beta on, which it tries to do when opened. That keeps the feature out of the web client. It does not remove the module from the server or its admin-only API, for which upstream has no setting.",
+      "source": "apps/immich/immich-config.json, apps/immich/Dockerfile, and web/src/routes/admin/backups/+page.ts at v3.4.1",
+      "retrievedAt": "2026-11-15"
+    },
+    {
+      "type": "configured",
       "claim": "MOS has decided to keep the map, because it is one of the fundamental features that make Immich what it is, and this review assessed that external dependency thoroughly before accepting it. The assessment finds it privacy respecting: photo locations never leave the owner's server, the requests reveal a map viewport rather than a location, and nothing identifying travels with them. What remains true is that the dependency exists and the tile operator logs request metadata, which Immich's privacy policy states plainly and which this review measured and found to match. Because MOS ships the map on as part of the package rather than as an opt-in, telemetry is recorded as unavoidable and the posture derives to external-dependency. That posture describes an accepted, examined cost rather than an unfinished assessment: the traffic is fully characterised in the evidence above, and MOS considers it a fair price for the feature.",
       "source": "apps/immich/immich-config.json, apps/immich/manifest.json, server/src/services/system-config.service.ts at v3.1.0, and the Immich privacy policy",
       "url": "https://immich.app/privacy-policy/",
@@ -261,15 +280,21 @@
     {
       "kind": "privacy",
       "url": "https://immich.app/privacy-policy/",
-      "retrievedAt": "2026-10-05",
+      "retrievedAt": "2026-11-15",
       "publisher": "Immich project (FUTO)",
       "effectiveDate": "2026-04-06"
     },
     {
       "kind": "license",
-      "url": "https://github.com/immich-app/immich/blob/v3.2.4/LICENSE",
-      "retrievedAt": "2026-10-05",
+      "url": "https://github.com/immich-app/immich/blob/v3.4.1/LICENSE",
+      "retrievedAt": "2026-11-15",
       "publisher": "Immich project"
+    },
+    {
+      "kind": "license",
+      "url": "https://github.com/futo-org/backups",
+      "retrievedAt": "2026-11-15",
+      "publisher": "FUTO Holdings, Inc. (Source First License 1.1, bundled FUTO Backups orchestrator)"
     }
   ],
   "provenance": {
@@ -278,8 +303,8 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f",
-    "repositoryCommit": "4fe7c65473b9374090f373f847b1fdbb6b47fe8f"
+    "skillRevision": "0d400e7e0ff08cb409d03ae8e54bdcf0646eb095",
+    "repositoryCommit": "0d400e7e0ff08cb409d03ae8e54bdcf0646eb095"
   },
   "lastHumanReview": {
     "reviewer": "Rasmus Puls",
@@ -287,12 +312,21 @@
     "appVersion": "3.1.0"
   },
   "openQuestions": [
-    "The runtime network captures behind this review were taken on Immich 3.1.0. For 3.2.4 the outbound list is carried forward on static evidence (image and source diffs) and a local upgrade drill without a capture. The lab E2E network step for this candidate is the first capture of 3.2.4.",
+    "The runtime captures behind this review's outbound list were taken on Immich 3.1.0 (lab) and in a local 3.2.4 to 3.4.1 drill (2026-11-15). The drill's capture saw no new host, but it ran outside a MOS lab and did not drive the web client. The lab E2E network step for this candidate is the capture of record.",
     "MOS's use of IMMICH_CONFIG_FILE to disable the version check has a wider effect than the privacy control it was chosen for: while that variable is set Immich rejects every system-configuration change, so storage templates, transcoding, machine-learning options, job concurrency, the backup schedule and the map are all frozen for the owner as well. Whether MOS should keep that trade, expose the settings it freezes, or disable the version check by another means is a packaging decision outside the scope of this review.",
     "Requests to the tile service carry a Referer header identifying the origin the Immich web client is served from. The capture was taken over loopback, so only http://127.0.0.1:2283/ was sent; a MOS deployment reached through a public domain would send that domain to Cloudflare alongside the tile coordinates under the browser default referrer policy. This is an inference from the observed header rather than a measured result, and has not been confirmed against a domain-based deployment.",
-    "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined.",
-    "Machine learning models are downloaded on first use from Hugging Face and from Alibaba Cloud's ModelScope, and the map loads tiles from Immich's Cloudflare-fronted infrastructure. These optional external touchpoints remain unless an operator disables machine learning or the map, and this review deliberately does not disable them.",
+    "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined. On 3.4.1 the document response still carries no Content-Security-Policy: upstream applies server/helmet.json only when IMMICH_HELMET_FILE is set, which this package does not do, so 3.4.0's stricter CSP (no unsafe-inline) does not reach MOS as packaged.",
+    "Machine learning models are downloaded on first use from Hugging Face, and the map loads tiles from Immich's Cloudflare-fronted infrastructure. These optional external touchpoints remain unless an operator disables machine learning or the map, and this review deliberately does not disable them.",
     "TLS payloads were not decrypted in either the server-side or client-side capture, so conclusions bound behaviour by destination, method, header content and volume rather than by asserting the contents of encrypted request bodies.",
-    "The Immich mobile applications, and any device or vendor cloud backups configured within them, remain outside the reviewed package boundary. The browser-based web client is now inside the boundary and was captured directly."
+    "The Immich mobile applications, and any device or vendor cloud backups configured within them, remain outside the reviewed package boundary. The browser-based web client is now inside the boundary and was captured directly.",
+    "FUTO Backups' admin-only API stays reachable with backup.beta off, and an administrator who opens /admin/backups by typing the address would make the server fetch meta.futo.cloud. Upstream has no setting to unload the module. Whether MOS should block those routes at its proxy is a packaging decision outside this review.",
+    "The bundled FUTO Backups orchestrator is under FUTO's non-commercial Source First License 1.1 rather than AGPL. Whether simply running it, unused, counts as use under that licence for an owner whose MOS serves a business is a legal question this review does not answer."
+  ],
+  "awaitingHumanReview": [
+    {
+      "appVersion": "3.4.1",
+      "date": "2026-11-15",
+      "finding": "From 3.4.0 the Immich server bundles FUTO Backups code under FUTO's non-commercial Source First License, not AGPL, and runs it even when the feature is off. Immich itself stays AGPL and MOS keeps the feature off, but the server owners run is no longer entirely open source."
+    }
   ]
 }
