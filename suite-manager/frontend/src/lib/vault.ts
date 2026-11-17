@@ -9,6 +9,8 @@ export type VaultView = {
   asksForPassword: boolean;
   chipNeedsRepair: boolean;
   encrypted: boolean;
+  // TEMPORARY (early-image-repair): servers installed from the 0.21–0.23 images. Gone before alpha.
+  kitNeedsReplacing?: boolean;
   vault: {
     sentence?: string | null;
     state: 'absent' | 'locked' | 'unknown' | 'unlocked' | 'unsupported';

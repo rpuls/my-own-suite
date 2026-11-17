@@ -38,6 +38,7 @@
 
 const path = require('node:path');
 
+const { EarlyImageRepair } = require('./early-image-repair.cjs');
 const { planLayout } = require('./layout.cjs');
 const {
   VAULT_DESCRIPTOR_PATH,
@@ -145,9 +146,10 @@ function describeLockout(seconds) {
 }
 
 class VaultAgentCore {
-  constructor(adapter, { descriptorPath = DESCRIPTOR_PATH, mountpoint = MOUNTPOINT } = {}) {
+  constructor(adapter, { descriptorPath = DESCRIPTOR_PATH, earlyImageRepair = new EarlyImageRepair(adapter), mountpoint = MOUNTPOINT } = {}) {
     this.adapter = adapter;
     this.descriptorPath = descriptorPath;
+    this.earlyImageRepair = earlyImageRepair;
     this.mountpoint = mountpoint;
   }
 
@@ -172,6 +174,7 @@ class VaultAgentCore {
       // `pending` means a copy of the key still sits on the plaintext partition
       // and the encryption protects nothing yet; the screens say so.
       handover: (await this.adapter.hasEscrow()) ? VAULT_HANDOVER.PENDING : VAULT_HANDOVER.DONE,
+      kitOpensDisk: mounted ? await this.earlyImageRepair.kitOpensDisk(descriptor.device) : null, // early-image-repair
       protects: PROTECTED_PATHS.map((entry) => entry.target),
       reason,
       sentence: reason ? sentenceFor(reason) : null,
@@ -453,6 +456,9 @@ class VaultAgentCore {
       // sitting on a disk its owner's kit no longer opens.
       if (result.reason === 'current-key-rejected' && await this.adapter.opensWith({ device: descriptor.device, key: nextKey })) {
         return { ok: true, unchanged: true, vault: true };
+      }
+      if (result.reason === 'current-key-rejected') { // early-image-repair
+        return this.earlyImageRepair.rekey({ device: descriptor.device, toKey: nextKey }).catch(() => ({ ok: false, reason: 'current-key-rejected' }));
       }
       return { ok: false, reason: result.reason || 'rekey-failed' };
     }
