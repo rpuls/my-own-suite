@@ -20,6 +20,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
 ### Security
 
 - **Every server installed from a new disk image gets its own recovery key.** The 0.22.0 and 0.23.0 images carried one backup recovery key for every download. First boot showed it as the server's recovery key while encrypting the disk with a different key, so the kit could not open the disk, and every server installed from one image shared the same backup key. New images carry no key, and the release check refuses an image that does. **If your server was installed from one of those images, change your recovery key after this update:** Suite Manager says so under Backup & Restore, and the change goes through the security chip, so it works while the chip still opens the disk. Backups made before the change can still be read with the old key by anyone who also has a copy of that backup storage.
+  - Reported by @NworbLegin in #345. Thank you.
 
 ## [0.23.0] - 2026-10-27
 
