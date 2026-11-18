@@ -34,6 +34,7 @@ function vaultRoutes({ logger, vault, vaultAgent }) {
           asksForPassword: vaultAsksForPassword(status),
           chipNeedsRepair: vaultChipNeedsRepair(status),
           encrypted: vaultIsPresent(status),
+          kitNeedsReplacing: status.kitOpensDisk === false, // early-image-repair
           vault: status,
         });
       },

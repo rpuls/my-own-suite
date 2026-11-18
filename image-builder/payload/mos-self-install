@@ -6,6 +6,10 @@
 # to an existing install. It installs or it stops on screen and restarts. See AGENTS.md.
 set -euo pipefail
 
+# The console, kept apart: a failure inside a `while read` loop would otherwise
+# read its "press Enter" from the loop's input and restart before anyone saw why.
+exec {console}<&0
+
 # The copy gives the disk the stick's own filesystem UUIDs, so for a moment two
 # disks answer to the same /dev/disk/by-uuid name. udev hands that name to the
 # newcomer, boot-efi.mount loses the device it is bound to, systemd stops
@@ -60,12 +64,29 @@ restart_machine() {
   while :; do sleep 3600; done
 }
 
+# A copy that stops before it has identifiers of its own carries the stick's, and
+# the next start from the stick then ran MOS from that disk instead of installing.
+# The owner already chose to erase this disk, so its partition table goes.
+copy_started=no
+erase_unfinished_copy() {
+  [ "$copy_started" = 'yes' ] || return 0
+  copy_started=no
+  umount -R /run/mos-self-install/target 2>/dev/null || true
+  wipefs --all --force "$target" >/dev/null 2>&1 || true
+  if [ -z "$(blkid -p -s PTTYPE -o value "$target" 2>/dev/null || true)" ]; then
+    printf '\n  The unfinished copy on %s was erased, so the stick starts the installer again.\n' "$target_name"
+  else
+    printf '\n  The unfinished copy on %s could not be erased. Choose this disk again in the installer.\n' "$target_name"
+  fi
+}
+
 # The stick installs or it stops: every way out that is not a finished install
 # leaves its reason on the screen until someone has read it, then restarts.
 # Nothing ever runs from the stick.
 stop_here() {
+  erase_unfinished_copy
   printf '\n  %s\n\n  %s\n  > ' "$1" "${2:-Press Enter to restart.}"
-  read -r _ || true
+  read -r -u "$console" _ || true
   fsfreeze -u / 2>/dev/null || true
   restore_after_copy
   release_udev
@@ -94,6 +115,50 @@ root_parent="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
 [ -n "$root_parent" ] || stop_here "This machine could not tell which disk holds ${root_source}, so nothing was installed."
 root_disk="/dev/$root_parent"
 
+is_external() {
+  [ "$(lsblk -dno TRAN "$1" 2>/dev/null | tr -d ' ' || true)" = 'usb' ] \
+    || [ "$(cat "/sys/block/$(basename "$1")/removable" 2>/dev/null || echo 0)" = '1' ]
+}
+
+# Asked of the kernel and of the disk itself, never of lsblk: lsblk reads PARTN
+# and PARTTYPE out of udev's database, and udev is held during the copy on
+# purpose, so it would answer with a blank for every partition just created.
+partitions_of() {
+  local disk_name part
+  disk_name="$(basename "$1")"
+  for part in "/sys/class/block/${disk_name}"/*/partition; do
+    [ -e "$part" ] || continue
+    printf '/dev/%s\n' "$(basename "$(dirname "$part")")"
+  done
+}
+partition_number() { cat "/sys/class/block/$(basename "$1")/partition" 2>/dev/null || true; }
+
+# Written onto the stick just before the copy and removed from the disk once it
+# has identifiers of its own. The stick cannot be looked for instead: a USB disk
+# shows up seconds after an internal one, which is why the stick's boot lands on
+# the copy in the first place, and long after this script has run.
+unfinished_copy_mark=/etc/mos-unfinished-copy
+root_uuid="$(blkid -p -s UUID -o value "$root_source" 2>/dev/null || true)"
+
+refuse_unfinished_copy() {
+  printf '\n  My Own Suite installer\n  ----------------------\n\n'
+  printf '  %s holds a copy of the installer that never finished installing,\n' "$root_parent"
+  printf '  so it cannot run.\n\n'
+  printf '  Type ERASE to erase %s, then start the machine from the USB stick to\n' "$root_parent"
+  printf '  install again. Press Enter to restart without erasing.\n  > '
+  local answer
+  read -r answer || while :; do sleep 3600; done
+  if [ "${answer,,}" = 'erase' ]; then
+    wipefs --all --force "$root_disk" >/dev/null 2>&1 || true
+  fi
+  restart_machine
+}
+
+if ! is_external "$root_disk" && [ -n "$root_uuid" ] \
+  && [ "$(cat "$unfinished_copy_mark" 2>/dev/null || true)" = "$root_uuid" ]; then
+  refuse_unfinished_copy
+fi
+
 # The only way this script ends without a restart: the machine started from its
 # own internal disk, which is an installed MOS rather than the installer.
 transport="$(lsblk -dno TRAN "$root_disk" 2>/dev/null | tr -d ' ' || true)"
@@ -116,11 +181,7 @@ candidates=()
 while read -r name type; do
   [ "$type" = "disk" ] || continue
   [ "$name" != "$root_disk" ] || continue
-  candidate_name="$(basename "$name")"
-  candidate_transport="$(lsblk -dno TRAN "$name" 2>/dev/null | tr -d ' ' || true)"
-  candidate_removable="$(cat "/sys/block/$candidate_name/removable" 2>/dev/null || echo 0)"
-  [ "$candidate_transport" != "usb" ] || continue
-  [ "$candidate_removable" != "1" ] || continue
+  ! is_external "$name" || continue
   [ "$(blockdev --getsize64 "$name")" -ge "$source_bytes" ] || continue
   candidates+=("$name")
 done < <(lsblk -dnpo NAME,TYPE)
@@ -248,6 +309,24 @@ while :; do
   printf '\n  Not confirmed, nothing has changed.\n\n'
 done
 
+# A disk that held Ubuntu Server has its LVM volume group switched on by this
+# live system, and the kernel will not re-read a partition table while anything
+# holds one of its partitions open. Nothing is written yet, so a holder that will
+# not close stops the install with the disk as it was.
+release_holders() {
+  local holder name
+  for holder in "/sys/class/block/$(basename "$1")"/holders/*; do
+    [ -e "$holder" ] || continue
+    release_holders "$holder"
+    name="$(cat "$holder/dm/name" 2>/dev/null || basename "$holder")"
+    printf '  Closing %s, which holds %s open.\n' "$name" "$(basename "$1")"
+    dmsetup remove --retry "/dev/$(basename "$holder")" >/dev/null 2>&1 \
+      || stop_here "Could not close ${name}, which holds $(basename "$1") open. Nothing was installed."
+  done
+}
+release_holders "$target"
+while read -r part; do release_holders "$part"; done < <(partitions_of "$target")
+
 stage 'Copying. This takes a few minutes and must not be interrupted.'
 # The freeze blocks every writer to the root, so systemd would kill journald for
 # a missed watchdog and the hung-task detector would print over the progress line
@@ -258,10 +337,12 @@ quiet_for_copy
 # The stick is a live, writable root while it is copied, and remounting a running
 # root read-only fails, so the filesystem is frozen instead: writes wait until the
 # copy is done, and the copy is one consistent moment rather than a smear.
+printf '%s\n' "$root_uuid" > "$unfinished_copy_mark"
 sync
 hold_udev
 fsfreeze -f /
 trap 'fsfreeze -u / 2>/dev/null || true; restore_after_copy; release_udev' EXIT
+copy_started=yes
 dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
 fsfreeze -u /
 restore_after_copy
@@ -272,8 +353,8 @@ sync
 # install that skipped its identity clean did so silently, and the only evidence
 # was a disk carrying the stick's host keys.
 fail_after_copy() {
-  printf '\n  The copy is on %s, but this step failed:\n\n      %s\n' "$target_name" "$1"
-  stop_here 'That disk may boot, but it is not a finished install.' 'Photograph this screen, then press Enter to restart.'
+  printf '\n  Installing onto %s failed at this step:\n\n      %s\n' "$target_name" "$1"
+  stop_here 'Nothing was installed.' 'Photograph this screen, then press Enter to restart.'
 }
 
 # Nothing here lays the disk out. The vault gate does that on the disk's first
@@ -293,19 +374,6 @@ reread_partitions() {
     sleep 2
   done
 }
-# Asked of the kernel and of the disk itself, never of lsblk: lsblk reads PARTN
-# and PARTTYPE out of udev's database, and udev is held here on purpose, so it
-# would answer with a blank for every partition that was just created and the
-# EFI partition would look as though it had never appeared.
-partitions_of() {
-  local disk_name part
-  disk_name="$(basename "$1")"
-  for part in "/sys/class/block/${disk_name}"/*/partition; do
-    [ -e "$part" ] || continue
-    printf '/dev/%s\n' "$(basename "$(dirname "$part")")"
-  done
-}
-partition_number() { cat "/sys/class/block/$(basename "$1")/partition" 2>/dev/null || true; }
 
 reread_partitions
 source_parts="$(partitions_of "$root_disk" | grep -c . || true)"
@@ -378,7 +446,7 @@ mount_error="$(mount "$esp_partition" "$target_root/boot/efi" 2>&1)" || fail_aft
 # identity: its SSH host keys, its machine-id and its journal so far. Cleared
 # here so the disk's first boot makes its own, as a fresh install would, and
 # two machines installed from one stick never share a host key or a DHCP id.
-rm -f "$target_root"/etc/ssh/ssh_host_*
+rm -f "$target_root"/etc/ssh/ssh_host_* "$target_root$unfinished_copy_mark"
 : > "$target_root/etc/machine-id"
 rm -f "$target_root/var/lib/dbus/machine-id"
 rm -rf "$target_root"/var/log/journal/*
@@ -442,6 +510,7 @@ else
   boot_entry_registered=0
 fi
 
+copy_started=no
 printf '\n'
 printf '  Done.\n\n'
 if [ "$boot_entry_registered" -eq 0 ]; then

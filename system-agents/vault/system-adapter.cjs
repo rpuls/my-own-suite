@@ -59,6 +59,9 @@ const TPM_PIN_CREDENTIAL = 'cryptsetup.tpm2-pin';
 // other non-zero code is a real fault and is raised rather than reported as a
 // wrong key.
 const CRYPTSETUP_NO_PERMISSION = 2;
+// cryptsetup tries a disk's tokens before the key it is handed, so without this
+// a chip that answers makes any key "open" the disk.
+const KEY_ONLY = '--disable-external-tokens';
 const SWAPFILE_BYTES = 2 * 1024 * 1024 * 1024;
 // Left free after the swapfile, and the smallest swapfile worth making.
 const SWAPFILE_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
@@ -309,7 +312,7 @@ class SystemVaultAdapter {
   async luksOpen({ device, key, mapper }) {
     if (!key) return { ok: false };
     try {
-      await run('cryptsetup', ['open', '--key-file', '-', device, mapper], { input: key, mask: [key] });
+      await run('cryptsetup', ['open', KEY_ONLY, '--key-file', '-', device, mapper], { input: key, mask: [key] });
       return { ok: true };
     } catch (error) {
       if (error?.exitCode === CRYPTSETUP_NO_PERMISSION) return { ok: false };
@@ -604,7 +607,7 @@ class SystemVaultAdapter {
   // key is wrong".
   async opensWith({ device, key }) {
     try {
-      await run('cryptsetup', ['open', '--test-passphrase', '--key-file', '-', device], { input: key, mask: [key] });
+      await run('cryptsetup', ['open', '--test-passphrase', KEY_ONLY, '--key-file', '-', device], { input: key, mask: [key] });
       return true;
     } catch {
       return false;
@@ -636,7 +639,7 @@ class SystemVaultAdapter {
       await fsp.writeFile(keyFile, toKey, { mode: 0o600 });
 
       try {
-        await run('cryptsetup', ['luksAddKey', '--batch-mode', '--key-file', '-', device, keyFile], {
+        await run('cryptsetup', ['luksAddKey', '--batch-mode', KEY_ONLY, '--key-file', '-', device, keyFile], {
           input: fromKey,
           mask: [fromKey, toKey],
         });
@@ -648,18 +651,18 @@ class SystemVaultAdapter {
       }
 
       try {
-        await run('cryptsetup', ['open', '--test-passphrase', '--key-file', '-', device], { input: toKey, mask: [toKey] });
+        await run('cryptsetup', ['open', '--test-passphrase', KEY_ONLY, '--key-file', '-', device], { input: toKey, mask: [toKey] });
       } catch (error) {
         // The added slot cannot be left behind: a key that half-works is worse
         // than one that never went in, because nothing afterwards would report
         // it. Removed with the key that was just added, which is the only one
         // guaranteed to match that slot.
-        try { await run('cryptsetup', ['luksRemoveKey', '--batch-mode', '--key-file', '-', device], { input: toKey, mask: [toKey] }); } catch {}
+        try { await run('cryptsetup', ['luksRemoveKey', '--batch-mode', KEY_ONLY, '--key-file', '-', device], { input: toKey, mask: [toKey] }); } catch {}
         throw fail('VAULT_REKEY_FAILED', 'MOS added the new key to the vault but it did not open it, so nothing was changed.', error);
       }
 
       try {
-        await run('cryptsetup', ['luksRemoveKey', '--batch-mode', '--key-file', '-', device], { input: fromKey, mask: [fromKey] });
+        await run('cryptsetup', ['luksRemoveKey', '--batch-mode', KEY_ONLY, '--key-file', '-', device], { input: fromKey, mask: [fromKey] });
       } catch (error) {
         // Both keys open the vault at this point. That is safe — it is the
         // state the owner would be in either way — but it is not what was
@@ -676,12 +679,12 @@ class SystemVaultAdapter {
   /**
    * Hands the key to the backup agent by writing it where the agent already
    * looks for one. The agent generates its own on first start if that file is
-   * absent, so writing it here — before the agent has ever run — is what makes
-   * the disk key and the backup key the same key, with no change to the backup
-   * agent and no second secret for the owner to keep.
+   * absent, so writing it here is what makes the disk key and the backup key
+   * the same key, with no change to the backup agent and no second secret for
+   * the owner to keep. A key already there can only have come in with the
+   * image, and keeping it hands the owner a kit that does not open their disk.
    */
   async publishRecoveryKey({ key }) {
-    if (this.keys.readKey()) return { published: false, reason: 'already-present' };
     this.keys.writeKey(key);
     return { fingerprint: fingerprint(key), published: true };
   }
@@ -704,7 +707,9 @@ class SystemVaultAdapter {
     // which takes minutes, and the owner is looking at a form. Not `quiet`: a
     // systemd that would not take the job is the one failure here worth a line
     // in the journal.
-    await run('systemctl', ['start', '--no-block', 'default.target']);
+    // multi-user.target named as well: on Ubuntu Server the default is graphical.target, and
+    // starting that while it is active queued nothing for the units multi-user.target wants.
+    await run('systemctl', ['start', '--no-block', 'multi-user.target', 'default.target']);
     // Caddy stays up while the vault is locked so it can serve the page that
     // asks for the key, which means it started without the secrets that live in
     // the vault. Now that they are there, it gets to read them.
@@ -712,4 +717,4 @@ class SystemVaultAdapter {
   }
 }
 
-module.exports = { SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };
+module.exports = { KEY_ONLY, SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };

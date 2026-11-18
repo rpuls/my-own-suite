@@ -16,6 +16,52 @@ test('the installer exits only when the machine started from its own internal di
   assert.match(lines[exitAt - 1], /\$transport" != "usb" \] && \[ "\$removable" != "1" \]/u);
 });
 
+test('a disk holding an unfinished copy of the installer never runs MOS', () => {
+  const lines = code(read('mos-self-install'));
+  const refuseAt = lines.findIndex((line) => line === '  refuse_unfinished_copy');
+  const exitAt = lines.findIndex((line) => line.trim() === 'exit 0');
+  const markAt = lines.findIndex((line) => line.includes('> "$unfinished_copy_mark"'));
+  const copyAt = lines.findIndex((line) => line.startsWith('dd if='));
+
+  assert.ok(refuseAt > 0 && refuseAt < exitAt);
+  assert.match(lines[refuseAt - 1], /"\$\(cat "\$unfinished_copy_mark".*= "\$root_uuid" \]; then$/u);
+  assert.ok(markAt > 0 && markAt < copyAt);
+  assert.ok(lines.some((line) => line.startsWith('rm -f') && line.includes('"$target_root$unfinished_copy_mark"')));
+});
+
+test('an install that stops after the copy began erases the copy before restarting', () => {
+  const lines = code(read('mos-self-install'));
+  const stopHere = lines.findIndex((line) => line.startsWith('stop_here() {'));
+  const startedAt = lines.findIndex((line) => line.trim() === 'copy_started=yes');
+
+  assert.equal(lines[stopHere + 1].trim(), 'erase_unfinished_copy');
+  assert.match(lines[startedAt + 1], /^dd if=/u);
+});
+
+test('a finished install is never erased, even if the restart after Done fails', () => {
+  const lines = code(read('mos-self-install'));
+  const doneAt = lines.findIndex((line) => line.includes("'  Done.\\n\\n'"));
+  const finishedAt = lines.lastIndexOf('copy_started=no');
+
+  assert.ok(finishedAt > 0 && finishedAt < doneAt);
+});
+
+test('every stop reads its Enter from the console, never from a loop it was called in', () => {
+  const lines = code(read('mos-self-install'));
+  const stopHere = lines.findIndex((line) => line.startsWith('stop_here() {'));
+
+  assert.ok(lines.includes('exec {console}<&0'));
+  assert.match(lines[stopHere + 3], /^\s+read -r -u "\$console" _/u);
+});
+
+test('the installer closes whatever holds the target disk open before copying onto it', () => {
+  const lines = code(read('mos-self-install'));
+  const releaseAt = lines.findIndex((line) => line.startsWith('release_holders "$target"'));
+  const copyAt = lines.findIndex((line) => line.startsWith('dd if='));
+
+  assert.ok(releaseAt > 0 && releaseAt < copyAt);
+});
+
 test('every restart in the installer holds the machine if the restart itself fails', () => {
   const lines = code(read('mos-self-install'));
   const reboots = lines.filter((line) => /\breboot\b/u.test(line));
