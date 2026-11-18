@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, Rows, TextInput, Tooltip } from '../../components/ui';
+import { AiAppAccess } from '../settings/ai/AiAppAccess';
 import { AppConfigDialog, ownerDefault } from './AppConfigDialog';
 import { DriveChoice, driveFoldersLine, folderList, useDriveChoice } from './DriveChoice';
 import { openStorageSettings, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
@@ -588,6 +589,8 @@ export function AppDetail({
             })}
           </div>
         </section> : null}
+
+        {app.instance ? <AiAppAccess packageId={app.id} /> : null}
 
         {(Object.keys(app.catalog.links).length || related.length) ? <section className="suite-app-detail-section">
           <h3>Links and related apps</h3>

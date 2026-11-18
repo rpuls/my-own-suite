@@ -72,8 +72,9 @@ function reviewStateOf(tool, pins) {
 }
 
 class AiConnectionsService {
-  constructor({ aiStore, catalog, fetchImpl = fetch, now = () => new Date(), secretDir, suiteAddress }) {
+  constructor({ aiStore, appUrlOf = () => null, catalog, fetchImpl = fetch, now = () => new Date(), secretDir, suiteAddress }) {
     this.aiStore = aiStore;
+    this.appUrlOf = appUrlOf;
     this.catalog = catalog;
     this.fetchImpl = fetchImpl;
     this.now = now;
@@ -83,6 +84,14 @@ class AiConnectionsService {
 
   at() {
     return this.now().toISOString();
+  }
+
+  appUrlFor(packageId) {
+    try {
+      return this.appUrlOf(packageId) || null;
+    } catch {
+      return null;
+    }
   }
 
   // Bearer tokens travel in a header, so the address is offered only over HTTPS.
@@ -124,7 +133,7 @@ class AiConnectionsService {
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: builtin ? null : { appUrl: this.appUrlFor(source.id), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -155,11 +164,14 @@ class AiConnectionsService {
     this.housekeeping();
     const parsedBefore = Number.parseInt(before, 10);
     const parsedLimit = Number.parseInt(limit, 10);
-    return this.aiStore.activity({
+    const page = this.aiStore.activity({
       before: Number.isInteger(parsedBefore) ? parsedBefore : null,
       clientId: typeof clientId === 'string' && clientId ? clientId : null,
-      limit: Number.isInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 50,
+      limit: Number.isInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50,
     });
+    const sources = this.catalog.sources().sort((left, right) => right.prefix.length - left.prefix.length);
+    const sourceIdOf = (tool) => sources.find((source) => String(tool || '').startsWith(source.prefix))?.id ?? null;
+    return { ...page, entries: page.entries.map((entry) => ({ ...entry, sourceId: sourceIdOf(entry.tool) })) };
   }
 
   // ---- connections ----

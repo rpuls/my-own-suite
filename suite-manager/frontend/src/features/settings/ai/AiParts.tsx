@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { ActionMenu, Dialog, DisclosureRow, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
 import { whenWords } from '../../../lib/dates';
 import { ConnectInstructions, PrivacyLine } from './AddAssistantDialog';
 import {
-  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, presetOf, PRESETS, ROUTE_WORDS, toolAllowed,
+  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
   type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type OfferedKind,
 } from './model';
 
@@ -13,6 +13,7 @@ export type ClientActions = {
   onDefaultLevel: (level: AiLevel) => void;
   onException: (tool: string, exception: AiException | null) => void;
   onLevel: (sourceId: string, level: AiLevel) => void;
+  onLevelWithToken: (sourceId: string, level: AiLevel, token: string) => Promise<string>;
   onRemove: () => void;
   onReset: (sourceId: string) => void;
   onRotate: () => void;
@@ -36,28 +37,80 @@ function clientMeta(client: AiClient, sources: AiSource[]) {
   return [...(shared.length ? shared : ['nothing shared yet']), used].join(' · ');
 }
 
+function needsToken(source: AiSource) {
+  return Boolean(source.token && !source.token.configured);
+}
+
 function levelHelp(source: AiSource, level: AiLevel) {
-  if (source.token && !source.token.configured) return `Needs a ${source.name} access token before an AI can use it.`;
   if (!source.running) return `${source.name} is stopped, so an AI cannot use it right now.`;
-  if (level === 'off') return source.builtin ? 'Cannot see how your apps are doing.' : `Cannot use ${source.name}.`;
-  const offered = source.tools.filter(isOffered);
-  const allowed = offered.filter((tool) => (level === 'act' ? true : tool.kind === 'read'));
-  const notes = allowed.map((tool) => tool.note).filter(Boolean).join(' ');
+  if (source.builtin) {
+    return { act: 'Can check how your apps are doing and restart one that is stuck.', off: 'Cannot see how your apps are doing.', see: 'Can check how your apps are doing.' }[level];
+  }
+  if (level === 'off') return `Cannot use ${source.name}.`;
+  const allowed = source.tools.filter(isOffered).filter((tool) => (level === 'act' ? true : tool.kind === 'read'));
+  const notes = [...new Set(allowed.map((tool) => tool.note).filter(Boolean))].join(' ');
   const verb = level === 'act' ? 'Can look things up and make changes' : 'Can look things up';
   return `${verb} in ${source.name}.${notes ? ` ${notes}` : ''}`;
 }
 
-function SourceLevel({ busy, client, onCustomize, onLevel, source }: { busy: boolean; client: AiClient; onCustomize: () => void; onLevel: (level: AiLevel) => void; source: AiSource }) {
+// The first time an app is opened to any AI, the app has to let MOS in once.
+// Asked here, at the moment it matters, rather than as a field of its own.
+function TokenStep({ level, onCancel, onSave, source }: { level: AiLevel; onCancel: () => void; onSave: (token: string) => Promise<string>; source: AiSource }) {
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!draft.trim()) return;
+    setSaving(true);
+    setError(await onSave(draft.trim()));
+    setSaving(false);
+  }
+
+  return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
+    <Notice title={`Let MOS into ${source.name}`} variant="info">
+      <p>You chose {LEVEL_LABEL[level]}. {source.name} has to let MOS in first, once for every AI you connect. {source.token?.hint || `Create an access token in ${source.name}.`} It stays on your suite and is never given to an AI.</p>
+    </Notice>
+    {source.token?.appUrl ? <a className="mos-btn mos-btn-secondary" href={source.token.appUrl} rel="noreferrer" target="_blank">Open {source.name}</a> : null}
+    <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
+    {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
+    <div className="suite-ai-token-actions">
+      <button className="mos-btn mos-btn-ghost" disabled={saving} onClick={onCancel} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking...' : 'Save and turn on'}</button>
+    </div>
+  </form>;
+}
+
+function SourceLevel({ busy, client, onCustomize, onLevel, onLevelWithToken, source }: {
+  busy: boolean;
+  client: AiClient;
+  onCustomize: () => void;
+  onLevel: (level: AiLevel) => void;
+  onLevelWithToken: (level: AiLevel, token: string) => Promise<string>;
+  source: AiSource;
+}) {
+  const [pending, setPending] = useState<AiLevel | null>(null);
   const level = levelOf(client, source.id);
+  useEffect(() => { if (!needsToken(source)) setPending(null); }, [source]);
+
+  function pick(next: AiLevel) {
+    if (next !== 'off' && needsToken(source)) setPending(next);
+    else onLevel(next);
+  }
+
   const custom = customizedTools(client, source).length > 0;
   const offered = source.tools.some(isOffered);
   const label = <>{source.name}{custom ? <> <span className="mos-pill">Custom</span></> : null}{source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}</>;
-  return <Row
-    help={<>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>}
-    label={label}
-  >
-    <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
-  </Row>;
+  return <>
+    <Row
+      help={<>{levelHelp(source, level)}{offered && !pending ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>}
+      label={label}
+    >
+      <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={pick} options={LEVEL_OPTIONS} value={pending ?? level} />
+    </Row>
+    {pending ? <TokenStep level={pending} onCancel={() => setPending(null)} onSave={(token) => onLevelWithToken(pending, token)} source={source} /> : null}
+  </>;
 }
 
 export function ClientItem({ actions, busy, changed, client, expanded, onToggle, sources }: {
@@ -85,16 +138,16 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
       {menu}
     </>}>
       <span className="suite-source-main">
-        <strong>{client.name} · {ROUTE_WORDS[client.route]}</strong>
+        <strong>{client.name}</strong>
         <span className="suite-meta">{clientMeta(client, sources)}</span>
       </span>
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
       {sources.length ? <Rows>
-        {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} source={source} />)}
+        {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onLevelWithToken={(level, token) => actions.onLevelWithToken(source.id, level, token)} source={source} />)}
       </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}
       <p className="suite-meta">Apps you add later start as {LEVEL_LABEL[client.defaultLevel]}. <button className="mos-link suite-link-button" disabled={busy} onClick={() => setChoosingDefault(true)} type="button">Change</button></p>
-      {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.{client.preset === 'chatgpt' ? ' In ChatGPT: Plugins → the plugin → Refresh tools.' : ''}</p> : null}
+      {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.</p> : null}
     </div> : null}
     {customizeSource ? <CustomizeDialog actions={actions} busy={busy} client={client} onClose={() => setCustomizing('')} source={customizeSource} /> : null}
     {choosingDefault ? <DefaultLevelDialog busy={busy} client={client} onChange={actions.onDefaultLevel} onClose={() => setChoosingDefault(false)} /> : null}
@@ -209,12 +262,11 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
 }
 
 export function NewTokenDialog({ client, mcpUrl, onClose, token }: { client: AiClient; mcpUrl: string | null; onClose: () => void; token: string }) {
-  const preset = presetOf(client.preset) ?? PRESETS.find((candidate) => candidate.id === 'other')!;
   return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>} onClose={onClose} title={`New token for ${client.name}`}>
     <div className="suite-settings-form">
       <p>The old token no longer works. Set {client.name} up again with this one.</p>
-      <ConnectInstructions mcpUrl={mcpUrl} preset={preset} token={token} />
-      <PrivacyLine preset={preset} />
+      <ConnectInstructions mcpUrl={mcpUrl} token={token} />
+      <PrivacyLine />
     </div>
   </Dialog>;
 }

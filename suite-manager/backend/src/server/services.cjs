@@ -186,6 +186,7 @@ function createServices({
   });
   const aiConnections = new AiConnectionsService({
     aiStore: new AiStore(setup.store),
+    appUrlOf: (packageId) => appUrls.publicUrlOf(packageId).publicUrl,
     catalog: new AiToolCatalog({
       appPackages,
       builtin: createMosTools({

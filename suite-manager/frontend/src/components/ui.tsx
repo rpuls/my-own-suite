@@ -262,6 +262,25 @@ export function Segmented<T extends string>({ disabled = false, label, onChange,
   </span>;
 }
 
+// Narrows a page to one of a handful of named things, such as which AI. Unlike
+// Segmented the options are not steps on a scale and may wrap onto more lines.
+export function FilterChips<T extends string>({ label, onChange, options, value }: {
+  label: string;
+  onChange: (value: T) => void;
+  options: Array<{ label: string; lead?: ReactNode; value: T }>;
+  value: T;
+}) {
+  return <div aria-label={label} className="mos-filter-chips" role="group">
+    {options.map((option) => <button aria-pressed={option.value === value} className={`mos-filter-chip${option.lead ? ' has-lead' : ''}`} key={option.value} onClick={() => onChange(option.value)} type="button">
+      {option.lead}{option.label}
+    </button>)}
+  </div>;
+}
+
+export function Avatar({ colour, initials }: { colour: string; initials: string }) {
+  return <span aria-hidden="true" className="mos-avatar" style={{ background: colour }}>{initials}</span>;
+}
+
 // The settings row: label left, value right, hairline between neighbours. One
 // element covers every line of app configuration, and the only distinction it
 // draws is colour â€” a value in text-strong can be typed into, a value in
