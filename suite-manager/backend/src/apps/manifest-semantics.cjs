@@ -443,6 +443,9 @@ function validateMcpExport(manifest, capability, prefix, errors) {
   if (capability.auth.verifyTool !== undefined && !MCP_TOOL_NAME_PATTERN.test(String(capability.auth.verifyTool))) {
     errors.push(`${prefix}.auth.verifyTool must be a tool name when present.`);
   }
+  if (capability.auth.tokenPage !== undefined && !/^\/[^\s]{0,199}$/u.test(String(capability.auth.tokenPage))) {
+    errors.push(`${prefix}.auth.tokenPage must be a path in the app, starting with /, when present.`);
+  }
 }
 
 function validateExportsSemantics(manifest, errors) {

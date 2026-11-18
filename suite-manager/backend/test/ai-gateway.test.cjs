@@ -145,7 +145,7 @@ test('serious, destructive and undeclared tools never run, whatever the level or
   for (const name of ['memos_memo_delete_memo', 'memos_memo_share_memo', 'memos_space_delete_space', 'memo_delete_memo']) {
     const result = await h.call(token, name);
     assert.equal(result.isError, true, name);
-    assert.match(result.content[0].text, /not available to this assistant/u, name);
+    assert.match(result.content[0].text, /not available to this AI/u, name);
   }
   assert.deepEqual(h.memos.calls, []);
 });

@@ -1,7 +1,7 @@
 const { jsonResponse } = require('../responses.cjs');
 
-const SIGN_IN = 'Sign in to manage AI assistants.';
-const ACTIVITY_SIGN_IN = 'Sign in to see what AI assistants did.';
+const SIGN_IN = 'Sign in to manage your AI.';
+const ACTIVITY_SIGN_IN = 'Sign in to see what your AI did.';
 const CLIENT = '\\/settings\\/ai\\/clients\\/([^/]+)';
 
 function aiRoutes({ aiConnections }) {

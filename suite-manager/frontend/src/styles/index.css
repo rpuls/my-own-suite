@@ -4282,6 +4282,16 @@ button.suite-bk-group {
   margin: 0;
 }
 
+.suite-ai-secret {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-ai-secret.is-multiline .mos-secret-value {
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .suite-ai-token-step {
   display: grid;
   gap: var(--mos-space-3);

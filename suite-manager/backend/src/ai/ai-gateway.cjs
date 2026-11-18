@@ -49,7 +49,7 @@ class AiGateway {
     const client = this.connections.authenticate(presentedToken(request));
     if (!client) {
       this.connections.recordRejectedClient(Date.now() - started);
-      send(response, 401, { error: 'Unknown AI client. Create one in My Own Suite under Settings → AI connections.' }, { 'WWW-Authenticate': 'Bearer' });
+      send(response, 401, { error: 'Unknown AI. Connect it in My Own Suite under Settings → AI assistants.' }, { 'WWW-Authenticate': 'Bearer' });
       return;
     }
 
