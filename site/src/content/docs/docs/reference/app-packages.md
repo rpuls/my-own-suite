@@ -38,7 +38,7 @@ On install, MOS copies the validated package — manifest, setup schema, privacy
 - **`homepage`** — the dashboard tile (group, name, description, icon), plus optional widgets.
 - **`health`** — how the platform verifies the app is actually up.
 - **`onboarding`** — optional post-install setup guides (steps, sections, copyable values) rendered in Suite Manager.
-- **`exports` / `integrations`** — the capability system behind [app connections](/docs/guides/apps/): a provider exports a capability (ONLYOFFICE exports `documentEditor`), a consumer declares a slot for it (Seafile consumes one), and the platform can wire them together — secret grants, network attachment, config patching — without app-specific code in the core.
+- **`exports` / `integrations`** — the capability system behind [app connections](/docs/guides/apps/): a provider exports a capability (ONLYOFFICE exports `documentEditor`), a consumer declares a slot for it (Seafile consumes one), and the platform can wire them together — secret grants, network attachment, config patching — without app-specific code in the core. An app that serves an MCP server exports it as an [`mcp-server`](/docs/reference/manifest/#ai-tools-mcp-server-export), which lets the owner's AI use the tools the package lists, each with a reviewed kind.
 
 ## Trust and sources
 

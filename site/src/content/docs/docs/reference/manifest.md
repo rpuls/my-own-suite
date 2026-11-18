@@ -263,6 +263,64 @@ These work today for official packages but their shape is **not** frozen; avoid 
 - `role` (`capability-provider`), `exports`, `integrations`, `configTargets`, `usefulness` — the capability system. Proven by exactly one relationship (Seafile ⇄ ONLYOFFICE); it will be locked when more relationships have shaped it.
 - `homepage.widget` — only the monthly calendar widget exists; a general widget contract is future work.
 - `routes[].internalIcalBridge` — a token-gated read-only proxy path, expected to be replaced by a general bridge contract.
+- `exports` entries of type `mcp-server` — the tools an app offers to the owner's AI, described below. Proven by one app (Memos).
+
+### AI tools (`mcp-server` export)
+
+An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer its tools to the AI an owner connects in **Settings → AI assistants**. The AI never reaches the app directly: it talks to one gateway in Suite Manager, which shows it only the tools the owner allowed and forwards each call to the app. The app declares its server as an export:
+
+```json
+"exports": {
+  "mcp": {
+    "type": "mcp-server",
+    "interfaceVersion": 1,
+    "protocol": "mcp-streamable-http",
+    "service": "memos",
+    "path": "/mcp",
+    "auth": {
+      "kind": "owner-token",
+      "hint": "In Memos, open Settings → Access Tokens, choose Create, and pick No expiration.",
+      "tokenPage": "/setting#access-token",
+      "verifyTool": "auth_get_current_user"
+    },
+    "tools": {
+      "memo_list_memos": { "kind": "read", "title": "Search notes" },
+      "memo_create_memo": {
+        "kind": "add",
+        "title": "Save a new note",
+        "note": "New notes are always private.",
+        "fixed": { "body.visibility": "PRIVATE" }
+      },
+      "memo_delete_memo": "destructive"
+    }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `type` | `mcp-server`. A package declares at most one. |
+| `interfaceVersion`, `protocol` | `1` and `mcp-streamable-http` today. |
+| `service`, `path` | The routed service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server; a `url` is refused, so an export can never point MOS somewhere else. |
+| `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. It is never given to an AI. |
+| `auth.hint` | Optional. One sentence, at most 200 characters, telling the owner where the app makes that token. |
+| `auth.tokenPage` | Optional. The path inside the app where tokens are made, starting with `/`. MOS's **Open** button lands there. |
+| `auth.verifyTool` | Optional. A tool MOS calls with a pasted token before saving it, so a wrong token is refused on the spot. |
+| `tools` | Every tool MOS may offer, by the name the app's server uses. A tool the app serves but the manifest does not list is never offered. |
+| `tools.<name>` | A kind as a string, or an object with `kind` plus optional `title` (at most 60 characters, the words owners see), `note` (at most 160, shown under the tool), and `fixed`. |
+| `tools.<name>.fixed` | Arguments MOS sets on every call, whatever the AI sent, by dotted path (`body.visibility`), each a string, number or boolean. This is how a new note is kept private. |
+
+The **kind** is the reviewed promise about what a tool does, and it decides when the tool runs:
+
+| Kind | Meaning | Runs when the owner sets the app to |
+| --- | --- | --- |
+| `read` | Looks things up, changes nothing | See, or See and do |
+| `add` | Creates something new | See and do |
+| `change` | Edits something that exists | See and do |
+| `serious` | Cannot be undone, or reaches other people | Never offered yet |
+| `destructive` | Deletes or destroys | Never offered |
+
+Writes are capped at 30 an hour per AI. MOS fingerprints each tool's name, description and input schema the first time it sees them; a tool that later changes is held as **Needs review** until the owner accepts it. A package update that starts offering tools asks the owner's consent like any other new permission. Because `exports` is provisional, using `mcp-server` needs no `minimumMosVersion` bump.
 
 ## What stays out — permanently
 
