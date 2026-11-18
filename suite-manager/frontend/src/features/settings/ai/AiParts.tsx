@@ -4,7 +4,7 @@ import { ActionMenu, Dialog, DisclosureRow, Notice, PanelItem, Row, RowSwitch, R
 import { whenWords } from '../../../lib/dates';
 import { ConnectInstructions, PrivacyLine } from './AddAssistantDialog';
 import {
-  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, presetOf, PRESETS, ROUTE_WORDS, toolAllowed,
+  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
   type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type OfferedKind,
 } from './model';
 
@@ -85,7 +85,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
       {menu}
     </>}>
       <span className="suite-source-main">
-        <strong>{client.name} · {ROUTE_WORDS[client.route]}</strong>
+        <strong>{client.name}</strong>
         <span className="suite-meta">{clientMeta(client, sources)}</span>
       </span>
     </DisclosureRow>
@@ -94,7 +94,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
         {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} source={source} />)}
       </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}
       <p className="suite-meta">Apps you add later start as {LEVEL_LABEL[client.defaultLevel]}. <button className="mos-link suite-link-button" disabled={busy} onClick={() => setChoosingDefault(true)} type="button">Change</button></p>
-      {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.{client.preset === 'chatgpt' ? ' In ChatGPT: Plugins → the plugin → Refresh tools.' : ''}</p> : null}
+      {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.</p> : null}
     </div> : null}
     {customizeSource ? <CustomizeDialog actions={actions} busy={busy} client={client} onClose={() => setCustomizing('')} source={customizeSource} /> : null}
     {choosingDefault ? <DefaultLevelDialog busy={busy} client={client} onChange={actions.onDefaultLevel} onClose={() => setChoosingDefault(false)} /> : null}
@@ -209,12 +209,11 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
 }
 
 export function NewTokenDialog({ client, mcpUrl, onClose, token }: { client: AiClient; mcpUrl: string | null; onClose: () => void; token: string }) {
-  const preset = presetOf(client.preset) ?? PRESETS.find((candidate) => candidate.id === 'other')!;
   return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>} onClose={onClose} title={`New token for ${client.name}`}>
     <div className="suite-settings-form">
       <p>The old token no longer works. Set {client.name} up again with this one.</p>
-      <ConnectInstructions mcpUrl={mcpUrl} preset={preset} token={token} />
-      <PrivacyLine preset={preset} />
+      <ConnectInstructions mcpUrl={mcpUrl} token={token} />
+      <PrivacyLine />
     </div>
   </Dialog>;
 }

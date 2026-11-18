@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Notice, Panel, PanelBand, PanelBody, PanelHead, PanelList, Row, RowAction, RowTrailing, RowValue, Rows } from '../../../components/ui';
 import { AddAssistantDialog } from './AddAssistantDialog';
 import { ClientItem, NewTokenDialog, RemoveClientDialog, SourceTokenDialog, tokenLine, type ClientActions } from './AiParts';
-import { aiRequest, levelOf, type AiClient, type AiException, type AiLevel, type AiRoute, type AiSource, type AiStatus, type IssuedToken } from './model';
+import { aiRequest, levelOf, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
 
 const REFRESH_MS = 15_000;
 
@@ -89,15 +89,15 @@ export function AiConnectionsPanel() {
     }
   }
 
-  async function addClient(input: { name: string; preset: string; route: AiRoute }) {
+  async function addClient(name: string) {
     setBusy('add');
     setAddError('');
     try {
-      const created = await aiRequest<IssuedToken>('POST', '/clients', 'The assistant could not be added.', input);
+      const created = await aiRequest<IssuedToken>('POST', '/clients', 'The connection could not be added.', { name });
       setStatus(created.status);
       if (created.client) setAddIssued({ clientId: created.client.id, token: created.token });
     } catch (caught) {
-      setAddError(errorText(caught, 'The assistant could not be added.'));
+      setAddError(errorText(caught, 'The connection could not be added.'));
     } finally {
       setBusy('');
     }
@@ -188,7 +188,7 @@ export function AiConnectionsPanel() {
         {savedTokens.map((source) => <SourceTokenRow busy={Boolean(busy)} key={source.id} onRemove={() => removeSourceToken(source)} onReplace={() => { setTokenError(''); setTokenSource(source); }} source={source} />)}
       </Rows>
     </PanelBody> : null}
-    {adding && status ? <AddAssistantDialog busy={busy === 'add'} error={addError} issued={addIssued?.token ?? null} onClose={closeAdd} onCreate={(input) => void addClient(input)} onDone={closeAdd} status={status} /> : null}
+    {adding && status ? <AddAssistantDialog busy={busy === 'add'} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onClose={closeAdd} onCreate={(name) => void addClient(name)} onDone={closeAdd} /> : null}
     {rotated ? <NewTokenDialog client={rotated.client} mcpUrl={status?.mcpUrl ?? null} onClose={() => setRotated(null)} token={rotated.token} /> : null}
     {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
     {tokenSource ? <SourceTokenDialog busy={busy === `source:${tokenSource.id}`} error={tokenError} onClose={() => setTokenSource(null)} onSave={(token) => void saveSourceToken(tokenSource, token)} source={tokenSource} /> : null}
