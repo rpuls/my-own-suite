@@ -32,7 +32,7 @@ export function AddAssistantDialog({ busy, error, issued, mcpUrl, onClose, onCre
   onDone: () => void;
 }) {
   const [name, setName] = useState('');
-  const title = 'New MCP connection';
+  const title = 'Expose MOS as an MCP server';
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -56,8 +56,8 @@ export function AddAssistantDialog({ busy, error, issued, mcpUrl, onClose, onCre
     title={title}
   >
     <form className="suite-settings-form" id="suite-ai-connect" onSubmit={submit}>
-      <p>Your suite is an MCP server. Any AI app that speaks MCP can connect to it, such as Claude Code, LM Studio or Open WebUI. Each app gets its own token, so you choose what it may use and can turn it off on its own.</p>
-      <TextInput autoFocus helperText="For example: LM Studio on my laptop." label="Name" onChange={(event) => setName(event.target.value)} value={name} />
+      <p>Any AI app that speaks MCP, such as Claude Code, LM Studio or Open WebUI, can then use your apps. Each AI app gets its own token, so you choose what it may use and can turn it off on its own.</p>
+      <TextInput autoFocus helperText="For example: LM Studio on my laptop." label="Which AI app is this for?" onChange={(event) => setName(event.target.value)} value={name} />
       {error ? <Notice title="The connection could not be added" variant="error"><p>{error}</p></Notice> : null}
     </form>
   </Dialog>;
