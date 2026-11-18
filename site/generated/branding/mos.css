@@ -590,6 +590,69 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   }
 }
 
+/* Filter chips: narrow a page to one of a few named things. Each chip is a
+   real toggle button (aria-pressed); the pressed one takes the accent wash.
+   A chip may lead with an avatar or icon, which then sits flush to its edge. */
+.mos-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-2);
+}
+
+.mos-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  min-height: 2.25rem;
+  padding: 0 var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-text);
+  font: inherit;
+  font-size: var(--mos-text-small);
+  font-weight: var(--mos-weight-semibold);
+  cursor: pointer;
+}
+
+.mos-filter-chip.has-lead {
+  padding-left: 0.3rem;
+}
+
+.mos-filter-chip .mos-avatar {
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.66rem;
+  box-shadow: none;
+}
+
+.mos-filter-chip[aria-pressed="true"] {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-text-strong);
+}
+
+.mos-filter-chip:focus-visible {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+/* Avatar: a round monogram standing for something that has no picture of its
+   own, such as an AI the owner named. The product sets the background. */
+.mos-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--mos-radius-pill);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: var(--mos-weight-black);
+  letter-spacing: 0.02em;
+}
+
 /* Range: a continuous setting that is chosen by eye rather than typed — a size
    or a distance whose right value is whatever looks right. It takes the
    switch's accent gradient for the part of the track already spent, so "more"

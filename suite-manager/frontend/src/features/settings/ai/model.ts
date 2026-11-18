@@ -59,6 +59,7 @@ export type AiActivityEntry = {
   id: number;
   kind: string;
   outcome: AiOutcome;
+  sourceId: string | null;
   sourceName: string;
   tool: string;
   toolTitle: string;
@@ -86,7 +87,7 @@ export function aiSummary() {
 }
 
 export function aiActivity({ before, clientId }: { before?: number | null; clientId?: string }) {
-  const query = new URLSearchParams({ limit: '50' });
+  const query = new URLSearchParams({ limit: '100' });
   if (clientId) query.set('client', clientId);
   if (before) query.set('before', String(before));
   return request<AiActivityPage>(`/suite-manager/api/ai/activity?${query}`, 'GET', 'Unable to load AI activity.');

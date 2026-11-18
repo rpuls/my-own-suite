@@ -155,11 +155,14 @@ class AiConnectionsService {
     this.housekeeping();
     const parsedBefore = Number.parseInt(before, 10);
     const parsedLimit = Number.parseInt(limit, 10);
-    return this.aiStore.activity({
+    const page = this.aiStore.activity({
       before: Number.isInteger(parsedBefore) ? parsedBefore : null,
       clientId: typeof clientId === 'string' && clientId ? clientId : null,
-      limit: Number.isInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 50,
+      limit: Number.isInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50,
     });
+    const sources = this.catalog.sources().sort((left, right) => right.prefix.length - left.prefix.length);
+    const sourceIdOf = (tool) => sources.find((source) => String(tool || '').startsWith(source.prefix))?.id ?? null;
+    return { ...page, entries: page.entries.map((entry) => ({ ...entry, sourceId: sourceIdOf(entry.tool) })) };
   }
 
   // ---- connections ----
