@@ -4278,6 +4278,28 @@ button.suite-bk-group {
   padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
 }
 
+.suite-ai-grants > p {
+  margin: 0;
+}
+
+.suite-ai-token-step {
+  display: grid;
+  gap: var(--mos-space-3);
+  justify-items: start;
+  padding-bottom: var(--mos-space-3);
+}
+
+.suite-ai-token-step > .suite-control,
+.suite-ai-token-step > .suite-notice {
+  width: 100%;
+}
+
+.suite-ai-token-actions {
+  display: flex;
+  gap: var(--mos-space-2);
+  justify-self: end;
+}
+
 .suite-ai-grant-app,
 .suite-ai-grant-group {
   display: grid;

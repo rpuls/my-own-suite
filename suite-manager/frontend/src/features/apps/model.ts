@@ -382,7 +382,7 @@ export function permissionLabel(permission: string): { detail: string; label: st
   if (kind === 'volume') return { detail: 'Reads and writes its own private, named storage volume.', label: `Storage: ${value}` };
   if (kind === 'folder') return { detail: 'Reads its own folder on a drive you pick, which you fill from any computer.', label: `Folder: ${value}` };
   if (kind === 'integration') return { detail: 'Can connect to a compatible app you choose. Nothing connects automatically.', label: `Integration: ${value}` };
-  if (permission === 'ai-tools') return { detail: 'Nothing is shared until you choose, under Settings → AI assistants, what each assistant may do.', label: 'Works with AI assistants' };
+  if (permission === 'ai-tools') return { detail: 'Use it from any AI chat that supports MCP. Nothing is shared until you choose, under Settings → AI assistants, what each AI may do.', label: 'Works with your AI' };
   if (permission === 'provides-capability') return { detail: 'Other installed apps can connect to this one.', label: 'Provides a capability to other apps' };
   return { detail: '', label: permission };
 }

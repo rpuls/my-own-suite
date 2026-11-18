@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { Dialog, Icon, Notice, SecretText, TextInput } from '../../../components/ui';
 
 export function PrivacyLine() {
-  return <p className="suite-meta suite-ai-privacy"><Icon name="eye" />What the app reads goes wherever that app sends it. An AI that runs on your own computer keeps it at home.</p>;
+  return <p className="suite-meta suite-ai-privacy"><Icon name="eye" />What your AI reads goes wherever that AI sends it. An AI that runs on your own computer keeps it at home.</p>;
 }
 
 // The token is shown once, so this is the only moment the owner can copy it.
@@ -11,11 +11,11 @@ export function ConnectInstructions({ mcpUrl, token }: { mcpUrl: string | null; 
   if (!mcpUrl) {
     return <>
       <SecretText label="token" value={token} />
-      <p className="suite-meta">Your suite needs an HTTPS address before an AI app can reach it.</p>
+      <p className="suite-meta">Your suite needs an HTTPS address before an AI can reach it.</p>
     </>;
   }
   return <>
-    <p>In the AI app&apos;s MCP settings, add a server with this address and token.</p>
+    <p>In your AI&apos;s MCP settings, add a server with this address and token.</p>
     <SecretText label="address" value={mcpUrl} />
     <SecretText label="token" value={token} />
     <p className="suite-meta">Apps that ask for a header want <code>Authorization: Bearer</code> followed by the token. The token is shown only now. If you lose it, make a new one from the connection&apos;s menu.</p>
@@ -32,7 +32,7 @@ export function AddAssistantDialog({ busy, error, issued, mcpUrl, onClose, onCre
   onDone: () => void;
 }) {
   const [name, setName] = useState('');
-  const title = 'Expose MOS as an MCP server';
+  const title = 'Connect your AI to MOS';
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -56,8 +56,8 @@ export function AddAssistantDialog({ busy, error, issued, mcpUrl, onClose, onCre
     title={title}
   >
     <form className="suite-settings-form" id="suite-ai-connect" onSubmit={submit}>
-      <p>Any AI app that speaks MCP, such as Claude Code, LM Studio or Open WebUI, can then use your apps. Each AI app gets its own token, so you choose what it may use and can turn it off on its own.</p>
-      <TextInput autoFocus helperText="For example: LM Studio on my laptop." label="Which AI app is this for?" onChange={(event) => setName(event.target.value)} value={name} />
+      <p>Use your apps from any AI chat that supports MCP, such as Claude Code, LM Studio or Open WebUI. Each AI you connect gets its own token, so you choose what it may use and can turn it off on its own.</p>
+      <TextInput autoFocus helperText="For example: LM Studio on my laptop." label="Which AI is this?" onChange={(event) => setName(event.target.value)} value={name} />
       {error ? <Notice title="The connection could not be added" variant="error"><p>{error}</p></Notice> : null}
     </form>
   </Dialog>;

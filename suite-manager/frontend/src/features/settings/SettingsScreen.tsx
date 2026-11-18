@@ -33,7 +33,7 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
-  { group: 'apps', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini mcp connect token tools permissions agent llm', title: 'AI assistants' },
+  { group: 'apps', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini lm studio open webui ollama mcp connect token tools permissions agent llm', title: 'AI assistants' },
   { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
   { group: 'advanced', icon: 'settings', id: 'technical', keywords: 'technical controls advanced logs config developer overrides expert', title: 'Technical controls' },
   { group: 'help', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },

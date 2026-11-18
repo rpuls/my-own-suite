@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { Notice, Panel, PanelBand, PanelBody, PanelHead, PanelList, Row, RowAction, RowTrailing, RowValue, Rows } from '../../../components/ui';
+import { Notice, Panel, PanelBody, PanelHead, PanelList, Row, RowAction, RowTrailing, RowValue, Rows } from '../../../components/ui';
 import { AddAssistantDialog } from './AddAssistantDialog';
-import { ClientItem, NewTokenDialog, RemoveClientDialog, SourceTokenDialog, tokenLine, type ClientActions } from './AiParts';
+import { ClientItem, NewTokenDialog, RemoveClientDialog, type ClientActions } from './AiParts';
 import { aiRequest, levelOf, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
 
 const REFRESH_MS = 15_000;
@@ -28,20 +28,11 @@ function McpAddress({ url }: { url: string | null }) {
     } catch { /* selectable either way */ }
   }
 
-  return <Row help="Assistants connect to this address, each with its own token." label="Address for AI assistants">
+  return <Row help="Every AI you connect uses this address with its own token." label="MOS address for your AI">
     {url ? <RowTrailing>
       <RowValue code>{url}</RowValue>
       <RowAction icon={copied ? 'check' : 'copy'} label={copied ? 'Address copied' : 'Copy address'} onClick={() => void copy()} />
     </RowTrailing> : <RowValue>Available once your suite has an HTTPS address</RowValue>}
-  </Row>;
-}
-
-function SourceTokenRow({ busy, onRemove, onReplace, source }: { busy: boolean; onRemove: () => void; onReplace: () => void; source: AiSource }) {
-  return <Row help={tokenLine(source)} label={`${source.name} access token`}>
-    <RowTrailing>
-      <RowAction disabled={busy} icon="key" label={`Replace the ${source.name} token`} onClick={onReplace} />
-      <RowAction danger disabled={busy} icon="x" label={`Remove the ${source.name} token`} onClick={onRemove} />
-    </RowTrailing>
   </Row>;
 }
 
@@ -58,8 +49,6 @@ export function AiConnectionsPanel() {
   const [addIssued, setAddIssued] = useState<{ clientId: string; token: string } | null>(null);
   const [rotated, setRotated] = useState<{ client: AiClient; token: string } | null>(null);
   const [removing, setRemoving] = useState<AiClient | null>(null);
-  const [tokenSource, setTokenSource] = useState<AiSource | null>(null);
-  const [tokenError, setTokenError] = useState('');
 
   async function load() {
     try {
@@ -109,23 +98,6 @@ export function AiConnectionsPanel() {
     setAddIssued(null);
   }
 
-  async function saveSourceToken(source: AiSource, token: string) {
-    setBusy(`source:${source.id}`);
-    setTokenError('');
-    try {
-      setStatus(await aiRequest('PUT', `/sources/${encodeURIComponent(source.id)}/token`, 'The token could not be saved.', { token }));
-      setTokenSource(null);
-    } catch (caught) {
-      setTokenError(errorText(caught, 'The token could not be saved.'));
-    } finally {
-      setBusy('');
-    }
-  }
-
-  function removeSourceToken(source: AiSource) {
-    void run(`source:${source.id}`, 'The token could not be removed.', () => aiRequest('DELETE', `/sources/${encodeURIComponent(source.id)}/token`, 'The token could not be removed.'));
-  }
-
   function actionsFor(client: AiClient, sources: AiSource[]): ClientActions {
     const key = `client:${client.id}`;
     const change = async (fallback: string, action: () => Promise<AiStatus>) => {
@@ -142,6 +114,15 @@ export function AiConnectionsPanel() {
       }),
       onException: (tool: string, exception: AiException | null) => void change('The tool could not be changed.', () => aiRequest('PUT', clientPath(client, `/exceptions/${encodeURIComponent(tool)}`), 'The tool could not be changed.', { exception })),
       onLevel: (sourceId: string, level: AiLevel) => void change('The setting could not be changed.', () => aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(sourceId)}`), 'The setting could not be changed.', { level })),
+      onLevelWithToken: async (sourceId, level, token) => {
+        try {
+          await aiRequest('PUT', `/sources/${encodeURIComponent(sourceId)}/token`, 'The token could not be saved.', { token });
+        } catch (caught) {
+          return errorText(caught, 'The token could not be saved.');
+        }
+        await change('The setting could not be changed.', () => aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(sourceId)}`), 'The setting could not be changed.', { level }));
+        return '';
+      },
       onRemove: () => setRemoving(client),
       onReset: (sourceId) => void change('The tools could not be reset.', () => aiRequest('DELETE', clientPath(client, `/levels/${encodeURIComponent(sourceId)}/exceptions`), 'The tools could not be reset.')),
       onRotate: () => void run(key, 'A new token could not be made.', async () => {
@@ -159,17 +140,12 @@ export function AiConnectionsPanel() {
 
   const sources = status?.sources ?? [];
   const clients = status?.clients ?? [];
-  const missingTokens = sources.filter((source) => source.token && !source.token.configured);
-  const savedTokens = sources.filter((source) => source.token?.configured);
 
   return <Panel>
     <PanelHead actions={status ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => { setAddError(''); setAdding(true); }} type="button">Add</button> : null} heading="h3" title="AI assistants">
-      <p>Let an AI assistant use the apps you choose.</p>
+      <p>Use your apps from any AI chat that supports MCP.</p>
     </PanelHead>
     {error ? <PanelBody><Notice title="Something went wrong" variant="error"><p>{error}</p></Notice></PanelBody> : null}
-    {missingTokens.map((source) => <PanelBand icon="key" key={source.id} layout="row" note="MOS needs an access token from it first." title={`${source.name} can be used by an AI.`}>
-      <button className="mos-btn mos-btn-ghost" disabled={Boolean(busy)} onClick={() => { setTokenError(''); setTokenSource(source); }} type="button">Add token</button>
-    </PanelBand>)}
     {clients.length ? <PanelList>
       {clients.map((client) => <ClientItem
         actions={actionsFor(client, sources)}
@@ -181,16 +157,14 @@ export function AiConnectionsPanel() {
         onToggle={() => setOpenClient(openClient === client.id ? '' : client.id)}
         sources={sources}
       />)}
-    </PanelList> : status ? <PanelBody><p className="suite-meta">No assistant is connected yet.</p></PanelBody> : null}
+    </PanelList> : status ? <PanelBody><p className="suite-meta">No AI is connected yet.</p></PanelBody> : null}
     {status ? <PanelBody>
       <Rows lead>
         <McpAddress url={status.mcpUrl} />
-        {savedTokens.map((source) => <SourceTokenRow busy={Boolean(busy)} key={source.id} onRemove={() => removeSourceToken(source)} onReplace={() => { setTokenError(''); setTokenSource(source); }} source={source} />)}
       </Rows>
     </PanelBody> : null}
     {adding && status ? <AddAssistantDialog busy={busy === 'add'} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onClose={closeAdd} onCreate={(name) => void addClient(name)} onDone={closeAdd} /> : null}
     {rotated ? <NewTokenDialog client={rotated.client} mcpUrl={status?.mcpUrl ?? null} onClose={() => setRotated(null)} token={rotated.token} /> : null}
     {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
-    {tokenSource ? <SourceTokenDialog busy={busy === `source:${tokenSource.id}`} error={tokenError} onClose={() => setTokenSource(null)} onSave={(token) => void saveSourceToken(tokenSource, token)} source={tokenSource} /> : null}
   </Panel>;
 }
