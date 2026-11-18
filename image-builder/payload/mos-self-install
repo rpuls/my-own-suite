@@ -98,6 +98,8 @@ on_error() {
   stop_here "$message" 'Photograph this screen, then press Enter to restart.'
 }
 trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+# Ctrl+C would otherwise end the script, and its unit restarts the machine before an unfinished copy is erased.
+trap 'on_error 130 $LINENO "interrupted with Ctrl+C"' INT
 
 stage() {
   printf '\n  [%s] %s\n\n' "$(date +%H:%M:%S)" "$1"
@@ -339,7 +341,11 @@ hold_udev
 fsfreeze -f /
 trap 'fsfreeze -u / 2>/dev/null || true; restore_after_copy; release_udev' EXIT
 copy_started=yes
-dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
+# The partition table goes on last, so a copy cut short by a power cut has none:
+# it cannot boot, and the stick's root=UUID finds no partition on it to start from.
+wipefs --all --force "$target" >/dev/null
+dd if="$root_disk" of="$target" bs=4M iflag=skip_bytes oflag=seek_bytes skip=1M seek=1M conv=fsync status=progress
+dd if="$root_disk" of="$target" bs=1M count=1 conv=fsync status=none
 fsfreeze -u /
 restore_after_copy
 trap - EXIT

@@ -35,7 +35,21 @@ test('an install that stops after the copy began erases the copy before restarti
   const startedAt = lines.findIndex((line) => line.trim() === 'copy_started=yes');
 
   assert.equal(lines[stopHere + 1].trim(), 'erase_unfinished_copy');
-  assert.match(lines[startedAt + 1], /^dd if=/u);
+  assert.match(lines[startedAt + 1], /^wipefs --all --force "\$target"/u);
+});
+
+test('a copy cut short leaves the target with no partition table', () => {
+  const lines = code(read('mos-self-install'));
+  const copies = lines.filter((line) => line.startsWith('dd if="$root_disk" of="$target"'));
+
+  assert.equal(copies.length, 2);
+  assert.match(copies[0], /skip=1M seek=1M/u);
+  assert.match(copies[1], /count=1\b/u);
+  assert.ok(lines.indexOf(copies[1]) > lines.indexOf(copies[0]));
+});
+
+test('Ctrl+C in the installer stops through stop_here like any other failure', () => {
+  assert.ok(code(read('mos-self-install')).some((line) => /^trap 'on_error 130 .*' INT$/u.test(line)));
 });
 
 test('the installer closes whatever holds the target disk open before copying onto it', () => {
