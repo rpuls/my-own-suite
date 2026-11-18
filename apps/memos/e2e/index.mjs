@@ -60,6 +60,15 @@ export default {
     if (!state.note) throw new Error('Memos verify needs the note its journey made (run app:memos first, or carry it in with --continue).');
     const page = await freshPage();
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await step('a stranger sees no notes, only the way to sign in', async () => {
+      const explore = page.getByRole('link', { name: 'Sign in to Memos' });
+      const signInButton = page.getByRole('button', { exact: true, name: 'Sign in' });
+      await expect(explore.or(signInButton)).toBeVisible({ timeout: 60000 });
+      if (await explore.isVisible()) {
+        await expect(page.locator('[data-memo-content]'), 'a stranger must not see any note').toHaveCount(0);
+        await explore.click();
+      }
+    });
     await step('sign-up stays closed to strangers', async () => {
       await expect(page.getByRole('button', { exact: true, name: 'Sign in' })).toBeVisible({ timeout: 60000 });
       await expect(page.getByRole('link', { name: 'Sign up' }), 'MOS ships Memos with sign-up turned off').toHaveCount(0);
