@@ -149,13 +149,28 @@ async function unlock({ password = null, rawKey = null, source = 'local' }) {
       .catch((error) => { log(`could not re-seal the chip after an unlock: ${error?.message || 'unknown error'}`); return {}; });
   }
 
+  await finishBoot();
+  return { repairPending: Boolean(resealed.repairPending), resealed: Boolean(resealed.resealed), unlocked: true };
+}
+
+async function finishBoot() {
   await syncStatusPage({ state: STATES.UNLOCKED });
-  // Not awaited: starting dockerd and every app takes minutes, and the owner is
-  // looking at a form that has to answer now.
+  // Not awaited: starting dockerd and every app takes minutes, and the owner may
+  // be looking at a form that has to answer now.
   adapter.startDependents()
     .then(() => log('asked systemd to finish the boot the locked vault stopped'))
     .catch((startError) => log(`could not start the suite after unlock: ${startError?.message || 'unknown error'}`));
-  return { repairPending: Boolean(resealed.repairPending), resealed: Boolean(resealed.resealed), unlocked: true };
+}
+
+// The gate asks the chip seconds into boot; one that was not ready then can
+// answer by the time this agent starts, before the owner is asked for a key.
+async function askChipAgain(status) {
+  if (status.state !== STATES.LOCKED || status.reason !== 'tpm-refused') return status;
+  const result = await attempt(() => core.open()).catch(() => ({ opened: false }));
+  if (!result.opened) return status;
+  log('the security chip opened the vault on a second try');
+  await finishBoot();
+  return core.status();
 }
 
 async function readJsonBody(request, limit = 16 * 1024) {
@@ -343,7 +358,7 @@ async function main() {
   if (fs.existsSync(socketPath)) await fsp.rm(socketPath, { force: true });
 
   await core.settleHandover().catch((error) => log(`could not settle the key handover: ${error?.message || 'unknown error'}`));
-  const status = await core.status().catch(() => ({ state: STATES.LOCKED }));
+  const status = await askChipAgain(await core.status().catch(() => ({ state: STATES.LOCKED })));
   await syncStatusPage(status);
   log(`vault is ${status.state}${status.reason ? ` (${status.reason})` : ''}${status.handover === 'pending' ? ', recovery key not yet handed over' : ''}`);
 

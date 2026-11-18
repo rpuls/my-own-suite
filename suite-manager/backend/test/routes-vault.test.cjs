@@ -33,6 +33,7 @@ test('the vault route reports what the agent says', async () => {
       asksForPassword: false,
       chipNeedsRepair: false,
       encrypted: true,
+      kitNeedsReplacing: false,
       vault: { handover: 'done', state: 'unlocked', unlocksItself: true },
     });
   });

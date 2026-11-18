@@ -88,7 +88,7 @@ export function BackupsScreen() {
   useEffect(() => {
     if (!isRunning(status?.currentJob || null)) setChecking('');
   }, [status]);
-  // Only decides one sentence in the key dialog, whose fallback is true on every server.
+  // Decides one sentence in the key dialog, and the early-image-repair notice.
   useEffect(() => {
     let cancelled = false;
     void readVaultView()
@@ -153,6 +153,7 @@ export function BackupsScreen() {
       setRotation({ destinations: result.destinations || [], pending: result.pending || [] });
       setRevealedKey(result);
       await load();
+      void readVaultView().then(setVaultView).catch(() => {});
     } catch (caught) {
       setKeyError(caught instanceof Error ? caught.message : 'Unable to change the recovery key.');
     } finally {
@@ -460,6 +461,12 @@ export function BackupsScreen() {
           </div>
           {blockReason && !backingUp && !workingLine ? <div className="suite-bk-banner-note"><p className="suite-bk-detail">{blockReason}</p></div> : null}
         </section>}
+
+        {/* early-image-repair */}
+        {vaultView?.kitNeedsReplacing ? <Notice title="Your recovery key does not open this server" variant="warning">
+          <p>This server was installed from an early disk image, and the recovery key on your kit does not open its disk: only the security chip does. If the chip ever refuses, after a firmware update for example, the server cannot be opened. Change your recovery key now and save the new kit. Your backups move to the new key with it.</p>
+          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => openKey('rotate')} type="button">Change recovery key</button>
+        </Notice> : null}
 
         {unreachable.length ? <Notice title={`MOS cannot connect to ${new Intl.ListFormat('en', { type: 'conjunction' }).format(unreachable.map((place) => place.label))}`} variant="warning">
           <p>Until it can, MOS cannot say which backups are there, so none are listed from {unreachable.length > 1 ? 'them' : 'it'}.</p>

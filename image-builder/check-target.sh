@@ -42,6 +42,27 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 echo "[mos-image] Checking what the first boot did:"
 
+# The kit shows the backup agent's key file; the vault was formatted with the
+# escrowed key. If they differ, the first chip refusal locks the owner out for good.
+check_kit_opens_vault() {
+  local escrow="$1" vault_dev kit
+  [ -s "$escrow" ] || return 0
+  vault_dev="$(losetup -f --show -r -o $(( $(sfdisk -d "$image" | awk '/img3 *:/ { gsub(",", "", $4); print $4 }') * 512 )) "$image")"
+  if ! tr -d '\n' < "$escrow" | cryptsetup open --readonly --disable-external-tokens --key-file - "$vault_dev" mos-check-vault 2>/dev/null; then
+    fail "the escrowed key does not open the vault"
+    losetup -d "$vault_dev"; return 0
+  fi
+  mkdir -p /mnt/check-vault
+  mount -o ro,noload /dev/mapper/mos-check-vault /mnt/check-vault
+  kit="$(tr -d '\n' < /mnt/check-vault/mos/backup-agent/engine-key 2>/dev/null || true)"
+  if [ -n "$kit" ] && [ "$kit" = "$(tr -d '\n' < "$escrow")" ]; then
+    pass "the recovery key the owner will be shown is the key that opens the vault"
+  else
+    fail "the recovery key the owner will be shown does not open the vault — the first chip refusal locks them out for good"
+  fi
+  umount /mnt/check-vault; cryptsetup close mos-check-vault; losetup -d "$vault_dev"
+}
+
 block_count="$(dumpe2fs -h "$root_part" 2>/dev/null | awk -F': *' '/^Block count:/ { print $2 }')"
 block_size="$(dumpe2fs -h "$root_part" 2>/dev/null | awk -F': *' '/^Block size:/ { print $2 }')"
 fs_mb=$((block_count * block_size / 1024 / 1024))
@@ -113,6 +134,7 @@ if [ -e /mnt/target/etc/mos/vault.json ]; then
   else
     fail "no escrowed recovery key — a chip that refuses before the owner has signed in would lock them out of a key they were never shown"
   fi
+  check_kit_opens_vault "$pending"
 else
   fail "no /etc/mos/vault.json — the first boot never recorded what it did to the disk"
 fi

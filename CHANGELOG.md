@@ -33,6 +33,18 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
   - The first start adds a column to the vault database. Vaultwarden 1.37.5 cannot undo this, so going back to package 0.4.2 means restoring a backup taken before the update.
 - **Jellyfin 12.4 fixes a .NET flaw that a film database's reply could trigger.** Package 0.1.3 moves Jellyfin to .NET 10.0.14, fixing a Brotli decoding flaw (CVE-2026-111497) reachable through the replies Jellyfin downloads when it looks up films and plugins. Nothing else changes: there are no migrations, and reverting to package 0.1.2 remains safe.
 
+## [0.23.1] - 2026-11-18
+
+### Fixed
+
+- **A recovery key that does not open the disk can no longer cost the server its security chip.** The unlock page now checks a typed recovery key against the disk itself, where a chip that happened to answer used to open the vault and report the key as accepted. MOS no longer re-teaches the chip with a key the disk refuses: that attempt failed and wiped the chip's working slot, so the next restart could not open at all. A chip that refuses early in startup is asked once more before the page asks for the key. After the key opens a locked server, its apps and Suite Manager now start; on Ubuntu Server they stayed stopped until the next restart.
+- **The USB installer installs over an existing Ubuntu with LVM, and never starts a half-written copy.** Installing onto a disk that held Ubuntu with LVM used to fail because the old volumes still held the disk; the installer now releases them first. If an install stops part-way, the installer erases the unfinished copy before restarting, and a disk that still holds one is never started in place of the installer.
+
+### Security
+
+- **Every server installed from a new disk image gets its own recovery key.** The 0.22.0 and 0.23.0 images carried one backup recovery key for every download. First boot showed it as the server's recovery key while encrypting the disk with a different key, so the kit could not open the disk, and every server installed from one image shared the same backup key. New images carry no key, and the release check refuses an image that does. **If your server was installed from one of those images, change your recovery key after this update:** Suite Manager says so under Backup & Restore, and the change goes through the security chip, so it works while the chip still opens the disk. Backups made before the change can still be read with the old key by anyone who also has a copy of that backup storage.
+  - Reported by @NworbLegin in #345. Thank you.
+
 ## [0.23.0] - 2026-10-27
 
 ### Added

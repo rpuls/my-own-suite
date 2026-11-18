@@ -41,6 +41,11 @@ if [ -f "$installer" ]; then
   else
     fail 'the installer can end without restarting'
   fi
+  if grep -q '^  refuse_unfinished_copy$' "$installer" && grep -q '^  erase_unfinished_copy$' "$installer"; then
+    pass 'an unfinished copy is erased, never started in place of the installer'
+  else
+    fail 'an unfinished copy on the disk can start instead of the installer'
+  fi
   if grep -q 'mos-install.log' "$installer"; then
     pass 'the installer writes a log to the stick'
   else
@@ -83,6 +88,15 @@ elif [ -f "$sudoers" ]; then
   fail "a release image with a passwordless sudo rule on it: $sudoers"
 else
   pass 'no passwordless sudo rule on this release image'
+fi
+
+# Every download would share it as its backup key, and the vault made on first
+# boot would not open with the key its owner is shown.
+baked_identity="$(find /mnt/root/var/lib/mos/backup-agent -maxdepth 1 \( -name engine-key -o -name recovery-key.json -o -name install-id \) 2>/dev/null || true)"
+if [ -n "$baked_identity" ]; then
+  fail "the image carries a backup recovery key or install id: $baked_identity"
+else
+  pass 'no recovery key or install id on the image, so every machine makes its own'
 fi
 
 if [ "$failures" -eq 0 ]; then
