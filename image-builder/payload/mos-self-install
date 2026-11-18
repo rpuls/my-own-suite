@@ -6,6 +6,10 @@
 # to an existing install. It installs or it stops on screen and restarts. See AGENTS.md.
 set -euo pipefail
 
+# The console, kept apart: a failure inside a `while read` loop would otherwise
+# read its "press Enter" from the loop's input and restart before anyone saw why.
+exec {console}<&0
+
 # The copy gives the disk the stick's own filesystem UUIDs, so for a moment two
 # disks answer to the same /dev/disk/by-uuid name. udev hands that name to the
 # newcomer, boot-efi.mount loses the device it is bound to, systemd stops
@@ -82,7 +86,7 @@ erase_unfinished_copy() {
 stop_here() {
   erase_unfinished_copy
   printf '\n  %s\n\n  %s\n  > ' "$1" "${2:-Press Enter to restart.}"
-  read -r _ || true
+  read -r -u "$console" _ || true
   fsfreeze -u / 2>/dev/null || true
   restore_after_copy
   release_udev
@@ -506,6 +510,7 @@ else
   boot_entry_registered=0
 fi
 
+copy_started=no
 printf '\n'
 printf '  Done.\n\n'
 if [ "$boot_entry_registered" -eq 0 ]; then

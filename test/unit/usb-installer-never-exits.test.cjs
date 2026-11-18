@@ -38,6 +38,22 @@ test('an install that stops after the copy began erases the copy before restarti
   assert.match(lines[startedAt + 1], /^dd if=/u);
 });
 
+test('a finished install is never erased, even if the restart after Done fails', () => {
+  const lines = code(read('mos-self-install'));
+  const doneAt = lines.findIndex((line) => line.includes("'  Done.\\n\\n'"));
+  const finishedAt = lines.lastIndexOf('copy_started=no');
+
+  assert.ok(finishedAt > 0 && finishedAt < doneAt);
+});
+
+test('every stop reads its Enter from the console, never from a loop it was called in', () => {
+  const lines = code(read('mos-self-install'));
+  const stopHere = lines.findIndex((line) => line.startsWith('stop_here() {'));
+
+  assert.ok(lines.includes('exec {console}<&0'));
+  assert.match(lines[stopHere + 3], /^\s+read -r -u "\$console" _/u);
+});
+
 test('the installer closes whatever holds the target disk open before copying onto it', () => {
   const lines = code(read('mos-self-install'));
   const releaseAt = lines.findIndex((line) => line.startsWith('release_holders "$target"'));
