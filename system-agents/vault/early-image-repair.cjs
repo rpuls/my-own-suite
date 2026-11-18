@@ -56,11 +56,12 @@ class EarlyImageRepair {
     this.kitChecked = null;
   }
 
-  // Asked once per agent start: proving a key costs an Argon2 run.
+  // Answered once per agent start: proving a key costs an Argon2 run. A check
+  // that could not run is no answer, and is asked again rather than remembered.
   kitOpensDisk(device) {
     this.kitChecked ||= this.adapter.readOwnKey()
       .then((key) => (key ? this.adapter.opensWith({ device, key }) : true))
-      .catch(() => true);
+      .catch(() => { this.kitChecked = null; return null; });
     return this.kitChecked;
   }
 

@@ -47,6 +47,16 @@ test('a server whose kit does not open its disk says so', async () => {
   assert.equal(await new EarlyImageRepair(fake.adapter, fake.commands).kitOpensDisk('/dev/sda3'), false);
 });
 
+test('a check that could not run warns nobody and is asked again', async () => {
+  const fake = disk();
+  const repair = new EarlyImageRepair(fake.adapter, fake.commands);
+  fake.adapter.opensWith = async () => { throw new Error('cryptsetup ran out of memory'); };
+  assert.equal(await repair.kitOpensDisk('/dev/sda3'), null);
+
+  fake.adapter.opensWith = async () => true;
+  assert.equal(await repair.kitOpensDisk('/dev/sda3'), true);
+});
+
 test('changing the key through the chip leaves only the new key and the chip', async () => {
   const fake = disk();
   const vault = core(fake);

@@ -609,8 +609,9 @@ class SystemVaultAdapter {
     try {
       await run('cryptsetup', ['open', '--test-passphrase', KEY_ONLY, '--key-file', '-', device], { input: key, mask: [key] });
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error?.exitCode === CRYPTSETUP_NO_PERMISSION) return false;
+      throw error;
     }
   }
 
