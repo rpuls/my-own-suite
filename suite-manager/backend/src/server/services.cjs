@@ -2,6 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
+const { AiConnectionsService } = require('../ai/ai-connections-service.cjs');
+const { AiGateway } = require('../ai/ai-gateway.cjs');
+const { AiStore } = require('../ai/ai-store.cjs');
+const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
+const { createMosTools } = require('../ai/mos-tools.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
@@ -179,6 +184,22 @@ function createServices({
     secretDir: appPackages.secretDir,
     store: setup.store,
   });
+  const aiConnections = new AiConnectionsService({
+    aiStore: new AiStore(setup.store),
+    catalog: new AiToolCatalog({
+      appPackages,
+      builtin: createMosTools({
+        appPackages,
+        runtimeUrls: (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
+        store: setup.store,
+      }),
+      secretDir: appPackages.secretDir,
+      store: setup.store,
+    }),
+    secretDir: appPackages.secretDir,
+    suiteAddress,
+  });
+  const aiGateway = new AiGateway({ connections: aiConnections });
   const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
   const signIn = new SignInService({ alerts, recordSecurityEvent, securityLogger, setup, throttle, vault });
   const appUrls = createAppPublicUrls({ appPackages, homepageConfig, suiteAddress });
@@ -218,6 +239,8 @@ function createServices({
 
   const services = {
     addressService,
+    aiConnections,
+    aiGateway,
     appAgent,
     appPackages,
     appUrls,

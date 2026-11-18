@@ -1,6 +1,7 @@
 const http = require('node:http');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
+const { MCP_PATH } = require('../ai/ai-gateway.cjs');
 const { parseCookies, sessionTokenFrom } = require('./cookies.cjs');
 const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset, serveHomeIcon } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost } = require('./request.cjs');
@@ -16,7 +17,7 @@ function isSignedIn(setup, sessionToken) {
 }
 
 function createRequestHandler(services) {
-  const { addressService, appPackages, appUrls, frontendDistDir, homepage, logger, setup } = services;
+  const { addressService, aiGateway, appPackages, appUrls, frontendDistDir, homepage, logger, setup } = services;
   const dispatch = createRouter(routeTable(services), { isSignedIn: (sessionToken) => isSignedIn(setup, sessionToken) });
 
   return async (request, response) => {
@@ -33,6 +34,11 @@ function createRequestHandler(services) {
 
       if (url.pathname.startsWith(SUITE_MANAGER_API_PREFIX) && isCrossOriginWrite(request)) {
         jsonResponse(response, 403, { code: 'CROSS_ORIGIN_REJECTED', error: 'Suite Manager only accepts changes made from its own pages.' });
+        return;
+      }
+
+      if (url.pathname === MCP_PATH) {
+        await aiGateway.handle(request, response);
         return;
       }
 

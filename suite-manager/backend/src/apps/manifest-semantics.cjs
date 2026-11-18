@@ -389,12 +389,70 @@ function validateTemplates(manifest, errors) {
 // official packages, but explicitly outside the locked generation-1 baseline.
 // ---------------------------------------------------------------------------
 
+const MCP_EXPORT_TYPE = 'mcp-server';
+const MCP_TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
+const MCP_TOOL_KINDS = new Set(['read', 'add', 'change', 'serious', 'destructive']);
+const MCP_FIXED_PATH_PATTERN = /^[A-Za-z0-9_]{1,64}(?:.[A-Za-z0-9_]{1,64}){0,7}$/u;
+const MCP_PATH_PATTERN = /^\/[A-Za-z0-9._~/-]{0,200}$/u;
+
+// A tool is its kind, or { kind, title, note, fixed }. `fixed` pins arguments
+// by dotted path to the value the gateway always sends, whatever the AI asked.
+function validateMcpToolEntry(entry, prefix, errors) {
+  const spec = typeof entry === 'string' ? { kind: entry } : entry;
+  if (!isRecord(spec)) {
+    errors.push(`${prefix} must be a kind or an object with a kind.`);
+    return;
+  }
+  if (!MCP_TOOL_KINDS.has(spec.kind)) errors.push(`${prefix} kind must be one of: ${[...MCP_TOOL_KINDS].join(', ')}.`);
+  if (spec.title !== undefined && (!hasText(spec.title) || spec.title.length > 60)) errors.push(`${prefix}.title must be a short label.`);
+  if (spec.note !== undefined && (!hasText(spec.note) || spec.note.length > 160)) errors.push(`${prefix}.note must be one short sentence.`);
+  if (spec.fixed === undefined) return;
+  if (!isRecord(spec.fixed)) {
+    errors.push(`${prefix}.fixed must be an object.`);
+    return;
+  }
+  for (const [argumentPath, value] of Object.entries(spec.fixed)) {
+    if (!MCP_FIXED_PATH_PATTERN.test(argumentPath)) errors.push(`${prefix}.fixed.${argumentPath} is not a dotted argument path.`);
+    if (!['string', 'number', 'boolean'].includes(typeof value)) errors.push(`${prefix}.fixed.${argumentPath} must be a string, number or boolean.`);
+  }
+}
+
+// An app's MCP server is reached by service and path on its own loopback port,
+// never by URL, and only the tools listed here are ever offered to an AI client.
+function validateMcpExport(manifest, capability, prefix, errors) {
+  const routedServices = new Set((Array.isArray(manifest.routes) ? manifest.routes : []).map((route) => route?.service));
+  if (!routedServices.has(capability.service)) errors.push(`${prefix}.service must name a service the package routes.`);
+  if (typeof capability.path !== 'string' || !MCP_PATH_PATTERN.test(capability.path) || capability.path.split('/').includes('..')) {
+    errors.push(`${prefix}.path must be an absolute path such as /mcp.`);
+  }
+  if (capability.url !== undefined) errors.push(`${prefix} must not declare a url; MOS reaches the service itself.`);
+  const tools = isRecord(capability.tools) ? Object.entries(capability.tools) : [];
+  if (!tools.length) errors.push(`${prefix}.tools must list at least one tool.`);
+  for (const [name, entry] of tools) {
+    if (!MCP_TOOL_NAME_PATTERN.test(name)) errors.push(`${prefix}.tools.${name} is not a valid tool name.`);
+    validateMcpToolEntry(entry, `${prefix}.tools.${name}`, errors);
+  }
+  if (capability.auth === undefined) return;
+  if (!isRecord(capability.auth) || capability.auth.kind !== 'owner-token') {
+    errors.push(`${prefix}.auth.kind must be owner-token.`);
+    return;
+  }
+  if (capability.auth.hint !== undefined && (!hasText(capability.auth.hint) || capability.auth.hint.length > 200)) {
+    errors.push(`${prefix}.auth.hint must be a short sentence when present.`);
+  }
+  if (capability.auth.verifyTool !== undefined && !MCP_TOOL_NAME_PATTERN.test(String(capability.auth.verifyTool))) {
+    errors.push(`${prefix}.auth.verifyTool must be a tool name when present.`);
+  }
+}
+
 function validateExportsSemantics(manifest, errors) {
   if (manifest.exports === undefined) return;
   if (!isRecord(manifest.exports)) {
     errors.push('exports must be an object when present.');
     return;
   }
+  const mcpExports = Object.values(manifest.exports).filter((capability) => capability?.type === MCP_EXPORT_TYPE);
+  if (mcpExports.length > 1) errors.push(`exports may declare at most one ${MCP_EXPORT_TYPE}.`);
   for (const [id, capability] of Object.entries(manifest.exports)) {
     const prefix = `exports.${id}`;
     if (!isRecord(capability)) {
@@ -402,6 +460,7 @@ function validateExportsSemantics(manifest, errors) {
       continue;
     }
     if (!hasText(capability.type)) errors.push(`${prefix}.type is required.`);
+    if (capability.type === MCP_EXPORT_TYPE) validateMcpExport(manifest, capability, prefix, errors);
     if (capability.interfaceVersion !== undefined && !Number.isInteger(capability.interfaceVersion)) {
       errors.push(`${prefix}.interfaceVersion must be a whole number when present.`);
     }

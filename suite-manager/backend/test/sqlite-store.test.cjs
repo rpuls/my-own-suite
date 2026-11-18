@@ -51,6 +51,11 @@ test('fresh state creates the SQLite schema and records every migration', async 
 
   assert.deepEqual(tables, [
     'address_changes',
+    'ai_activity',
+    'ai_app_levels',
+    'ai_clients',
+    'ai_tool_exceptions',
+    'ai_tool_pins',
     'app_instance_config',
     'app_instance_env',
     'app_instance_folders',
@@ -289,6 +294,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'suite-address-changes',
     'session-expiry',
     'app-instance-folders',
+    'ai-connections',
   ]);
   upgraded.close();
 });

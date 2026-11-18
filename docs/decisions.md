@@ -1413,3 +1413,21 @@ Consequences:
 - A package published outside the official catalog may carry the same folder under the same rule.
 - What an app needs from the suite is added to core as a generic capability (a fresh browser, generated files, a named screenshot), never as a branch on an app id.
 - Which app a public-site screenshot shows is volunteered by the app modules (`showcase`), so core holds no list of favourite apps either.
+
+## 2026-11-18: AI Assistants Reach MOS Through One Gateway, And A Tool's Reviewed Kind Decides What Runs
+
+Decision: MOS exposes MCP tools to AI assistants through a single gateway inside Suite Manager, served at `/ai/mcp` on the suite address and offered only over HTTPS. Tools come from apps that declare them under `exports` with type `mcp-server`, by service and path, never by URL, and from MOS itself as the source "Suite health". The reviewed manifest gives every tool a kind: `read`, `add`, `change`, `serious` or `destructive`. Each assistant has its own token and one level per app: Off, See (read tools run) or See and do (add and change tools run too). Single tools can be allowed or blocked as exceptions, and apps without a level follow the assistant's default, which starts as Off. Serious and destructive tools are never offered. Nothing waits for the owner's approval: a tool that would need it is not offered at all. Every call is decided at one point in the gateway, which answers allow or refuse today. Routes into the gateway are interchangeable: the MCP address with a bearer token first, an outbound tunnel such as OpenAI's Secure MCP Tunnel next, both landing on the same decision.
+
+Reason: AI clients do not reliably ask before writing: ChatGPT wrote without any prompt in testing, and Claude and Gemini let users switch prompts off. App tokens such as Memos access tokens carry their owner's full power, and an MCP server's own annotations are self-declared, so the boundary has to be one MOS enforces per call, against a kind the package review fixed. A grant per tool and per assistant was rejected because its switches multiply with every app and every assistant. An approval queue was rejected for now because approvals an owner sees many times a day get clicked without reading. Running the gateway inside Suite Manager reuses its store, secrets, lifecycle and in-process access to MOS operations. A separate service would have needed a second machine-auth channel into Suite Manager and Docker network membership, which does not survive an app stop or a gateway restart.
+
+Consequences:
+
+- `exports` stays a provisional area: an `mcp-server` export needs no manifest generation change and no `minimumMosVersion` bump. An app update that starts offering tools asks consent through the `ai-tools` permission.
+- The gateway reaches an app on its own loopback port, so a manifest cannot point it at another host, another app or the network.
+- A manifest can fix arguments by path (`fixed`), so a tool cannot reach further than its kind says: Memos' new notes are always private, and its edits change text only.
+- An assistant makes at most 30 changes an hour; further changes are refused and logged.
+- A tool is pinned by a hash of its name, description, input schema and annotations the first time MOS sees it. A tool whose definition changes is refused for every assistant until the owner accepts the change.
+- Tool results are wrapped as untrusted data. The activity log records the assistant, tool, app, outcome and duration, never arguments or content. It keeps 90 days, outlives a removed assistant and is backed up.
+- Assistant token hashes and app tokens live in Suite Manager's state and are backed up, so a restored suite keeps its assistants.
+- Adding an "ask the owner" verdict later means one new answer at the gateway's decision point and a queue to show it in, with no change to how levels and kinds are stored.
+- The privacy page lists AI assistants among the destinations that exist only if the owner connects one.

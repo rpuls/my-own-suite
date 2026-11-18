@@ -501,6 +501,63 @@ const MIGRATIONS = [
     `,
     version: 21,
   },
+  {
+    // A source is an app's package id, or 'mos' for MOS's own tools. Tool names
+    // are the gateway's exposed names. Neither is a foreign key: rows of an
+    // uninstalled app are pruned when the AI connections service reads its
+    // catalog, and the activity log outlives the connection it names.
+    name: 'ai-connections',
+    sql: `
+      CREATE TABLE ai_clients (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        preset TEXT NOT NULL,
+        route TEXT NOT NULL CHECK (route IN ('direct', 'tunnel')),
+        token_hash TEXT NOT NULL UNIQUE,
+        default_level TEXT NOT NULL DEFAULT 'off' CHECK (default_level IN ('off', 'see', 'act')),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        created_at TEXT NOT NULL,
+        last_used_at TEXT
+      ) STRICT;
+      CREATE TABLE ai_app_levels (
+        client_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        level TEXT NOT NULL CHECK (level IN ('off', 'see', 'act')),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (client_id, source),
+        FOREIGN KEY (client_id) REFERENCES ai_clients(id) ON DELETE CASCADE
+      ) STRICT;
+      CREATE TABLE ai_tool_exceptions (
+        client_id TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        allowed INTEGER NOT NULL CHECK (allowed IN (0, 1)),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (client_id, tool),
+        FOREIGN KEY (client_id) REFERENCES ai_clients(id) ON DELETE CASCADE
+      ) STRICT;
+      CREATE TABLE ai_tool_pins (
+        tool TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        pinned_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE ai_activity (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        client_id TEXT,
+        client_name TEXT,
+        method TEXT NOT NULL,
+        tool TEXT,
+        tool_title TEXT,
+        source_name TEXT,
+        kind TEXT,
+        outcome TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX ai_activity_at_idx ON ai_activity(at);
+      CREATE INDEX ai_activity_client_idx ON ai_activity(client_id, id);
+    `,
+    version: 22,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {

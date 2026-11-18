@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Icon, Panel, PanelBody, type IconName } from '../../components/ui';
+import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { EmailRelayPanel } from './EmailRelayPanel';
@@ -13,7 +14,7 @@ import { StoragePanel } from '../storage/StoragePanel';
 
 type GroupId = 'advanced' | 'apps' | 'help' | 'security' | 'suite';
 
-type SettingId = 'activity' | 'address' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
+type SettingId = 'activity' | 'address' | 'ai' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
 const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
   { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
@@ -32,6 +33,7 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
+  { group: 'apps', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini mcp connect token tools permissions agent llm', title: 'AI assistants' },
   { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
   { group: 'advanced', icon: 'settings', id: 'technical', keywords: 'technical controls advanced logs config developer overrides expert', title: 'Technical controls' },
   { group: 'help', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
@@ -48,6 +50,7 @@ function matchesQuery(setting: typeof SETTINGS[number], query: string) {
 const SETTING_CARDS: Record<SettingId, () => ReactNode> = {
   activity: () => <SecurityActivityPanel />,
   address: () => <SuiteAddressPanel />,
+  ai: () => <AiConnectionsPanel />,
   diagnostics: () => <DiagnosticsPanel />,
   email: () => <EmailRelayPanel />,
   encryption: () => <EncryptionPanel />,

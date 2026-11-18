@@ -176,3 +176,13 @@ test('pages move to HTTPS where the address asks for it, and the API answers whe
     assert.equal((await request('POST', '/suite-manager/setup', { signedIn: false })).status, 404);
   });
 });
+
+test('the MCP address goes to the AI gateway, signed in or not, and only on a known host', async () => {
+  const handled = [];
+  const aiGateway = { handle: (request, response) => { handled.push(request.url); response.writeHead(204); response.end(); } };
+  await withHandler({ aiGateway }, async (request) => {
+    assert.equal((await request('POST', '/ai/mcp', { body: {}, signedIn: false })).status, 204);
+    assert.equal((await request('POST', '/ai/mcp', { body: {}, headers: { Host: 'evil.example' }, signedIn: false })).status, 421);
+  });
+  assert.deepEqual(handled, ['/ai/mcp']);
+});
