@@ -86,12 +86,17 @@ class AiConnectionsService {
     return this.now().toISOString();
   }
 
-  appUrlFor(packageId) {
+  // Where the owner makes the app's token: the app's own page for it when the
+  // package names one, else the app's front door.
+  appUrlFor(packageId, tokenPage = null) {
+    let base;
     try {
-      return this.appUrlOf(packageId) || null;
+      base = this.appUrlOf(packageId);
     } catch {
       return null;
     }
+    if (!base) return null;
+    return tokenPage ? `${String(base).replace(/\/+$/u, '')}${tokenPage}` : base;
   }
 
   // Bearer tokens travel in a header, so the address is offered only over HTTPS.
@@ -133,7 +138,7 @@ class AiConnectionsService {
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { appUrl: this.appUrlFor(source.id), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: builtin ? null : { appUrl: this.appUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -179,10 +184,10 @@ class AiConnectionsService {
   createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}) {
     const name = String(rawName ?? '').trim();
     if (!name || name.length > CLIENT_NAME_MAX) {
-      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the assistant a name of at most ${CLIENT_NAME_MAX} characters.`);
+      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
     const preset = String(rawPreset ?? 'other');
-    if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which assistant this is.');
+    if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which AI this is.');
     if (!ROUTES.has(route)) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
     const token = newClientToken();
     const id = crypto.randomUUID();
@@ -194,9 +199,9 @@ class AiConnectionsService {
     if (defaultLevel !== undefined && !LEVELS.includes(defaultLevel)) throw this.invalidLevel();
     const trimmed = name === undefined ? undefined : String(name).trim();
     if (trimmed !== undefined && (!trimmed || trimmed.length > CLIENT_NAME_MAX)) {
-      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the assistant a name of at most ${CLIENT_NAME_MAX} characters.`);
+      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
-    if (enabled !== undefined && typeof enabled !== 'boolean') throw new AiConnectionsError('AI_CLIENT_INVALID', 'Turn the assistant on or off.');
+    if (enabled !== undefined && typeof enabled !== 'boolean') throw new AiConnectionsError('AI_CLIENT_INVALID', 'Turn the AI on or off.');
     if (!this.aiStore.updateClient(clientId, { defaultLevel, enabled, name: trimmed })) throw this.unknownClient();
   }
 
@@ -211,7 +216,7 @@ class AiConnectionsService {
   }
 
   unknownClient() {
-    return new AiConnectionsError('AI_CLIENT_NOT_FOUND', 'That assistant does not exist.', 404);
+    return new AiConnectionsError('AI_CLIENT_NOT_FOUND', 'That AI is not connected.', 404);
   }
 
   invalidLevel() {
@@ -227,7 +232,7 @@ class AiConnectionsService {
   setLevel(clientId, sourceId, level) {
     this.requireClient(clientId);
     if (!LEVELS.includes(level)) throw this.invalidLevel();
-    if (!this.catalog.source(sourceId)) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to AI assistants.', 404);
+    if (!this.catalog.source(sourceId)) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
     this.aiStore.setLevel({ at: this.at(), clientId, level, source: sourceId });
   }
 
@@ -237,7 +242,7 @@ class AiConnectionsService {
     if (exception === 'allow') {
       const found = await this.catalog.find(String(toolName));
       if (!found?.tool) throw new AiConnectionsError('AI_TOOL_NOT_FOUND', 'That tool is not offered right now.', 404);
-      if (!OFFERABLE_KINDS.has(found.tool.kind)) throw new AiConnectionsError('AI_TOOL_NOT_OFFERED', 'This tool is never offered to an AI assistant.', 409);
+      if (!OFFERABLE_KINDS.has(found.tool.kind)) throw new AiConnectionsError('AI_TOOL_NOT_OFFERED', 'This tool is never offered to an AI.', 409);
     }
     this.aiStore.setException({ at: this.at(), clientId, exception, tool: String(toolName) });
   }
@@ -245,7 +250,7 @@ class AiConnectionsService {
   resetExceptions(clientId, sourceId) {
     this.requireClient(clientId);
     const source = this.catalog.source(sourceId);
-    if (!source) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to AI assistants.', 404);
+    if (!source) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
     this.aiStore.clearExceptions({ clientId, toolPrefix: source.prefix });
   }
 
@@ -257,7 +262,7 @@ class AiConnectionsService {
 
   async setSourceToken(sourceId, rawToken) {
     const source = this.catalog.source(sourceId);
-    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to AI assistants.', 404);
+    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
     const token = String(rawToken ?? '').trim();
     if (!token || token.length > 4096 || /\s/u.test(token)) throw new AiConnectionsError('AI_TOKEN_INVALID', 'Paste the access token exactly as the app showed it.');
     if (source.mcp.verifyTool && source.running) {
@@ -290,7 +295,7 @@ class AiConnectionsService {
 
   removeSourceToken(sourceId) {
     const source = this.catalog.source(sourceId);
-    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to AI assistants.', 404);
+    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
     fs.rmSync(this.catalog.tokenPath(source), { force: true });
     this.catalog.forget(source.id);
   }
@@ -355,7 +360,7 @@ class AiConnectionsService {
 
     const entry = typeof toolName === 'string' ? (await this.pinnedCatalog()).find((candidate) => candidate.tool.name === toolName) : null;
     if (!entry || this.decide(client, entry).verdict !== 'allow') {
-      return refuse(entry && !OFFERABLE_KINDS.has(entry.tool.kind) ? 'never-offered' : 'not-allowed', `My Own Suite: the tool "${String(toolName).slice(0, 128)}" is not available to this assistant.`, entry);
+      return refuse(entry && !OFFERABLE_KINDS.has(entry.tool.kind) ? 'never-offered' : 'not-allowed', `My Own Suite: the tool "${String(toolName).slice(0, 128)}" is not available to this AI.`, entry);
     }
     const { source, tool } = entry;
     if (!source.running) return refuse('failed', `${source.name} is not running right now. Try again later.`, entry);
@@ -365,7 +370,7 @@ class AiConnectionsService {
     if (tool.kind !== 'read') {
       const since = new Date(this.now().getTime() - 3_600_000).toISOString();
       if (this.aiStore.writesSince({ clientId: client.id, since }) >= WRITES_PER_HOUR) {
-        return refuse('limit-reached', `My Own Suite: this assistant has made ${WRITES_PER_HOUR} changes in the last hour, which is the limit. Try again later.`, entry);
+        return refuse('limit-reached', `My Own Suite: this AI has made ${WRITES_PER_HOUR} changes in the last hour, which is the limit. Try again later.`, entry);
       }
     }
 
@@ -384,7 +389,7 @@ class AiConnectionsService {
       }
     }
     const token = this.catalog.tokenOf(source);
-    if (!token) return { outcome: 'failed', result: textResult(`My Own Suite has no access token for ${source.name} yet. The owner adds one under Settings → AI assistants.`, true) };
+    if (!token) return { outcome: 'failed', result: textResult(`${source.name} has not let My Own Suite in yet, or no longer does. The owner can fix this in My Own Suite, on the ${source.name} page under Apps.`, true) };
     try {
       const result = await callMcp({ fetchImpl: this.fetchImpl, method: 'tools/call', params: { arguments: args, name: tool.upstreamName }, token, url: source.url });
       return { outcome: result?.isError ? 'tool-error' : 'ok', result: untrustedResult(source.name, result) };

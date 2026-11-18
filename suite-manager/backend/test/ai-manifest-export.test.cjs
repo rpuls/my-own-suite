@@ -27,6 +27,7 @@ test('the Memos package declares its MCP server by service and path, with every 
   assert.equal(mcp.tools.get('memo_delete_memo').kind, 'destructive');
   assert.deepEqual(mcp.tools.get('memo_create_memo').fixed, { 'body.visibility': 'PRIVATE' });
   assert.deepEqual(mcp.tools.get('memo_update_memo').fixed, { updateMask: 'content' });
+  assert.equal(mcp.tokenPage, '/setting#access-token');
 });
 
 test('an MCP export cannot point MOS at a URL, an unrouted service or an unclassed tool', () => {
@@ -38,6 +39,7 @@ test('an MCP export cannot point MOS at a URL, an unrouted service or an unclass
   assert.match(exportErrors(withExport({ tools: { memo_create_memo: { fixed: { '../x': 'y' }, kind: 'add' } } })).join('\n'), /not a dotted argument path/u);
   assert.match(exportErrors(withExport({ tools: {} })).join('\n'), /must list at least one tool/u);
   assert.match(exportErrors(withExport({ auth: { kind: 'oauth' } })).join('\n'), /auth.kind must be owner-token/u);
+  assert.match(exportErrors(withExport({ auth: { kind: 'owner-token', tokenPage: 'https://elsewhere.example/' } })).join('\n'), /auth.tokenPage must be a path in the app/u);
 });
 
 test('offering tools to AI clients is a permission an app update must ask consent for', () => {

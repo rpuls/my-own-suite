@@ -37,6 +37,7 @@ function mcpExportOf(manifest) {
     hint: typeof found.auth?.hint === 'string' ? found.auth.hint : null,
     path: found.path,
     service: found.service,
+    tokenPage: typeof found.auth?.tokenPage === 'string' ? found.auth.tokenPage : null,
     tools: new Map(tools),
     verifyTool: typeof found.auth?.verifyTool === 'string' ? found.auth.verifyTool : null,
   };

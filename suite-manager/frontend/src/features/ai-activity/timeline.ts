@@ -64,6 +64,7 @@ function toneOf(entry: AiActivityEntry): StepTone {
 }
 
 function textOf(entry: AiActivityEntry) {
+  if (!entry.toolTitle) return 'Tried to use a tool MOS does not offer';
   if (REFUSAL_WORDS[entry.outcome]) return `Tried to ${lowerFirst(title(entry))}`;
   return pastTense(title(entry));
 }

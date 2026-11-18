@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "memos",
   "name": "Memos",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "appVersion": "26.11.0",
   "minimumMosVersion": "0.20.0",
   "summary": "Quick notes and checklists for the whole household, kept on your own server.",
@@ -124,7 +124,8 @@
       "path": "/mcp",
       "auth": {
         "kind": "owner-token",
-        "hint": "In Memos, open Settings → My Account → Access Tokens and create one.",
+        "hint": "In Memos, open Settings → Access Tokens, choose Create, and pick No expiration.",
+        "tokenPage": "/setting#access-token",
         "verifyTool": "auth_get_current_user"
       },
       "tools": {
@@ -143,7 +144,7 @@
         "memo_create_memo": {
           "kind": "add",
           "title": "Save a new note",
-          "note": "Always private, so it never shares anything.",
+          "note": "New notes are always private.",
           "fixed": {
             "body.visibility": "PRIVATE"
           }
@@ -151,7 +152,7 @@
         "memo_create_memo_comment": {
           "kind": "add",
           "title": "Add a comment",
-          "note": "Always private, so it never shares anything.",
+          "note": "New comments are always private.",
           "fixed": {
             "body.visibility": "PRIVATE"
           }
@@ -159,7 +160,7 @@
         "memo_update_memo": {
           "kind": "change",
           "title": "Edit a note",
-          "note": "Changes the text only, never who can see it.",
+          "note": "Edits change only the text, never who can see it.",
           "fixed": {
             "updateMask": "content"
           }

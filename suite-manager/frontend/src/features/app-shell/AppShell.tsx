@@ -62,7 +62,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   // Checked each time the menu opens, so the entry appears once an assistant has done something.
   useEffect(() => {
-    aiSummary().then((summary) => setShowAiActivity(summary.hasConnections && summary.hasActivity), () => {});
+    aiSummary().then((summary) => setShowAiActivity(summary.hasActivity), () => {});
   }, [menuOpen]);
   useEffect(() => {
     const update = () => setRoute(routeForPath());
