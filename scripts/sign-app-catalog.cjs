@@ -107,6 +107,29 @@ function readKeyInteractively() {
   });
 }
 
+const CLIPBOARD_TOOLS = {
+  darwin: [{ clear: ['pbcopy', []], read: ['pbpaste', []] }],
+  linux: [
+    { clear: ['wl-copy', ['--clear']], read: ['wl-paste', ['--no-newline']] },
+    { clear: ['xclip', ['-selection', 'clipboard']], read: ['xclip', ['-selection', 'clipboard', '-o']] },
+  ],
+  win32: [{ clear: ['clip', []], read: ['powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']] }],
+};
+
+// A pasted key would otherwise sit on the clipboard until something else is
+// copied. Cleared only when the clipboard still holds this key, never otherwise.
+function clearKeyFromClipboard(pastedKey) {
+  const { spawnSync } = require('node:child_process');
+  for (const tool of CLIPBOARD_TOOLS[process.platform] || []) {
+    const read = spawnSync(tool.read[0], tool.read[1], { encoding: 'utf8', windowsHide: true });
+    if (read.error || read.status !== 0) continue;
+    if (normalizePastedKey(read.stdout) !== normalizePastedKey(pastedKey)) return;
+    const cleared = spawnSync(tool.clear[0], tool.clear[1], { input: '', windowsHide: true });
+    if (!cleared.error && cleared.status === 0) process.stderr.write('Cleared the key from your clipboard.\n');
+    return;
+  }
+}
+
 function readKeyFromPipe() {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -124,7 +147,10 @@ async function resolvePrivateKey() {
     if (!fs.existsSync(configured)) fail(`No signing key at ${configured}.`);
     return fs.readFileSync(configured, 'utf8');
   }
-  return process.stdin.isTTY ? readKeyInteractively() : readKeyFromPipe();
+  if (!process.stdin.isTTY) return readKeyFromPipe();
+  const pasted = await readKeyInteractively();
+  clearKeyFromClipboard(pasted);
+  return pasted;
 }
 
 async function sign() {
