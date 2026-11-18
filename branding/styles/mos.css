@@ -505,6 +505,86 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   }
 }
 
+/* Segmented: one of two to four short options that are steps on one scale, side
+   by side in a single track, such as Off / See / See and do. It takes effect
+   the moment it is picked. The chosen step is a raised neutral plate, not the
+   accent: picking a step is not switching something on, and a column of these
+   would otherwise outshout the one action the screen is for. Options that need
+   a sentence each, or more than four of them, stay a list of choice rows.
+
+   Structure contract: a role="radiogroup" wrapper holding one <label> per
+   option, each a visually hidden <input type="radio"> immediately followed by
+   the visible label span. The inputs stay real radios, so arrow keys and focus
+   are the platform's. */
+.mos-segmented {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-muted);
+}
+
+.mos-segmented-option {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.mos-segmented-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mos-segmented-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0 var(--mos-space-3);
+  border-radius: var(--mos-radius-pill);
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  font-weight: var(--mos-weight-semibold);
+  white-space: nowrap;
+  transition:
+    background var(--mos-transition),
+    color var(--mos-transition);
+}
+
+.mos-segmented-option:hover > .mos-segmented-input:enabled:not(:checked) + .mos-segmented-label {
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-text);
+}
+
+.mos-segmented-input:checked + .mos-segmented-label {
+  background: var(--mos-color-surface-strong);
+  box-shadow: inset 0 0 0 1px var(--mos-color-surface-border);
+  color: var(--mos-color-text-strong);
+}
+
+.mos-segmented-input:focus-visible + .mos-segmented-label {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-segmented-input:disabled + .mos-segmented-label {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-segmented-label {
+    transition: none;
+  }
+}
+
 /* Range: a continuous setting that is chosen by eye rather than typed — a size
    or a distance whose right value is whatever looks right. It takes the
    switch's accent gradient for the part of the track already spent, so "more"

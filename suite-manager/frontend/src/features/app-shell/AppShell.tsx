@@ -2,9 +2,11 @@ import { Component, useCallback, useEffect, useState, type ErrorInfo, type React
 
 import { Drawer, Icon } from '../../components/ui';
 import { navigateTo } from '../../lib/navigation';
+import { AiActivityScreen } from '../ai-activity/AiActivityScreen';
 import { AppsScreen } from '../apps/AppsScreen';
 import { BackupsScreen } from '../backups/BackupsScreen';
 import { DashboardScreen } from '../dashboard/DashboardScreen';
+import { aiSummary } from '../settings/ai/model';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
 import { FilesScreen } from '../files/FilesScreen';
@@ -28,10 +30,11 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-type Route = 'apps' | 'backups' | 'customize' | 'dashboard' | 'files' | 'not-found' | 'settings' | 'updates';
+type Route = 'ai-activity' | 'apps' | 'backups' | 'customize' | 'dashboard' | 'files' | 'not-found' | 'settings' | 'updates';
 
 const routesByPath: Record<string, Route> = {
   '/suite-manager': 'dashboard',
+  '/suite-manager/ai-activity': 'ai-activity',
   '/suite-manager/apps': 'apps',
   '/suite-manager/backups': 'backups',
   '/suite-manager/customize': 'customize',
@@ -55,7 +58,12 @@ function NotFoundScreen({ onNavigate }: { onNavigate: (route: Route, path: strin
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [route, setRoute] = useState(routeForPath);
+  const [showAiActivity, setShowAiActivity] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // Checked each time the menu opens, so the entry appears once an assistant has done something.
+  useEffect(() => {
+    aiSummary().then((summary) => setShowAiActivity(summary.hasConnections && summary.hasActivity), () => {});
+  }, [menuOpen]);
   useEffect(() => {
     const update = () => setRoute(routeForPath());
     window.addEventListener('popstate', update);
@@ -99,13 +107,14 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         </div>
         <button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button>
         <button aria-current={route === 'backups' ? 'page' : undefined} onClick={() => navigate('backups', '/suite-manager/backups')} type="button"><Icon name="backup" />Backup</button>
+        {showAiActivity || route === 'ai-activity' ? <button aria-current={route === 'ai-activity' ? 'page' : undefined} onClick={() => navigate('ai-activity', '/suite-manager/ai-activity')} type="button"><Icon name="sparkle" />AI activity</button> : null}
         <button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="update" />Updates</button>
         <button aria-current={route === 'settings' || route === 'files' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
         <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
       </nav></Drawer>
 
       <main className="suite-shell-main">
-        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'files' ? <FilesScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'files' ? <FilesScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : route === 'ai-activity' ? <AiActivityScreen /> : route === 'not-found' ? <NotFoundScreen onNavigate={navigate} /> : (
           <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>

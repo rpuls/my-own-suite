@@ -797,6 +797,9 @@ function describeRequestedPermissions(manifest, { external = false } = {}) {
     for (const key of Object.keys(manifest.integrations)) permissions.add(`integration:${key}`);
   }
   if (manifest?.role === 'capability-provider') permissions.add('provides-capability');
+  if (isPlainRecord(manifest?.exports) && Object.values(manifest.exports).some((entry) => entry?.type === 'mcp-server')) {
+    permissions.add('ai-tools');
+  }
   return [...permissions].sort((left, right) => left.localeCompare(right, 'en'));
 }
 

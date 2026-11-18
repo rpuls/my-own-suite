@@ -4262,3 +4262,29 @@ button.suite-bk-group {
     gap: 0;
   }
 }
+
+/* Settings → AI assistants. The panel sections own the inset; these only
+   space what sits inside one assistant's apps and one app's tools. */
+.suite-ai-privacy {
+  display: flex;
+  gap: var(--mos-space-2);
+  align-items: center;
+  margin: 0;
+}
+
+.suite-ai-grants {
+  display: grid;
+  gap: var(--mos-space-5);
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
+}
+
+.suite-ai-grant-app,
+.suite-ai-grant-group {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-ai-grant-app > p,
+.suite-ai-grant-group > p {
+  margin: 0;
+}

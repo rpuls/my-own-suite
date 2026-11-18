@@ -58,6 +58,20 @@ The sponsor memo and the sample memos compiled into the binary are only seeded w
 
 The `/api/v1` paths are gone since 26.10 and return `410`. REST lives under `/api/...` and Connect RPC under `/memos.api.<Service>/<Method>`. Personal access tokens are created in the web client under **Settings → Access Tokens**.
 
+## AI Tools (MCP)
+
+Memos serves an MCP server at `POST /mcp` (Streamable HTTP, stateless, tools only). The manifest declares it under `exports.mcp`, so the MOS AI gateway reaches it on the service's loopback port and offers assistants only the tools listed there, by kind:
+
+- `read`, run at See: `memo_list_memos`, `memo_get_memo`, `memo_list_memo_comments`.
+- `add`, run at See and do: `memo_create_memo` and `memo_create_memo_comment`, both with `body.visibility` fixed to `PRIVATE`, so a new note or comment never shares anything.
+- `change`, run at See and do: `memo_update_memo`, with `updateMask` fixed to `content`, so an edit changes the text and never who can see the note. Memos keeps no earlier versions, so an edit cannot be undone.
+- `destructive`, never offered: `memo_delete_memo`, `attachment_delete_attachment`. Deletes are permanent; Memos has no archive for them.
+- Every other tool Memos advertises (spaces, reactions, relations, attachments, sharing) is not listed and is never offered.
+
+The gateway calls Memos with a personal access token the owner pastes under **Settings → AI assistants**, stored as `ai-token.secret` in the instance's secret directory. A Memos token has no scopes: it carries its user's full power, including instance settings and minting more tokens, so the gateway's tool list is the only boundary. A separate least-privileged Memos user cannot stand in for the owner, because it never sees the owner's private memos, which is what new memos are by default. MOS checks a pasted token with `auth_get_current_user` before saving it. Revoking the token in Memos takes effect on the next call.
+
+Tool results return memo text verbatim, so a memo can carry instructions aimed at an AI; any signed-in user can plant such text in a protected memo another user's AI reads. The gateway wraps results as untrusted data, and the kinds and fixed arguments bound what any such instruction can reach. The owner's token belongs to the Memos admin, which can edit any memo it can name, including another household member's protected memos.
+
 ## Upgrades
 
 Memos runs its SQLite migrations on start, hence `backupRequired: true` and brief downtime. A database migrated by a newer version is not guaranteed to open on an older one, so `rollback: safe` refers to the container, not to reversing a migration.
