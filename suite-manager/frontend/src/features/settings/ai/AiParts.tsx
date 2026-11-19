@@ -74,7 +74,7 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
     setSaving(false);
   }
 
-  const tokenPage = source.token?.appUrl;
+  const tokenPage = source.token?.tokenPageUrl;
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
     <Notice title={`Enable AI access for ${source.name}`} variant="info">
       <p>{source.name} keeps its own sign-in, so it needs to give MOS an access token once. {source.token?.hint || `Create an access token in ${source.name}.`} Then paste the token here.</p>

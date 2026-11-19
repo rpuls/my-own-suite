@@ -86,9 +86,10 @@ class AiConnectionsService {
     return this.now().toISOString();
   }
 
-  // Where the owner makes the app's token: the app's own page for it when the
-  // package names one, else the app's front door.
-  appUrlFor(packageId, tokenPage = null) {
+  // The app's own page for making a token, only when the package names one: a
+  // link labelled as the token page must never land on the app's front door.
+  tokenPageUrlFor(packageId, tokenPage) {
+    if (!tokenPage) return null;
     let base;
     try {
       base = this.appUrlOf(packageId);
@@ -96,7 +97,7 @@ class AiConnectionsService {
       return null;
     }
     if (!base) return null;
-    return tokenPage ? `${String(base).replace(/\/+$/u, '')}${tokenPage}` : base;
+    return `${String(base).replace(/\/+$/u, '')}${tokenPage}`;
   }
 
   // Bearer tokens travel in a header, so the address is offered only over HTTPS.
@@ -138,7 +139,7 @@ class AiConnectionsService {
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { appUrl: this.appUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: builtin ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
