@@ -4,6 +4,8 @@
 // it: they share its database and transactions but none of its other rows.
 
 const ACTIVITY_KEPT_DAYS = 90;
+// A ceiling under the 90 days, so a loop of calls or bad tokens cannot grow the log without end.
+const ACTIVITY_MAX_ROWS = 100_000;
 const LEVELS = ['off', 'see', 'act'];
 
 const CLIENT_COLUMNS = `
@@ -137,10 +139,11 @@ class AiStore {
   }
 
   recordActivity({ at, client = null, durationMs, kind = null, method, outcome, sourceName = null, tool = null, toolTitle = null }) {
-    this.db.prepare(`
+    const { lastInsertRowid } = this.db.prepare(`
       INSERT INTO ai_activity (at, client_id, client_name, method, tool, tool_title, source_name, kind, outcome, duration_ms)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(at, client?.id || null, client?.name || null, method, tool, toolTitle, sourceName, kind, outcome, Math.max(0, Math.round(durationMs)));
+    this.db.prepare('DELETE FROM ai_activity WHERE id <= ?').run(Number(lastInsertRowid) - ACTIVITY_MAX_ROWS);
   }
 
   writesSince({ clientId, since }) {
@@ -173,4 +176,4 @@ class AiStore {
   }
 }
 
-module.exports = { ACTIVITY_KEPT_DAYS, AiStore, LEVELS };
+module.exports = { ACTIVITY_KEPT_DAYS, ACTIVITY_MAX_ROWS, AiStore, LEVELS };
