@@ -309,6 +309,8 @@ test('the HTTP edge refuses plain HTTP, browser origins, unknown clients and bat
   assert.equal((await h.post([list], bearer)).status, 400);
   assert.equal((await h.post({ jsonrpc: '2.0', method: 'notifications/initialized' }, bearer)).status, 202);
   assert.equal((await h.post(list, { 'X-MOS-Gateway-Key': token, Authorization: 'Bearer chatgpt-own-token' })).status, 200);
+  // Unmarked by Caddy and on loopback: the ChatGPT tunnel, on this machine.
+  assert.equal((await h.post(list, { 'X-MOS-Gateway-Key': token, 'X-Forwarded-Proto': '' })).status, 200);
 
   assert.equal((await h.rpc(token, 'initialize', { protocolVersion: '2025-11-25' })).body.result.protocolVersion, '2025-11-25');
   assert.equal((await h.rpc(token, 'resources/list', {})).body.error.code, -32601);

@@ -1430,6 +1430,7 @@ Consequences:
 - Tool results are wrapped as untrusted data. The activity log records the assistant, tool, app, outcome and duration, never arguments or content. It keeps 90 days, outlives a removed assistant and is backed up.
 - Assistant token hashes and app tokens live in Suite Manager's state and are backed up, so a restored suite keeps its assistants.
 - Adding an "ask the owner" verdict later means one new answer at the gateway's decision point and a queue to show it in, with no change to how levels and kinds are stored.
+- ChatGPT connects through OpenAI's tunnel client (`tunnel-client-runtime`, pinned by digest), which the app agent runs as `mos-ai-tunnel.service` only while ChatGPT is connected. It polls OpenAI outbound, so nothing at home is opened. It runs with host networking, read-only, with no capabilities, so it reaches Suite Manager on loopback whatever the suite address. The gateway accepts a request without HTTPS only when Caddy did not forward it and it arrived on loopback. Its Harpoon feature is off: no OAuth discovery, no targets, only the main channel. The tunnel is one assistant whose token it presents as `X-MOS-Gateway-Key`. The tunnel ID and keys are backed up with Suite Manager, but the running copy and the enabled unit belong to the machine, so a server restored from the backup keeps the tunnel off until the owner turns it on, and two servers never answer for one tunnel.
 
 ## 2026-11-19: An AI Changes The Dashboard Through A Model, And Every Dashboard Change Is A Checkpoint
 

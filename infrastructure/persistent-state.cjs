@@ -225,6 +225,16 @@ function managedStateTargets({ caddyDir = '/etc/caddy', easyDoorIdFile = easyDoo
       kind: 'directory',
       path: `${stateRoot}/{backup,https,homepage,update}-agent`,
     },
+    // The ChatGPT tunnel's copy of its keys. Suite Manager keeps the originals in
+    // the backup; another machine restored from it leaves the tunnel off until the
+    // owner turns it on, so two servers never answer for one tunnel.
+    {
+      backedUp: false,
+      class: 'machine-local',
+      id: 'ai-tunnel',
+      kind: 'directory',
+      path: `${stateRoot}/ai-tunnel`,
+    },
     {
       backedUp: false,
       class: 'machine-local',

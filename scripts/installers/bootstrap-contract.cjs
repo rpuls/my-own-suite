@@ -400,6 +400,10 @@ cat > /etc/systemd/system/mos-homepage.service <<MOS_HOMEPAGE_UNIT
 ${renderHomepageSystemdUnit()}
 MOS_HOMEPAGE_UNIT
 
+# Enabled only when the owner connects ChatGPT; written so a fresh machine has the units an updated one has.
+cat > /etc/systemd/system/${AI_TUNNEL_UNIT} <<MOS_AI_TUNNEL_UNIT
+${renderAiTunnelUnit({ root: '$MOS_STATE_ROOT/ai-tunnel' })}MOS_AI_TUNNEL_UNIT
+
 cat > /etc/systemd/system/mos-suite-manager.service <<MOS_SUITE_MANAGER_UNIT
 [Unit]
 Description=MOS Suite Manager
@@ -849,3 +853,4 @@ const {
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
 } = require('../../infrastructure/control-plane-runtime.cjs');
+const { AI_TUNNEL_UNIT, renderAiTunnelUnit } = require('../../shared/ai-tunnel.cjs');

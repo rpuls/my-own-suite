@@ -29,6 +29,7 @@ export function AiConnectionsPanel() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
   const [addIssued, setAddIssued] = useState<{ clientId: string; token: string } | null>(null);
+  const [chatGptAdded, setChatGptAdded] = useState('');
   const [rotated, setRotated] = useState<{ client: AiClient; token: string } | null>(null);
   const [removing, setRemoving] = useState<AiClient | null>(null);
   const loadedOnce = useRef(false);
@@ -51,10 +52,10 @@ export function AiConnectionsPanel() {
   }, []);
 
   useEffect(() => {
-    if (!addIssued) return undefined;
+    if (!addIssued && !chatGptAdded) return undefined;
     const timer = window.setInterval(() => void load(), CONNECT_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [addIssued]);
+  }, [addIssued, chatGptAdded]);
 
   async function run(key: string, fallback: string, action: () => Promise<AiStatus>) {
     setBusy(key);
@@ -84,10 +85,26 @@ export function AiConnectionsPanel() {
     }
   }
 
+  async function connectChatGpt(tunnelId: string, runtimeKey: string) {
+    setBusy('add');
+    setAddError('');
+    try {
+      const created = await aiRequest<{ client: AiClient; status: AiStatus }>('POST', '/tunnel', 'ChatGPT could not be connected.', { runtimeKey, tunnelId });
+      setStatus(created.status);
+      setChatGptAdded(created.client.id);
+    } catch (caught) {
+      setAddError(errorText(caught, 'ChatGPT could not be connected.'));
+    } finally {
+      setBusy('');
+    }
+  }
+
   function closeAdd() {
     if (addIssued) setOpenClient(addIssued.clientId);
+    if (chatGptAdded) setOpenClient(chatGptAdded);
     setAdding(false);
     setAddIssued(null);
+    setChatGptAdded('');
   }
 
   function actionsFor(client: AiClient, sources: AiSource[]): ClientActions {
@@ -121,6 +138,7 @@ export function AiConnectionsPanel() {
         setRotated({ client, token: issued.token });
         return issued.status;
       }),
+      onStartTunnel: () => void run(key, 'The tunnel could not be turned on.', () => aiRequest('POST', '/tunnel/start', 'The tunnel could not be turned on.')),
       onToggleEnabled: () => void run(key, 'The AI could not be changed.', () => aiRequest('PUT', clientPath(client), 'The AI could not be changed.', { enabled: !client.enabled })),
     };
   }
@@ -149,13 +167,14 @@ export function AiConnectionsPanel() {
         key={client.id}
         onToggle={() => setOpenClient(openClient === client.id ? '' : client.id)}
         sources={sources}
+        tunnel={status?.tunnel?.clientId === client.id ? status.tunnel : null}
       />)}
     </PanelList> : status ? <PanelBody>
       {reachable
         ? <p className="suite-meta">No AI is connected yet. Add one to use your apps from your AI chat, such as Claude Code, LM Studio or Open WebUI.</p>
         : <p className="suite-meta">An AI can connect once your suite has an HTTPS address. <a className="mos-link" href={ADDRESS_SETTINGS_PATH}>Set up your suite address</a></p>}
     </PanelBody> : null}
-    {adding && status?.mcpUrl ? <AddAssistantDialog busy={busy === 'add'} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onClose={closeAdd} onCreate={(name) => void addClient(name)} onDone={closeAdd} /> : null}
+    {adding && status?.mcpUrl ? <AddAssistantDialog busy={busy === 'add'} chatGptAdded={Boolean(chatGptAdded)} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onClose={closeAdd} onConnectChatGpt={(tunnelId, runtimeKey) => void connectChatGpt(tunnelId, runtimeKey)} onCreate={(name) => void addClient(name)} onDone={closeAdd} tunnel={status.tunnel} /> : null}
     {rotated && status?.mcpUrl ? <NewTokenDialog client={rotated.client} mcpUrl={status.mcpUrl} onClose={() => setRotated(null)} token={rotated.token} /> : null}
     {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
   </Panel>;
