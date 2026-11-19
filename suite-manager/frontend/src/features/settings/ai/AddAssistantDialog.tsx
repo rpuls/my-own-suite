@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 
 import { ChoiceRow, Dialog, Icon, Notice, Panel, PanelBand, PanelHead, PanelItem, PanelList, SecretText, TextInput } from '../../../components/ui';
 import { TUNNEL_WORDS, type AiTunnel } from './model';
@@ -84,6 +84,40 @@ function ChatGptForm({ busy, error, onBack, onClose, onConnect }: { busy: boolea
   </Dialog>;
 }
 
+// A setup stays open until the AI has actually called MOS: nothing but a deliberate
+// "Stop for now" ends it early, so the owner cannot skip the part that matters.
+function UntilConnected({ children, connected, leaveNote, name, onDone, title }: {
+  children: ReactNode;
+  connected: boolean;
+  leaveNote: string;
+  name: string;
+  onDone: () => void;
+  title: string;
+}) {
+  const [leaving, setLeaving] = useState(false);
+  if (leaving && !connected) {
+    return <Dialog
+      dismissible={false}
+      footer={<>
+        <button className="mos-btn mos-btn-ghost" onClick={onDone} type="button">Stop for now</button>
+        <button className="mos-btn mos-btn-primary" onClick={() => setLeaving(false)} type="button">Keep setting up</button>
+      </>}
+      onClose={() => setLeaving(false)}
+      title={`Stop connecting ${name}?`}
+    >
+      <p>{name} has not connected yet. {leaveNote}</p>
+    </Dialog>;
+  }
+  return <Dialog
+    dismissible={connected}
+    footer={connected ? <button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button> : undefined}
+    onClose={connected ? onDone : () => setLeaving(true)}
+    title={title}
+  >
+    {children}
+  </Dialog>;
+}
+
 // What is left happens in ChatGPT, so the steps are shown wherever ChatGPT has not called yet.
 export function ChatGptSteps() {
   return <>
@@ -99,10 +133,7 @@ export function ChatGptSteps() {
 }
 
 function ChatGptNext({ connected, onDone, tunnel }: { connected: boolean; onDone: () => void; tunnel: AiTunnel | null }) {
-  const footer = connected
-    ? <button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>
-    : <button className="mos-btn mos-btn-ghost" onClick={onDone} type="button">Finish later</button>;
-  return <Dialog footer={footer} onClose={onDone} title={connected ? 'ChatGPT is connected' : 'Now add MOS in ChatGPT'}>
+  return <UntilConnected connected={connected} leaveNote="The steps stay on its row under AI assistants, so you can finish later." name="ChatGPT" onDone={onDone} title={connected ? 'ChatGPT is connected' : 'Now add MOS in ChatGPT'}>
     <div className="suite-settings-form">
       {connected ? null : <p>MOS is ready on its side. One step is left, and it happens in ChatGPT.</p>}
       <TunnelStatus tunnel={tunnel} />
@@ -111,7 +142,7 @@ function ChatGptNext({ connected, onDone, tunnel }: { connected: boolean; onDone
         ? <p>Next, choose which apps ChatGPT may use. In a chat, mention the plugin with @MOS. ChatGPT keeps its list of tools until you press Refresh tools in the plugin&apos;s settings, so do that after you allow more.</p>
         : <ChatGptSteps />}
     </div>
-  </Dialog>;
+  </UntilConnected>;
 }
 
 function PickKind({ chatGptConnected, onChatGpt, onClose, onOwn }: { chatGptConnected: boolean; onChatGpt: () => void; onClose: () => void; onOwn: () => void }) {
@@ -162,16 +193,13 @@ export function AddAssistantDialog({ busy, chatGptAdded, connected, error, issue
   }
 
   if (issued) {
-    const footer = connected
-      ? <button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>
-      : <button className="mos-btn mos-btn-ghost" onClick={onDone} type="button">Finish later</button>;
-    return <Dialog footer={footer} onClose={onDone} title={`Connect ${name.trim()}`}>
+    return <UntilConnected connected={connected} leaveNote="Its token is shown only here. If you stop now, make a new one from its menu when you continue." name={name.trim()} onDone={onDone} title={`Connect ${name.trim()}`}>
       <div className="suite-settings-form">
         <ConnectInstructions mcpUrl={mcpUrl} token={issued} />
         <ConnectionStatus connected={connected} name={name.trim()} />
         <PrivacyLine />
       </div>
-    </Dialog>;
+    </UntilConnected>;
   }
   if (chatGptAdded) return <ChatGptNext connected={connected} onDone={onDone} tunnel={tunnel} />;
   if (step === 'chatgpt') return <ChatGptForm busy={busy} error={error} onBack={() => setStep('pick')} onClose={onClose} onConnect={onConnectChatGpt} />;
