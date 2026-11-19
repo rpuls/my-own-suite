@@ -150,7 +150,7 @@ export function AiConnectionsPanel() {
   const sources = status?.sources ?? [];
   const clients = status?.clients ?? [];
   const reachable = Boolean(status?.mcpUrl);
-  const issuedClient = clients.find((client) => client.id === addIssued?.clientId);
+  const issuedClient = clients.find((client) => client.id === (addIssued?.clientId ?? chatGptAdded));
 
   return <Panel>
     <PanelHead actions={status ? <button className={`mos-btn ${clients.length ? 'mos-btn-secondary' : 'mos-btn-primary'}`} disabled={Boolean(busy) || !reachable} onClick={() => { setAddError(''); setAdding(true); }} type="button">Add</button> : null} heading="h3" title="AI assistants">
