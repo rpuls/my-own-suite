@@ -95,14 +95,13 @@ export function AiConnectionsPanel() {
       onAccept: (tool) => void change('The tool could not be accepted.', () => aiRequest('POST', `/tools/${encodeURIComponent(tool)}/accept`, 'The tool could not be accepted.')),
       onException: (tool: string, exception: AiException | null) => void change('The tool could not be changed.', () => aiRequest('PUT', clientPath(client, `/exceptions/${encodeURIComponent(tool)}`), 'The tool could not be changed.', { exception })),
       onLevel: (sourceId: string, level: AiLevel) => void change('The setting could not be changed.', () => aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(sourceId)}`), 'The setting could not be changed.', { level })),
-      onLevelWithToken: async (sourceId, level, token) => {
+      onSourceToken: async (sourceId, token) => {
         try {
-          await aiRequest('PUT', `/sources/${encodeURIComponent(sourceId)}/token`, 'The token could not be saved.', { token });
+          setStatus(await aiRequest('PUT', `/sources/${encodeURIComponent(sourceId)}/token`, 'The token could not be saved.', { token }));
+          return '';
         } catch (caught) {
           return errorText(caught, 'The token could not be saved.');
         }
-        await change('The setting could not be changed.', () => aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(sourceId)}`), 'The setting could not be changed.', { level }));
-        return '';
       },
       // Apps that follow the default keep what they had: only apps added later take the new default.
       onDefaultLevel: (level) => void run(key, 'The setting could not be changed.', async () => {
