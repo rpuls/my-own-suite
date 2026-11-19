@@ -2476,9 +2476,13 @@ a.suite-files-name {
    dialog growing a scrollbar. The .suite-dialog base rule is declared later
    in this file, so the selector needs both classes to win on width. */
 .suite-dialog.suite-app-gallery-dialog {
-  grid-template-rows: auto minmax(0, 1fr);
   width: min(100%, 1240px);
   max-height: min(92vh, 1080px);
+}
+
+.suite-app-gallery-dialog .suite-dialog-body {
+  grid-template-rows: minmax(0, 1fr);
+  overflow-y: hidden;
 }
 
 .suite-app-gallery {
@@ -3092,10 +3096,13 @@ button.suite-updates-change-head {
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
 
 .suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); }
-.suite-dialog { display: grid; gap: var(--mos-space-4); width: min(100%, 760px); max-height: min(86vh, 820px); padding: var(--mos-space-5); overflow: auto; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-md); background: var(--mos-color-frost-strong); -webkit-backdrop-filter: var(--mos-frost-filter-strong); backdrop-filter: var(--mos-frost-filter-strong); box-shadow: var(--mos-shadow-strong); }
-.suite-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); }
+.suite-dialog { --suite-dialog-pad: var(--mos-space-5); --suite-dialog-gap: var(--mos-space-4); display: flex; flex-direction: column; width: min(100%, 760px); max-height: min(86vh, 820px); padding: 0; overflow: hidden; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-md); background: var(--mos-color-frost-strong); -webkit-backdrop-filter: var(--mos-frost-filter-strong); backdrop-filter: var(--mos-frost-filter-strong); box-shadow: var(--mos-shadow-strong); }
+.suite-dialog-header { display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); padding: var(--suite-dialog-pad) var(--suite-dialog-pad) 0; }
 .suite-dialog-header h2 { margin: 0; }
-.suite-dialog-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--mos-space-2); }
+.suite-dialog-body { display: grid; flex: 1 1 auto; align-content: start; gap: var(--suite-dialog-gap); min-height: 0; padding: var(--suite-dialog-gap) var(--suite-dialog-pad); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.suite-dialog-body:last-child { padding-bottom: var(--suite-dialog-pad); }
+.suite-dialog-body > * { min-width: 0; }
+.suite-dialog-footer { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: var(--mos-space-2); padding: 0 var(--suite-dialog-pad) var(--suite-dialog-pad); }
 .suite-stepper { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--mos-space-2); margin: 0; padding: 0; list-style: none; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); font-weight: 700; }
 .suite-stepper li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-pill); background: transparent; color: inherit; }
 .suite-stepper li .suite-icon, .suite-stepper li .suite-spinner { width: 1rem; height: 1rem; }
@@ -3789,9 +3796,9 @@ button.suite-updates-change-head {
    narrow as a pure label/value list would want, because the environment editor
    puts two fields on one row and they have to fit side by side. */
 .suite-dialog.suite-app-config-dialog {
-  gap: var(--mos-space-5);
+  --suite-dialog-pad: var(--mos-space-6);
+  --suite-dialog-gap: var(--mos-space-5);
   width: min(100%, 640px);
-  padding: var(--mos-space-6);
 }
 
 .suite-app-config-lede {
@@ -4288,8 +4295,8 @@ button.suite-bk-group {
 }
 
 .suite-ai-secret.is-multiline .mos-secret-value {
-  overflow-x: auto;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .suite-ai-token-step {
