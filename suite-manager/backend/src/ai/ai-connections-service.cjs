@@ -374,15 +374,15 @@ class AiConnectionsService {
       }
     }
 
-    const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed));
+    const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
     record(result.outcome, entry);
     return result.result;
   }
 
-  async invoke(source, tool, args) {
+  async invoke(source, tool, args, client = null) {
     if (source.id === BUILTIN_SOURCE_ID) {
       try {
-        const result = await source.call(tool.upstreamName, args);
+        const result = await source.call(tool.upstreamName, args, { client });
         return { outcome: result.isError ? 'tool-error' : 'ok', result };
       } catch {
         return { outcome: 'failed', result: textResult('My Own Suite could not do that just now. Try again later.', true) };

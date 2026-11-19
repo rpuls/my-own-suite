@@ -7,6 +7,8 @@ export type StepTone = 'change' | 'problem' | 'read';
 
 export type TimelineStep = {
   count: number;
+  // A dashboard change the owner can step back from under Customize → History.
+  undoable: boolean;
   detail: string | null;
   iconUrl: string | null;
   key: number;
@@ -81,7 +83,8 @@ function iconOf(entry: AiActivityEntry) {
 }
 
 function stepOf(entry: AiActivityEntry): TimelineStep {
-  return { count: 1, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry) };
+  const undoable = entry.outcome === 'ok' && (entry.tool === 'mos_dashboard_change' || entry.tool === 'mos_dashboard_restore');
+  return { count: 1, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry), undoable };
 }
 
 function dayKey(at: string) {
@@ -122,7 +125,7 @@ export function timelineOf(entries: AiActivityEntry[], now = new Date()): Timeli
     request.at = entry.at;
     const step = stepOf(entry);
     const next = request.steps[0];
-    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail) next.count += 1;
+    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail && !step.undoable) next.count += 1;
     else request.steps.unshift(step);
     if (step.tone === 'change') day.changes += 1;
   }

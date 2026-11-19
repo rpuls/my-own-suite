@@ -263,6 +263,34 @@ test('guided edits reach entries inside nested subgroups', () => {
 test('agent API has no arbitrary command, path, file, or service operation', async () => {
   const core = new HomepageAgentCore(adapter());
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls']);
+  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.apply-files', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls']);
   await assert.rejects(() => core.apply({ command: 'sh', file: 'services.template.yaml' }), HomepageConfigError);
+});
+
+test('several files apply in one transaction, and a stale revision changes none of them', async () => {
+  const files = { 'services.template.yaml': seed, 'settings.yaml': 'title: Home\n' };
+  const transactions = [];
+  const core = new HomepageAgentCore({
+    async readHomepageFile(file) { return files[file]; },
+    async applyTransaction(input) { transactions.push(input); return { steps: ['staged', 'validated', 'written'] }; },
+  });
+  const nextServices = seed.replace('Control plane', 'Your suite');
+  const result = await core.applyFiles({
+    domainState,
+    files: [
+      { content: nextServices, expectedRevision: revisionFor(seed), file: 'services.template.yaml' },
+      { content: 'title: My Home\n', expectedRevision: revisionFor('title: Home\n'), file: 'settings.yaml' },
+    ],
+  });
+  assert.equal(result.changed, true);
+  assert.equal(transactions.length, 1);
+  assert.deepEqual(Object.keys(transactions[0].files).sort(), ['services.template.yaml', 'services.yaml', 'settings.yaml']);
+  await assert.rejects(() => core.applyFiles({
+    domainState,
+    files: [
+      { content: nextServices, expectedRevision: revisionFor(seed), file: 'services.template.yaml' },
+      { content: 'title: Other\n', expectedRevision: 'sha256:stale', file: 'settings.yaml' },
+    ],
+  }), (error) => error.code === 'HOMEPAGE_REVISION_CONFLICT');
+  assert.equal(transactions.length, 1);
 });

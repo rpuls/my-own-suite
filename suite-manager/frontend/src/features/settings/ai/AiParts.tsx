@@ -46,7 +46,11 @@ function needsToken(source: AiSource) {
 function levelHelp(source: AiSource, level: AiLevel) {
   if (!source.running) return `${source.name} is stopped, so an AI cannot use it right now.`;
   if (source.builtin) {
-    return { act: 'Can check how your apps are doing and restart one that is stuck.', off: 'Cannot see how your apps are doing.', see: 'Can check how your apps are doing.' }[level];
+    return {
+      act: 'Can check your apps, restart one that is stuck, and arrange your dashboard. Every dashboard change can be undone under Customize.',
+      off: 'Cannot see your apps or your dashboard.',
+      see: 'Can check how your apps are doing and look at your dashboard.',
+    }[level];
   }
   if (level === 'off') return `Cannot use ${source.name}.`;
   const allowed = source.tools.filter(isOffered).filter((tool) => (level === 'act' ? true : tool.kind === 'read'));
