@@ -107,6 +107,14 @@ export function AiConnectionsPanel() {
     setChatGptAdded('');
   }
 
+  async function abortAdd() {
+    const pending = addIssued?.clientId ?? chatGptAdded;
+    setAdding(false);
+    setAddIssued(null);
+    setChatGptAdded('');
+    if (pending) await run(`client:${pending}`, 'The AI could not be removed.', () => aiRequest('DELETE', `/clients/${encodeURIComponent(pending)}`, 'The AI could not be removed.'));
+  }
+
   function actionsFor(client: AiClient, sources: AiSource[]): ClientActions {
     const key = `client:${client.id}`;
     const change = async (fallback: string, action: () => Promise<AiStatus>) => {
@@ -174,7 +182,7 @@ export function AiConnectionsPanel() {
         ? <p className="suite-meta">No AI is connected yet. Add one to use your apps from your AI chat, such as Claude Code, LM Studio or Open WebUI.</p>
         : <p className="suite-meta">An AI can connect once your suite has an HTTPS address. <a className="mos-link" href={ADDRESS_SETTINGS_PATH}>Set up your suite address</a></p>}
     </PanelBody> : null}
-    {adding && status?.mcpUrl ? <AddAssistantDialog busy={busy === 'add'} chatGptAdded={Boolean(chatGptAdded)} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onClose={closeAdd} onConnectChatGpt={(tunnelId, runtimeKey) => void connectChatGpt(tunnelId, runtimeKey)} onCreate={(name) => void addClient(name)} onDone={closeAdd} tunnel={status.tunnel} /> : null}
+    {adding && status?.mcpUrl ? <AddAssistantDialog busy={busy === 'add'} chatGptAdded={Boolean(chatGptAdded)} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onAbort={() => void abortAdd()} onClose={closeAdd} onConnectChatGpt={(tunnelId, runtimeKey) => void connectChatGpt(tunnelId, runtimeKey)} onCreate={(name) => void addClient(name)} onDone={closeAdd} tunnel={status.tunnel} /> : null}
     {rotated && status?.mcpUrl ? <NewTokenDialog client={rotated.client} mcpUrl={status.mcpUrl} onClose={() => setRotated(null)} token={rotated.token} /> : null}
     {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
   </Panel>;
