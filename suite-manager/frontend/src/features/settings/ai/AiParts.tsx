@@ -142,7 +142,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
   ]} />;
   const customizeSource = sources.find((source) => source.id === customizing);
 
-  return <PanelItem flush quiet={!client.enabled} selected={expanded}>
+  return <PanelItem flush quiet={!client.enabled}>
     <DisclosureRow expanded={expanded} label={`${expanded ? 'Hide' : 'Show'} what ${client.name} may use`} onToggle={onToggle} trailing={<>
       {reviewWaiting ? <span className="mos-pill mos-pill-warning">Needs review</span> : null}
       {menu}
