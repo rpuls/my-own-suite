@@ -1,3 +1,4 @@
+import { brandOf } from './ai-brands';
 import type { AiActivityEntry, AiOutcome } from '../settings/ai/model';
 
 // Calls this close together from one AI are one thing the owner asked for.
@@ -137,7 +138,7 @@ export function plural(count: number, word: string) {
 }
 
 export function initialsOf(name: string) {
-  const words = name.trim().split(/\s+/u).filter(Boolean);
+  const words = name.trim().replace(/([a-z])([A-Z])/gu, '$1 $2').split(/[\s._-]+/u).filter(Boolean);
   const first = words[0] ?? '?';
   if (/^[A-Z0-9]{2,}$/u.test(first)) return first.slice(0, 2);
   return ((first[0] ?? '') + (words[1]?.[0] ?? first[1] ?? '')).toUpperCase();
@@ -145,10 +146,11 @@ export function initialsOf(name: string) {
 
 const AVATAR_COLOURS = ['#d0744a', '#7b6cf6', '#2f9e8f', '#3b82c4', '#c2557a', '#8a7f2c', '#b7701f', '#5b7088'];
 
-// Stable per name, so an AI keeps its colour; Claude gets its familiar orange.
-export function avatarColour(name: string) {
-  if (/claude/iu.test(name)) return AVATAR_COLOURS[0]!;
+// A known AI wears its brand's colours; any other keeps a colour that is stable per name.
+export function avatarOf(name: string) {
+  const brand = brandOf(name);
+  if (brand) return { background: brand.background, initials: brand.initials ?? initialsOf(name), ink: brand.ink };
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!;
+  return { background: AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!, initials: initialsOf(name), ink: '#ffffff' };
 }
