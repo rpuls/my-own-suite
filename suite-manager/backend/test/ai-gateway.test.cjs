@@ -16,7 +16,7 @@ const test = require('node:test');
 
 const { AiConnectionsService, WRITES_PER_HOUR, withFixedArguments } = require('../src/ai/ai-connections-service.cjs');
 const { AiGateway } = require('../src/ai/ai-gateway.cjs');
-const { AiStore } = require('../src/ai/ai-store.cjs');
+const { ACTIVITY_MAX_ROWS, AiStore } = require('../src/ai/ai-store.cjs');
 const { AiToolCatalog } = require('../src/ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../src/ai/mos-tools.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
@@ -251,6 +251,18 @@ test('the activity log keeps the assistant name after it is removed, and holds n
   assert.doesNotMatch(JSON.stringify(h.connections.activity()), /secret recipe/u);
   assert.deepEqual(h.connections.summary(), { hasActivity: true, hasConnections: false });
   assert.equal((await h.rpc(token, 'tools/list', {})).status, 401);
+});
+
+test('the activity log drops its oldest rows past the row ceiling, so a call loop cannot grow it without end', async () => {
+  const aiStore = new AiStore(new SuiteManagerStore(await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'))));
+  const rejected = () => aiStore.recordActivity({ at: new Date().toISOString(), durationMs: 1, method: 'auth', outcome: 'rejected' });
+  rejected();
+  // Jumps the id counter instead of writing the ceiling's worth of rows.
+  aiStore.db.prepare("INSERT INTO ai_activity (id, at, method, outcome, duration_ms) VALUES (?, '', 'auth', 'rejected', 0)").run(ACTIVITY_MAX_ROWS + 5);
+  rejected();
+
+  const ids = aiStore.db.prepare('SELECT id FROM ai_activity ORDER BY id').all().map((row) => row.id);
+  assert.deepEqual(ids, [ACTIVITY_MAX_ROWS + 5, ACTIVITY_MAX_ROWS + 6]);
 });
 
 test('a token the app refuses is not saved, and a turned-off assistant is refused', async (t) => {
