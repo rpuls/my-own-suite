@@ -177,12 +177,15 @@ test('pages move to HTTPS where the address asks for it, and the API answers whe
   });
 });
 
-test('the MCP address goes to the AI gateway, signed in or not, and only on a known host', async () => {
+test('the MCP address goes to the AI gateway, signed in or not, and through the web server only on a known host', async () => {
   const handled = [];
   const aiGateway = { handle: (request, response) => { handled.push(request.url); response.writeHead(204); response.end(); } };
   await withHandler({ aiGateway }, async (request) => {
-    assert.equal((await request('POST', '/ai/mcp', { body: {}, signedIn: false })).status, 204);
-    assert.equal((await request('POST', '/ai/mcp', { body: {}, headers: { Host: 'evil.example' }, signedIn: false })).status, 421);
+    const viaCaddy = { 'X-Forwarded-Proto': 'https' };
+    assert.equal((await request('POST', '/ai/mcp', { body: {}, headers: viaCaddy, signedIn: false })).status, 204);
+    assert.equal((await request('POST', '/ai/mcp', { body: {}, headers: { ...viaCaddy, Host: 'evil.example' }, signedIn: false })).status, 421);
+    assert.equal((await request('POST', '/ai/mcp', { body: {}, headers: { Host: '127.0.0.1:3100' }, signedIn: false })).status, 204);
+    assert.equal((await request('GET', '/suite-manager/api/build', { headers: { Host: '127.0.0.1:3100' }, signedIn: false })).status, 421);
   });
-  assert.deepEqual(handled, ['/ai/mcp']);
+  assert.deepEqual(handled, ['/ai/mcp', '/ai/mcp']);
 });
