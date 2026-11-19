@@ -123,10 +123,10 @@ export function ChatGptSteps() {
   return <>
     <p><strong>In ChatGPT on the web:</strong></p>
     <ol className="suite-app-guide-steps">
-      <li>Open Settings → Plugins, press +, and choose Add custom MCP server.</li>
+      <li>Open Settings → Plugins, press +, and choose <strong>Add custom MCP server</strong>.</li>
       <li>Name it MOS.</li>
-      <li>Set Connection to Tunnel, and pick the tunnel you made.</li>
-      <li>Set Authentication to No authentication. It starts on OAuth. MOS checks every call itself.</li>
+      <li>Set Connection to <strong>Tunnel</strong>, and pick the tunnel you just created.</li>
+      <li>Set Authentication to <strong>No authentication</strong>. It starts on OAuth. MOS checks every call itself.</li>
       <li>Create it. MOS notices by itself once ChatGPT connects.</li>
     </ol>
   </>;
