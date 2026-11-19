@@ -59,7 +59,7 @@ function levelHelp(source: AiSource, level: AiLevel) {
   return `${verb} in ${source.name}.${notes ? ` ${notes}` : ''}`;
 }
 
-// The first time an app is opened to any AI, the app has to let MOS in once.
+// The first time an app is opened to any AI, it has to give MOS an access token once.
 // Asked here, at the moment it matters, rather than as a field of its own.
 function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave: (token: string) => Promise<string>; source: AiSource }) {
   const [draft, setDraft] = useState('');
@@ -76,10 +76,10 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 
   const tokenPage = source.token?.appUrl;
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
-    <Notice title={`Set up ${source.name}`} variant="info">
-      <p>To use {source.name}, MOS needs an access token, and only {source.name} can create one. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
+    <Notice title={`Enable AI access for ${source.name}`} variant="info">
+      <p>{source.name} keeps its own sign-in, so it needs to give MOS an access token once. {source.token?.hint || `Create an access token in ${source.name}.`} Then paste the token here.</p>
       {tokenPage ? <p><a className="mos-link" href={tokenPage} rel="noreferrer" target="_blank">Create the token in {source.name}<Icon name="external" /></a></p> : null}
-      <p>The token can do anything you can do in {source.name}; MOS passes on only what you allow here. It stays on your suite and is never given to an AI.</p>
+      <p>The token stays on your suite and is never given to an AI. MOS passes on only what you allow here.</p>
     </Notice>
     <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
     {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
@@ -93,7 +93,7 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 type SetupChoice = 'off' | 'setup';
 const SETUP_OPTIONS: Array<{ label: string; value: SetupChoice }> = [{ label: 'Off', value: 'off' }, { label: 'Set up', value: 'setup' }];
 
-// Until the app has let MOS in, the switch offers only Set up, so it never shows
+// Until the app has given MOS a token, the switch offers only Set up, so it never shows
 // a level that cannot take effect; the levels appear once the token is accepted.
 function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source }: {
   busy: boolean;
@@ -119,8 +119,8 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source
   </>;
   if (locked) {
     const help = lostToken
-      ? `${source.name} no longer lets MOS in, so no AI can use it right now. Set it up again to continue.`
-      : `${source.name} has to let MOS in once before an AI can use it.`;
+      ? `${source.name} no longer accepts the token MOS has, so no AI can use it right now. Set it up again to continue.`
+      : `Needs one step in ${source.name} before an AI can use it.`;
     return <>
       <Row help={help} label={label}>
         <Segmented<SetupChoice> disabled={busy} label={`${source.name} for ${client.name}`} onChange={(choice) => setSettingUp(choice === 'setup')} options={SETUP_OPTIONS} value={settingUp ? 'setup' : 'off'} />
@@ -272,10 +272,10 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
       <button className="mos-btn mos-btn-primary" disabled={busy || !draft.trim()} form="suite-ai-source-token" type="submit">{busy ? 'Checking...' : 'Save'}</button>
     </>}
     onClose={() => { if (!busy) onClose(); }}
-    title={configured ? `Replace the ${source.name} token` : `Let MOS into ${source.name}`}
+    title={configured ? `Replace the ${source.name} token` : `Enable AI access for ${source.name}`}
   >
     <form className="suite-settings-form" id="suite-ai-source-token" onSubmit={submit}>
-      <p>MOS uses an access token from {source.name} to act there for the AI you connect. It can do anything you can do in {source.name}; MOS passes on only what you allow. It stays on your suite and is never given to an AI.</p>
+      <p>{source.name} keeps its own sign-in, so it needs to give MOS an access token once. The token stays on your suite and is never given to an AI. MOS passes on only what you allow here.</p>
       <TextInput autoComplete="new-password" autoFocus helperText={source.token?.hint || undefined} label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
       {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
     </form>
@@ -306,6 +306,6 @@ export function RemoveClientDialog({ busy, client, onClose, onRemove }: { busy: 
 }
 
 export function tokenLine(source: AiSource) {
-  if (!source.token?.configured) return `${source.name} has not let MOS in, so no AI can use it.`;
+  if (!source.token?.configured) return `AI access is not enabled yet: ${source.name} needs to give MOS an access token.`;
   return source.token.verifiedAt ? `Accepted by ${source.name}. Last checked: ${whenWords(source.token.verifiedAt)}.` : 'Token saved.';
 }
