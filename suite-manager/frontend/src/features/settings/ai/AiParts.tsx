@@ -72,10 +72,9 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
     <Notice title={`Let MOS into ${source.name}`} variant="info">
-      <p>{source.name} has to let MOS in, once for every AI you connect. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
+      <p>{source.name} has to let MOS in, once for every AI you connect. {source.token?.hint || `Create an access token in ${source.name}.`}{source.token?.appUrl ? <> <a className="mos-link" href={source.token.appUrl} rel="noreferrer" target="_blank">Open it in {source.name}<Icon name="external" /></a></> : null}</p>
       <p>The token can do anything you can do in {source.name}; MOS passes on only what you allow here. It stays on your suite and is never given to an AI.</p>
     </Notice>
-    {source.token?.appUrl ? <a className="mos-btn mos-btn-secondary" href={source.token.appUrl} rel="noreferrer" target="_blank">Open {source.name}<Icon name="external" /></a> : null}
     <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
     {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
     <div className="suite-ai-token-actions">
@@ -113,7 +112,9 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onLevelWithToken, sou
   </>;
   const help = lostToken
     ? <>{source.name} no longer lets MOS in, so no AI can use it right now. {pending ? null : <button className="mos-link suite-link-button" onClick={() => setPending(level)} type="button">Let MOS in again</button>}</>
-    : <>{levelHelp(source, level)}{offered && !pending ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>;
+    : pending
+      ? <>Turns on as {LEVEL_LABEL[pending]} once {source.name} lets MOS in.</>
+      : <>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>;
   return <>
     <Row help={help} label={label}>
       <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={pick} options={LEVEL_OPTIONS} value={pending ?? level} />
