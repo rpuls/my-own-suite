@@ -74,9 +74,11 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
     setSaving(false);
   }
 
+  const tokenPage = source.token?.appUrl;
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
-    <Notice title={`Let MOS into ${source.name}`} variant="info">
-      <p>{source.token?.hint || `Create an access token in ${source.name}.`}{source.token?.appUrl ? <> <a className="mos-link" href={source.token.appUrl} rel="noreferrer" target="_blank">Open it in {source.name}<Icon name="external" /></a></> : null}</p>
+    <Notice title={`Set up ${source.name}`} variant="info">
+      <p>To use {source.name}, MOS needs an access token, and only {source.name} can create one. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
+      {tokenPage ? <p><a className="mos-link" href={tokenPage} rel="noreferrer" target="_blank">Create the token in {source.name}<Icon name="external" /></a></p> : null}
       <p>The token can do anything you can do in {source.name}; MOS passes on only what you allow here. It stays on your suite and is never given to an AI.</p>
     </Notice>
     <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
@@ -88,8 +90,11 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
   </form>;
 }
 
-// The level stays locked until the app has let MOS in, so the switch never
-// shows a level that cannot take effect.
+type SetupChoice = 'off' | 'setup';
+const SETUP_OPTIONS: Array<{ label: string; value: SetupChoice }> = [{ label: 'Off', value: 'off' }, { label: 'Set up', value: 'setup' }];
+
+// Until the app has let MOS in, the switch offers only Set up, so it never shows
+// a level that cannot take effect; the levels appear once the token is accepted.
 function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source }: {
   busy: boolean;
   client: AiClient;
@@ -112,18 +117,21 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source
     {source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}
     {lostToken ? <> <span className="mos-pill mos-pill-warning">Needs a token</span></> : null}
   </>;
-  const letIn = settingUp ? null : <button className="mos-link suite-link-button" onClick={() => setSettingUp(true)} type="button">{lostToken ? 'Let MOS in again' : 'Let MOS in'}</button>;
-  const help = !locked
-    ? <>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>
-    : lostToken
-      ? <>{source.name} no longer lets MOS in, so no AI can use it right now. {letIn}</>
-      : <>{source.name} has to let MOS in first, once for every AI you connect. {letIn}</>;
-  return <>
-    <Row help={help} label={label}>
-      <Segmented<AiLevel> disabled={busy || locked} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
-    </Row>
-    {settingUp ? <TokenStep onCancel={() => setSettingUp(false)} onSave={onSourceToken} source={source} /> : null}
-  </>;
+  if (locked) {
+    const help = lostToken
+      ? `${source.name} no longer lets MOS in, so no AI can use it right now. Set it up again to continue.`
+      : `${source.name} has to let MOS in once before an AI can use it.`;
+    return <>
+      <Row help={help} label={label}>
+        <Segmented<SetupChoice> disabled={busy} label={`${source.name} for ${client.name}`} onChange={(choice) => setSettingUp(choice === 'setup')} options={SETUP_OPTIONS} value={settingUp ? 'setup' : 'off'} />
+      </Row>
+      {settingUp ? <TokenStep onCancel={() => setSettingUp(false)} onSave={onSourceToken} source={source} /> : null}
+    </>;
+  }
+  const help = <>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>;
+  return <Row help={help} label={label}>
+    <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
+  </Row>;
 }
 
 export function ClientItem({ actions, busy, changed, client, expanded, onToggle, sources }: {
