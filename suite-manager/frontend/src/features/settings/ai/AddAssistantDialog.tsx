@@ -84,17 +84,32 @@ function ChatGptForm({ busy, error, onBack, onClose, onConnect }: { busy: boolea
   </Dialog>;
 }
 
-function ChatGptNext({ onDone, tunnel }: { onDone: () => void; tunnel: AiTunnel | null }) {
-  return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>} onClose={onDone} title="Add MOS in ChatGPT">
+// What is left happens in ChatGPT, so the steps are shown wherever ChatGPT has not called yet.
+export function ChatGptSteps() {
+  return <>
+    <p><strong>In ChatGPT on the web:</strong></p>
+    <ol className="suite-app-guide-steps">
+      <li>Open Settings → Plugins, press +, and choose Add custom MCP server.</li>
+      <li>Name it MOS.</li>
+      <li>Set Connection to Tunnel, and pick the tunnel you made.</li>
+      <li>Set Authentication to No authentication. It starts on OAuth. MOS checks every call itself.</li>
+      <li>Create it. MOS notices by itself once ChatGPT connects.</li>
+    </ol>
+  </>;
+}
+
+function ChatGptNext({ connected, onDone, tunnel }: { connected: boolean; onDone: () => void; tunnel: AiTunnel | null }) {
+  const footer = connected
+    ? <button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>
+    : <button className="mos-btn mos-btn-ghost" onClick={onDone} type="button">Finish later</button>;
+  return <Dialog footer={footer} onClose={onDone} title={connected ? 'ChatGPT is connected' : 'Now add MOS in ChatGPT'}>
     <div className="suite-settings-form">
+      {connected ? null : <p>MOS is ready on its side. One step is left, and it happens in ChatGPT.</p>}
       <TunnelStatus tunnel={tunnel} />
-      <ol className="suite-app-guide-steps">
-        <li>In ChatGPT on the web, open Plugins and add a custom MCP server.</li>
-        <li>Set Connection to Tunnel, and pick the tunnel you made.</li>
-        <li>Set Authentication to No authentication. MOS checks every call itself.</li>
-        <li>Choose here which apps ChatGPT may use, then mention the plugin with @ in a chat.</li>
-      </ol>
-      <p className="suite-meta">ChatGPT keeps its list of tools until you press Refresh tools in the plugin&apos;s settings, so do that after you allow more here.</p>
+      <ConnectionStatus connected={connected} name="ChatGPT" />
+      {connected
+        ? <p>Next, choose which apps ChatGPT may use. In a chat, mention the plugin with @MOS. ChatGPT keeps its list of tools until you press Refresh tools in the plugin&apos;s settings, so do that after you allow more.</p>
+        : <ChatGptSteps />}
     </div>
   </Dialog>;
 }
@@ -147,7 +162,10 @@ export function AddAssistantDialog({ busy, chatGptAdded, connected, error, issue
   }
 
   if (issued) {
-    return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>} onClose={onDone} title={`Connect ${name.trim()}`}>
+    const footer = connected
+      ? <button className="mos-btn mos-btn-primary" onClick={onDone} type="button">Choose apps</button>
+      : <button className="mos-btn mos-btn-ghost" onClick={onDone} type="button">Finish later</button>;
+    return <Dialog footer={footer} onClose={onDone} title={`Connect ${name.trim()}`}>
       <div className="suite-settings-form">
         <ConnectInstructions mcpUrl={mcpUrl} token={issued} />
         <ConnectionStatus connected={connected} name={name.trim()} />
@@ -155,7 +173,7 @@ export function AddAssistantDialog({ busy, chatGptAdded, connected, error, issue
       </div>
     </Dialog>;
   }
-  if (chatGptAdded) return <ChatGptNext onDone={onDone} tunnel={tunnel} />;
+  if (chatGptAdded) return <ChatGptNext connected={connected} onDone={onDone} tunnel={tunnel} />;
   if (step === 'chatgpt') return <ChatGptForm busy={busy} error={error} onBack={() => setStep('pick')} onClose={onClose} onConnect={onConnectChatGpt} />;
   if (step === 'pick') return <PickKind chatGptConnected={Boolean(tunnel)} onChatGpt={() => setStep('chatgpt')} onClose={onClose} onOwn={() => setStep('own')} />;
   return <Dialog

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import { ActionMenu, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
 import { whenWords } from '../../../lib/dates';
-import { ConnectInstructions, PrivacyLine, TunnelStatus } from './AddAssistantDialog';
+import { ChatGptSteps, ConnectInstructions, PrivacyLine, TunnelStatus } from './AddAssistantDialog';
 import {
   customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
   TUNNEL_WORDS, type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type AiTunnel, type OfferedKind,
@@ -172,6 +172,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
         <TunnelStatus tunnel={tunnel} />
         {tunnel.state === 'off' ? <p><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={actions.onStartTunnel} type="button">Turn on the tunnel</button></p> : null}
       </> : null}
+      {tunnel && !client.lastUsedAt ? <ChatGptSteps /> : null}
       {sources.length ? <Rows>
         {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onSourceToken={(token) => actions.onSourceToken(source.id, token)} source={source} />)}
       </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}
