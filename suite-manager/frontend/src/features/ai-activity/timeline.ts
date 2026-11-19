@@ -85,7 +85,7 @@ function iconOf(entry: AiActivityEntry) {
 
 function stepOf(entry: AiActivityEntry): TimelineStep {
   const undoable = entry.outcome === 'ok' && (entry.tool === 'mos_dashboard_change' || entry.tool === 'mos_dashboard_restore');
-  return { count: 1, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry), undoable };
+  return { count: entry.repeats, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry), undoable };
 }
 
 function dayKey(at: string) {
@@ -126,9 +126,9 @@ export function timelineOf(entries: AiActivityEntry[], now = new Date()): Timeli
     request.at = entry.at;
     const step = stepOf(entry);
     const next = request.steps[0];
-    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail && !step.undoable) next.count += 1;
+    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail && !step.undoable) next.count += step.count;
     else request.steps.unshift(step);
-    if (step.tone === 'change') day.changes += 1;
+    if (step.tone === 'change') day.changes += step.count;
   }
   return days;
 }

@@ -574,6 +574,18 @@ const MIGRATIONS = [
     `,
     version: 23,
   },
+  {
+    // The same call repeated back to back is one row with a count, so a loop cannot bury the real log.
+    name: 'ai-activity-repeats',
+    sql: `
+      ALTER TABLE ai_activity ADD COLUMN repeats INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE ai_activity ADD COLUMN last_at TEXT NOT NULL DEFAULT '';
+      UPDATE ai_activity SET last_at = at;
+      DROP INDEX ai_activity_at_idx;
+      CREATE INDEX ai_activity_last_at_idx ON ai_activity(last_at);
+    `,
+    version: 24,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {
