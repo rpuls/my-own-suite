@@ -28,6 +28,17 @@ function customizeRoutes({ homepageConfig }) {
     post('/customize/add-link', (input) => homepageConfig.add(input, false)),
     post('/customize/add-home-service', (input) => homepageConfig.add(input, true)),
     post('/customize/home-service-preview', (input) => homepageConfig.previewHomeService(input)),
+    {
+      method: 'GET',
+      path: '/customize/history',
+      signIn: CUSTOMIZE,
+      handler: async ({ response }) => {
+        jsonResponse(response, 200, homepageConfig.history());
+      },
+    },
+    post('/customize/history/restore', (input) => homepageConfig.restore(input?.id, { actor: 'You', confirmAddresses: input?.confirmAddresses === true })),
+    post('/customize/history/delete', (input) => homepageConfig.deleteCheckpoint(input?.id)),
+    post('/customize/history/keep-current', () => homepageConfig.keepOnlyCurrent()),
     // Anything else under /customize/ asks for a session before it is not found.
     {
       pattern: /^\/customize\//u,

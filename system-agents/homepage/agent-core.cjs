@@ -20,7 +20,7 @@ class HomepageAgentCore {
 
   async status() {
     return {
-      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
+      capabilities: ['homepage.read', 'homepage.apply', 'homepage.apply-files', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
       files: HOMEPAGE_FILES,
       service: 'mos-homepage-agent',
     };
@@ -44,6 +44,38 @@ class HomepageAgentCore {
       throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Only the documented Homepage apply fields are accepted.');
     }
     return this.applyFile(assertAllowedFile(input.file), input.content, input.expectedRevision, input.domainState);
+  }
+
+  // Several files in one transaction, so a change that spans the services and
+  // the settings lands whole or not at all. Every file is checked against the
+  // revision the caller read before anything is written.
+  async applyFiles(input) {
+    if (!exactKeys(input, ['domainState', 'files']) || !Array.isArray(input.files) || !input.files.length) {
+      throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Only the documented Homepage apply fields are accepted.');
+    }
+    const files = {};
+    for (const item of input.files) {
+      if (!exactKeys(item, ['content', 'expectedRevision', 'file'])) {
+        throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Each file needs its name, content and the revision it was read at.');
+      }
+      const file = assertAllowedFile(item.file);
+      if (Object.hasOwn(files, file)) throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Each file can be applied once per change.');
+      validateYaml(item.content, file);
+      const current = await this.adapter.readHomepageFile(file);
+      if (revisionFor(current) !== item.expectedRevision) {
+        throw new HomepageConfigError('HOMEPAGE_REVISION_CONFLICT', 'Homepage configuration changed. Reload it before saving.', 409);
+      }
+      if (current !== item.content) files[file] = item.content;
+    }
+    const revisions = Object.fromEntries(input.files.map((item) => [item.file, revisionFor(item.content)]));
+    if (!Object.keys(files).length) return { changed: false, revisions, steps: ['validated'] };
+    let caddyRoutes = null;
+    if (Object.hasOwn(files, 'services.template.yaml')) {
+      files['services.yaml'] = projectServices(files['services.template.yaml'], input.domainState);
+      caddyRoutes = renderCaddyRoutes(files['services.template.yaml'], input.domainState);
+    }
+    const result = await this.adapter.applyTransaction({ caddyRoutes, files, restartHomepage: true });
+    return { changed: true, revisions, steps: result.steps };
   }
 
   async add(input, homeService) {

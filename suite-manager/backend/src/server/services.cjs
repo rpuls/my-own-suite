@@ -152,6 +152,7 @@ function createServices({
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
     appHosts: () => appPackages.appRouteHosts(),
+    installedAppIds: () => new Set(setup.store.getAppInstances().filter((instance) => instance.status === 'installed').map((instance) => instance.id)),
     store: setup.store,
     suiteAddress,
   });
@@ -191,6 +192,7 @@ function createServices({
       appPackages,
       builtin: createMosTools({
         appPackages,
+        homepage: homepageConfig,
         runtimeUrls: (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
         store: setup.store,
       }),

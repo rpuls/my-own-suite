@@ -222,12 +222,12 @@ test('a tool whose definition changed after an app update stays off until the ow
   assert.deepEqual(await h.listed(token), ['memos_memo_list_memos']);
 });
 
-test('Suite health lists apps at See and restarts one at See and do', async (t) => {
+test('Suite Manager lists apps and the dashboard at See and restarts an app at See and do', async (t) => {
   const h = await harness();
   t.after(h.close);
   const { client, token } = h.newClient('Claude Code');
   h.connections.setLevel(client.id, 'mos', 'see');
-  assert.deepEqual(await h.listed(token), ['mos_check_app', 'mos_list_apps']);
+  assert.deepEqual(await h.listed(token), ['mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_list_apps']);
   assert.match((await h.call(token, 'mos_list_apps')).content[0].text, /"app": "memos"/u);
 
   h.connections.setLevel(client.id, 'mos', 'act');

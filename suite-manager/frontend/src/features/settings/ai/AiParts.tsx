@@ -13,7 +13,7 @@ export type ClientActions = {
   onDefaultLevel: (level: AiLevel) => void;
   onException: (tool: string, exception: AiException | null) => void;
   onLevel: (sourceId: string, level: AiLevel) => void;
-  onLevelWithToken: (sourceId: string, level: AiLevel, token: string) => Promise<string>;
+  onSourceToken: (sourceId: string, token: string) => Promise<string>;
   onRemove: () => void;
   onReset: (sourceId: string) => void;
   onRotate: () => void;
@@ -46,7 +46,11 @@ function needsToken(source: AiSource) {
 function levelHelp(source: AiSource, level: AiLevel) {
   if (!source.running) return `${source.name} is stopped, so an AI cannot use it right now.`;
   if (source.builtin) {
-    return { act: 'Can check how your apps are doing and restart one that is stuck.', off: 'Cannot see how your apps are doing.', see: 'Can check how your apps are doing.' }[level];
+    return {
+      act: 'Can check your apps, restart one that is stuck, and arrange your dashboard. Every dashboard change can be undone under Customize.',
+      off: 'Cannot see your apps or your dashboard.',
+      see: 'Can check how your apps are doing and look at your dashboard.',
+    }[level];
   }
   if (level === 'off') return `Cannot use ${source.name}.`;
   const allowed = source.tools.filter(isOffered).filter((tool) => (level === 'act' ? true : tool.kind === 'read'));
@@ -72,53 +76,53 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
     <Notice title={`Let MOS into ${source.name}`} variant="info">
-      <p>{source.name} has to let MOS in, once for every AI you connect. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
+      <p>{source.token?.hint || `Create an access token in ${source.name}.`}{source.token?.appUrl ? <> <a className="mos-link" href={source.token.appUrl} rel="noreferrer" target="_blank">Open it in {source.name}<Icon name="external" /></a></> : null}</p>
       <p>The token can do anything you can do in {source.name}; MOS passes on only what you allow here. It stays on your suite and is never given to an AI.</p>
     </Notice>
-    {source.token?.appUrl ? <a className="mos-btn mos-btn-secondary" href={source.token.appUrl} rel="noreferrer" target="_blank">Open {source.name}<Icon name="external" /></a> : null}
     <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
     {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
     <div className="suite-ai-token-actions">
       <button className="mos-btn mos-btn-ghost" disabled={saving} onClick={onCancel} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking...' : 'Save and turn on'}</button>
+      <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking...' : 'Save'}</button>
     </div>
   </form>;
 }
 
-function SourceLevel({ busy, client, onCustomize, onLevel, onLevelWithToken, source }: {
+// The level stays locked until the app has let MOS in, so the switch never
+// shows a level that cannot take effect.
+function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source }: {
   busy: boolean;
   client: AiClient;
   onCustomize: () => void;
   onLevel: (level: AiLevel) => void;
-  onLevelWithToken: (level: AiLevel, token: string) => Promise<string>;
+  onSourceToken: (token: string) => Promise<string>;
   source: AiSource;
 }) {
-  const [pending, setPending] = useState<AiLevel | null>(null);
+  const [settingUp, setSettingUp] = useState(false);
   const level = levelOf(client, source.id);
-  useEffect(() => { if (!needsToken(source)) setPending(null); }, [source]);
-
-  function pick(next: AiLevel) {
-    if (next !== 'off' && needsToken(source)) setPending(next);
-    else onLevel(next);
-  }
+  const locked = needsToken(source);
+  useEffect(() => { if (!locked) setSettingUp(false); }, [locked]);
 
   const custom = customizedTools(client, source).length > 0;
   const offered = source.tools.some(isOffered);
-  const lostToken = level !== 'off' && needsToken(source);
+  const lostToken = locked && level !== 'off';
   const label = <>
     {source.name}
     {custom ? <> <span className="mos-pill">Custom</span></> : null}
     {source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}
     {lostToken ? <> <span className="mos-pill mos-pill-warning">Needs a token</span></> : null}
   </>;
-  const help = lostToken
-    ? <>{source.name} no longer lets MOS in, so no AI can use it right now. {pending ? null : <button className="mos-link suite-link-button" onClick={() => setPending(level)} type="button">Let MOS in again</button>}</>
-    : <>{levelHelp(source, level)}{offered && !pending ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>;
+  const letIn = settingUp ? null : <button className="mos-link suite-link-button" onClick={() => setSettingUp(true)} type="button">{lostToken ? 'Let MOS in again' : 'Let MOS in'}</button>;
+  const help = !locked
+    ? <>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>
+    : lostToken
+      ? <>{source.name} no longer lets MOS in, so no AI can use it right now. {letIn}</>
+      : <>{source.name} has to let MOS in first, once for every AI you connect. {letIn}</>;
   return <>
     <Row help={help} label={label}>
-      <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={pick} options={LEVEL_OPTIONS} value={pending ?? level} />
+      <Segmented<AiLevel> disabled={busy || locked} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
     </Row>
-    {pending ? <TokenStep onCancel={() => setPending(null)} onSave={(token) => onLevelWithToken(pending, token)} source={source} /> : null}
+    {settingUp ? <TokenStep onCancel={() => setSettingUp(false)} onSave={onSourceToken} source={source} /> : null}
   </>;
 }
 
@@ -142,7 +146,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
   ]} />;
   const customizeSource = sources.find((source) => source.id === customizing);
 
-  return <PanelItem flush quiet={!client.enabled} selected={expanded}>
+  return <PanelItem flush quiet={!client.enabled}>
     <DisclosureRow expanded={expanded} label={`${expanded ? 'Hide' : 'Show'} what ${client.name} may use`} onToggle={onToggle} trailing={<>
       {reviewWaiting ? <span className="mos-pill mos-pill-warning">Needs review</span> : null}
       {menu}
@@ -154,7 +158,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
       {sources.length ? <Rows>
-        {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onLevelWithToken={(level, token) => actions.onLevelWithToken(source.id, level, token)} source={source} />)}
+        {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onSourceToken={(token) => actions.onSourceToken(source.id, token)} source={source} />)}
       </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}
       {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.</p> : null}
     </div> : null}
