@@ -263,7 +263,7 @@ These work today for official packages but their shape is **not** frozen; avoid 
 - `role` (`capability-provider`), `exports`, `integrations`, `configTargets`, `usefulness` — the capability system. Proven by exactly one relationship (Seafile ⇄ ONLYOFFICE); it will be locked when more relationships have shaped it.
 - `homepage.widget` — only the monthly calendar widget exists; a general widget contract is future work.
 - `routes[].internalIcalBridge` — a token-gated read-only proxy path, expected to be replaced by a general bridge contract.
-- `exports` entries of type `mcp-server` — the tools an app offers to the owner's AI, described below. Proven by one app (Memos).
+- `exports` entries of type `mcp-server` — the tools an app offers to the owner's AI, described below. Proven by two apps: Memos, with its own MCP server, and Paperless-ngx, which ships one.
 
 ### AI tools (`mcp-server` export)
 
@@ -301,9 +301,10 @@ An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer i
 | --- | --- |
 | `type` | `mcp-server`. A package declares at most one. |
 | `interfaceVersion`, `protocol` | `1` and `mcp-streamable-http` today. |
-| `service`, `path` | The routed service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server; a `url` is refused, so an export can never point MOS somewhere else. |
-| `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. It is never given to an AI. |
-| `auth.hint` | Optional. One sentence, at most 200 characters, telling the owner where the app makes that token. |
+| `service`, `path` | The service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server, and publishes that port for itself when no route reaches the service; a `url` is refused, so an export can never point MOS somewhere else. |
+| `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. `package-secret`: the package ships its own MCP service, and MOS presents a key it generated, so the owner does nothing. Neither is ever given to an AI. |
+| `auth.secret` | With `package-secret`. The id of a generated secret setup field; MOS sends it as `Authorization: Bearer <value>`, and the package passes the same `${secret.<id>}` to its MCP service. |
+| `auth.hint` | Optional, with `owner-token`. One sentence, at most 200 characters, telling the owner where the app makes that token. |
 | `auth.tokenPage` | Optional. The path inside the app where tokens are made, starting with `/`. MOS's **Open** button lands there. |
 | `auth.verifyTool` | Optional. A tool MOS calls with a pasted token before saving it, so a wrong token is refused on the spot. |
 | `tools` | Every tool MOS may offer, by the name the app's server uses. A tool the app serves but the manifest does not list is never offered. |

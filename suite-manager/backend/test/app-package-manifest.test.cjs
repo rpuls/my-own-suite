@@ -212,7 +212,7 @@ test('a connection puts the plugin on the network of the app it is a plugin for'
     side('paperless-ngx'),
   );
   assert.equal(filing.holderPackageId, 'paperless-ngx');
-  assert.equal(filing.holderServiceCount, 2);
+  assert.equal(filing.holderServiceCount, 3);
   assert.equal(filing.joinerPackageId, 'x-abcdef01-scan-bridge');
   assert.deepEqual(filing.joinerServices, ['bridge']);
 });

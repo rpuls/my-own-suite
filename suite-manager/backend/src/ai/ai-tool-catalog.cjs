@@ -33,8 +33,10 @@ function mcpExportOf(manifest) {
   const tools = Object.entries(found.tools && typeof found.tools === 'object' ? found.tools : {})
     .map(([name, entry]) => [name, toolSpecOf(entry)])
     .filter(([, spec]) => spec);
+  const packageSecret = found.auth?.kind === 'package-secret' && typeof found.auth.secret === 'string' ? found.auth.secret : null;
   return {
     hint: typeof found.auth?.hint === 'string' ? found.auth.hint : null,
+    packageSecret,
     path: found.path,
     service: found.service,
     tokenPage: typeof found.auth?.tokenPage === 'string' ? found.auth.tokenPage : null,
@@ -89,8 +91,11 @@ class AiToolCatalog {
     return this.sources().find((candidate) => candidate.id === id) || null;
   }
 
+  // An app with a package secret is reached with the key MOS generated at install;
+  // only an app with its own sign-in needs a token from the owner.
   tokenPath(source) {
-    return source.instance ? secretFilePath(this.secretDir, source.instance.id, APP_TOKEN_KEY) : null;
+    if (!source.instance) return null;
+    return secretFilePath(this.secretDir, source.instance.id, source.mcp.packageSecret || APP_TOKEN_KEY);
   }
 
   tokenOf(source) {

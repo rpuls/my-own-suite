@@ -1,0 +1,7 @@
+# The MCP server MOS offers an owner's AI for Paperless-ngx. It reuses the pinned
+# Paperless image for its Python, so it adds no image of its own to download.
+FROM ghcr.io/paperless-ngx/paperless-ngx@sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84
+
+COPY mcp-server.py /opt/mos/mcp-server.py
+USER 1000:1000
+ENTRYPOINT ["python3", "/opt/mos/mcp-server.py"]

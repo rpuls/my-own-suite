@@ -30,15 +30,15 @@ test('the Memos package declares its MCP server by service and path, with every 
   assert.equal(mcp.tokenPage, '/setting#access-token');
 });
 
-test('an MCP export cannot point MOS at a URL, an unrouted service or an unclassed tool', () => {
+test('an MCP export cannot point MOS at a URL, an undeclared service or an unclassed tool', () => {
   assert.match(exportErrors(withExport({ url: 'http://169.254.169.254/' })).join('\n'), /must not declare a url/u);
-  assert.match(exportErrors(withExport({ service: 'database' })).join('\n'), /service must name a service the package routes/u);
+  assert.match(exportErrors(withExport({ service: 'database' })).join('\n'), /service must name a service the package declares/u);
   assert.match(exportErrors(withExport({ path: '/../admin' })).join('\n'), /path must be an absolute path/u);
   assert.match(exportErrors(withExport({ tools: { memo_list_memos: 'admin' } })).join('\n'), /kind must be one of: read, add, change, serious, destructive/u);
   assert.match(exportErrors(withExport({ tools: { memo_create_memo: { fixed: { 'body.visibility': { any: 1 } }, kind: 'add' } } })).join('\n'), /must be a string, number or boolean/u);
   assert.match(exportErrors(withExport({ tools: { memo_create_memo: { fixed: { '../x': 'y' }, kind: 'add' } } })).join('\n'), /not a dotted argument path/u);
   assert.match(exportErrors(withExport({ tools: {} })).join('\n'), /must list at least one tool/u);
-  assert.match(exportErrors(withExport({ auth: { kind: 'oauth' } })).join('\n'), /auth.kind must be owner-token/u);
+  assert.match(exportErrors(withExport({ auth: { kind: 'oauth' } })).join('\n'), /auth.kind must be one of: owner-token, package-secret/u);
   assert.match(exportErrors(withExport({ auth: { kind: 'owner-token', tokenPage: 'https://elsewhere.example/' } })).join('\n'), /auth.tokenPage must be a path in the app/u);
 });
 

@@ -392,6 +392,7 @@ function validateTemplates(manifest, errors) {
 const MCP_EXPORT_TYPE = 'mcp-server';
 const MCP_TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
 const MCP_TOOL_KINDS = new Set(['read', 'add', 'change', 'serious', 'destructive']);
+const MCP_AUTH_KINDS = new Set(['owner-token', 'package-secret']);
 const MCP_FIXED_PATH_PATTERN = /^[A-Za-z0-9_]{1,64}(?:.[A-Za-z0-9_]{1,64}){0,7}$/u;
 const MCP_PATH_PATTERN = /^\/[A-Za-z0-9._~/-]{0,200}$/u;
 
@@ -417,11 +418,19 @@ function validateMcpToolEntry(entry, prefix, errors) {
   }
 }
 
+// A package secret MOS presents to the app's MCP server must be one MOS made
+// itself, so no owner ever has to type it and no AI ever sees it.
+function validatePackageSecretAuth(manifest, auth, prefix, errors) {
+  const field = setupFieldsOf(manifest).find((candidate) => candidate?.id === auth.secret);
+  if (!field || field.secret !== true || !isRecord(field.generated)) {
+    errors.push(`${prefix}.auth.secret must name a generated secret setup field.`);
+  }
+}
+
 // An app's MCP server is reached by service and path on its own loopback port,
 // never by URL, and only the tools listed here are ever offered to an AI client.
 function validateMcpExport(manifest, capability, prefix, errors) {
-  const routedServices = new Set((Array.isArray(manifest.routes) ? manifest.routes : []).map((route) => route?.service));
-  if (!routedServices.has(capability.service)) errors.push(`${prefix}.service must name a service the package routes.`);
+  if (!serviceIdsOf(manifest).has(capability.service)) errors.push(`${prefix}.service must name a service the package declares.`);
   if (typeof capability.path !== 'string' || !MCP_PATH_PATTERN.test(capability.path) || capability.path.split('/').includes('..')) {
     errors.push(`${prefix}.path must be an absolute path such as /mcp.`);
   }
@@ -433,8 +442,12 @@ function validateMcpExport(manifest, capability, prefix, errors) {
     validateMcpToolEntry(entry, `${prefix}.tools.${name}`, errors);
   }
   if (capability.auth === undefined) return;
-  if (!isRecord(capability.auth) || capability.auth.kind !== 'owner-token') {
-    errors.push(`${prefix}.auth.kind must be owner-token.`);
+  if (!isRecord(capability.auth) || !MCP_AUTH_KINDS.has(capability.auth.kind)) {
+    errors.push(`${prefix}.auth.kind must be one of: ${[...MCP_AUTH_KINDS].join(', ')}.`);
+    return;
+  }
+  if (capability.auth.kind === 'package-secret') {
+    validatePackageSecretAuth(manifest, capability.auth, prefix, errors);
     return;
   }
   if (capability.auth.hint !== undefined && (!hasText(capability.auth.hint) || capability.auth.hint.length > 200)) {

@@ -352,7 +352,8 @@ function runtimeServices(input, routes) {
     }),
     internalPort: service.internalPort,
     loopbackPort: service.loopbackPort,
-    public: routes.some((route) => route.service === service.id),
+    // Published on loopback for Caddy, or for Suite Manager itself when it calls the service.
+    public: routes.some((route) => route.service === service.id) || service.loopback === true,
     volumes: service.volumes,
     ...(service.folders ? { folders: service.folders } : {}),
   }));

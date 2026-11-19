@@ -133,13 +133,14 @@ class AiConnectionsService {
     for (const source of this.catalog.sources()) {
       const { error } = await this.catalog.toolsOf(source);
       const builtin = source.id === BUILTIN_SOURCE_ID;
+      const ownerToken = !builtin && !source.mcp.packageSecret;
       sources.push({
         builtin,
         error,
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: !ownerToken ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -263,9 +264,16 @@ class AiConnectionsService {
     this.aiStore.pin({ at: this.at(), hash: found.tool.hash, tool: found.tool.name });
   }
 
-  async setSourceToken(sourceId, rawToken) {
+  // Only an app with its own sign-in takes a token; one MOS holds the key for is never overwritten.
+  ownerTokenSource(sourceId) {
     const source = this.catalog.source(sourceId);
     if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    if (source.mcp.packageSecret) throw new AiConnectionsError('AI_TOKEN_NOT_NEEDED', `MOS lets AI into ${source.name} itself, so it needs no token.`, 409);
+    return source;
+  }
+
+  async setSourceToken(sourceId, rawToken) {
+    const source = this.ownerTokenSource(sourceId);
     const token = String(rawToken ?? '').trim();
     if (!token || token.length > 4096 || /\s/u.test(token)) throw new AiConnectionsError('AI_TOKEN_INVALID', 'Paste the access token exactly as the app showed it.');
     if (source.mcp.verifyTool && source.running) {
@@ -297,8 +305,7 @@ class AiConnectionsService {
   }
 
   removeSourceToken(sourceId) {
-    const source = this.catalog.source(sourceId);
-    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    const source = this.ownerTokenSource(sourceId);
     fs.rmSync(this.catalog.tokenPath(source), { force: true });
     this.catalog.forget(source.id);
   }

@@ -4,8 +4,8 @@
   "reviewedAt": "2026-11-16T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.9",
-    "packageDigest": "sha256:dbe8f85bc92b803a580349872a827200c76443bbb703fe55b544f9db32601400",
+    "packageVersion": "0.4.0",
+    "packageDigest": "sha256:b5b1a40bcf69e635877ecbcedb5607aa68df05ef80dd48459b7022780029b279",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -126,6 +126,11 @@
       "type": "configured",
       "claim": "Only the paperless service is published through the generated app route; the Valkey broker has no route and stays internal to the package network. The first administrator account is created from the MOS install form directly inside the container through PAPERLESS_ADMIN_USER and PAPERLESS_ADMIN_PASSWORD, with no upstream Paperless-ngx account, no registration and no licence check. Documents, the originals as received, thumbnails, the search index and the SQLite database persist to package-owned MOS volumes.",
       "source": "apps/paperless-ngx/manifest.json and apps/paperless-ngx/README.md"
+    },
+    {
+      "type": "configured",
+      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned Paperless-ngx image, runs only the package's own mcp-server.py on the Python standard library, and its only outbound connection is to http://paperless:8000/api on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It signs in with the administrator account from the install form, and offers searching, reading, adding notes and changing how a document is filed; it has no tool that deletes or shares a document.",
+      "source": "apps/paperless-ngx/mcp-server.py and apps/paperless-ngx/manifest.json"
     },
     {
       "type": "documented",
