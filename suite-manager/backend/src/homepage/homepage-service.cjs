@@ -166,8 +166,9 @@ class HomepageService {
   // The first change ever recorded keeps how the dashboard looked before it,
   // so even that change can be stepped back from.
   async ensureBaseline() {
-    if (this.store.latestHomepageCheckpoint()) return;
-    await this.checkpoint({ actor: 'MOS', summary: 'How your dashboard was before' }).catch(() => {});
+    try {
+      if (!this.store.latestHomepageCheckpoint()) await this.checkpoint({ actor: 'MOS', summary: 'How your dashboard was before' });
+    } catch { /* history is best effort; the change itself goes ahead */ }
   }
 
   history() {
