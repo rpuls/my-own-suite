@@ -2,10 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import { ActionMenu, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
 import { whenWords } from '../../../lib/dates';
-import { ConnectInstructions, PrivacyLine } from './AddAssistantDialog';
+import { ConnectInstructions, PrivacyLine, TunnelStatus } from './AddAssistantDialog';
 import {
   customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
-  type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type OfferedKind,
+  TUNNEL_WORDS, type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type AiTunnel, type OfferedKind,
 } from './model';
 
 export type ClientActions = {
@@ -17,6 +17,7 @@ export type ClientActions = {
   onRemove: () => void;
   onReset: (sourceId: string) => void;
   onRotate: () => void;
+  onStartTunnel: () => void;
   onToggleEnabled: () => void;
 };
 
@@ -30,8 +31,9 @@ function lowerFirst(text: string) {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-function clientMeta(client: AiClient, sources: AiSource[]) {
+function clientMeta(client: AiClient, sources: AiSource[], tunnel: AiTunnel | null) {
   if (!client.enabled) return 'Turned off · settings kept';
+  if (tunnel && tunnel.state !== 'connected') return TUNNEL_WORDS[tunnel.state];
   const shared = sources.filter((source) => levelOf(client, source.id) !== 'off').map((source) => `${source.name}: ${LEVEL_WORDS[levelOf(client, source.id)]}`);
   const what = shared.length ? shared : ['nothing shared yet'];
   return client.lastUsedAt
@@ -134,7 +136,7 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source
   </Row>;
 }
 
-export function ClientItem({ actions, busy, changed, client, expanded, onToggle, sources }: {
+export function ClientItem({ actions, busy, changed, client, expanded, onToggle, sources, tunnel }: {
   actions: ClientActions;
   busy: boolean;
   changed: boolean;
@@ -142,6 +144,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
   expanded: boolean;
   onToggle: () => void;
   sources: AiSource[];
+  tunnel: AiTunnel | null;
 }) {
   const [customizing, setCustomizing] = useState('');
   const [choosingDefault, setChoosingDefault] = useState(false);
@@ -161,10 +164,14 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
     </>}>
       <span className="suite-source-main">
         <strong>{client.name}</strong>
-        <span className="suite-meta">{clientMeta(client, sources)}</span>
+        <span className="suite-meta">{clientMeta(client, sources, tunnel)}</span>
       </span>
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
+      {tunnel && tunnel.state !== 'connected' ? <>
+        <TunnelStatus tunnel={tunnel} />
+        {tunnel.state === 'off' ? <p><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={actions.onStartTunnel} type="button">Turn on the tunnel</button></p> : null}
+      </> : null}
       {sources.length ? <Rows>
         {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onSourceToken={(token) => actions.onSourceToken(source.id, token)} source={source} />)}
       </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}

@@ -39,11 +39,15 @@ export type AiClient = {
 
 export type RouteAvailability = { available: boolean; reason: string | null };
 
+export type TunnelState = 'connected' | 'off' | 'refused' | 'starting';
+export type AiTunnel = { clientId: string; state: TunnelState; tunnelId: string };
+
 export type AiStatus = {
   clients: AiClient[];
   mcpUrl: string | null;
   routes: Record<AiRoute, RouteAvailability>;
   sources: AiSource[];
+  tunnel: AiTunnel | null;
 };
 
 export type IssuedToken = { client?: AiClient; status: AiStatus; token: string };
@@ -99,6 +103,13 @@ export const LEVEL_OPTIONS: Array<{ label: string; value: AiLevel }> = [
   { label: 'See', value: 'see' },
   { label: 'See and do', value: 'act' },
 ];
+
+export const TUNNEL_WORDS: Record<TunnelState, string> = {
+  connected: 'Tunnel connected to OpenAI',
+  off: 'Tunnel is off on this server',
+  refused: 'OpenAI refused the tunnel',
+  starting: 'Tunnel starting',
+};
 
 export const LEVEL_WORDS: Record<AiLevel, string> = { act: 'see and do', off: 'off', see: 'see' };
 

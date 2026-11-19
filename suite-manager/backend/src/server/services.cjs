@@ -3,6 +3,7 @@ const path = require('node:path');
 
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { AiConnectionsService } = require('../ai/ai-connections-service.cjs');
+const { ChatGptTunnel } = require('../ai/chatgpt-tunnel.cjs');
 const { AiGateway } = require('../ai/ai-gateway.cjs');
 const { AiStore } = require('../ai/ai-store.cjs');
 const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
@@ -203,6 +204,12 @@ function createServices({
     suiteAddress,
   });
   const aiGateway = new AiGateway({ connections: aiConnections });
+  const chatGptTunnel = new ChatGptTunnel({
+    aiConnections,
+    appAgent,
+    secretDir: appPackages.secretDir,
+    suiteManagerPort: Number(process.env.PORT || process.env.MOS_SUITE_MANAGER_PORT || '3100'),
+  });
   const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
   const signIn = new SignInService({ alerts, recordSecurityEvent, securityLogger, setup, throttle, vault });
   const appUrls = createAppPublicUrls({ appPackages, homepageConfig, suiteAddress });
@@ -245,6 +252,7 @@ function createServices({
     aiConnections,
     aiGateway,
     appAgent,
+    chatGptTunnel,
     appPackages,
     appUrls,
     backupAgent,

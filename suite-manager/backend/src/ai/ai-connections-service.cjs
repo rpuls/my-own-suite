@@ -158,7 +158,7 @@ class AiConnectionsService {
     return {
       direct: mcpUrl ? { available: true, reason: null } : { available: false, reason: 'Your suite needs an HTTPS address first.' },
       public: { available: false, reason: 'Not built yet. It will need your suite to be reachable from the internet.' },
-      tunnel: { available: false, reason: 'Coming soon.' },
+      tunnel: { available: true, reason: null },
     };
   }
 
@@ -182,14 +182,15 @@ class AiConnectionsService {
 
   // ---- connections ----
 
-  createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}) {
+  // A tunnel connection is made only by the ChatGPT tunnel, which keeps its token.
+  createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}, { allowTunnel = false } = {}) {
     const name = String(rawName ?? '').trim();
     if (!name || name.length > CLIENT_NAME_MAX) {
       throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
     const preset = String(rawPreset ?? 'other');
     if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which AI this is.');
-    if (!ROUTES.has(route)) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
+    if (!ROUTES.has(route) && !(allowTunnel && route === 'tunnel')) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
     const token = newClientToken();
     const id = crypto.randomUUID();
     this.aiStore.createClient({ at: this.at(), id, name, preset, route, tokenHash: hashToken(token) });
@@ -207,6 +208,7 @@ class AiConnectionsService {
   }
 
   rotateClientToken(clientId) {
+    if (this.requireClient(clientId).route === 'tunnel') throw new AiConnectionsError('AI_TUNNEL_TOKEN', 'ChatGPT reaches MOS through its tunnel, which holds its own key.', 409);
     const token = newClientToken();
     if (!this.aiStore.replaceClientToken({ id: clientId, tokenHash: hashToken(token) })) throw this.unknownClient();
     return { token };
