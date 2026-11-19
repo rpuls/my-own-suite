@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, FilterChips, Icon, Notice } from '../../components/ui';
 import { aiActivity, aiRequest, type AiActivityEntry, type AiClient } from '../settings/ai/model';
-import { avatarOf, initialsOf, plural, timelineOf, type TimelineRequest, type TimelineStep } from './timeline';
+import { avatarOf, plural, timelineOf, type TimelineRequest, type TimelineStep } from './timeline';
 
 const AI_SETTINGS_PATH = '/suite-manager/settings#set-ai';
 const DASHBOARD_HISTORY_PATH = '/suite-manager/customize#history';
@@ -16,7 +16,7 @@ function clock(at: string) {
 }
 
 function AiAvatar({ name }: { name: string }) {
-  return <Avatar {...avatarOf(name)} initials={initialsOf(name)} />;
+  return <Avatar {...avatarOf(name)} />;
 }
 
 function Step({ step }: { step: TimelineStep }) {

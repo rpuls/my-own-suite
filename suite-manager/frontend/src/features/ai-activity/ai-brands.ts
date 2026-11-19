@@ -4,6 +4,8 @@
 export type AiBrand = {
   background: string;
   id: string;
+  // Where the brand's own mark reads as letters, those letters, whatever the owner typed.
+  initials?: string;
   ink: string;
   keywords: string[];
   label: string;
@@ -19,7 +21,7 @@ export const AI_BRANDS: AiBrand[] = [
   { background: BLACK, id: 'openai', ink: WHITE, keywords: ['openai', 'codex'], label: 'OpenAI' },
   { background: 'linear-gradient(135deg, #4285f4 0%, #9b72cb 55%, #d96570 100%)', id: 'gemini', ink: WHITE, keywords: ['gemini', 'gemma', 'bard'], label: 'Gemini' },
   { background: 'linear-gradient(135deg, #0078d4 0%, #2bb5a8 45%, #8661c5 100%)', id: 'copilot', ink: WHITE, keywords: ['copilot'], label: 'Copilot' },
-  { background: 'linear-gradient(135deg, #6d5dfc 0%, #3a2fb8 100%)', id: 'lmstudio', ink: WHITE, keywords: ['lmstudio'], label: 'LM Studio' },
+  { background: 'linear-gradient(135deg, #6d5dfc 0%, #3a2fb8 100%)', id: 'lmstudio', initials: 'LM', ink: WHITE, keywords: ['lmstudio'], label: 'LM Studio' },
   { background: WHITE, id: 'ollama', ink: BLACK, keywords: ['ollama'], label: 'Ollama' },
   { background: BLACK, id: 'openwebui', ink: WHITE, keywords: ['openwebui'], label: 'Open WebUI' },
   { background: 'linear-gradient(135deg, #ffd800 0%, #fa500f 55%, #e10500 100%)', id: 'mistral', ink: WHITE, keywords: ['mistral', 'lechat'], label: 'Mistral' },

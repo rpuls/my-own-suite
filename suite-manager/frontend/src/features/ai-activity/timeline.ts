@@ -149,8 +149,8 @@ const AVATAR_COLOURS = ['#d0744a', '#7b6cf6', '#2f9e8f', '#3b82c4', '#c2557a', '
 // A known AI wears its brand's colours; any other keeps a colour that is stable per name.
 export function avatarOf(name: string) {
   const brand = brandOf(name);
-  if (brand) return { background: brand.background, ink: brand.ink };
+  if (brand) return { background: brand.background, initials: brand.initials ?? initialsOf(name), ink: brand.ink };
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return { background: AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!, ink: '#ffffff' };
+  return { background: AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!, initials: initialsOf(name), ink: '#ffffff' };
 }
