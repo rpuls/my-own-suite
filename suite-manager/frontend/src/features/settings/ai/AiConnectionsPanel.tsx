@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Notice, Panel, PanelBody, PanelHead, PanelList } from '../../../components/ui';
 import { AddAssistantDialog } from './AddAssistantDialog';
@@ -31,12 +31,16 @@ export function AiConnectionsPanel() {
   const [addIssued, setAddIssued] = useState<{ clientId: string; token: string } | null>(null);
   const [rotated, setRotated] = useState<{ client: AiClient; token: string } | null>(null);
   const [removing, setRemoving] = useState<AiClient | null>(null);
+  const loadedOnce = useRef(false);
 
+  // A failed background refresh keeps what is on screen; only a page with nothing loaded yet reports it.
   async function load() {
     try {
-      setStatus(await aiRequest('GET', '', 'Unable to load your AI.'));
+      const loaded = await aiRequest('GET', '', 'Unable to load your AI.');
+      loadedOnce.current = true;
+      setStatus(loaded);
     } catch (caught) {
-      setError(errorText(caught, 'Unable to load your AI.'));
+      if (!loadedOnce.current) setError(errorText(caught, 'Unable to load your AI.'));
     }
   }
 
