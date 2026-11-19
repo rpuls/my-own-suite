@@ -59,6 +59,7 @@ export type AiActivityEntry = {
   id: number;
   kind: string;
   outcome: AiOutcome;
+  repeats: number;
   sourceId: string | null;
   sourceName: string;
   tool: string;

@@ -253,13 +253,32 @@ test('the activity log keeps the assistant name after it is removed, and holds n
   assert.equal((await h.rpc(token, 'tools/list', {})).status, 401);
 });
 
+test('the same call again within a minute counts up one row, and anything else starts a new one', async (t) => {
+  let clock = new Date('2026-11-19T10:00:00Z');
+  const h = await harness({ now: () => clock });
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'memos', 'see');
+  for (let call = 0; call < 3; call += 1) await h.call(token, 'memos_memo_list_memos');
+  await h.call(token, 'memos_memo_create_memo', { body: { content: 'x' } });
+  clock = new Date(clock.getTime() + 2 * 60_000);
+  await h.call(token, 'memos_memo_list_memos');
+
+  const rows = h.connections.activity().entries.map((entry) => [entry.tool, entry.outcome, entry.repeats]);
+  assert.deepEqual(rows, [
+    ['memos_memo_list_memos', 'ok', 1],
+    ['memos_memo_create_memo', 'not-allowed', 1],
+    ['memos_memo_list_memos', 'ok', 3],
+  ]);
+});
+
 test('the activity log drops its oldest rows past the row ceiling, so a call loop cannot grow it without end', async () => {
   const aiStore = new AiStore(new SuiteManagerStore(await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'))));
-  const rejected = () => aiStore.recordActivity({ at: new Date().toISOString(), durationMs: 1, method: 'auth', outcome: 'rejected' });
-  rejected();
+  const rejected = (tool) => aiStore.recordActivity({ at: new Date().toISOString(), durationMs: 1, method: 'auth', outcome: 'rejected', tool });
+  rejected('first');
   // Jumps the id counter instead of writing the ceiling's worth of rows.
   aiStore.db.prepare("INSERT INTO ai_activity (id, at, method, outcome, duration_ms) VALUES (?, '', 'auth', 'rejected', 0)").run(ACTIVITY_MAX_ROWS + 5);
-  rejected();
+  rejected('second');
 
   const ids = aiStore.db.prepare('SELECT id FROM ai_activity ORDER BY id').all().map((row) => row.id);
   assert.deepEqual(ids, [ACTIVITY_MAX_ROWS + 5, ACTIVITY_MAX_ROWS + 6]);
