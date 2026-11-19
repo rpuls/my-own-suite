@@ -36,7 +36,7 @@ function ConnectionStatus({ connected, name }: { connected: boolean; name: strin
   return <Panel density="tight">
     {connected
       ? <PanelBand icon="check" layout="row" title={`${name} is connected.`} tone="accent" />
-      : <PanelBand layout="row" note="This changes to connected by itself." title={`Waiting for ${name} to connect…`} tone="info" />}
+      : <PanelBand busy layout="row" note="This changes to connected by itself." title={`Waiting for ${name} to connect…`} tone="info" />}
   </Panel>;
 }
 
@@ -49,7 +49,7 @@ export function TunnelStatus({ tunnel }: { tunnel: AiTunnel | null }) {
     starting: 'This changes by itself in a moment.',
   }[tunnel.state];
   const tone = tunnel.state === 'connected' ? 'accent' : tunnel.state === 'refused' ? 'warning' : 'info';
-  return <Panel density="tight"><PanelBand icon={tunnel.state === 'connected' ? 'check' : undefined} layout="row" note={note} title={TUNNEL_WORDS[tunnel.state]} tone={tone} /></Panel>;
+  return <Panel density="tight"><PanelBand busy={tunnel.state === 'starting'} icon={tunnel.state === 'connected' ? 'check' : undefined} layout="row" note={note} title={TUNNEL_WORDS[tunnel.state]} tone={tone} /></Panel>;
 }
 
 function ChatGptForm({ busy, error, onBack, onClose, onConnect }: { busy: boolean; error: string; onBack: () => void; onClose: () => void; onConnect: (tunnelId: string, runtimeKey: string) => void }) {
@@ -123,10 +123,10 @@ export function ChatGptSteps() {
   return <>
     <p><strong>In ChatGPT on the web:</strong></p>
     <ol className="suite-app-guide-steps">
-      <li>Open Settings → Plugins, press +, and choose Add custom MCP server.</li>
+      <li>Open Settings → Plugins, press +, and choose <strong>Add custom MCP server</strong>.</li>
       <li>Name it MOS.</li>
-      <li>Set Connection to Tunnel, and pick the tunnel you made.</li>
-      <li>Set Authentication to No authentication. It starts on OAuth. MOS checks every call itself.</li>
+      <li>Set Connection to <strong>Tunnel</strong>, and pick the tunnel you just created.</li>
+      <li>Set Authentication to <strong>No authentication</strong>. It starts on OAuth. MOS checks every call itself.</li>
       <li>Create it. MOS notices by itself once ChatGPT connects.</li>
     </ol>
   </>;
