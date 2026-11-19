@@ -113,7 +113,7 @@ function PickKind({ chatGptConnected, onChatGpt, onClose, onOwn }: { chatGptConn
       </PanelList>
       <PanelHead title="Cloud AI services"><p className="suite-meta">What they read is sent to the company behind them.</p></PanelHead>
       <PanelList>
-        <PanelItem flush quiet>
+        <PanelItem flush quiet={chatGptConnected}>
           <ChoiceRow disabled={chatGptConnected} icon="globe" onPick={onChatGpt}><strong>ChatGPT</strong><span className="suite-meta">{chatGptConnected ? 'Already connected.' : 'MOS reaches OpenAI through a tunnel, so nothing at your home is opened to the internet.'}</span></ChoiceRow>
         </PanelItem>
         <PanelItem flush quiet>
