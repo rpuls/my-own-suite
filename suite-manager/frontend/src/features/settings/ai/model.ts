@@ -20,7 +20,7 @@ export type AiSource = {
   id: string;
   name: string;
   running: boolean;
-  token: null | { appUrl: string | null; configured: boolean; hint: string | null; verifiedAt: string | null };
+  token: null | { tokenPageUrl: string | null; configured: boolean; hint: string | null; verifiedAt: string | null };
   tools: AiTool[];
 };
 
