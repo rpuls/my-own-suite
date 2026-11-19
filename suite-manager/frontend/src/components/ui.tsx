@@ -277,8 +277,8 @@ export function FilterChips<T extends string>({ label, onChange, options, value 
   </div>;
 }
 
-export function Avatar({ colour, initials }: { colour: string; initials: string }) {
-  return <span aria-hidden="true" className="mos-avatar" style={{ background: colour }}>{initials}</span>;
+export function Avatar({ background, initials, ink = '#ffffff' }: { background: string; initials: string; ink?: string }) {
+  return <span aria-hidden="true" className="mos-avatar" style={{ background, color: ink }}>{initials}</span>;
 }
 
 // The settings row: label left, value right, hairline between neighbours. One
