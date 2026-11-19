@@ -108,4 +108,4 @@ class AiGateway {
   }
 }
 
-module.exports = { AiGateway, MCP_PATH, SUPPORTED_PROTOCOLS, presentedToken };
+module.exports = { AiGateway, MCP_PATH, SUPPORTED_PROTOCOLS, fromThisMachine, presentedToken };
