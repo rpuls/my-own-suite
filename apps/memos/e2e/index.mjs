@@ -22,6 +22,9 @@ async function signIn(page, env, { firstVisit }) {
   await page.getByRole('button', { name: 'Skip' }).click({ timeout: 3000 }).catch(() => undefined);
 }
 
+// The text of a tool result: the gateway wraps it, and Memos answers in JSON.
+const memoIn = (text) => JSON.parse(/<untrusted-data[^>]*>\n([\s\S]*)\n<\/untrusted-data>/u.exec(text)?.[1] || 'null');
+
 export default {
   secrets({ env }) {
     return [{ label: 'admin password', value: password(env) }];
@@ -53,6 +56,42 @@ export default {
     });
     Object.assign(state, { item, note });
     await shot('timeline');
+  },
+
+  // A personal access token made the way the owner would, through Memos's own API.
+  async aiToken({ env, request, url }) {
+    const signedIn = await request.post(new URL('/api/auth/signin', url).toString(), { data: { passwordCredentials: { password: password(env), username: username(env) } } });
+    expect(signedIn.ok(), 'Memos signs the E2E user in').toBe(true);
+    const created = await request.post(new URL(`/api/users/${encodeURIComponent(username(env))}/personalAccessTokens`, url).toString(), {
+      data: { description: 'MOS E2E assistant' },
+      headers: { Authorization: `Bearer ${(await signedIn.json()).accessToken}` },
+    });
+    expect(created.ok(), 'Memos makes an access token').toBe(true);
+    return (await created.json()).token;
+  },
+
+  // The journey's note is found and read; a note the assistant asks to make public is saved private.
+  async ai({ call, expect, state, step }) {
+    if (!state.note) throw new Error('Memos ai needs the note its journey made (run app:memos first, or carry it in with --continue).');
+    let mine;
+    await step('find and read the note the journey wrote', async () => {
+      const found = memoIn((await call('memo_list_memos', { filter: `content.contains("${state.note}")` })).text);
+      const name = found?.memos?.[0]?.name;
+      expect(name, 'the search finds the note').toBeTruthy();
+      expect(memoIn((await call('memo_get_memo', { memo: name.split('/').pop() })).text)?.content).toContain(state.note);
+    });
+    await step('a new note stays private, whatever the assistant asked', async () => {
+      mine = memoIn((await call('memo_create_memo', { body: { content: `MOS E2E assistant note ${Date.now().toString(36)} #mose2e`, visibility: 'PUBLIC' } })).text);
+      expect(mine?.visibility, 'MOS fixes new notes to private').toBe('PRIVATE');
+    });
+    const id = mine.name.split('/').pop();
+    await step('comment on it, read the comments, and edit its text', async () => {
+      expect(memoIn((await call('memo_create_memo_comment', { body: { content: 'MOS E2E assistant comment', visibility: 'PUBLIC' }, memo: id })).text)?.visibility).toBe('PRIVATE');
+      expect(memoIn((await call('memo_list_memo_comments', { memo: id })).text)?.comments?.length).toBe(1);
+      const edited = memoIn((await call('memo_update_memo', { body: { content: `${mine.content} edited`, visibility: 'PUBLIC' }, memo: id, updateMask: 'content,visibility' })).text);
+      expect(edited?.content).toContain('edited');
+      expect(edited?.visibility, 'an edit changes the text only').toBe('PRIVATE');
+    });
   },
 
   // Opened in a browser that has never seen this server, so the note can only have come from it.

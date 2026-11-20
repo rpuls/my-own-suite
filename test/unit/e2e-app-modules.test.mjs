@@ -47,7 +47,9 @@ test('every catalog app ships an E2E module with a journey and a verify', async 
     assert.ok(fs.existsSync(file), `apps/${manifest.id}/e2e/index.mjs is missing`);
     const module = (await import(pathToFileURL(file).href)).default;
     for (const hook of APP_HOOKS) assert.equal(typeof module?.[hook], 'function', `apps/${manifest.id}/e2e/index.mjs has no ${hook}()`);
-    for (const optional of ['landed', 'masks', 'secrets', 'setupValue']) {
+    const offersAiTools = fs.existsSync(path.join(repoRoot, 'apps', manifest.id, 'ai-tools.json'));
+    if (offersAiTools) assert.equal(typeof module.ai, 'function', `apps/${manifest.id} offers AI tools, so its e2e module needs an ai()`);
+    for (const optional of ['ai', 'aiToken', 'landed', 'masks', 'secrets', 'setupValue']) {
       if (optional in module) assert.equal(typeof module[optional], 'function', `apps/${manifest.id}/e2e ${optional} should be a function`);
     }
     for (const [shot, rank] of Object.entries(module.showcase || {})) {
