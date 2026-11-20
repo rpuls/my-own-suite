@@ -123,7 +123,7 @@ class AiConnectionsService {
 
   housekeeping() {
     this.aiStore.pruneActivity(this.now());
-    this.aiStore.forgetSourcesOtherThan(this.catalog.sources());
+    this.aiStore.forgetSourcesOtherThan(this.catalog.keptSources());
   }
 
   async status() {

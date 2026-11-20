@@ -10,6 +10,7 @@ const MCP_EXPORT_TYPE = 'mcp-server';
 const OFFERABLE_KINDS = new Set(['read', 'add', 'change']);
 const APP_TOKEN_KEY = 'ai-token';
 const CATALOG_TTL_MS = 60_000;
+const LISTED_STATUSES = new Set(['installed', 'disabled']);
 const BUILTIN_SOURCE_ID = 'mos';
 
 // A manifest tool entry is its kind, or { kind, title, note, fixed }.
@@ -71,7 +72,7 @@ class AiToolCatalog {
   sources() {
     const sources = this.builtin ? [{ ...this.builtin, id: BUILTIN_SOURCE_ID, prefix: toolPrefixOf(BUILTIN_SOURCE_ID), running: true }] : [];
     for (const instance of this.store.getAppInstances()) {
-      if (instance.status !== 'installed' || instance.packageId === BUILTIN_SOURCE_ID) continue;
+      if (!LISTED_STATUSES.has(instance.status) || instance.packageId === BUILTIN_SOURCE_ID) continue;
       let appPackage;
       try { appPackage = this.appPackages.installedPackageFor(instance); } catch { continue; }
       const { manifest } = appPackage;
@@ -83,11 +84,17 @@ class AiToolCatalog {
         mcp,
         name: instance.displayNameSnapshot || manifest.name || instance.packageId,
         prefix: toolPrefixOf(instance.packageId),
-        running: instance.enabled === true,
+        running: instance.status === 'installed' && instance.enabled === true,
         url: `http://127.0.0.1:${loopbackPortFor(instance.packageId, mcp.service)}${mcp.path}`,
       });
     }
     return sources;
+  }
+
+  // Every app MOS still has, stopped or mid-update too: only an uninstalled app's AI settings may be forgotten.
+  keptSources() {
+    const ids = [...(this.builtin ? [BUILTIN_SOURCE_ID] : []), ...this.store.getAppInstances().map((instance) => instance.packageId)];
+    return ids.map((id) => ({ id, prefix: toolPrefixOf(id) }));
   }
 
   source(id) {
