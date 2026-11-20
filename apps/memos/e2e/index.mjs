@@ -31,7 +31,8 @@ export default {
   },
 
   async landed({ page }) {
-    await expect(page.locator('body')).toContainText(/Memos|Sign in|Set up your instance/iu, { timeout: 45000 });
+    // A browser still signed in from the journey lands on the timeline, which never says "Memos".
+    await expect(page.locator('body')).toContainText(/Memos|Sign in|Set up your instance|Timeline/iu, { timeout: 45000 });
   },
 
   async journey({ env, page, shot, state, step }) {
