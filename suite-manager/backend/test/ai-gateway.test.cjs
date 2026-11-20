@@ -45,7 +45,7 @@ const AI_TOOLS = {
   },
 };
 
-function fakeMemos() {
+function fakeMemos({ answerMs = 0 } = {}) {
   const calls = [];
   const tool = (name, description) => ({ description, inputSchema: { type: 'object' }, name });
   const tools = [
@@ -57,6 +57,7 @@ function fakeMemos() {
     tool('space_delete_space', 'Delete a space and every memo in it.'),
   ];
   const fetchImpl = async (url, init) => {
+    if (answerMs) await new Promise((resolve) => setTimeout(resolve, answerMs));
     const message = JSON.parse(init.body);
     const authorized = init.headers.Authorization === `Bearer ${APP_TOKEN}`;
     let result;
@@ -72,11 +73,11 @@ function fakeMemos() {
   return { calls, fetchImpl, tools };
 }
 
-async function harness({ now = () => new Date() } = {}) {
+async function harness({ answerMs = 0, now = () => new Date() } = {}) {
   const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'));
   const store = new SuiteManagerStore(stateDir);
   const secretDir = path.join(stateDir, 'app-secrets');
-  const memos = fakeMemos();
+  const memos = fakeMemos({ answerMs });
   const restarts = [];
   const instance = { displayNameSnapshot: 'Memos', enabled: true, id: 'inst-memos', packageId: 'memos', status: 'installed' };
   const appStore = { getAppInstances: () => [instance] };
@@ -207,6 +208,16 @@ test('writes stop at the hourly limit with a plain refusal, while reading goes o
   assert.equal((await h.call(token, 'memos_memo_list_memos')).isError, false);
   assert.equal(h.connections.activity({ clientId: client.id, limit: 1 }).entries[0].outcome, 'ok');
   assert.ok(h.connections.activity({ clientId: client.id }).entries.some((entry) => entry.outcome === 'limit-reached'));
+});
+
+test('changes sent all at once still stop at the hourly limit', async (t) => {
+  const h = await harness({ answerMs: 50 });
+  t.after(h.close);
+  const { client, token } = h.newClient();
+  h.connections.setLevel(client.id, 'memos', 'act');
+
+  const results = await Promise.all(Array.from({ length: WRITES_PER_HOUR + 10 }, (_, index) => h.call(token, 'memos_memo_create_memo', { body: { content: `note ${index}` } })));
+  assert.equal(results.filter((result) => !result.isError).length, WRITES_PER_HOUR);
 });
 
 test('a tool whose definition changed after an app update stays off until the owner accepts it', async (t) => {

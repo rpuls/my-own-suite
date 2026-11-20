@@ -80,6 +80,8 @@ class AiConnectionsService {
     this.now = now;
     this.secretDir = secretDir;
     this.suiteAddress = suiteAddress;
+    // A change is logged only once the app answers, so changes still running count towards the limit too.
+    this.changesRunning = new Map();
   }
 
   at() {
@@ -377,16 +379,27 @@ class AiConnectionsService {
     if (Buffer.byteLength(JSON.stringify(args ?? {})) > MAX_ARGUMENT_BYTES) {
       return refuse('too-large', 'My Own Suite: that request is too large.', entry);
     }
-    if (tool.kind !== 'read') {
+    const changes = tool.kind !== 'read';
+    if (changes) {
       const since = new Date(this.now().getTime() - 3_600_000).toISOString();
-      if (this.aiStore.writesSince({ clientId: client.id, since }) >= WRITES_PER_HOUR) {
+      const running = this.changesRunning.get(client.id) || 0;
+      if (this.aiStore.writesSince({ clientId: client.id, since }) + running >= WRITES_PER_HOUR) {
         return refuse('limit-reached', `My Own Suite: this AI has made ${WRITES_PER_HOUR} changes in the last hour, which is the limit. Try again later.`, entry);
       }
+      this.changesRunning.set(client.id, running + 1);
     }
 
-    const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
-    record(result.outcome, entry);
-    return result.result;
+    try {
+      const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
+      record(result.outcome, entry);
+      return result.result;
+    } finally {
+      if (changes) {
+        const left = this.changesRunning.get(client.id) - 1;
+        if (left > 0) this.changesRunning.set(client.id, left);
+        else this.changesRunning.delete(client.id);
+      }
+    }
   }
 
   async invoke(source, tool, args, client = null) {
