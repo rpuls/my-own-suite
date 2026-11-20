@@ -80,6 +80,8 @@ class AiConnectionsService {
     this.now = now;
     this.secretDir = secretDir;
     this.suiteAddress = suiteAddress;
+    // A change is logged only once the app answers, so changes still running count towards the limit too.
+    this.changesRunning = new Map();
   }
 
   at() {
@@ -123,7 +125,7 @@ class AiConnectionsService {
 
   housekeeping() {
     this.aiStore.pruneActivity(this.now());
-    this.aiStore.forgetSourcesOtherThan(this.catalog.sources());
+    this.aiStore.forgetSourcesOtherThan(this.catalog.keptSources());
   }
 
   async status() {
@@ -133,13 +135,14 @@ class AiConnectionsService {
     for (const source of this.catalog.sources()) {
       const { error } = await this.catalog.toolsOf(source);
       const builtin = source.id === BUILTIN_SOURCE_ID;
+      const ownerToken = !builtin && !source.mcp.packageSecret;
       sources.push({
         builtin,
         error,
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: !ownerToken ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -263,9 +266,16 @@ class AiConnectionsService {
     this.aiStore.pin({ at: this.at(), hash: found.tool.hash, tool: found.tool.name });
   }
 
-  async setSourceToken(sourceId, rawToken) {
+  // Only an app with its own sign-in takes a token; one MOS holds the key for is never overwritten.
+  ownerTokenSource(sourceId) {
     const source = this.catalog.source(sourceId);
     if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    if (source.mcp.packageSecret) throw new AiConnectionsError('AI_TOKEN_NOT_NEEDED', `MOS lets AI into ${source.name} itself, so it needs no token.`, 409);
+    return source;
+  }
+
+  async setSourceToken(sourceId, rawToken) {
+    const source = this.ownerTokenSource(sourceId);
     const token = String(rawToken ?? '').trim();
     if (!token || token.length > 4096 || /\s/u.test(token)) throw new AiConnectionsError('AI_TOKEN_INVALID', 'Paste the access token exactly as the app showed it.');
     if (source.mcp.verifyTool && source.running) {
@@ -297,8 +307,7 @@ class AiConnectionsService {
   }
 
   removeSourceToken(sourceId) {
-    const source = this.catalog.source(sourceId);
-    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    const source = this.ownerTokenSource(sourceId);
     fs.rmSync(this.catalog.tokenPath(source), { force: true });
     this.catalog.forget(source.id);
   }
@@ -370,16 +379,27 @@ class AiConnectionsService {
     if (Buffer.byteLength(JSON.stringify(args ?? {})) > MAX_ARGUMENT_BYTES) {
       return refuse('too-large', 'My Own Suite: that request is too large.', entry);
     }
-    if (tool.kind !== 'read') {
+    const changes = tool.kind !== 'read';
+    if (changes) {
       const since = new Date(this.now().getTime() - 3_600_000).toISOString();
-      if (this.aiStore.writesSince({ clientId: client.id, since }) >= WRITES_PER_HOUR) {
+      const running = this.changesRunning.get(client.id) || 0;
+      if (this.aiStore.writesSince({ clientId: client.id, since }) + running >= WRITES_PER_HOUR) {
         return refuse('limit-reached', `My Own Suite: this AI has made ${WRITES_PER_HOUR} changes in the last hour, which is the limit. Try again later.`, entry);
       }
+      this.changesRunning.set(client.id, running + 1);
     }
 
-    const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
-    record(result.outcome, entry);
-    return result.result;
+    try {
+      const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
+      record(result.outcome, entry);
+      return result.result;
+    } finally {
+      if (changes) {
+        const left = this.changesRunning.get(client.id) - 1;
+        if (left > 0) this.changesRunning.set(client.id, left);
+        else this.changesRunning.delete(client.id);
+      }
+    }
   }
 
   async invoke(source, tool, args, client = null) {

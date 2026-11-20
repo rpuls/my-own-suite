@@ -26,6 +26,7 @@ export const STEPS = {
   install: { arg: 'app', budgetMinutes: 25, describe: 'Install the app from the Apps screen with its Homepage tile, and wait until it runs.' },
   app: { arg: 'app', budgetMinutes: 20, describe: "Open the app from its Homepage tile and run the app's own journey." },
   verify: { arg: 'app', budgetMinutes: 12, describe: "Run the app's own check that what its journey made is still there." },
+  ai: { arg: 'app', budgetMinutes: 8, https: true, describe: "Connect a scripted assistant through the AI gateway with See and do for the app: it must be offered exactly the tools the app's ai-tools.json offers, and the app's own AI checks must call every one." },
   update: { arg: 'app', budgetMinutes: 30, describe: 'Review and apply the update the app is offered, and wait until the new version runs.' },
   lifecycle: { arg: 'app', budgetMinutes: 15, describe: 'Stop the app, start it again, and wait until it runs.' },
   tiles: { arg: 'none', budgetMinutes: 6, describe: 'Every installed app tile on Homepage leads to that app on the current address.' },
@@ -61,6 +62,7 @@ export function appGroup(app, catalog = []) {
 }
 
 const each = (step, apps) => apps.map((id) => `${step}:${id}`);
+const offeringAi = (apps, catalog) => apps.filter((id) => catalog.find((item) => item.id === id)?.offersAiTools);
 
 function installTogether(group) {
   return [...each('install', group), ...(group.length > 1 ? ['connect'] : []), ...each('app', group)];
@@ -114,7 +116,7 @@ export const NAMED_PATHS = {
     describe: 'Update insurance: the journeys, the platform update, the app update, the checks, and before/after screenshot and network reports, with the apps it works with installed and connected.',
     build: (app, catalog) => {
       const group = appGroup(app, catalog);
-      return ['reset', 'owner', ...installTogether(group), 'platform-update:wait', `update:${app}`, ...each('verify', group), 'routes', 'compare', 'network'];
+      return ['reset', 'owner', ...installTogether(group), 'platform-update:wait', `update:${app}`, ...each('verify', group), ...each('ai', offeringAi(group, catalog)), 'routes', 'compare', 'network'];
     },
   },
   full: {
@@ -138,6 +140,7 @@ export const NAMED_PATHS = {
         'connect', 'marketing',
         ...plain.map((id) => `verify:${id}`),
         ...secure.map((id) => `app:${id}`),
+        ...each('ai', offeringAi(apps, catalog)),
         'tiles', 'routes', 'diagnostics',
         'restore', 'homepage-check', `installed:${first}`, 'cleanup',
       ];
@@ -255,8 +258,9 @@ export function resolvePath(items, catalog, { backupTo = null, eachApp = null, s
       steps.push({ arg: null, auto: 'the app keeps its files on a drive', name: 'drive', token: 'drive' });
       drive = true;
     }
-    if (!secure && STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps) {
-      steps.push({ arg: null, auto: 'the app needs HTTPS', name: 'dns01', token: 'dns01' });
+    const stepNeedsHttps = STEPS[step.name].https === true;
+    if (!secure && (stepNeedsHttps || (STEPS_NEEDING_HTTPS.has(step.name) && byId.get(step.arg)?.needsHttps))) {
+      steps.push({ arg: null, auto: stepNeedsHttps ? `${step.name} needs HTTPS` : 'the app needs HTTPS', name: 'dns01', token: 'dns01' });
       secure = true;
     }
     steps.push(step);

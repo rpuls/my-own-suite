@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "memo_list_memos": {
+      "kind": "read",
+      "title": "Search notes"
+    },
+    "memo_get_memo": {
+      "kind": "read",
+      "title": "Read a note"
+    },
+    "memo_list_memo_comments": {
+      "kind": "read",
+      "title": "Read comments"
+    },
+    "memo_create_memo": {
+      "kind": "add",
+      "title": "Save a new note",
+      "note": "New notes are always private.",
+      "fixed": {
+        "body.visibility": "PRIVATE"
+      }
+    },
+    "memo_create_memo_comment": {
+      "kind": "add",
+      "title": "Add a comment",
+      "note": "New comments are always private.",
+      "fixed": {
+        "body.visibility": "PRIVATE"
+      }
+    },
+    "memo_update_memo": {
+      "kind": "change",
+      "title": "Edit a note",
+      "note": "Edits change only the text, never who can see it.",
+      "fixed": {
+        "updateMask": "content"
+      }
+    },
+    "memo_delete_memo": "destructive",
+    "attachment_delete_attachment": "destructive"
+  }
+}

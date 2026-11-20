@@ -200,13 +200,23 @@ function serviceFolders(manifest, serviceId, placed) {
 // that ship the same manifest id from different sources stay isolated.
 // `folders` are the instance's placed folders ({ name, driveId }); a folder the
 // manifest declares but the owner gave no drive is simply not mounted.
+// Suite Manager calls an app's MCP server itself, so that service is published
+// on loopback even when no route reaches it.
+function serviceSuiteManagerCalls(manifest) {
+  const routed = new Set(manifest.routes.map((route) => route.service));
+  const mcp = Object.values(isRecord(manifest.exports) ? manifest.exports : {}).find((entry) => entry?.type === 'mcp-server');
+  return typeof mcp?.service === 'string' && !routed.has(mcp.service) ? mcp.service : null;
+}
+
 function renderDryRunProjections(manifest, configRows = [], { folders = [], packageId = manifest.id } = {}) {
+  const calledService = serviceSuiteManagerCalls(manifest);
   const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
     build: { context: `apps/${packageId}`, dockerfile: service.dockerfile },
     environment: renderEnvironment(service.env, configRows),
     id,
     internalPort: service.internalPort,
     loopbackPort: loopbackPortFor(packageId, id),
+    ...(id === calledService ? { loopback: true } : {}),
     volumes: service.volumes || [],
     ...serviceFolders(manifest, id, folders),
   }));

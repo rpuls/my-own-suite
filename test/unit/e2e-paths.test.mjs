@@ -14,6 +14,7 @@ const catalog = [
   { hasModule: true, id: 'plain-b', needsHttps: false },
   { hasModule: true, id: 'secure-c', needsHttps: true },
   { hasModule: false, id: 'unfinished', needsHttps: false },
+  { hasModule: true, id: 'notes-e', needsHttps: false, offersAiTools: true },
 ];
 
 const tokens = (plan) => plan.steps.map((step) => step.token);
@@ -57,6 +58,21 @@ test('a lab with no backup disk sends plain backups and restores to the bucket',
   const steps = tokens(resolvePath(['@full'], catalog, { backupTo: 'bucket' }));
   assert.ok(steps.includes('backup:bucket') && steps.includes('restore:bucket'));
   assert.ok(!steps.includes('backup') && !steps.includes('restore'));
+});
+
+test('the ai step needs HTTPS for any app, since assistants connect only over it', () => {
+  assert.deepEqual(tokens(resolvePath(['reset', 'owner', 'install:notes-e', 'app:notes-e', 'ai:notes-e'], catalog)),
+    ['reset', 'owner', 'install:notes-e', 'app:notes-e', 'dns01', 'ai:notes-e']);
+});
+
+test('apps that offer tools to an AI get their AI checks after their update and in @full', () => {
+  const update = tokens(resolvePath(['@update', 'notes-e'], catalog));
+  assert.ok(update.indexOf('ai:notes-e') > update.indexOf('verify:notes-e'));
+  assert.ok(!tokens(resolvePath(['@update', 'plain-a'], catalog)).some((token) => token.startsWith('ai:')));
+  const full = tokens(resolvePath(['@full'], catalog));
+  assert.deepEqual(full.filter((token) => token.startsWith('ai:')), ['ai:notes-e']);
+  assert.ok(full.indexOf('ai:notes-e') > full.indexOf('app:notes-e'));
+  assert.ok(full.indexOf('ai:notes-e') > full.indexOf('dns01'));
 });
 
 test('an app that works over http gets no dns01', () => {

@@ -1422,8 +1422,9 @@ Reason: AI clients do not reliably ask before writing: ChatGPT wrote without any
 
 Consequences:
 
-- `exports` stays a provisional area: an `mcp-server` export needs no manifest generation change and no `minimumMosVersion` bump. An app update that starts offering tools asks consent through the `ai-tools` permission.
+- `exports` stays a provisional area: an `mcp-server` export needs no manifest generation change and no `minimumMosVersion` bump. The export holds only how MOS reaches the server; the tools and their kinds live in `ai-tools.json` beside the manifest, which the package digest and catalog signature cover. The manifest describes the app, not each of its features. An app update that starts offering tools asks consent through the `ai-tools` permission.
 - The gateway reaches an app on its own loopback port, so a manifest cannot point it at another host, another app or the network.
+- An app with no MCP server of its own ships one as a package service, as Paperless-ngx does. The host publishes that service on loopback for Suite Manager even though no route reaches it. Its `auth.kind` is `package-secret`: MOS presents a key it generated at install, so the owner pastes no token, and the service signs in to its app with credentials the package already holds. An app with its own sign-in and its own MCP server, like Memos, keeps `owner-token`.
 - A manifest can fix arguments by path (`fixed`), so a tool cannot reach further than its kind says: Memos' new notes are always private, and its edits change text only.
 - An assistant makes at most 30 changes an hour; further changes are refused and logged.
 - A tool is pinned by a hash of its name, description, input schema and annotations the first time MOS sees it. A tool whose definition changes is refused for every assistant until the owner accepts the change.

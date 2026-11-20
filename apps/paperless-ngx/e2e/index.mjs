@@ -84,6 +84,30 @@ export default {
     await shot('documents');
   },
 
+  // The document the journey uploaded, found, read, noted and filed by a scripted assistant.
+  async ai({ call, expect, state, step }) {
+    if (!state.reference) throw new Error('Paperless ai needs the document its journey uploaded (run app:paperless-ngx first, or carry it in with --continue).');
+    const tag = `mos-e2e-ai-${state.reference.toLowerCase()}`;
+    let documentId;
+    await step('find the document by a word on its page', async () => {
+      const found = await call('search_documents', { query: state.reference });
+      expect(found.text).toContain(state.title);
+      documentId = Number(/#(\d+) "/u.exec(found.text)?.[1]);
+      expect(documentId, 'the search names the document number').toBeGreaterThan(0);
+    });
+    await step('read its text and see the labels', async () => {
+      expect((await call('get_document', { document_id: documentId })).text).toContain(state.reference);
+      expect((await call('list_labels')).text).toContain('Tags:');
+    });
+    await step('add a note and file it under a new tag', async () => {
+      expect((await call('add_note', { document_id: documentId, note: `Checked by the MOS E2E assistant ${state.reference}` })).isError).toBe(false);
+      expect((await call('update_document', { add_tags: [tag], document_id: documentId })).text).toContain(tag);
+      expect((await call('search_documents', { tag })).text).toContain(state.title);
+      expect((await call('get_document', { document_id: documentId })).text).toContain('Checked by the MOS E2E assistant');
+      expect((await call('update_document', { document_id: documentId, remove_tags: [tag] })).text).not.toContain(tag);
+    });
+  },
+
   async verify({ env, page, shot, state, step, url }) {
     if (!state.title) throw new Error('Paperless verify needs the document its journey uploaded (run app:paperless-ngx first, or carry it in with --continue).');
     await step('sign in', () => signIn(page, env));
