@@ -404,14 +404,14 @@ function validatePackageSecretAuth(manifest, auth, prefix, errors) {
 }
 
 // An app's MCP server is reached by service and path on its own loopback port,
-// never by URL. The tools it may offer are listed in ai-tools.json, not here.
+// never by URL. The tools it may offer are listed in ai-tools.json; a tools field
+// here is ignored like any unknown field, so packages installed before the move still read.
 function validateMcpExport(manifest, capability, prefix, errors) {
   if (!serviceIdsOf(manifest).has(capability.service)) errors.push(`${prefix}.service must name a service the package declares.`);
   if (typeof capability.path !== 'string' || !MCP_PATH_PATTERN.test(capability.path) || capability.path.split('/').includes('..')) {
     errors.push(`${prefix}.path must be an absolute path such as /mcp.`);
   }
   if (capability.url !== undefined) errors.push(`${prefix} must not declare a url; MOS reaches the service itself.`);
-  if (capability.tools !== undefined) errors.push(`${prefix}.tools belongs in ${AI_TOOLS_FILENAME}, beside the manifest.`);
   if (capability.auth === undefined) return;
   if (!isRecord(capability.auth) || !MCP_AUTH_KINDS.has(capability.auth.kind)) {
     errors.push(`${prefix}.auth.kind must be one of: ${[...MCP_AUTH_KINDS].join(', ')}.`);
@@ -432,8 +432,8 @@ function validateMcpExport(manifest, capability, prefix, errors) {
   }
 }
 
-// Read only when the package folder is at hand: the tools file and the export
-// that makes MOS read it must come together.
+// Read only when the package folder is at hand. An export without the file offers no
+// tools rather than failing, because an installed snapshot must always stay readable.
 function validateAiToolsFile(manifest, packageDir, errors) {
   if (!packageDir) return;
   const exportsMcp = isRecord(manifest.exports) && Object.values(manifest.exports).some((capability) => capability?.type === MCP_EXPORT_TYPE);
@@ -443,8 +443,7 @@ function validateAiToolsFile(manifest, packageDir, errors) {
     return;
   }
   if (error) errors.push(error);
-  else if (!document) errors.push(`An ${MCP_EXPORT_TYPE} export needs ${AI_TOOLS_FILENAME} beside the manifest, listing the tools it may offer.`);
-  else errors.push(...validateAiTools(document));
+  else if (document) errors.push(...validateAiTools(document));
 }
 
 function validateExportsSemantics(manifest, errors) {

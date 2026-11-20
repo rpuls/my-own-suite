@@ -41,17 +41,21 @@ test('the Memos package declares its MCP server by service and path, and its too
   assert.equal(mcp.tokenPage, '/setting#access-token');
 });
 
-test('an MCP export cannot point MOS at a URL or an undeclared service, nor list its tools in the manifest', () => {
+test('an MCP export cannot point MOS at a URL or an undeclared service', () => {
   assert.match(exportErrors(withExport({ url: 'http://169.254.169.254/' })).join('\n'), /must not declare a url/u);
   assert.match(exportErrors(withExport({ service: 'database' })).join('\n'), /service must name a service the package declares/u);
   assert.match(exportErrors(withExport({ path: '/../admin' })).join('\n'), /path must be an absolute path/u);
-  assert.match(exportErrors(withExport({ tools: { memo_list_memos: 'read' } })).join('\n'), /tools belongs in ai-tools.json/u);
   assert.match(exportErrors(withExport({ auth: { kind: 'oauth' } })).join('\n'), /auth.kind must be one of: owner-token, package-secret/u);
   assert.match(exportErrors(withExport({ auth: { kind: 'owner-token', tokenPage: 'https://elsewhere.example/' } })).join('\n'), /auth.tokenPage must be a path in the app/u);
 });
 
-test('the export and its tools file come together, and a broken file is an error rather than no tools', () => {
-  assert.match(exportErrors(memosManifest, { packageDir: withToolsFile() }).join('\n'), /needs ai-tools.json beside the manifest/u);
+test('a package installed before tools moved to ai-tools.json still reads, and offers no tools', () => {
+  const installedBeforeTheMove = withExport({ tools: { memo_list_memos: 'read' } });
+  assert.deepEqual(exportErrors(installedBeforeTheMove, { packageDir: withToolsFile() }), []);
+  assert.equal(mcpExportOf(installedBeforeTheMove, null).tools.size, 0);
+});
+
+test('a broken tools file is an error rather than no tools, and needs the export that reads it', () => {
   assert.match(exportErrors(memosManifest, { packageDir: withToolsFile('{ not json') }).join('\n'), /ai-tools.json is not valid JSON/u);
   const { exports: _omitted, ...withoutExport } = memosManifest;
   assert.match(exportErrors(withoutExport, { packageDir: withToolsFile(JSON.stringify(memosTools)) }).join('\n'), /ai-tools.json needs an exports entry of type mcp-server/u);

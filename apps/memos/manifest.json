@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "memos",
   "name": "Memos",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "appVersion": "26.11.0",
   "minimumMosVersion": "0.20.0",
   "summary": "Quick notes and checklists for the whole household, kept on your own server.",
