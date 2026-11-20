@@ -55,6 +55,10 @@ test('connecting ChatGPT makes one tunnel AI and hands the agent its keys', asyn
 test('a tunnel ID or key that is not one is refused before anything starts', async () => {
   const h = await harness();
   await assert.rejects(h.tunnel.connect({ runtimeKey: RUNTIME_KEY, tunnelId: 'my-tunnel' }), { code: 'AI_TUNNEL_ID_INVALID' });
+  // The tunnel client refuses these and restarts forever, so MOS must refuse them first.
+  for (const tunnelId of ['tunnel_ekwrqcdobdng27r0mjmtsx9v', 'tunnel_6AFCD9B631D88191952917B488188465', 'tunnel_ab_6afcd9b631d88191952917b488188465']) {
+    await assert.rejects(h.tunnel.connect({ runtimeKey: RUNTIME_KEY, tunnelId }), { code: 'AI_TUNNEL_ID_INVALID' }, tunnelId);
+  }
   await assert.rejects(h.tunnel.connect({ runtimeKey: 'sk short', tunnelId: TUNNEL_ID }), { code: 'AI_TUNNEL_KEY_INVALID' });
   assert.equal(h.agentCalls.length, 0);
   assert.equal(h.aiConnections.aiStore.listClients().length, 0);

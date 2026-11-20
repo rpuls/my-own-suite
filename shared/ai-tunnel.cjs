@@ -9,7 +9,8 @@ const AI_TUNNEL_CONTAINER = 'mos-ai-tunnel';
 const AI_TUNNEL_ROOT = '/var/lib/mos/ai-tunnel';
 const AI_TUNNEL_HEALTH_PORT = 3400;
 const AI_TUNNEL_USER = 65532;
-const TUNNEL_ID_PATTERN = /^tunnel_[A-Za-z0-9]{8,128}$/u;
+// The tunnel client's own rule: an optional four-character namespace, then 32 lowercase letters or digits.
+const TUNNEL_ID_PATTERN = /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/u;
 const MOUNT = '/etc/mos-ai-tunnel';
 
 // Harpoon, the client's way of letting OpenAI call hosts inside the network, stays
