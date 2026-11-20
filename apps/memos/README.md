@@ -60,7 +60,7 @@ The `/api/v1` paths are gone since 26.10 and return `410`. REST lives under `/ap
 
 ## AI Tools (MCP)
 
-Memos serves an MCP server at `POST /mcp` (Streamable HTTP, stateless, tools only). The manifest declares it under `exports.mcp`, so the MOS AI gateway reaches it on the service's loopback port and offers assistants only the tools listed there, by kind:
+Memos serves an MCP server at `POST /mcp` (Streamable HTTP, stateless, tools only). The manifest declares it under `exports.mcp`, so the MOS AI gateway reaches it on the service's loopback port, and offers assistants only the tools listed in [ai-tools.json](./ai-tools.json), by kind:
 
 - `read`, run at See: `memo_list_memos`, `memo_get_memo`, `memo_list_memo_comments`.
 - `add`, run at See and do: `memo_create_memo` and `memo_create_memo_comment`, both with `body.visibility` fixed to `PRIVATE`, so a new note or comment never shares anything.

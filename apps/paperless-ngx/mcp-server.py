@@ -22,6 +22,9 @@ PASSWORD = os.environ.get("PAPERLESS_ADMIN_PASSWORD", "")
 MOS_KEY = os.environ.get("MOS_AI_KEY", "")
 PORT = int(os.environ.get("PORT", "8100"))
 
+# Paperless keeps an API version working after it adds a newer one, so pinning it
+# means an update breaks these tools only when Paperless drops this version.
+API_VERSION = 10
 PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26"]
 BODY_LIMIT = 1_000_000
 TEXT_PAGE = 12_000
@@ -56,11 +59,16 @@ class Paperless:
 
     def send(self, method, path, body=None, headers=None):
         request = urllib.request.Request(f"{API}{path}", data=body, method=method)
-        request.add_header("Accept", "application/json; version=10")
+        request.add_header("Accept", f"application/json; version={API_VERSION}")
         for name, value in (headers or {}).items():
             request.add_header(name, value)
-        with urllib.request.urlopen(request, timeout=40) as response:
-            text = response.read().decode("utf-8")
+        try:
+            with urllib.request.urlopen(request, timeout=40) as response:
+                text = response.read().decode("utf-8")
+        except urllib.error.HTTPError as error:
+            if error.code == 406:
+                raise ToolError(f"This Paperless no longer accepts API version {API_VERSION}, which these tools are written for.") from None
+            raise
         return json.loads(text) if text else None
 
     def call(self, method, path, payload=None):

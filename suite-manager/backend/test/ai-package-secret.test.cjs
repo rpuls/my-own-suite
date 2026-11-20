@@ -18,7 +18,9 @@ const { validateManifestSemantics } = require('../src/apps/manifest-semantics.cj
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
-const paperless = require(path.join(appsDir, 'paperless-ngx', 'manifest.json'));
+const paperlessDir = path.join(appsDir, 'paperless-ngx');
+const paperless = require(path.join(paperlessDir, 'manifest.json'));
+const paperlessTools = require(path.join(paperlessDir, 'ai-tools.json'));
 const memos = require(path.join(appsDir, 'memos', 'manifest.json'));
 
 function withAuth(auth) {
@@ -26,12 +28,12 @@ function withAuth(auth) {
 }
 
 function exportErrors(manifest) {
-  return validateManifestSemantics(manifest).filter((error) => error.startsWith('exports'));
+  return validateManifestSemantics(manifest, { packageDir: paperlessDir }).filter((error) => error.startsWith('exports'));
 }
 
 test('Paperless offers its own MCP service, reached with a key MOS generates', () => {
   assert.deepEqual(exportErrors(paperless), []);
-  const mcp = mcpExportOf(paperless);
+  const mcp = mcpExportOf(paperless, paperlessTools);
   assert.equal(mcp.service, 'mcp');
   assert.equal(mcp.packageSecret, 'aiKey');
   assert.equal(mcp.tools.get('update_document').kind, 'change');
@@ -64,7 +66,7 @@ async function harness() {
     return new Response(JSON.stringify({ id: message.id, jsonrpc: '2.0', result }), { headers: { 'content-type': 'application/json' } });
   };
   const appStore = { getAppInstances: () => [instance] };
-  const catalog = new AiToolCatalog({ appPackages: { installedPackageFor: () => ({ manifest: paperless }) }, fetchImpl, secretDir, store: appStore });
+  const catalog = new AiToolCatalog({ appPackages: { installedPackageFor: () => ({ aiTools: paperlessTools, manifest: paperless }) }, fetchImpl, secretDir, store: appStore });
   const connections = new AiConnectionsService({ aiStore: new AiStore(new SuiteManagerStore(stateDir)), catalog, fetchImpl, secretDir });
   return { connections, instance, presented, secretDir };
 }

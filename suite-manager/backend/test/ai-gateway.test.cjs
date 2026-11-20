@@ -28,18 +28,21 @@ const MANIFEST = {
       auth: { hint: 'Make one in Memos.', kind: 'owner-token', verifyTool: 'auth_get_current_user' },
       path: '/mcp',
       service: 'memos',
-      tools: {
-        memo_create_memo: { fixed: { 'body.visibility': 'PRIVATE' }, kind: 'add', title: 'Save a new note' },
-        memo_delete_memo: 'destructive',
-        memo_list_memos: { kind: 'read', title: 'Search notes' },
-        memo_share_memo: 'serious',
-        memo_update_memo: { fixed: { updateMask: 'content' }, kind: 'change', title: 'Edit a note' },
-      },
       type: 'mcp-server',
     },
   },
   id: 'memos',
   name: 'Memos',
+};
+const AI_TOOLS = {
+  schemaVersion: 1,
+  tools: {
+    memo_create_memo: { fixed: { 'body.visibility': 'PRIVATE' }, kind: 'add', title: 'Save a new note' },
+    memo_delete_memo: 'destructive',
+    memo_list_memos: { kind: 'read', title: 'Search notes' },
+    memo_share_memo: 'serious',
+    memo_update_memo: { fixed: { updateMask: 'content' }, kind: 'change', title: 'Edit a note' },
+  },
 };
 
 function fakeMemos() {
@@ -78,7 +81,7 @@ async function harness({ now = () => new Date() } = {}) {
   const instance = { displayNameSnapshot: 'Memos', enabled: true, id: 'inst-memos', packageId: 'memos', status: 'installed' };
   const appStore = { getAppInstances: () => [instance] };
   const catalog = new AiToolCatalog({
-    appPackages: { installedPackageFor: () => ({ manifest: MANIFEST }) },
+    appPackages: { installedPackageFor: () => ({ aiTools: AI_TOOLS, manifest: MANIFEST }) },
     builtin: createMosTools({
       appPackages: { refreshPackageRuntimeStatus: async () => ({}), restartPackageRuntime: async (packageId) => { restarts.push(packageId); } },
       runtimeUrls: () => ({}),

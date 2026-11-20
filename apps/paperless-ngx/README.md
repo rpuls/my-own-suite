@@ -75,7 +75,7 @@ The package now pins 3.4.2. Coming from 3.4.0, there are still no migrations, an
 
 ## AI Tools (MCP)
 
-Paperless has no MCP server of its own, so the package ships one: [mcp-server.py](./mcp-server.py), a stateless Streamable HTTP server on port 8100 using only the Python standard library. It answers `POST /mcp` only with `Authorization: Bearer <aiKey>`, where `aiKey` is a setup secret MOS generates at install (`auth.kind: package-secret`), so the owner never handles a token. It signs in to Paperless once with `PAPERLESS_ADMIN_USER` and `PAPERLESS_ADMIN_PASSWORD` through `POST /api/token/` and uses that token, at API version 10, against `http://paperless:8000/api`, its only connection. The manifest offers its tools by kind:
+Paperless has no MCP server of its own, so the package ships one: [mcp-server.py](./mcp-server.py), a stateless Streamable HTTP server on port 8100 using only the Python standard library. It answers `POST /mcp` only with `Authorization: Bearer <aiKey>`, where `aiKey` is a setup secret MOS generates at install (`auth.kind: package-secret`), so the owner never handles a token. It signs in to Paperless once with `PAPERLESS_ADMIN_USER` and `PAPERLESS_ADMIN_PASSWORD` through `POST /api/token/` and uses that token, at API version 10, against `http://paperless:8000/api`, its only connection. [ai-tools.json](./ai-tools.json) offers its tools by kind:
 
 - `read`, run at See: `search_documents` (full text with filters, or newest first, 25 at most per page), `get_document` (labels, notes and recognised text, 12,000 characters per call), `list_labels`.
 - `add`, run at See and do: `add_note`.

@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { CodedError } = require('../../../../shared/coded-error.cjs');
+const { readAiToolsFile } = require('./ai-tools-file.cjs');
 const { validateManifestStructure } = require('./manifest-schema.cjs');
 const { declaredHostRequirements } = require('./host-requirements.cjs');
 const { APP_ID_PATTERN, validateManifestSemantics } = require('./manifest-semantics.cjs');
@@ -59,6 +60,7 @@ function readAppPackageManifest(packageDir) {
     throw new CodedError('INVALID_APP_PACKAGE_MANIFEST', `Invalid app package manifest at ${manifestPath}.`, { details: errors });
   }
   return {
+    aiTools: readAiToolsFile(packageDir).document,
     manifest,
     manifestPath,
     packageDir,

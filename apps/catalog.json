@@ -36,7 +36,7 @@
     "memos": {
       "appVersion": "26.11.0",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:0045d06ecd46eecdba5af4e306f2589bfbbff5534aa234952472a6a0f2d1db2b",
+      "packageDigest": "sha256:0d14a10f98b1902fc8ab1c9595b1a88d128f1f16e2a6fdb3bacfb6b6c909816c",
       "packageVersion": "0.2.1",
       "path": "apps/memos",
       "privacy": {
@@ -69,7 +69,7 @@
     "paperless-ngx": {
       "appVersion": "3.4.2",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:b5b1a40bcf69e635877ecbcedb5607aa68df05ef80dd48459b7022780029b279",
+      "packageDigest": "sha256:43f17ee640e30b35ead250fa70d526552a06020dbd92371ba6844d76b96de418",
       "packageVersion": "0.4.0",
       "path": "apps/paperless-ngx",
       "privacy": {
