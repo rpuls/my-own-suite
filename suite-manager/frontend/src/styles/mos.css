@@ -1469,6 +1469,11 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   height: 1.25rem;
 }
 
+.mos-card-title > .mos-tooltip-anchor {
+  margin-left: var(--mos-space-2);
+  vertical-align: middle;
+}
+
 .mos-info-card {
   display: grid;
   gap: var(--mos-space-2);

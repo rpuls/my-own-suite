@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -13,6 +13,7 @@ export function Icon({ name }: { name: IconName }) {
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
     'cloud-bucket': <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6l1.8 12.2c.3 1.6 3 2.8 6.2 2.8s5.9-1.2 6.2-2.8L20 6" /><path d="M5.2 11c1.4 1.1 3.9 1.8 6.8 1.8s5.4-.7 6.8-1.8" /></>,
+    'cloud-sparkle': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="m12 10.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>,
     'cloud-storage': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="M12 12v5" /><path d="m9.5 14.5 2.5-2.5 2.5 2.5" /></>,
     copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,

@@ -5,6 +5,8 @@ const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control
 const { AiConnectionsService } = require('../ai/ai-connections-service.cjs');
 const { ChatGptTunnel } = require('../ai/chatgpt-tunnel.cjs');
 const { AiGateway } = require('../ai/ai-gateway.cjs');
+const { AiServiceStore } = require('../ai/ai-service-store.cjs');
+const { AiServices } = require('../ai/ai-services.cjs');
 const { AiStore } = require('../ai/ai-store.cjs');
 const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../ai/mos-tools.cjs');
@@ -188,6 +190,14 @@ function createServices({
     secretDir: appPackages.secretDir,
     store: setup.store,
   });
+  // appUrls is built further down; it is read only once a request arrives.
+  const aiServices = new AiServices({
+    appPackages,
+    restartApp: (packageId) => appPackages.restartPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
+    secretDir: appPackages.secretDir,
+    serviceStore: new AiServiceStore(setup.store),
+    store: setup.store,
+  });
   const aiConnections = new AiConnectionsService({
     aiStore: new AiStore(setup.store),
     appUrlOf: (packageId) => appUrls.publicUrlOf(packageId).publicUrl,
@@ -258,6 +268,7 @@ function createServices({
     attention,
     aiConnections,
     aiGateway,
+    aiServices,
     appAgent,
     chatGptTunnel,
     appPackages,

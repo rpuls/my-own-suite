@@ -435,7 +435,7 @@ test('an app package cannot reference the ownerEnv namespace', () => {
   };
 
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'resources.services.example-app.env.LEAK references unknown template namespace "ownerEnv" in ${ownerEnv.SOME_NAME}. Known namespaces: app, config, export, import, owner, secret, smtp.',
+    'resources.services.example-app.env.LEAK references unknown template namespace "ownerEnv" in ${ownerEnv.SOME_NAME}. Known namespaces: ai, app, config, export, import, owner, secret, smtp.',
   ]);
 });
 

@@ -4,8 +4,8 @@
   "reviewedAt": "2026-11-19T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.2",
-    "packageDigest": "sha256:07cd50738d1d97760aebfff91552aee24c0f96e8d25ef2699a3f82238cf89b90",
+    "packageVersion": "0.4.3",
+    "packageDigest": "sha256:dacb5930e6a427ea7de50d532ae64d30a82090e9a2b8a4cc603f2124d81dc9ad",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -143,6 +143,11 @@
       "type": "configured",
       "claim": "MOS wires Paperless's outbound email settings (PAPERLESS_EMAIL_HOST and related) to the shared, optional MOS email relay. They resolve empty unless the owner configures a relay under Settings → Email relay, so Paperless sends no mail by default, and the ten-minute mail-account job remains inbound-only and unaffected. When a relay is set, Paperless sends password-reset, share and workflow mail through the owner's own chosen provider, which handles that mail; MOS never uses the relay itself.",
       "source": "apps/paperless-ngx/manifest.json"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS wires Paperless's AI settings (PAPERLESS_AI_ENABLED, PAPERLESS_AI_LLM_ENDPOINT, the key and the models) to an AI service the owner adds under Settings → AI services and turns on for Paperless by its own switch. Until then they are left out of the container, PAPERLESS_AI_ENABLED stays at its false default, and Paperless calls no AI service. Once turned on, Paperless sends the text of the documents it suggests for, indexes or answers questions about to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text. MOS never calls the service on Paperless's behalf beyond the owner's own test from Settings.",
+      "source": "apps/paperless-ngx/manifest.json and src/paperless_ai/client.py, src/paperless_ai/embedding.py at v3.5.1"
     },
     {
       "type": "observed",

@@ -29,6 +29,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`routes[].kind`](#routes) | 0.21.0 | `api` marks an address only programs call: no Open button, no Homepage tile. |
 | [`requirements`](#server-requirements-requirements) | 0.21.0 | What the app needs from the server, starting with `https`; Suite Manager disables Install and says why on a server that lacks it. |
 | [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks, created and mounted by MOS. |
+| [`${ai.*}`](#the-ai-service-namespace) | 0.24.0 | The AI service the owner chose for the app, projected into an app that has AI features. |
 
 ## A complete minimal manifest
 
@@ -232,6 +233,7 @@ A reference is recognized only when the namespace is a lowercase word followed b
 | `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and base URL — `publicUrl` always ends in `/` | Service env, onboarding `values[].value`, provisional areas |
 | `${owner.name}` / `${owner.email}` | The suite owner's profile | `setup.fields[].default` only |
 | `${smtp.*}` | The owner's shared outbound email relay | Service env and provisional areas |
+| `${ai.*}` | The AI service the owner chose for this app | Service env only |
 | `${import.*}` / `${export.*}` | Capability wiring | The provisional capability system only |
 
 Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${app.publicUrl}welcome/`) but is the wrong value for a variable that wants a bare origin — some servers reject an origin carrying a path and refuse to start. Compose those as `${app.scheme}://${app.host}`.
@@ -253,6 +255,24 @@ Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${
 `${smtp.configured}` is `true` only when a relay is set; use it for an app with an explicit on/off switch. `${smtp.allowInvalidCert}` is `true` when the owner accepted a relay with an untrusted TLS certificate, so an app connecting to the same relay can make the same choice (its own `ignore-cert` / `accept-invalid-certs` flag) instead of failing where MOS succeeded. When no relay is configured every other key resolves to the empty string — never the literal `${smtp.host}` text — so an app that gates on a non-empty host simply stays off. An app whose settings are written by its own package entrypoint should guard on a non-empty `${smtp.host}` before writing them.
 
 `${smtp.password}` is secret-grade: like `${secret.*}` it resolves only when a runtime is materialized, never enters a stored projection or a package digest, and is redacted from logs and diagnostics. Because the relay resolves at materialize time, changing it does not alter any app's digest — installed apps pick up a changed relay the next time they are updated or restarted. The namespace was added in **MOS 0.19.0**; a package that references it must set `minimumMosVersion` to `0.19.0`, so an older MOS refuses it rather than shipping a literal `${smtp.host}` into a container.
+
+### The AI service namespace
+
+`${ai.*}` projects an AI service the owner added under **Settings → AI services** into an app that has AI features. Every service speaks the OpenAI-compatible format, and the owner turns it on per app, so an app receives these values only after its own switch is flipped. The keys are `enabled` (`true`), `baseUrl` (the address, such as `https://host/v1`, with no trailing slash), `chatCompletionsUrl` (the same address with `/chat/completions` appended, for an app that wants the full path), `apiKey`, `model`, and for apps that search content by meaning `embeddingModel` and `embeddingProtocol` (the word `openai`).
+
+```json
+"env": {
+  "APP_AI_ENABLED": "${ai.enabled}",
+  "APP_AI_URL": "${ai.baseUrl}",
+  "APP_AI_KEY": "${ai.apiKey}",
+  "APP_AI_MODEL": "${ai.model}",
+  "APP_AI_EMBEDDING_MODEL": "${ai.embeddingModel}"
+}
+```
+
+A variable that reads a value MOS does not have is left out of the container, never set to an empty string. So with no service chosen for the app, every variable above is unset and the app runs as it did before; a service with no key leaves only the key variable out; and a service with no search model leaves out the variables that read `embeddingModel` or `embeddingProtocol`. To switch on something that depends on one of these, reference it in the same value: `"${ai.embeddingProtocol}-like"` is `openai-like` when a search model is set and absent otherwise. A fixed value beside them, such as `"APP_AI_BACKEND": "openai"`, is always set, so only use one where the app ignores it while its AI is off.
+
+`${ai.apiKey}` is secret-grade, like `${smtp.password}`: it resolves only when a runtime is materialized, never enters a stored projection or a package digest, and is redacted from logs and diagnostics. An app that references the namespace is listed under **Settings → AI services** with a switch, and flipping it restarts the app so it picks the values up. The namespace was added in MOS 0.24.0; a package that references it must set `minimumMosVersion` to `0.24.0`. A package whose app can now reach an owner-chosen AI service must say so in its privacy review.
 
 **Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — a still-future namespace is reserved and arrives gated by `minimumMosVersion`.
 

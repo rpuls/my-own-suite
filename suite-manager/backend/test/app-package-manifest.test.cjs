@@ -577,7 +577,7 @@ test('manifest validation enforces the template grammar', () => {
     'resources.services.example-app.env.SECRET_AS_CONFIG references ${config.adminToken}, which is not a declared non-secret setup field.',
   ]);
   assert.deepEqual(validateAppPackageManifest(withField({ UNKNOWN: '${mailer.host}' })), [
-    'resources.services.example-app.env.UNKNOWN references unknown template namespace "mailer" in ${mailer.host}. Known namespaces: app, config, export, import, owner, secret, smtp.',
+    'resources.services.example-app.env.UNKNOWN references unknown template namespace "mailer" in ${mailer.host}. Known namespaces: ai, app, config, export, import, owner, secret, smtp.',
   ]);
   // The shared SMTP relay resolves at runtime, so it is valid in service env.
   assert.deepEqual(validateAppPackageManifest(withField({
@@ -588,6 +588,11 @@ test('manifest validation enforces the template grammar', () => {
   })), []);
   assert.deepEqual(validateAppPackageManifest(withField({ BAD_SMTP_KEY: '${smtp.hostname}' })), [
     'resources.services.example-app.env.BAD_SMTP_KEY references ${smtp.hostname}; supported smtp keys are allowInvalidCert, configured, fromAddress, fromName, host, implicitTls, password, port, security, startTls, username.',
+  ]);
+  // The AI service an owner chose for the app follows the same rules.
+  assert.deepEqual(validateAppPackageManifest(withField({ AI_KEY: '${ai.apiKey}', AI_MODEL: '${ai.model}', AI_URL: '${ai.baseUrl}' })), []);
+  assert.deepEqual(validateAppPackageManifest(withField({ BAD_AI_KEY: '${ai.provider}' })), [
+    'resources.services.example-app.env.BAD_AI_KEY references ${ai.provider}; supported ai keys are apiKey, baseUrl, chatCompletionsUrl, embeddingModel, embeddingProtocol, enabled, model.',
   ]);
   assert.deepEqual(validateAppPackageManifest(withField({ BAD_APP_KEY: '${app.port}' })), [
     'resources.services.example-app.env.BAD_APP_KEY references ${app.port}; supported app keys are host, publicUrl, scheme.',

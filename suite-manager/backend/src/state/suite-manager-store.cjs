@@ -586,6 +586,30 @@ const MIGRATIONS = [
     `,
     version: 24,
   },
+  {
+    // An app uses at most one service. package_id is not a foreign key: an
+    // uninstalled app's row is simply never read again.
+    name: 'ai-services',
+    sql: `
+      CREATE TABLE ai_services (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        key_ref TEXT,
+        model TEXT NOT NULL,
+        embedding_model TEXT,
+        created_at TEXT NOT NULL,
+        tested_at TEXT,
+        test_error TEXT
+      ) STRICT;
+      CREATE TABLE ai_service_apps (
+        package_id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL,
+        FOREIGN KEY (service_id) REFERENCES ai_services(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 25,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {

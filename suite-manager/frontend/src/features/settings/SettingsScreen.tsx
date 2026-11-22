@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon, Panel, PanelBody, SectionIcon, type IconName } from '../../components/ui';
 import { useOverview, type Overview } from '../../lib/overview';
 import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
+import { AiServicesPanel } from './ai/AiServicesPanel';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { EmailRelayPanel } from './EmailRelayPanel';
@@ -15,7 +16,7 @@ import { StoragePanel } from '../storage/StoragePanel';
 
 type GroupId = 'ai' | 'apps' | 'maintenance' | 'security' | 'suite';
 
-type SettingId = 'activity' | 'address' | 'ai' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
+type SettingId = 'activity' | 'address' | 'ai' | 'ai-services' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
 const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
   { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
@@ -36,6 +37,7 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
   { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
   { group: 'ai', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini lm studio open webui ollama mcp connect token tools permissions agent llm', title: 'AI assistants' },
+  { group: 'ai', icon: 'cloud-sparkle', id: 'ai-services', keywords: 'ai services model llm api key endpoint openai compatible ollama lm studio local apps use', title: 'AI services' },
   { group: 'maintenance', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
   { group: 'maintenance', icon: 'braces', id: 'technical', keywords: 'developer mode technical controls advanced details logs config overrides expert', title: 'Developer mode' },
 ];
@@ -52,6 +54,7 @@ const SETTING_CARDS: Record<SettingId, () => ReactNode> = {
   activity: () => <SecurityActivityPanel />,
   address: () => <SuiteAddressPanel />,
   ai: () => <AiConnectionsPanel />,
+  'ai-services': () => <AiServicesPanel />,
   diagnostics: () => <DiagnosticsPanel />,
   email: () => <EmailRelayPanel />,
   encryption: () => <EncryptionPanel />,

@@ -4405,6 +4405,59 @@ button.suite-bk-group {
   margin: 0;
 }
 
+/* The two AI direction pictures. Mint is the suite and blue the AI in both;
+   the arrow takes the colour of whichever side asks. */
+.suite-ai-art-suite,
+.suite-ai-art-ai {
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.suite-ai-art-suite {
+  fill: var(--mos-color-accent-soft);
+  stroke: var(--mos-color-accent);
+}
+
+.suite-ai-art-mark {
+  color: var(--mos-color-accent);
+}
+
+.suite-ai-art-ai {
+  fill: var(--mos-color-info-soft);
+  stroke: var(--mos-color-info);
+}
+
+.suite-ai-art-spark {
+  fill: var(--mos-color-info);
+}
+
+.suite-ai-art-beam,
+.suite-ai-art-head {
+  fill: none;
+  stroke: var(--mos-color-info);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.suite-ai-art-out .suite-ai-art-beam,
+.suite-ai-art-out .suite-ai-art-head {
+  stroke: var(--mos-color-accent);
+}
+
+.suite-ai-art-beam {
+  stroke-width: 3;
+  stroke-dasharray: 0.01 8;
+}
+
+.suite-ai-art text {
+  fill: var(--mos-color-text-muted);
+  font-size: 10px;
+  font-weight: var(--mos-weight-semibold);
+  text-anchor: middle;
+}
+
 .suite-ai-client-name {
   display: inline-flex;
   align-items: center;

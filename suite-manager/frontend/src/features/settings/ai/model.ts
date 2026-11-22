@@ -87,6 +87,26 @@ export function aiRequest<T = AiStatus>(method: Method, path: string, fallback: 
   return request<T>(`/suite-manager/api/settings/ai${path}`, method, fallback, body);
 }
 
+export type AiService = {
+  baseUrl: string;
+  embeddingModel: string | null;
+  id: string;
+  keyConfigured: boolean;
+  locality: 'home' | 'internet';
+  model: string;
+  name: string;
+  test: { at: string | null; error: string | null };
+};
+
+export type AiServiceApp = { name: string; packageId: string; running: boolean; serviceId: string | null };
+export type AiServicesStatus = { apps: AiServiceApp[]; services: AiService[] };
+export type AiServiceTest = { error?: string; ms?: number; ok: boolean };
+export type AiServiceCheck = { error: string | null; locality: AiService['locality']; models: string[] };
+
+export function aiServiceRequest<T = AiServicesStatus>(method: Method, path: string, fallback: string, body?: unknown): Promise<T> {
+  return request<T>(`/suite-manager/api/settings/ai-services${path}`, method, fallback, body);
+}
+
 export function aiSummary() {
   return request<AiSummary>('/suite-manager/api/ai/summary', 'GET', 'Unable to check for AI activity.');
 }

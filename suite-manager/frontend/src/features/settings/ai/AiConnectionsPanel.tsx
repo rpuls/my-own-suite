@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { Notice, Panel, PanelBody, PanelHead, PanelList } from '../../../components/ui';
+import { InfoTip, Notice, Panel, PanelBody, PanelHead, PanelList } from '../../../components/ui';
+import { AiDirectionPicture } from './AiDirectionPicture';
 import { AddAssistantDialog } from './AddAssistantDialog';
 import { ClientItem, NewTokenDialog, RemoveClientDialog, type ClientActions } from './AiParts';
 import { aiRequest, levelOf, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
@@ -161,7 +162,9 @@ export function AiConnectionsPanel() {
   const issuedClient = clients.find((client) => client.id === (addIssued?.clientId ?? chatGptAdded));
 
   return <Panel>
-    <PanelHead actions={status ? <button className={`mos-btn ${clients.length ? 'mos-btn-secondary' : 'mos-btn-primary'}`} disabled={Boolean(busy) || !reachable} onClick={() => { setAddError(''); setAdding(true); }} type="button">Add</button> : null} heading="h3" title="AI assistants">
+    <PanelHead actions={status ? <button className={`mos-btn ${clients.length ? 'mos-btn-secondary' : 'mos-btn-primary'}`} disabled={Boolean(busy) || !reachable} onClick={() => { setAddError(''); setAdding(true); }} type="button">Add</button> : null} heading="h3" title={<>AI assistants<InfoTip label="What AI assistants are" picture={<AiDirectionPicture direction="in" />} title="Control your suite with AI chat">
+      <p>Connect an AI chat you already use. From there you can ask about what is in your suite and have it do things for you. You decide what each one may see and change.</p>
+    </InfoTip></>}>
       <p>Use your apps from any AI chat that supports MCP.</p>
     </PanelHead>
     {error ? <PanelBody><Notice title="Something went wrong" variant="error"><p>{error}</p></Notice></PanelBody> : null}

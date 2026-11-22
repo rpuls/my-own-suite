@@ -42,7 +42,7 @@ function updateRecoveryStateForStage(stage) {
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, healthHost, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
+function updateRuntimeRequest({ ai = null, config, env = [], expectedInstalledDigest, healthHost, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -50,7 +50,7 @@ function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, healt
   return {
     appHost: requestContext.appHost,
     caddy: materializeRuntimeCaddy(caddy.content, config),
-    compose: materializeRuntimeCompose(compose.content, config, env, { smtp }),
+    compose: materializeRuntimeCompose(compose.content, config, env, { ai, smtp }),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
     health: { ...health.content, host: healthHost },
     instanceId: instance.id,
@@ -358,6 +358,7 @@ class AppUpdateService {
       packageDigest: instance.packageDigest,
       projections: installedProjections,
       requestContext,
+      ai: this.apps.aiRuntimeValues(instance.packageId),
       smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: instance.sourceRevision,
     });
@@ -371,6 +372,7 @@ class AppUpdateService {
       packageDigest: operation.candidateDigest,
       projections: recovery.candidateProjections.map((projection) => ({ ...projection, content: JSON.parse(projection.contentJson) })),
       requestContext,
+      ai: this.apps.aiRuntimeValues(instance.packageId),
       smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: recovery.candidateSource?.revision,
     });
@@ -659,6 +661,7 @@ class AppUpdateService {
         packageDigest: instance.packageDigest,
         projections: installedProjections,
         requestContext,
+        ai: this.apps.aiRuntimeValues(instance.packageId),
         smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: instance.sourceRevision,
       });
@@ -672,6 +675,7 @@ class AppUpdateService {
         packageDigest: candidate.packageDigest,
         projections: candidateProjections,
         requestContext,
+        ai: this.apps.aiRuntimeValues(instance.packageId),
         smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: candidate.source.revision,
       });

@@ -146,7 +146,8 @@ function configValueMap(configRows, { includeSecrets = false } = {}) {
 // projection and the digest, and the real host and password appear only in the
 // materialized runtime handed to the agent. An unconfigured relay (null map)
 // leaves the reference untouched, exactly as an unset owner-env name does.
-function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false, ownerEnv = null, smtp = null } = {}) {
+// `ai` is the AI service the owner chose for this app, resolved the same way.
+function resolveConfigTemplate(value, configRows, { ai = null, app = {}, includeSecrets = false, ownerEnv = null, smtp = null } = {}) {
   if (typeof value !== 'string') return value;
   const values = configValueMap(configRows, { includeSecrets });
   return value
@@ -156,6 +157,7 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
     .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
     .replace(/\$\{smtp\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (smtp?.has(key) ? String(smtp.get(key)) : match))
+    .replace(/\$\{ai\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (ai?.has(key) ? String(ai.get(key)) : match))
     .replace(/\$\{ownerEnv\.([A-Za-z_][A-Za-z0-9_]*)\}/gu, (match, name) => (ownerEnv?.has(name) ? String(ownerEnv.get(name)) : match));
 }
 
@@ -166,12 +168,18 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
 // to boot on, reading it as a configured host with no from-address. The relay is
 // a Map only on the materialize path; the stored render passes none and keeps
 // ${smtp.*} literal, and a configured relay resolves every reference as usual.
+//
+// ${ai.*} follows the same rule one value at a time: a variable that reads an AI
+// value MOS does not have is left out, so an app with no service, or a service
+// with no key or search model, sees those variables unset.
 function renderEnvironment(environment, configRows, options = {}) {
-  const { smtp = null } = options;
+  const { ai = null, smtp = null } = options;
   const relayUnconfigured = smtp instanceof Map && smtp.get('configured') !== 'true';
+  const missingAiValue = (value) => ai instanceof Map
+    && [...String(value).matchAll(/\$\{ai\.([a-z][A-Za-z0-9]*)\}/gu)].some(([, key]) => !ai.get(key));
   return Object.fromEntries(
     Object.entries(environment || {})
-      .filter(([, value]) => !(relayUnconfigured && /\$\{smtp\./u.test(String(value))))
+      .filter(([, value]) => !(relayUnconfigured && /\$\{smtp\./u.test(String(value))) && !missingAiValue(value))
       .map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
   );
 }
@@ -476,13 +484,14 @@ function ownerEnvValueMap(envRows, service) {
   return map;
 }
 
-function materializeRuntimeCompose(compose, configRows, envRows = [], { smtp = null } = {}) {
+function materializeRuntimeCompose(compose, configRows, envRows = [], { ai = null, smtp = null } = {}) {
   return {
     ...compose,
     services: compose.services.map((service) => ({
       ...service,
       environment: renderEnvironment(service.environment, configRows, {
         includeSecrets: true,
+        ai,
         ownerEnv: ownerEnvValueMap(envRows, service.id),
         smtp,
       }),

@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "appVersion": "3.5.1",
-  "minimumMosVersion": "0.20.0",
+  "minimumMosVersion": "0.24.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
   "category": "office",
   "icon": "icon.png",
@@ -186,7 +186,14 @@
           "PAPERLESS_EMAIL_HOST_PASSWORD": "${smtp.password}",
           "PAPERLESS_EMAIL_FROM": "${smtp.fromAddress}",
           "PAPERLESS_EMAIL_USE_TLS": "${smtp.startTls}",
-          "PAPERLESS_EMAIL_USE_SSL": "${smtp.implicitTls}"
+          "PAPERLESS_EMAIL_USE_SSL": "${smtp.implicitTls}",
+          "PAPERLESS_AI_ENABLED": "${ai.enabled}",
+          "PAPERLESS_AI_LLM_BACKEND": "openai-like",
+          "PAPERLESS_AI_LLM_ENDPOINT": "${ai.baseUrl}",
+          "PAPERLESS_AI_LLM_API_KEY": "${ai.apiKey}",
+          "PAPERLESS_AI_LLM_MODEL": "${ai.model}",
+          "PAPERLESS_AI_LLM_EMBEDDING_BACKEND": "${ai.embeddingProtocol}-like",
+          "PAPERLESS_AI_LLM_EMBEDDING_MODEL": "${ai.embeddingModel}"
         },
         "volumes": [
           "data:/usr/src/paperless/data",

@@ -67,6 +67,8 @@ const {
 const { baseHostOf } = require('../../../../shared/suite-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.cjs');
+const { AiServiceStore } = require('../ai/ai-service-store.cjs');
+const { aiValuesForApp } = require('../ai/ai-service-values.cjs');
 
 // How long MOS waits for an app to come back healthy after an owner environment
 // change before treating the change as the reason it did not. 90 s is
@@ -278,6 +280,12 @@ class AppPackageService {
     return smtpTemplateValues(relay);
   }
 
+  // The ${ai.*} values for one app's runtime materialize: the AI service the
+  // owner chose for it, or all empty.
+  aiRuntimeValues(packageId) {
+    return aiValuesForApp(this.store, packageId, (ref) => readSecretValue(this.secretDir, ref));
+  }
+
   installProgressOf(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     const projections = instance ? this.store.getAppProjections(instance.id) : [];
@@ -324,7 +332,7 @@ class AppPackageService {
       result = await this.agent.apply({
         appHost,
         caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
-        compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows, { smtp: this.smtpRuntimeValues() }),
+        compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows, { ai: this.aiRuntimeValues(packageId), smtp: this.smtpRuntimeValues() }),
         health: runtimeHealthFor(manifest, healthProjection),
         instanceId: instance.id,
         packageDigest: instance.packageDigest,
@@ -350,7 +358,7 @@ class AppPackageService {
           kind: 'apply',
           operationId: crypto.randomUUID(),
           request: { packageId: manifest.id, target: 'runtime' },
-          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_RUNTIME_APPLY_FAILED', secrets: [...redactionSecretsFor(configRows, envRows), this.smtpRuntimeValues()?.get('password')].filter(Boolean) }),
+          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_RUNTIME_APPLY_FAILED', secrets: [...redactionSecretsFor(configRows, envRows), this.smtpRuntimeValues()?.get('password'), this.aiRuntimeValues(packageId).get('apiKey')].filter(Boolean) }),
         });
       } catch { /* the original failure is the one that matters */ }
       throw error;
@@ -1880,6 +1888,8 @@ class AppPackageService {
       status: 'removed',
     });
     this.store.deleteAppInstance({ instanceId: instance.id });
+    // Installed again later, the app starts with its AI off, as any app does.
+    new AiServiceStore(this.store).setAppService(packageId, null);
     return {
       agent,
       homepage,
