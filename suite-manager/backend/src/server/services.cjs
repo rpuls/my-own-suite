@@ -8,6 +8,7 @@ const { AiGateway } = require('../ai/ai-gateway.cjs');
 const { AiStore } = require('../ai/ai-store.cjs');
 const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../ai/mos-tools.cjs');
+const { AttentionService } = require('../attention/attention-service.cjs');
 const { createDiagnostics } = require('../diagnostics/support-bundle.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
@@ -250,9 +251,11 @@ function createServices({
     store: setup.store,
   });
   const updates = new UpdateService({ agent: updateAgent, backupAgent, diagnosticsAgent });
+  const attention = new AttentionService({ aiConnections, appPackages, backupAgent, chatGptTunnel, installJobs, storage, store: setup.store, updateJobs, updates });
 
   const services = {
     addressService,
+    attention,
     aiConnections,
     aiGateway,
     appAgent,
@@ -297,17 +300,19 @@ async function startCatalogRefresh(catalogService) {
 }
 
 // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
-async function startServices({ addressService, appPackages, appUrls, catalogService, files, setup }) {
+async function startServices({ addressService, appPackages, appUrls, attention, catalogService, files, setup }) {
   const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
   const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
   await files.sweep().catch(() => {});
   void startCatalogRefresh(catalogService);
   addressService.watchEasyDoor();
+  attention.watch();
   return { recoveries, sweptCandidates };
 }
 
-function stopServices({ addressService, catalogService, setup }) {
+function stopServices({ addressService, attention, catalogService, setup }) {
   catalogService.stop();
+  attention.stop();
   addressService.stopWatchingEasyDoor();
   setup.close();
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Icon, Panel, PanelBody, SectionIcon, type IconName } from '../../components/ui';
+import { useOverview, type Overview } from '../../lib/overview';
 import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
@@ -94,8 +95,17 @@ function useActiveSetting(visible: SettingId[]) {
   return [active, setActive] as const;
 }
 
-function SettingsSidebar({ active, onClear, onJump, onQuery, query, visible }: {
+// The settings whose card holds something that stopped working, from the same checks as the start page.
+function needingAttention(overview: Overview | null): Set<SettingId> {
+  return new Set<SettingId>([
+    ...(overview?.ai.issues.length ? ['ai' as const] : []),
+    ...(overview?.storage?.issues.length ? ['storage' as const] : []),
+  ]);
+}
+
+function SettingsSidebar({ active, attention, onClear, onJump, onQuery, query, visible }: {
   active: SettingId | null;
+  attention: Set<SettingId>;
   onClear: () => void;
   onJump: (id: SettingId) => void;
   onQuery: (query: string) => void;
@@ -142,6 +152,7 @@ function SettingsSidebar({ active, onClear, onJump, onQuery, query, visible }: {
           <button className="mos-eyebrow suite-settings-nav-heading" onClick={() => scrollToAnchor(`grp-${group.id}`)} type="button">{group.title}</button>
           {items.map((setting) => <button aria-current={active === setting.id ? 'location' : undefined} className="suite-settings-nav-item" key={setting.id} onClick={() => onJump(setting.id)} type="button">
             <Icon name={setting.icon} />{setting.title}
+            {attention.has(setting.id) ? <span aria-label="Needs attention" className="suite-settings-nav-dot" role="img" /> : null}
           </button>)}
         </div>;
       })}
@@ -159,6 +170,7 @@ export function SettingsScreen() {
   const [query, setQuery] = useState('');
   const visible = useMemo(() => SETTINGS.filter((setting) => matchesQuery(setting, query)).map((setting) => setting.id), [query]);
   const [active, setActive] = useActiveSetting(visible);
+  const attention = needingAttention(useOverview());
 
   function jump(id: SettingId) {
     setActive(id);
@@ -176,6 +188,7 @@ export function SettingsScreen() {
     <div className="suite-settings-layout">
       <SettingsSidebar
         active={active}
+        attention={attention}
         onClear={() => setQuery('')}
         onJump={jump}
         onQuery={(next) => { setQuery(next); window.scrollTo({ top: 0 }); }}

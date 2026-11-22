@@ -230,7 +230,7 @@ export function browserTimeZone() {
 
 // Scheduled times are wall-clock times in the zone the schedule was set from, so
 // every moment the panel shows is rendered in that same zone.
-function formatInZone(value: string | null, timeZone: string) {
+export function formatInZone(value: string | null, timeZone: string) {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;

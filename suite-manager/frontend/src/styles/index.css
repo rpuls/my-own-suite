@@ -537,24 +537,6 @@
   margin: 0;
 }
 
-/* The start page: each place at a glance, one button only where one is needed. */
-.suite-storage-widget-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--mos-space-3);
-}
-
-.suite-storage-widget-body {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.suite-storage-widget-body .mos-usage {
-  max-width: 14rem;
-}
-
 @media (max-width: 34rem) {
   .suite-storage-glance {
     grid-template-columns: 6rem auto;
@@ -1107,10 +1089,130 @@ a.suite-files-name {
   color: var(--mos-color-text-muted);
 }
 
-.suite-dashboard-grid {
+/* The start page: one tile per part of the suite. A tile that is fine shows its
+   numbers and a checkmark; one that needs the owner gets a warning edge and
+   names each problem, never the things that are fine. */
+.suite-overview-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
   gap: var(--mos-space-4);
+}
+
+.suite-overview-tile {
+  display: grid;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-5) var(--mos-panel-pad);
+}
+
+.suite-overview-tile.is-attention {
+  box-shadow: inset 0 0 0 1px var(--mos-color-warning-border);
+}
+
+.suite-overview-title {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.suite-overview-title h2 {
+  margin: 0;
+}
+
+.suite-overview-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: auto;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-accent);
+}
+
+.suite-overview-check svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.suite-overview-facts p {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-overview-facts strong {
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-section);
+}
+
+.suite-overview-issues {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-overview-issues li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-3);
+}
+
+.suite-overview-issues p {
+  margin: 0;
+  color: var(--mos-color-text-strong);
+}
+
+.suite-overview-issues p span {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-overview-issue-app {
+  position: relative;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.suite-overview-issue-app img {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4rem;
+}
+
+.suite-overview-dot,
+.suite-settings-nav-dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-warning);
+}
+
+.suite-overview-dot {
+  position: absolute;
+  right: -0.2rem;
+  bottom: -0.2rem;
+  box-shadow: 0 0 0 2px var(--mos-color-surface-elevated);
+}
+
+.suite-settings-nav-dot {
+  margin-left: auto;
+}
+
+.suite-overview-issue-alert {
+  flex: none;
+  display: inline-flex;
+  color: var(--mos-color-warning);
+}
+
+.suite-overview-issue-alert svg {
+  width: 1.375rem;
+  height: 1.375rem;
 }
 
 /* The server login on the handover page: a label column beside each value. The
@@ -1138,20 +1240,6 @@ a.suite-files-name {
   font-family: var(--mos-font-mono);
   font-size: var(--mos-text-body-lg);
   user-select: all;
-}
-
-.suite-status-card {
-  display: grid;
-  gap: var(--mos-space-2);
-  min-height: 12rem;
-}
-
-.suite-status-card strong {
-  color: var(--mos-color-text-strong);
-}
-
-.suite-status-card span {
-  color: var(--mos-color-text-muted);
 }
 
 .suite-hero-actions {
@@ -3217,8 +3305,7 @@ button.suite-updates-change-head {
 }
 
 @media (max-width: 720px) {
-  .suite-shell-header,
-  .suite-dashboard-grid {
+  .suite-shell-header {
     grid-template-columns: 1fr;
   }
 

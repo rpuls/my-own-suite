@@ -64,8 +64,8 @@ const DRIVE_TROUBLE = {
   'read-only': 'was opened read-only because it was not ejected cleanly; it needs Check drive.',
 };
 
-function summarizeTrouble({ apps = [], catalog = null, collection = {}, drives = null, platform = {} }) {
-  const trouble = [];
+function summarizeTrouble({ apps = [], attention = [], catalog = null, collection = {}, drives = null, platform = {} }) {
+  const trouble = attention.filter((issue) => issue.inDiagnostics).map((issue) => `${issue.text} ${issue.detail}`.trim());
   if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
   // A catalog that will not refresh is quiet by design — the app list and its
   // update offers fall back to the packages this MOS version shipped with — so
@@ -397,6 +397,7 @@ const TOPICS = {
 
 function buildSupportBundle({
   apps = [],
+  attention = [],
   catalog = null,
   collection = {},
   drives = null,
@@ -406,7 +407,7 @@ function buildSupportBundle({
   secrets = [],
 } = {}) {
   const createdAt = now().toISOString();
-  const trouble = summarizeTrouble({ apps, catalog, collection, drives, platform });
+  const trouble = summarizeTrouble({ apps, attention, catalog, collection, drives, platform });
   const facts = { apps, catalog, collection, drives, homeHost, platform, trouble };
 
   const body = [
@@ -457,6 +458,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
 async function gatherFacts({
   agent,
   app = null,
+  attention = [],
   appAgent = null,
   catalogStatus = null,
   collectors = null,
@@ -492,6 +494,7 @@ async function gatherFacts({
 
   return {
     apps,
+    attention,
     catalog: catalogStatus,
     collection,
     drives,
@@ -540,10 +543,11 @@ async function readTopic(topicId, { app = null, secretDir, ...context }) {
 
 // The one way in for both readers of diagnostics: the download button and the AI
 // tool. Everything is read when asked, so neither ever sees a stale answer.
-function createDiagnostics({ appAgent, appPackages, catalogService, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
+function createDiagnostics({ appAgent, appPackages, attention, catalogService, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
   const context = async () => ({
     agent: diagnosticsAgent,
     appAgent,
+    attention: await Promise.resolve().then(() => attention?.issues() ?? []).catch(() => []),
     catalogStatus: catalogService.status(),
     frontDoor,
     homeHost: suiteAddress.readOrNull()?.host || homeHost,

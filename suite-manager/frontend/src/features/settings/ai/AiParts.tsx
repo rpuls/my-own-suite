@@ -32,8 +32,14 @@ function lowerFirst(text: string) {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
+// A tunnel OpenAI refuses after it has worked: whatever the reason, the fix is to set it up again.
+function tunnelBroken(client: AiClient, tunnel: AiTunnel | null) {
+  return tunnel?.state === 'refused' && Boolean(client.lastUsedAt);
+}
+
 function clientMeta(client: AiClient, sources: AiSource[], tunnel: AiTunnel | null) {
   if (!client.enabled) return 'Turned off · settings kept';
+  if (tunnelBroken(client, tunnel)) return `Not working · last used ${lowerFirst(whenWords(client.lastUsedAt!))}`;
   if (tunnel && tunnel.state !== 'connected') return TUNNEL_WORDS[tunnel.state];
   const shared = sources.filter((source) => levelOf(client, source.id) !== 'off').map((source) => `${source.name}: ${LEVEL_WORDS[levelOf(client, source.id)]}`);
   const what = shared.length ? shared : ['nothing shared yet'];
@@ -160,6 +166,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
 
   return <PanelItem flush quiet={!client.enabled}>
     <DisclosureRow expanded={expanded} label={`${expanded ? 'Hide' : 'Show'} what ${client.name} may use`} onToggle={onToggle} trailing={<>
+      {tunnelBroken(client, tunnel) ? <span className="mos-pill mos-pill-warning">Needs to be set up again</span> : null}
       {reviewWaiting ? <span className="mos-pill mos-pill-warning">Needs review</span> : null}
       {menu}
     </>}>
@@ -169,7 +176,9 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
       </span>
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
-      {tunnel && tunnel.state !== 'connected' ? <>
+      {tunnelBroken(client, tunnel) ? <Notice title={`${client.name} needs to be set up again`} variant="warning">
+        <p>OpenAI no longer lets {client.name} reach your suite, so it cannot use your apps. Remove {client.name} here and add it again to set it up anew. Your {client.name} connector stays as it is.</p>
+      </Notice> : tunnel && tunnel.state !== 'connected' ? <>
         <TunnelStatus tunnel={tunnel} />
         {tunnel.state === 'off' ? <p><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={actions.onStartTunnel} type="button">Turn on the tunnel</button></p> : null}
       </> : null}
