@@ -1,3 +1,4 @@
+import { ai } from './ai.mjs';
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
 import { backup, cleanup, driveAway, driveFound, eraseOtherArchive, renameStorage, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
@@ -15,6 +16,7 @@ import { platformUpdate } from './platform.mjs';
 // Step name (see steps.mjs) → what runs it, given the run context and the arg.
 export const MODULES = {
   absent,
+  ai,
   app,
   backup,
   cleanup,

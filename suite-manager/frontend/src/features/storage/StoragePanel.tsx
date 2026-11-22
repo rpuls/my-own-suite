@@ -150,7 +150,7 @@ function StorageRow({ entry, expanded, facts, onFlow, onToggle, usage }: {
       <span className="suite-meta">{freeLine(entry)}</span>
     </span> : null}
   </>;
-  return <PanelItem className={`suite-storage-row is-${entry.kind}${isAttention(entry) ? ' is-attention' : ''}`} flush quiet={!entry.connected || entry.state === 'ejected'} selected={expanded}>
+  return <PanelItem className={`suite-storage-row is-${entry.kind}${isAttention(entry) ? ' is-attention' : ''}`} flush quiet={!entry.connected || entry.state === 'ejected'}>
     <DisclosureRow expanded={expanded} icon={storageIcon(entry)} label={`${expanded ? 'Hide' : 'Show'} details for ${entry.name}`} onToggle={onToggle} trailing={trailing}>
       <span className="suite-storage-name">
         <strong>{entry.name}</strong>

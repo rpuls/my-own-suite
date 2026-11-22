@@ -26,6 +26,7 @@ const {
   STORAGE_FILESYSTEMS,
   STORAGE_UDEV_RULE_PATH,
 } = require('../infrastructure/control-plane-runtime.cjs');
+const { AI_TUNNEL_UNIT, renderAiTunnelUnit } = require('../shared/ai-tunnel.cjs');
 const { STORAGE_REGISTRY_FILENAME } = require('../shared/storage-contract.cjs');
 const { StorageRegistry } = require('../system-agents/lib/storage-registry.cjs');
 const { detectServerAddress } = require('../shared/easy-door.cjs');
@@ -419,6 +420,7 @@ function renderUnits() {
       script: 'system-agents/vault/agent.cjs',
     }),
     'mos-homepage.service': homepageUnit(),
+    [AI_TUNNEL_UNIT]: renderAiTunnelUnit({ root: `${stateRoot}/ai-tunnel` }),
     'mos-suite-manager.service': suiteManagerUnit(),
     'mos-https-agent.service': agentUnit({
       after: 'network-online.target caddy.service',
@@ -597,6 +599,8 @@ function main() {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }
+  // Running only while the owner has ChatGPT connected, so restarted only then, onto the new image.
+  run('systemctl', ['try-restart', AI_TUNNEL_UNIT], { allowFailure: true });
   if (disposableLab === '1') {
     run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
     run('systemctl', ['restart', 'mos-lab-reset-agent.service']);

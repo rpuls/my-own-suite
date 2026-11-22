@@ -4,6 +4,9 @@
 // it: they share its database and transactions but none of its other rows.
 
 const ACTIVITY_KEPT_DAYS = 90;
+// A ceiling under the 90 days, so a loop of calls or bad tokens cannot grow the log without end.
+const ACTIVITY_MAX_ROWS = 100_000;
+const REPEAT_WINDOW_MS = 60_000;
 const LEVELS = ['off', 'see', 'act'];
 
 const CLIENT_COLUMNS = `
@@ -136,17 +139,31 @@ class AiStore {
     });
   }
 
+  // The same call again within a minute of the last one counts up that row instead of adding one.
   recordActivity({ at, client = null, durationMs, kind = null, method, outcome, sourceName = null, tool = null, toolTitle = null }) {
-    this.db.prepare(`
-      INSERT INTO ai_activity (at, client_id, client_name, method, tool, tool_title, source_name, kind, outcome, duration_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(at, client?.id || null, client?.name || null, method, tool, toolTitle, sourceName, kind, outcome, Math.max(0, Math.round(durationMs)));
+    const clientId = client?.id || null;
+    const duration = Math.max(0, Math.round(durationMs));
+    const windowStart = new Date(new Date(at).getTime() - REPEAT_WINDOW_MS).toISOString();
+    const repeated = this.db.prepare(`
+      UPDATE ai_activity SET repeats = repeats + 1, last_at = ?, duration_ms = ?
+      WHERE id = (
+        SELECT id FROM ai_activity
+        WHERE client_id IS ? AND method = ? AND tool IS ? AND outcome = ? AND last_at >= ?
+        ORDER BY id DESC LIMIT 1
+      )
+    `).run(at, duration, clientId, method, tool, outcome, windowStart);
+    if (repeated.changes === 1) return;
+    const { lastInsertRowid } = this.db.prepare(`
+      INSERT INTO ai_activity (at, last_at, client_id, client_name, method, tool, tool_title, source_name, kind, outcome, duration_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(at, at, clientId, client?.name || null, method, tool, toolTitle, sourceName, kind, outcome, duration);
+    this.db.prepare('DELETE FROM ai_activity WHERE id <= ?').run(Number(lastInsertRowid) - ACTIVITY_MAX_ROWS);
   }
 
   writesSince({ clientId, since }) {
     return this.db.prepare(`
-      SELECT COUNT(*) AS count FROM ai_activity
-      WHERE client_id = ? AND at >= ? AND method = 'tools/call' AND kind IN ('add', 'change') AND outcome = 'ok'
+      SELECT COALESCE(SUM(repeats), 0) AS count FROM ai_activity
+      WHERE client_id = ? AND last_at >= ? AND method = 'tools/call' AND kind IN ('add', 'change') AND outcome = 'ok'
     `).get(clientId, since).count;
   }
 
@@ -154,7 +171,8 @@ class AiStore {
   activity({ before = null, clientId = null, limit = 50 } = {}) {
     const rows = this.db.prepare(`
       SELECT a.id, a.at, a.client_id AS clientId, a.client_name AS clientName, (c.id IS NULL) AS clientRemoved,
-        a.tool, a.tool_title AS toolTitle, a.source_name AS sourceName, a.kind, a.outcome, a.duration_ms AS durationMs
+        a.tool, a.tool_title AS toolTitle, a.source_name AS sourceName, a.kind, a.outcome, a.duration_ms AS durationMs,
+        a.repeats
       FROM ai_activity a LEFT JOIN ai_clients c ON c.id = a.client_id
       WHERE a.method = 'tools/call' AND (? IS NULL OR a.client_id = ?) AND (? IS NULL OR a.id < ?)
       ORDER BY a.id DESC LIMIT ?
@@ -169,8 +187,8 @@ class AiStore {
 
   pruneActivity(now) {
     const cutoff = new Date(now.getTime() - ACTIVITY_KEPT_DAYS * 86_400_000).toISOString();
-    this.db.prepare('DELETE FROM ai_activity WHERE at < ?').run(cutoff);
+    this.db.prepare('DELETE FROM ai_activity WHERE last_at < ?').run(cutoff);
   }
 }
 
-module.exports = { ACTIVITY_KEPT_DAYS, AiStore, LEVELS };
+module.exports = { ACTIVITY_KEPT_DAYS, ACTIVITY_MAX_ROWS, AiStore, LEVELS };

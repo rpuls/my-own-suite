@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SMTP_TEMPLATE_KEYS } = require('../../../../shared/smtp-contract.cjs');
+const { AI_TOOLS_FILENAME, TOOL_NAME_PATTERN, readAiToolsFile, validateAiTools } = require('./ai-tools-file.cjs');
 const { PACKAGE_TESTS_DIR, compareSemver } = require('./package-contracts.cjs');
 
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
@@ -390,62 +391,59 @@ function validateTemplates(manifest, errors) {
 // ---------------------------------------------------------------------------
 
 const MCP_EXPORT_TYPE = 'mcp-server';
-const MCP_TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
-const MCP_TOOL_KINDS = new Set(['read', 'add', 'change', 'serious', 'destructive']);
-const MCP_FIXED_PATH_PATTERN = /^[A-Za-z0-9_]{1,64}(?:.[A-Za-z0-9_]{1,64}){0,7}$/u;
+const MCP_AUTH_KINDS = new Set(['owner-token', 'package-secret']);
 const MCP_PATH_PATTERN = /^\/[A-Za-z0-9._~/-]{0,200}$/u;
 
-// A tool is its kind, or { kind, title, note, fixed }. `fixed` pins arguments
-// by dotted path to the value the gateway always sends, whatever the AI asked.
-function validateMcpToolEntry(entry, prefix, errors) {
-  const spec = typeof entry === 'string' ? { kind: entry } : entry;
-  if (!isRecord(spec)) {
-    errors.push(`${prefix} must be a kind or an object with a kind.`);
-    return;
-  }
-  if (!MCP_TOOL_KINDS.has(spec.kind)) errors.push(`${prefix} kind must be one of: ${[...MCP_TOOL_KINDS].join(', ')}.`);
-  if (spec.title !== undefined && (!hasText(spec.title) || spec.title.length > 60)) errors.push(`${prefix}.title must be a short label.`);
-  if (spec.note !== undefined && (!hasText(spec.note) || spec.note.length > 160)) errors.push(`${prefix}.note must be one short sentence.`);
-  if (spec.fixed === undefined) return;
-  if (!isRecord(spec.fixed)) {
-    errors.push(`${prefix}.fixed must be an object.`);
-    return;
-  }
-  for (const [argumentPath, value] of Object.entries(spec.fixed)) {
-    if (!MCP_FIXED_PATH_PATTERN.test(argumentPath)) errors.push(`${prefix}.fixed.${argumentPath} is not a dotted argument path.`);
-    if (!['string', 'number', 'boolean'].includes(typeof value)) errors.push(`${prefix}.fixed.${argumentPath} must be a string, number or boolean.`);
+// A package secret MOS presents to the app's MCP server must be one MOS made
+// itself, so no owner ever has to type it and no AI ever sees it.
+function validatePackageSecretAuth(manifest, auth, prefix, errors) {
+  const field = setupFieldsOf(manifest).find((candidate) => candidate?.id === auth.secret);
+  if (!field || field.secret !== true || !isRecord(field.generated)) {
+    errors.push(`${prefix}.auth.secret must name a generated secret setup field.`);
   }
 }
 
 // An app's MCP server is reached by service and path on its own loopback port,
-// never by URL, and only the tools listed here are ever offered to an AI client.
+// never by URL. The tools it may offer are listed in ai-tools.json; a tools field
+// here is ignored like any unknown field, so packages installed before the move still read.
 function validateMcpExport(manifest, capability, prefix, errors) {
-  const routedServices = new Set((Array.isArray(manifest.routes) ? manifest.routes : []).map((route) => route?.service));
-  if (!routedServices.has(capability.service)) errors.push(`${prefix}.service must name a service the package routes.`);
+  if (!serviceIdsOf(manifest).has(capability.service)) errors.push(`${prefix}.service must name a service the package declares.`);
   if (typeof capability.path !== 'string' || !MCP_PATH_PATTERN.test(capability.path) || capability.path.split('/').includes('..')) {
     errors.push(`${prefix}.path must be an absolute path such as /mcp.`);
   }
   if (capability.url !== undefined) errors.push(`${prefix} must not declare a url; MOS reaches the service itself.`);
-  const tools = isRecord(capability.tools) ? Object.entries(capability.tools) : [];
-  if (!tools.length) errors.push(`${prefix}.tools must list at least one tool.`);
-  for (const [name, entry] of tools) {
-    if (!MCP_TOOL_NAME_PATTERN.test(name)) errors.push(`${prefix}.tools.${name} is not a valid tool name.`);
-    validateMcpToolEntry(entry, `${prefix}.tools.${name}`, errors);
-  }
   if (capability.auth === undefined) return;
-  if (!isRecord(capability.auth) || capability.auth.kind !== 'owner-token') {
-    errors.push(`${prefix}.auth.kind must be owner-token.`);
+  if (!isRecord(capability.auth) || !MCP_AUTH_KINDS.has(capability.auth.kind)) {
+    errors.push(`${prefix}.auth.kind must be one of: ${[...MCP_AUTH_KINDS].join(', ')}.`);
+    return;
+  }
+  if (capability.auth.kind === 'package-secret') {
+    validatePackageSecretAuth(manifest, capability.auth, prefix, errors);
     return;
   }
   if (capability.auth.hint !== undefined && (!hasText(capability.auth.hint) || capability.auth.hint.length > 200)) {
     errors.push(`${prefix}.auth.hint must be a short sentence when present.`);
   }
-  if (capability.auth.verifyTool !== undefined && !MCP_TOOL_NAME_PATTERN.test(String(capability.auth.verifyTool))) {
+  if (capability.auth.verifyTool !== undefined && !TOOL_NAME_PATTERN.test(String(capability.auth.verifyTool))) {
     errors.push(`${prefix}.auth.verifyTool must be a tool name when present.`);
   }
   if (capability.auth.tokenPage !== undefined && !/^\/[^\s]{0,199}$/u.test(String(capability.auth.tokenPage))) {
     errors.push(`${prefix}.auth.tokenPage must be a path in the app, starting with /, when present.`);
   }
+}
+
+// Read only when the package folder is at hand. An export without the file offers no
+// tools rather than failing, because an installed snapshot must always stay readable.
+function validateAiToolsFile(manifest, packageDir, errors) {
+  if (!packageDir) return;
+  const exportsMcp = isRecord(manifest.exports) && Object.values(manifest.exports).some((capability) => capability?.type === MCP_EXPORT_TYPE);
+  const { document, error } = readAiToolsFile(packageDir);
+  if (!exportsMcp) {
+    if (document || error) errors.push(`${AI_TOOLS_FILENAME} needs an exports entry of type ${MCP_EXPORT_TYPE}.`);
+    return;
+  }
+  if (error) errors.push(error);
+  else if (document) errors.push(...validateAiTools(document));
 }
 
 function validateExportsSemantics(manifest, errors) {
@@ -622,6 +620,7 @@ function validateManifestSemantics(manifest, { packageDir = null } = {}) {
   validateCatalogSemantics(manifest, packageDir, errors);
   validateTemplates(manifest, errors);
   validateExportsSemantics(manifest, errors);
+  validateAiToolsFile(manifest, packageDir, errors);
   validateConfigTargetsSemantics(manifest, errors);
   validateIntegrationsSemantics(manifest, errors);
   validateUsefulnessSemantics(manifest, errors);

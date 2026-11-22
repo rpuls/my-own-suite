@@ -896,13 +896,16 @@ test('Installed app packages can be added to Homepage through the existing agent
     });
 
     assert.equal(applied.status, 200);
-    assert.deepEqual(calls.map((call) => call[0]), ['read', 'addLink']);
-    assert.equal(calls[1][1].expectedRevision, 'sha256:current');
-    assert.equal(calls[1][1].entry.name, 'Stirling PDF');
-    assert.equal(calls[1][1].entry.group, 'Tools');
-    assert.equal(calls[1][1].entry.url, 'http://stirling-pdf.test/');
-    assert.equal(Object.hasOwn(calls[1][1].entry, 'host'), false);
-    assert.equal(Object.hasOwn(calls[1][1].entry, 'port'), false);
+    // Reads around the add keep the dashboard history; the one write is the add.
+    const writes = calls.filter((call) => call[0] !== 'read');
+    assert.deepEqual(writes.map((call) => call[0]), ['addLink']);
+    const [, added] = writes[0];
+    assert.equal(added.expectedRevision, 'sha256:current');
+    assert.equal(added.entry.name, 'Stirling PDF');
+    assert.equal(added.entry.group, 'Tools');
+    assert.equal(added.entry.url, 'http://stirling-pdf.test/');
+    assert.equal(Object.hasOwn(added.entry, 'host'), false);
+    assert.equal(Object.hasOwn(added.entry, 'port'), false);
 
     const instance = applied.json().instance;
     const homepageProjection = instance.projections.find((projection) => projection.kind === 'homepage');

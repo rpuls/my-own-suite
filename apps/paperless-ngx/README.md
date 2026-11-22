@@ -4,8 +4,9 @@
 
 - `paperless`: Paperless-ngx web and consumer service, exposed through the single public `paperless.<base-domain>` app route.
 - `broker`: internal Valkey service. Paperless requires a Redis-protocol broker for its task queue; document consumption, scheduled tasks and the automatic matcher do not run without it.
+- `mcp`: the MCP server MOS offers assistants for Paperless (see AI Tools below). Built from the same pinned Paperless image (`Dockerfile.mcp`) for its Python, so it adds no image download.
 
-Only `paperless` is routed through Caddy. The broker is package-internal on the package-owned Docker network.
+Only `paperless` is routed through Caddy. The broker is package-internal on the package-owned Docker network. `mcp` has no route either; the host publishes it on loopback so Suite Manager can call it.
 
 The package uses Paperless' built-in SQLite database (`PAPERLESS_DBENGINE=sqlite`). PostgreSQL, Tika and Gotenberg are optional upstream and are not part of this package.
 
@@ -20,6 +21,7 @@ The package uses Paperless' built-in SQLite database (`PAPERLESS_DBENGINE=sqlite
 - `PAPERLESS_ADMIN_USER`, `PAPERLESS_ADMIN_PASSWORD`: collected during install; Paperless creates this superuser on first start. It will not change an existing superuser's password on later starts.
 - `PAPERLESS_OCR_LANGUAGE`: collected during install, default `eng`.
 - `PAPERLESS_TIME_ZONE`: collected during install, default `Europe/Amsterdam`.
+- `MOS_AI_KEY` on `mcp`: the generated `aiKey` secret, which Suite Manager presents to the MCP server. `PAPERLESS_ADMIN_USER` and `PAPERLESS_ADMIN_PASSWORD` are passed to `mcp` as well, for its sign-in.
 
 ## Volumes And Persistence
 
@@ -72,6 +74,17 @@ Coming from 3.3.4 to 3.4.0, the first start applies no migrations and leaves the
 Coming from 3.4.0 to 3.4.2, there are still no migrations, and the search and classifier code is unchanged, so 3.4.0 starts on a 3.4.2 database and `rollback` stays `safe`. The consumer, worker and scheduler now skip Django's system checks, but `init-checks` still runs them once before any service starts, so a bad `PAPERLESS_URL` still stops init. Settings now also refuse a `PAPERLESS_URL` with no hostname. The search index and LLM index init steps now wait for `init-tesseract-langs`, which does nothing here because `PAPERLESS_OCR_LANGUAGES` is unset. The image moves Django to 5.2.18, django-guardian to 3.5.2 and filelock to 4.2.6.
 
 The package now pins 3.5.1, and this is the first update since 3.3.0 that cannot be rolled back, so the manifest declares `rollback: unsupported`. 3.5.0 replaces django-treenode with a plain adjacency list: migration `documents.0028` drops the thirteen `tn_*` cache columns from `documents_tag` and keeps `tn_parent`, so every tag keeps its parent. `0029` adds a Manual workflow trigger type and `0030` adds `format` to notes (default `plain`; Markdown notes are new). 3.4.2 then fails `init-migrations` on the migrated database with `no such column: documents_tag.tn_ancestors_pks`, and Suite Manager's automatic rollback of a failed update would hit the same wall, which is why the update requires a backup and going back means restoring it. The search index (schema 4) and classifier (format 11) are untouched, so the webserver answers as soon as the migrations finish. Bulk edits now return a task id and run in the Celery worker, so an API client must poll the task rather than read the result from the response. A new `Clear expired sessions` task runs daily at 03:00 (`PAPERLESS_SESSION_CLEANUP_TASK_CRON`) and is local. `ALLOWED_HOSTS` now defaults to `*` only when neither `PAPERLESS_ALLOWED_HOSTS` nor `PAPERLESS_URL` is set; this package sets both, so the resulting list (`paperless`, `localhost` and the public hostname) is unchanged. The image moves django-allauth to 65.21.1 and drops django-treenode.
+
+## AI Tools (MCP)
+
+Paperless has no MCP server of its own, so the package ships one: [mcp-server.py](./mcp-server.py), a stateless Streamable HTTP server on port 8100 using only the Python standard library. It answers `POST /mcp` only with `Authorization: Bearer <aiKey>`, where `aiKey` is a setup secret MOS generates at install (`auth.kind: package-secret`), so the owner never handles a token. It signs in to Paperless once with `PAPERLESS_ADMIN_USER` and `PAPERLESS_ADMIN_PASSWORD` through `POST /api/token/` and uses that token, at API version 10, against `http://paperless:8000/api`, its only connection. [ai-tools.json](./ai-tools.json) offers its tools by kind:
+
+- `read`, run at See: `search_documents` (full text with filters, or newest first, 25 at most per page), `get_document` (labels, notes and recognised text, 12,000 characters per call), `list_labels`.
+- `add`, run at See and do: `add_note`.
+- `change`, run at See and do: `update_document` sets the title, date, correspondent, document type and tags. A label it does not find is created with matching set to None, so it never starts filing other documents by itself.
+- No tool deletes, shares, downloads or reprocesses a document.
+
+Because Paperless never changes an existing superuser's password on start, an admin password changed inside Paperless, or two-factor sign-in turned on for the admin, stops the tools until the sign-in matches again; every call then answers with that reason. Output is plain text, kept short so a search fits small local models.
 
 ## AI Features
 

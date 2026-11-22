@@ -12,7 +12,7 @@ const DEFAULT_PACKAGE_LIMITS = Object.freeze({
 // The package's own end-to-end tests. They describe the package rather than ship
 // with it, so a test edit never changes the digest, the snapshot, or the version.
 const PACKAGE_TESTS_DIR = 'e2e';
-const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|entrypoint\.sh|icon\.(?:avif|gif|jpe?g|png|svg|webp)|manifest\.json|privacy-review\.json)$/iu;
+const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|ai-tools\.json|entrypoint\.sh|icon\.(?:avif|gif|jpe?g|png|svg|webp)|manifest\.json|privacy-review\.json)$/iu;
 const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|svg|txt|yaml|yml)$)/iu;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;

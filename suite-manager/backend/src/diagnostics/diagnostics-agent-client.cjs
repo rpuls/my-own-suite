@@ -28,7 +28,13 @@ class DiagnosticsAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
-  collect() { return this.request('POST', '/v1/diagnostics/collect'); }
+  // `only` names collectors from the agent's own fixed list; leaving it out reads them all.
+  collect({ app = null, only = null } = {}) {
+    const query = new URLSearchParams();
+    if (only) query.set('only', only.join(','));
+    if (app) query.set('app', app);
+    return this.request('POST', `/v1/diagnostics/collect${query.size ? `?${query}` : ''}`);
+  }
   // Cheap next to collect(): two commands and four files, so the Updates screen
   // can poll it without sweeping the machine.
   hostPatches() { return this.request('GET', '/v1/host/patches', HOST_PATCHES_TIMEOUT_MS); }

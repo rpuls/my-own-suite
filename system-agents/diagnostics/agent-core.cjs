@@ -2,11 +2,12 @@
 
 // What the diagnostics agent may read, as data.
 //
-// The caller names nothing. `collect()` takes no arguments at all, which is the
-// whole security argument for this agent: a collector list a request could
-// extend would be an arbitrary-file-read primitive reachable from an
-// unprivileged web app, and that is the one thing a root agent must never be.
-// Adding a source means editing this file and shipping it, where it is reviewed.
+// A caller may pick collectors from COLLECTORS by name, and narrow the containers
+// to one app by its package id; it can never name a unit, a container, a path or
+// a line count. That is the whole security argument for this agent: a collector
+// list a request could extend would be an arbitrary-file-read primitive reachable
+// from an unprivileged web app, and that is the one thing a root agent must never
+// be. Adding a source means editing this file and shipping it, where it is reviewed.
 
 const MOS_UNITS = [
   'mos-suite-manager.service',
@@ -28,6 +29,9 @@ const PRIMARY_UNIT = 'mos-suite-manager.service';
 // construction: the app agent names app containers `mos-app-<package>` and the
 // platform's own containers `mos-<name>`.
 const MOS_CONTAINER_PREFIX = 'mos-';
+
+const COLLECTOR_NAMES = Object.freeze(['host', 'host-patches', 'web-server', 'networks', 'storage', 'units', 'containers']);
+const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 
 // Sized for a reader with a context window rather than for completeness.
 // Something healthy contributes a status line and a short tail; something that
@@ -147,7 +151,11 @@ class DiagnosticsAgentCore {
   // feature at exactly the moment it exists for. What failed is reported in
   // `incomplete` so the reader knows the difference between "nothing there" and
   // "could not look".
-  async collect() {
+  async collect({ app = null, only = COLLECTOR_NAMES } = {}) {
+    const unknown = only.filter((name) => !COLLECTOR_NAMES.includes(name));
+    if (unknown.length) throw Object.assign(new Error(`No collector is called ${unknown.join(', ')}.`), { code: 'DIAGNOSTICS_UNKNOWN_COLLECTOR' });
+    if (app !== null && !PACKAGE_ID_PATTERN.test(app)) throw Object.assign(new Error('That is not an app id.'), { code: 'DIAGNOSTICS_UNKNOWN_APP' });
+
     const incomplete = [];
     const attempt = async (name, task, fallback) => {
       try {
@@ -162,24 +170,25 @@ class DiagnosticsAgentCore {
     // machine is by definition not well. Serialising forty reads behind a
     // twenty-second timeout each is how a diagnostic becomes a hang; running
     // them all at once is how it becomes the last straw.
-    const [host, hostPatches, webServer, networks, storage, units, containers] = await Promise.all([
-      attempt('host', () => this.adapter.hostFacts(), {}),
-      attempt('host-patches', () => this.adapter.hostPatches(), null),
-      attempt('web-server', () => this.adapter.webServerConfig(), []),
-      attempt('networks', () => this.adapter.networks(LIMITS.networks), []),
-      attempt('storage', async () => ({
+    const collectors = {
+      host: () => attempt('host', () => this.adapter.hostFacts(), {}),
+      'host-patches': () => attempt('host-patches', () => this.adapter.hostPatches(), null),
+      'web-server': () => attempt('web-server', () => this.adapter.webServerConfig(), []),
+      networks: () => attempt('networks', () => this.adapter.networks(LIMITS.networks), []),
+      storage: () => attempt('storage', async () => ({
         attach: boundText(await this.adapter.storageAttachJournal(LIMITS.troubledLines), LIMITS.storageChars),
         kernel: boundText(await this.adapter.storageKernelLines(LIMITS.troubledLines), LIMITS.storageChars),
       }), null),
-      mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
+      units: () => mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
         const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
         const log = await attempt(`journal:${name}`, () => this.adapter.journal(name, troubled ? LIMITS.troubledLines : LIMITS.healthyLines), '');
         return { active: state.active, enabled: state.enabled, log: boundText(log), name, sub: state.sub, troubled, unread: state === UNREAD_STATE };
       }),
-      attempt('containers', () => this.adapter.containers(), []).then((discovered) => mapWithLimit(
+      containers: () => attempt('containers', () => this.adapter.containers(), []).then((discovered) => mapWithLimit(
         discovered
           .filter((entry) => String(entry.name || '').startsWith(MOS_CONTAINER_PREFIX))
+          .filter((entry) => app === null || entry.labels?.['mos.package'] === app)
           .slice(0, LIMITS.containers),
         LIMITS.concurrency,
         async (container) => {
@@ -188,28 +197,31 @@ class DiagnosticsAgentCore {
           return { ...container, log: boundText(log), troubled };
         },
       )),
-    ]);
+    };
+    const picked = [...new Set(only)];
+    const results = Object.fromEntries(await Promise.all(picked.map(async (name) => [name, await collectors[name]()])));
 
-    const fitted = fitLogsToBudget(units, containers);
+    const fitted = fitLogsToBudget(results.units, results.containers);
     return {
       budgetApplied: fitted.budgetApplied,
       collectedAt: new Date().toISOString(),
-      containers: fitted.containers,
-      host,
-      hostPatches,
+      containers: results.containers && fitted.containers,
+      host: results.host,
+      hostPatches: results['host-patches'],
       incomplete,
-      networks,
-      storage,
-      units: fitted.units,
+      networks: results.networks,
+      storage: results.storage,
+      units: results.units && fitted.units,
       // Bounded like a log, and for the same reason: a Caddyfile on a machine
       // with fifty apps is still the thing worth reading in full, but it must
       // not be the thing that makes a bundle too large to send.
-      webServer: webServer.map((file) => ({ ...file, content: file.content === null ? null : boundText(file.content) })),
+      webServer: results['web-server']?.map((file) => ({ ...file, content: file.content === null ? null : boundText(file.content) })),
     };
   }
 }
 
 module.exports = {
+  COLLECTOR_NAMES,
   DiagnosticsAgentCore,
   LIMITS,
   MOS_UNITS,

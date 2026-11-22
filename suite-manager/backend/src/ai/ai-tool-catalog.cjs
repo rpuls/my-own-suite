@@ -2,14 +2,15 @@
 
 const fs = require('node:fs');
 
+const { TOOL_KINDS } = require('../apps/ai-tools-file.cjs');
 const { digestFor, loopbackPortFor, readSecretValue, secretFilePath } = require('../apps/app-package-internals.cjs');
 const { listAllTools } = require('./mcp-upstream.cjs');
 
 const MCP_EXPORT_TYPE = 'mcp-server';
-const TOOL_KINDS = new Set(['read', 'add', 'change', 'serious', 'destructive']);
 const OFFERABLE_KINDS = new Set(['read', 'add', 'change']);
 const APP_TOKEN_KEY = 'ai-token';
 const CATALOG_TTL_MS = 60_000;
+const LISTED_STATUSES = new Set(['installed', 'disabled']);
 const BUILTIN_SOURCE_ID = 'mos';
 
 // A manifest tool entry is its kind, or { kind, title, note, fixed }.
@@ -24,17 +25,21 @@ function toolSpecOf(entry) {
   };
 }
 
-// The one `exports` entry of type mcp-server, or null. Validation has already
-// refused malformed ones; this only guards against reading a snapshot it never saw.
-function mcpExportOf(manifest) {
+// The one `exports` entry of type mcp-server with the tools its ai-tools.json
+// lists, or null. Validation has already refused malformed ones; this only
+// guards against reading a snapshot it never saw.
+function mcpExportOf(manifest, aiTools) {
   const exports = manifest?.exports && typeof manifest.exports === 'object' ? manifest.exports : {};
   const found = Object.values(exports).find((entry) => entry?.type === MCP_EXPORT_TYPE);
   if (!found || typeof found.service !== 'string' || typeof found.path !== 'string' || !found.path.startsWith('/')) return null;
-  const tools = Object.entries(found.tools && typeof found.tools === 'object' ? found.tools : {})
+  const listed = aiTools?.tools;
+  const tools = Object.entries(listed && typeof listed === 'object' ? listed : {})
     .map(([name, entry]) => [name, toolSpecOf(entry)])
     .filter(([, spec]) => spec);
+  const packageSecret = found.auth?.kind === 'package-secret' && typeof found.auth.secret === 'string' ? found.auth.secret : null;
   return {
     hint: typeof found.auth?.hint === 'string' ? found.auth.hint : null,
+    packageSecret,
     path: found.path,
     service: found.service,
     tokenPage: typeof found.auth?.tokenPage === 'string' ? found.auth.tokenPage : null,
@@ -67,10 +72,11 @@ class AiToolCatalog {
   sources() {
     const sources = this.builtin ? [{ ...this.builtin, id: BUILTIN_SOURCE_ID, prefix: toolPrefixOf(BUILTIN_SOURCE_ID), running: true }] : [];
     for (const instance of this.store.getAppInstances()) {
-      if (instance.status !== 'installed' || instance.packageId === BUILTIN_SOURCE_ID) continue;
-      let manifest;
-      try { manifest = this.appPackages.installedPackageFor(instance).manifest; } catch { continue; }
-      const mcp = mcpExportOf(manifest);
+      if (!LISTED_STATUSES.has(instance.status) || instance.packageId === BUILTIN_SOURCE_ID) continue;
+      let appPackage;
+      try { appPackage = this.appPackages.installedPackageFor(instance); } catch { continue; }
+      const { manifest } = appPackage;
+      const mcp = mcpExportOf(manifest, appPackage.aiTools);
       if (!mcp) continue;
       sources.push({
         id: instance.packageId,
@@ -78,19 +84,28 @@ class AiToolCatalog {
         mcp,
         name: instance.displayNameSnapshot || manifest.name || instance.packageId,
         prefix: toolPrefixOf(instance.packageId),
-        running: instance.enabled === true,
+        running: instance.status === 'installed' && instance.enabled === true,
         url: `http://127.0.0.1:${loopbackPortFor(instance.packageId, mcp.service)}${mcp.path}`,
       });
     }
     return sources;
   }
 
+  // Every app MOS still has, stopped or mid-update too: only an uninstalled app's AI settings may be forgotten.
+  keptSources() {
+    const ids = [...(this.builtin ? [BUILTIN_SOURCE_ID] : []), ...this.store.getAppInstances().map((instance) => instance.packageId)];
+    return ids.map((id) => ({ id, prefix: toolPrefixOf(id) }));
+  }
+
   source(id) {
     return this.sources().find((candidate) => candidate.id === id) || null;
   }
 
+  // An app with a package secret is reached with the key MOS generated at install;
+  // only an app with its own sign-in needs a token from the owner.
   tokenPath(source) {
-    return source.instance ? secretFilePath(this.secretDir, source.instance.id, APP_TOKEN_KEY) : null;
+    if (!source.instance) return null;
+    return secretFilePath(this.secretDir, source.instance.id, source.mcp.packageSecret || APP_TOKEN_KEY);
   }
 
   tokenOf(source) {

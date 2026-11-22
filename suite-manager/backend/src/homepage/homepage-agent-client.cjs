@@ -26,6 +26,7 @@ class HomepageAgentClient {
   read(file) { return this.request('POST', '/v1/homepage/read', { file }); }
   validate(file, content) { return this.request('POST', '/v1/homepage/validate', { content, file }); }
   apply(input) { return this.request('POST', '/v1/homepage/apply', input); }
+  applyFiles(input) { return this.request('POST', '/v1/homepage/apply-files', input); }
   addLink(input) { return this.request('POST', '/v1/homepage/add-link', input); }
   addHomeService(input) { return this.request('POST', '/v1/homepage/add-home-service', input); }
   removeLink(input) { return this.request('POST', '/v1/homepage/remove-link', input); }

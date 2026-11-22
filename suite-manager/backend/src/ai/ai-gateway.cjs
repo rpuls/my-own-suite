@@ -2,6 +2,8 @@
 
 const { isHttpsRequest, readJsonBody } = require('../server/request.cjs');
 
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
 const MCP_PATH = '/ai/mcp';
 const BODY_LIMIT = 1_000_000;
 const SUPPORTED_PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -26,6 +28,12 @@ function presentedToken(request) {
   return match ? match[1] : null;
 }
 
+// Caddy marks everything it forwards. An unmarked request on loopback came from
+// this machine, as the ChatGPT tunnel's do, so its key never crossed a network.
+function fromThisMachine(request) {
+  return !request.headers['x-forwarded-proto'] && LOOPBACK.has(request.socket?.remoteAddress);
+}
+
 class AiGateway {
   constructor({ connections }) {
     this.connections = connections;
@@ -37,7 +45,7 @@ class AiGateway {
       send(response, 405, { error: 'Send MCP messages with POST.' }, { Allow: 'POST' });
       return;
     }
-    if (!isHttpsRequest(request)) {
+    if (!isHttpsRequest(request) && !fromThisMachine(request)) {
       send(response, 403, { error: 'AI clients connect to My Own Suite over HTTPS only.' });
       return;
     }
@@ -100,4 +108,4 @@ class AiGateway {
   }
 }
 
-module.exports = { AiGateway, MCP_PATH, SUPPORTED_PROTOCOLS, presentedToken };
+module.exports = { AiGateway, MCP_PATH, SUPPORTED_PROTOCOLS, fromThisMachine, presentedToken };

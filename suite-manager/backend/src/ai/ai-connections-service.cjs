@@ -80,15 +80,18 @@ class AiConnectionsService {
     this.now = now;
     this.secretDir = secretDir;
     this.suiteAddress = suiteAddress;
+    // A change is logged only once the app answers, so changes still running count towards the limit too.
+    this.changesRunning = new Map();
   }
 
   at() {
     return this.now().toISOString();
   }
 
-  // Where the owner makes the app's token: the app's own page for it when the
-  // package names one, else the app's front door.
-  appUrlFor(packageId, tokenPage = null) {
+  // The app's own page for making a token, only when the package names one: a
+  // link labelled as the token page must never land on the app's front door.
+  tokenPageUrlFor(packageId, tokenPage) {
+    if (!tokenPage) return null;
     let base;
     try {
       base = this.appUrlOf(packageId);
@@ -96,7 +99,7 @@ class AiConnectionsService {
       return null;
     }
     if (!base) return null;
-    return tokenPage ? `${String(base).replace(/\/+$/u, '')}${tokenPage}` : base;
+    return `${String(base).replace(/\/+$/u, '')}${tokenPage}`;
   }
 
   // Bearer tokens travel in a header, so the address is offered only over HTTPS.
@@ -108,21 +111,23 @@ class AiConnectionsService {
 
   // A tool seen for the first time is pinned as it is: it came through a
   // reviewed manifest. Only a later change to its definition needs the owner.
+  // MOS's own tools ship with the release that defines them, so they are never pinned.
   async pinnedCatalog() {
     const pins = this.aiStore.pins();
     const entries = await this.catalog.allTools();
-    for (const { tool } of entries) {
+    for (const { source, tool } of entries) {
+      if (source.id === BUILTIN_SOURCE_ID) continue;
       if (!pins.has(tool.name)) {
         this.aiStore.pin({ at: this.at(), hash: tool.hash, tool: tool.name });
         pins.set(tool.name, tool.hash);
       }
     }
-    return entries.map((entry) => ({ ...entry, review: reviewStateOf(entry.tool, pins) }));
+    return entries.map((entry) => ({ ...entry, review: entry.source.id === BUILTIN_SOURCE_ID ? 'pinned' : reviewStateOf(entry.tool, pins) }));
   }
 
   housekeeping() {
     this.aiStore.pruneActivity(this.now());
-    this.aiStore.forgetSourcesOtherThan(this.catalog.sources());
+    this.aiStore.forgetSourcesOtherThan(this.catalog.keptSources());
   }
 
   async status() {
@@ -132,13 +137,14 @@ class AiConnectionsService {
     for (const source of this.catalog.sources()) {
       const { error } = await this.catalog.toolsOf(source);
       const builtin = source.id === BUILTIN_SOURCE_ID;
+      const ownerToken = !builtin && !source.mcp.packageSecret;
       sources.push({
         builtin,
         error,
         id: source.id,
         name: source.name,
         running: source.running,
-        token: builtin ? null : { appUrl: this.appUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: !ownerToken ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -157,7 +163,7 @@ class AiConnectionsService {
     return {
       direct: mcpUrl ? { available: true, reason: null } : { available: false, reason: 'Your suite needs an HTTPS address first.' },
       public: { available: false, reason: 'Not built yet. It will need your suite to be reachable from the internet.' },
-      tunnel: { available: false, reason: 'Coming soon.' },
+      tunnel: { available: true, reason: null },
     };
   }
 
@@ -181,14 +187,15 @@ class AiConnectionsService {
 
   // ---- connections ----
 
-  createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}) {
+  // A tunnel connection is made only by the ChatGPT tunnel, which keeps its token.
+  createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}, { allowTunnel = false } = {}) {
     const name = String(rawName ?? '').trim();
     if (!name || name.length > CLIENT_NAME_MAX) {
       throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
     const preset = String(rawPreset ?? 'other');
     if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which AI this is.');
-    if (!ROUTES.has(route)) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
+    if (!ROUTES.has(route) && !(allowTunnel && route === 'tunnel')) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
     const token = newClientToken();
     const id = crypto.randomUUID();
     this.aiStore.createClient({ at: this.at(), id, name, preset, route, tokenHash: hashToken(token) });
@@ -206,6 +213,7 @@ class AiConnectionsService {
   }
 
   rotateClientToken(clientId) {
+    if (this.requireClient(clientId).route === 'tunnel') throw new AiConnectionsError('AI_TUNNEL_TOKEN', 'ChatGPT reaches MOS through its tunnel, which holds its own key.', 409);
     const token = newClientToken();
     if (!this.aiStore.replaceClientToken({ id: clientId, tokenHash: hashToken(token) })) throw this.unknownClient();
     return { token };
@@ -260,9 +268,16 @@ class AiConnectionsService {
     this.aiStore.pin({ at: this.at(), hash: found.tool.hash, tool: found.tool.name });
   }
 
-  async setSourceToken(sourceId, rawToken) {
+  // Only an app with its own sign-in takes a token; one MOS holds the key for is never overwritten.
+  ownerTokenSource(sourceId) {
     const source = this.catalog.source(sourceId);
     if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    if (source.mcp.packageSecret) throw new AiConnectionsError('AI_TOKEN_NOT_NEEDED', `MOS lets AI into ${source.name} itself, so it needs no token.`, 409);
+    return source;
+  }
+
+  async setSourceToken(sourceId, rawToken) {
+    const source = this.ownerTokenSource(sourceId);
     const token = String(rawToken ?? '').trim();
     if (!token || token.length > 4096 || /\s/u.test(token)) throw new AiConnectionsError('AI_TOKEN_INVALID', 'Paste the access token exactly as the app showed it.');
     if (source.mcp.verifyTool && source.running) {
@@ -294,8 +309,7 @@ class AiConnectionsService {
   }
 
   removeSourceToken(sourceId) {
-    const source = this.catalog.source(sourceId);
-    if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
+    const source = this.ownerTokenSource(sourceId);
     fs.rmSync(this.catalog.tokenPath(source), { force: true });
     this.catalog.forget(source.id);
   }
@@ -367,23 +381,34 @@ class AiConnectionsService {
     if (Buffer.byteLength(JSON.stringify(args ?? {})) > MAX_ARGUMENT_BYTES) {
       return refuse('too-large', 'My Own Suite: that request is too large.', entry);
     }
-    if (tool.kind !== 'read') {
+    const changes = tool.kind !== 'read';
+    if (changes) {
       const since = new Date(this.now().getTime() - 3_600_000).toISOString();
-      if (this.aiStore.writesSince({ clientId: client.id, since }) >= WRITES_PER_HOUR) {
+      const running = this.changesRunning.get(client.id) || 0;
+      if (this.aiStore.writesSince({ clientId: client.id, since }) + running >= WRITES_PER_HOUR) {
         return refuse('limit-reached', `My Own Suite: this AI has made ${WRITES_PER_HOUR} changes in the last hour, which is the limit. Try again later.`, entry);
       }
+      this.changesRunning.set(client.id, running + 1);
     }
 
-    const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed));
-    record(result.outcome, entry);
-    return result.result;
+    try {
+      const result = await this.invoke(source, tool, withFixedArguments(args, tool.fixed), client);
+      record(result.outcome, entry);
+      return result.result;
+    } finally {
+      if (changes) {
+        const left = this.changesRunning.get(client.id) - 1;
+        if (left > 0) this.changesRunning.set(client.id, left);
+        else this.changesRunning.delete(client.id);
+      }
+    }
   }
 
-  async invoke(source, tool, args) {
+  async invoke(source, tool, args, client = null) {
     if (source.id === BUILTIN_SOURCE_ID) {
       try {
-        const result = await source.call(tool.upstreamName, args);
-        return { outcome: result.isError ? 'tool-error' : 'ok', result };
+        const result = await source.call(tool.upstreamName, args, { client });
+        return { outcome: result.isError ? 'tool-error' : 'ok', result: untrustedResult(source.name, result) };
       } catch {
         return { outcome: 'failed', result: textResult('My Own Suite could not do that just now. Try again later.', true) };
       }

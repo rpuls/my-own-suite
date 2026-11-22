@@ -8,6 +8,8 @@ import { Dialog, Icon, Notice } from '../ui';
 export type DisclaimerCopy = {
   callout: string;
   calloutTitle: string;
+  // Paragraphs after the steps, for what follows from doing them.
+  closing?: string[];
   dialogTitle: string;
   dismissLabel: string;
   paragraphs: string[];
@@ -19,7 +21,8 @@ export type DisclaimerCopy = {
   title: string;
 };
 
-export function DisclaimerNotice({ copy, details, variant = 'warning' }: {
+export function DisclaimerNotice({ action, copy, details, variant = 'warning' }: {
+  action?: { href: string; label: string };
   copy: DisclaimerCopy;
   details?: ReactNode;
   variant?: 'info' | 'warning';
@@ -36,13 +39,17 @@ export function DisclaimerNotice({ copy, details, variant = 'warning' }: {
       </div>
     </Notice>
     {detailsOpen ? <Dialog
-      footer={<button className="mos-btn mos-btn-primary" onClick={() => setDetailsOpen(false)} type="button">{copy.dismissLabel}</button>}
+      footer={<>
+        {action ? <a className="mos-btn mos-btn-secondary" href={action.href}>{action.label}</a> : null}
+        <button className="mos-btn mos-btn-primary" onClick={() => setDetailsOpen(false)} type="button">{copy.dismissLabel}</button>
+      </>}
       onClose={() => setDetailsOpen(false)}
       title={copy.dialogTitle}
     >
       <div className="suite-disclaimer-details">
         {copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
         {copy.steps ? <ol className="suite-disclaimer-steps">{copy.steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
+        {copy.closing?.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
         {details}
         <Notice title={copy.calloutTitle} variant="info"><p>{copy.callout}</p></Notice>
       </div>

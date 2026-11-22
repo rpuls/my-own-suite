@@ -1,3 +1,4 @@
+import { brandOf } from './ai-brands';
 import type { AiActivityEntry, AiOutcome } from '../settings/ai/model';
 
 // Calls this close together from one AI are one thing the owner asked for.
@@ -7,6 +8,8 @@ export type StepTone = 'change' | 'problem' | 'read';
 
 export type TimelineStep = {
   count: number;
+  // A dashboard change the owner can step back from under Customize → History.
+  undoable: boolean;
   detail: string | null;
   iconUrl: string | null;
   key: number;
@@ -75,13 +78,17 @@ function detailOf(entry: AiActivityEntry) {
   return REFUSAL_WORDS[entry.outcome] ?? null;
 }
 
+export function sourceIconUrl(sourceId: string) {
+  return sourceId === 'mos' ? BUILTIN_ICON : `/suite-manager/api/apps/packages/${encodeURIComponent(sourceId)}/icon`;
+}
+
 function iconOf(entry: AiActivityEntry) {
-  if (entry.sourceId === 'mos') return BUILTIN_ICON;
-  return entry.sourceId ? `/suite-manager/api/apps/packages/${encodeURIComponent(entry.sourceId)}/icon` : null;
+  return entry.sourceId ? sourceIconUrl(entry.sourceId) : null;
 }
 
 function stepOf(entry: AiActivityEntry): TimelineStep {
-  return { count: 1, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry) };
+  const undoable = entry.outcome === 'ok' && (entry.tool === 'mos_dashboard_change' || entry.tool === 'mos_dashboard_restore');
+  return { count: entry.repeats, detail: detailOf(entry), iconUrl: iconOf(entry), key: entry.id, sourceName: entry.sourceName, text: textOf(entry), tone: toneOf(entry), undoable };
 }
 
 function dayKey(at: string) {
@@ -122,9 +129,9 @@ export function timelineOf(entries: AiActivityEntry[], now = new Date()): Timeli
     request.at = entry.at;
     const step = stepOf(entry);
     const next = request.steps[0];
-    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail) next.count += 1;
+    if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail && !step.undoable) next.count += step.count;
     else request.steps.unshift(step);
-    if (step.tone === 'change') day.changes += 1;
+    if (step.tone === 'change') day.changes += step.count;
   }
   return days;
 }
@@ -134,7 +141,7 @@ export function plural(count: number, word: string) {
 }
 
 export function initialsOf(name: string) {
-  const words = name.trim().split(/\s+/u).filter(Boolean);
+  const words = name.trim().replace(/([a-z])([A-Z])/gu, '$1 $2').split(/[\s._-]+/u).filter(Boolean);
   const first = words[0] ?? '?';
   if (/^[A-Z0-9]{2,}$/u.test(first)) return first.slice(0, 2);
   return ((first[0] ?? '') + (words[1]?.[0] ?? first[1] ?? '')).toUpperCase();
@@ -142,10 +149,11 @@ export function initialsOf(name: string) {
 
 const AVATAR_COLOURS = ['#d0744a', '#7b6cf6', '#2f9e8f', '#3b82c4', '#c2557a', '#8a7f2c', '#b7701f', '#5b7088'];
 
-// Stable per name, so an AI keeps its colour; Claude gets its familiar orange.
-export function avatarColour(name: string) {
-  if (/claude/iu.test(name)) return AVATAR_COLOURS[0]!;
+// A known AI wears its brand's colours; any other keeps a colour that is stable per name.
+export function avatarOf(name: string) {
+  const brand = brandOf(name);
+  if (brand) return { background: brand.background, initials: brand.initials ?? initialsOf(name), ink: brand.ink };
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!;
+  return { background: AVATAR_COLOURS[hash % AVATAR_COLOURS.length]!, initials: initialsOf(name), ink: '#ffffff' };
 }

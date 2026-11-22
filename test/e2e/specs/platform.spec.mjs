@@ -44,7 +44,7 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   // Saving is the only button, and it is what validates: a broken file has to
   // be refused by the same click that would have written it, not by a separate
   // Validate step the owner could skip.
-  await expect(page.getByText('Raw YAML, for now')).toBeVisible();
+  await expect(page.getByText('Ask your AI to arrange it')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Validate' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reload saved' })).toHaveCount(0);
   await page.getByLabel('Homepage YAML').fill('- broken: [');

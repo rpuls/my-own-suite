@@ -4,6 +4,7 @@ const { routeTable, serveOnSocket } = require('../lib/agent-server.cjs');
 const { AppAgentCore, AppRuntimeError } = require('./agent-core.cjs');
 const { AppApplyError, SystemAppAdapter } = require('./system-adapter.cjs');
 const { CodedError } = require('../../shared/coded-error.cjs');
+const { AiTunnel, aiTunnelRoutes } = require('./ai-tunnel.cjs');
 const { DriveFiles, filesRoutes } = require('./files.cjs');
 const { StorageError } = require('./storage.cjs');
 
@@ -28,6 +29,7 @@ const server = routeTable({
   'POST /v1/storage/shares/test': (body) => core.testShare(body),
   'POST /v1/storage/shares': (body) => core.saveShare(body),
   ...filesRoutes(files),
+  ...aiTunnelRoutes(new AiTunnel({ execute: adapter.execute })),
   'POST /v1/apps/apply': (body) => core.apply(body),
   'POST /v1/apps/address': (body) => core.waitForAddress(body),
   'POST /v1/apps/check-health': (body) => core.checkHealth(body),

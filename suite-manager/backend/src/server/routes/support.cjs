@@ -1,26 +1,16 @@
-const { assembleSupportBundle } = require('../../diagnostics/support-bundle.cjs');
+const { createDiagnostics } = require('../../diagnostics/support-bundle.cjs');
 
 // Signed in only: the file reports the shape of the machine, and an export
 // anyone could fetch would be a reconnaissance endpoint.
-function supportRoutes({ appAgent, appPackages, catalogService, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
+function supportRoutes(services) {
+  const diagnostics = createDiagnostics(services);
   return [
     {
       method: 'GET',
       path: '/support/bundle',
       signIn: 'Sign in to create a diagnostics file.',
       handler: async ({ response }) => {
-        const bundle = await assembleSupportBundle({
-          agent: diagnosticsAgent,
-          appAgent,
-          catalogStatus: catalogService.status(),
-          frontDoor,
-          homeHost: suiteAddress.readOrNull()?.host || homeHost,
-          platformVersion: catalogService.platformVersion,
-          secretDir: appPackages.secretDir,
-          store: setup.store,
-          suiteAddress: suiteAddress.readOrNull(),
-          updateStatus: await updates.status().catch(() => null),
-        });
+        const bundle = await diagnostics.file();
         response.writeHead(200, {
           'Content-Disposition': `attachment; filename="${bundle.filename}"`,
           'Content-Type': 'text/plain; charset=utf-8',
