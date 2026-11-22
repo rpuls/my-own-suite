@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.7",
-  "appVersion": "2.10.0",
+  "version": "0.3.0",
+  "appVersion": "3.5.0",
   "minimumMosVersion": "0.20.0",
   "summary": "Merge, split, sign and redact PDFs without uploading them to a stranger's website.",
   "category": "office",
@@ -84,11 +84,11 @@
       "description": "One service that sits quietly between jobs, but wants a spare gigabyte and a couple of cores while it reads a scan or converts an office document."
     },
     "privacy": {
-      "summary": "The server processes ordinary PDF tasks locally and contacts nothing. MOS keeps the PostHog analytics and Stripe payment library that Stirling PDF's pages start on its own server, so only icons are fetched from Iconify.",
+      "summary": "The server processes ordinary PDF tasks locally and contacts nothing. MOS keeps Stirling PDF's analytics, feedback link and update notices off; the only outside request is a version check its pages make when you open the General settings.",
       "notes": [
         "Persistent app data is kept in package-owned volumes.",
-        "User-invoked features such as trusted timestamping can contact an external service.",
-        "Stirling PDF's own analytics setting does not reach PostHog or Stripe in its pages, so MOS patches the pages instead. Buying a Stirling PDF licence inside the app no longer works."
+        "User-invoked features such as trusted timestamping, or linking the server to a Stirling account, contact an external service.",
+        "MOS also points the web client's PostHog and Stripe at Stirling PDF's own server as a backstop, so buying a Stirling PDF licence inside the app does not work."
       ]
     },
     "links": {
@@ -104,14 +104,20 @@
         "internalPort": 8080,
         "env": {
           "SERVER_HOST": "${app.publicUrl}",
-          "SYSTEM_ENABLEANALYTICS": "false"
+          "SYSTEM_ENABLEANALYTICS": "false",
+          "SYSTEM_ENABLEPOSTHOG": "false",
+          "SYSTEM_ENABLESCARF": "false",
+          "SYSTEM_ENABLEFEEDBACK": "false",
+          "SYSTEM_SHOWUPDATE": "false",
+          "SYSTEM_SETUPCOMPLETED": "true"
         },
         "volumes": [
           "training-data:/usr/share/tessdata",
           "configs:/configs",
           "custom-files:/customFiles",
           "logs:/logs",
-          "pipeline:/pipeline"
+          "pipeline:/pipeline",
+          "storage:/storage"
         ],
         "requires": {
           "cpuCores": 0.25,
@@ -137,5 +143,16 @@
   "health": {
     "type": "http",
     "url": "http://stirling-pdf:8080/api/v1/info/status"
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "not-guaranteed",
+    "migrations": [
+      "Stirling PDF upgrades its settings and database the first time 3.5 starts, and from now on keeps files saved on the server in a new storage volume."
+    ],
+    "ownerActions": [
+      "Saved pipelines or automations that convert to Word 97-2003 (.doc), PostScript, EPS or PCL now fail: switch them to .docx or .odt. WordPerfect, Works, Lotus Word Pro, AbiWord, Hangul and XPS files can no longer be converted."
+    ]
   }
 }

@@ -100,10 +100,10 @@
       }
     },
     "stirling-pdf": {
-      "appVersion": "2.10.0",
+      "appVersion": "3.5.0",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:59204755a8b56a0a37c239d027a3a8745127d7c11be6b01f3f11fa71b6018db2",
-      "packageVersion": "0.2.7",
+      "packageDigest": "sha256:be2911549d76d87ecef1f1b6ff5ea6f46ddcee3ed485e1f53a2886194d9fa1bb",
+      "packageVersion": "0.3.0",
       "path": "apps/stirling-pdf",
       "privacy": {
         "posture": "external-dependency",

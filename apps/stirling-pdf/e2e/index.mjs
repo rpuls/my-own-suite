@@ -33,8 +33,8 @@ async function signIn(page, env, { firstVisit }) {
     await expect(page).toHaveURL(/\/login/iu, { timeout: 30000 });
   }
   await submitLogin(page, adminPassword(env));
-  await expect(page.getByRole('textbox', { name: 'Search tools...' }), 'Stirling PDF should open its tools once signed in').toBeVisible({ timeout: 60000 });
-  // The "Welcome to Stirling V2" tour opens over the tools on first sign-in.
+  await expect(page.getByRole('link', { exact: true, name: 'Merge' }), 'Stirling PDF should open its tools once signed in').toBeVisible({ timeout: 60000 });
+  // 2.x opens a welcome tour over the tools on first sign-in.
   await page.keyboard.press('Escape');
 }
 
@@ -45,15 +45,21 @@ async function mergeTwo(page, make, stamp) {
   }
   await page.getByRole('link', { exact: true, name: 'Merge' }).click();
   await page.locator('input[type=file]').first().setInputFiles(files);
-  await expect(page.getByText(/2 files selected/iu)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Go to file editor' }).click();
+  const mergeButton = page.getByRole('button', { name: /^Merge \(2 files\)$/u });
+  // 2.x stages the files and asks to open the file editor first; 3.x adds them straight to it
+  // and shows the same button only for a moment while they load.
+  if (!(await mergeButton.waitFor({ timeout: 15000 }).then(() => true, () => false))) {
+    await page.getByRole('button', { name: 'Go to file editor' }).click();
+  }
   const [merged] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/api/v1/general/merge-pdfs'), { timeout: 60000 }),
-    page.getByRole('button', { name: /^Merge \(2 files\)$/u }).click(),
+    mergeButton.click(),
   ]);
   expect(merged.status(), 'the Stirling server should merge the files').toBe(200);
   await expect(page.getByText(/^merged_.*\.pdf$/u).first(), 'the merged file should be offered for review').toBeVisible({ timeout: 60000 });
-  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.getByRole('button', { exact: true, name: 'Download' }).click()]);
+  // 3.x also labels an icon-only viewer toolbar button "Download"; the result's own button carries the word.
+  const downloadButton = page.getByRole('button', { exact: true, name: 'Download' }).filter({ hasText: 'Download' });
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), downloadButton.click()]);
   const bytes = fs.readFileSync(await download.path());
   expect(bytes.subarray(0, 5).toString('latin1'), 'the download should be a PDF').toBe('%PDF-');
   // Page objects sit in compressed object streams, so the count is read from Stirling's own viewer.

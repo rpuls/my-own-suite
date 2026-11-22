@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "stirling-pdf",
-  "reviewedAt": "2026-10-05T18:16:29.734Z",
-  "expiresAt": "2027-01-16T00:00:00.000Z",
+  "reviewedAt": "2026-11-22T17:01:40.000Z",
+  "expiresAt": "2027-02-20T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.7",
-    "packageDigest": "sha256:59204755a8b56a0a37c239d027a3a8745127d7c11be6b01f3f11fa71b6018db2",
+    "packageVersion": "0.3.0",
+    "packageDigest": "sha256:be2911549d76d87ecef1f1b6ff5ea6f46ddcee3ed485e1f53a2886194d9fa1bb",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,15 +16,16 @@
     "components": [
       {
         "name": "Stirling PDF",
-        "version": "2.10.0",
+        "version": "3.5.0",
         "artifact": "docker.io/stirlingtools/stirling-pdf",
-        "digest": "sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42"
+        "digest": "sha256:f5a38801f2dd551c26d0089ee3ea48d86a565e3adb414cb31e974bc9562cb48a"
       }
     ],
     "clientsExcluded": [
       "Stirling PDF desktop applications",
       "Stirling Cloud",
-      "Third-party API clients"
+      "Stirling PDF mobile scanner and phone signing pages",
+      "Third-party API and MCP clients"
     ]
   },
   "posture": "external-dependency",
@@ -39,65 +40,104 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "MOS sets SYSTEM_ENABLEANALYTICS=false for the packaged service.",
-      "source": "apps/stirling-pdf/manifest.json"
+      "claim": "MOS sets SYSTEM_ENABLEANALYTICS=false, SYSTEM_ENABLEPOSTHOG=false, SYSTEM_ENABLESCARF=false, SYSTEM_ENABLEFEEDBACK=false, SYSTEM_SHOWUPDATE=false and SYSTEM_SETUPCOMPLETED=true for the packaged service. With them applied, Stirling PDF 3.5.0's own /api/v1/config/app-config reported enableAnalytics=false, enableFeedback=false, shouldShowUpdate=false and setupCompleted=true, even though configs/settings.yml still held its defaults, so the environment wins over the settings file.",
+      "source": "apps/stirling-pdf/manifest.json, read back from a running 3.5.0 container",
+      "retrievedAt": "2026-11-22"
     },
     {
       "type": "documented",
-      "claim": "Upstream documents SYSTEM_ENABLEANALYTICS=false as the system-wide control that disables PostHog and Scarf analytics.",
-      "source": "Stirling PDF Analytics and Telemetry documentation",
+      "claim": "Upstream documents SYSTEM_ENABLEANALYTICS=false as the system-wide control that disables PostHog and Scarf analytics. The 3.5.0 settings template adds system.enableFeedback (default true, 'send feedback to Stirling from the app') and turns system.showUpdate on by default; both were false or absent in 2.10.0.",
+      "source": "Stirling PDF Analytics and Telemetry documentation; settings.yml.template inside the 2.10.0 and 3.5.0 images",
       "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
-      "retrievedAt": "2026-07-16"
+      "retrievedAt": "2026-11-22"
+    },
+    {
+      "type": "inferred",
+      "claim": "In the 3.5.0 web client PostHog is imported and initialised only when the server reports enableAnalytics=true and enablePosthog is not false, the Scarf pixel only with enableScarf and a recorded consent, Stripe's library only from the billing screen, and the feedback button only with enableFeedback=true. 2.10.0 initialised PostHog at page load whatever the setting said. Iconify's API is no longer referenced anywhere in the 3.5.0 client; it was in 2.10.0. The PDF viewer's pdfium wasm and fallback fonts are served from the image itself rather than embedpdf's jsDelivr defaults.",
+      "source": "static/assets/*.js inside /app/app.jar of stirlingtools/stirling-pdf 3.5.0 and 2.10.0",
+      "retrievedAt": "2026-11-22"
+    },
+    {
+      "type": "observed",
+      "claim": "A fresh 3.5.0 package build was run with the MOS environment, and the container's network namespace was captured (DNS included) for about six minutes covering startup, the first sign-in with the default password and the forced password change, merging two PDFs, the viewer, the text editor and every screen in the left rail, including the PDF Processor and settings. The server made no DNS lookup and no connection outside the container. A control lookup of example.org and a TCP connection to 1.1.1.1:443 made from inside the container afterwards both appeared in the capture. The browser made 594 requests; the only one outside the server was GET https://supabase.stirling.com/functions/v1/updates?from=3.5.0&type=normal&login=true&summary=true, sent when Settings > General opened.",
+      "source": "Local Docker run of the package Dockerfile with tcpdump in the container's network namespace and Chrome driven by Playwright",
+      "retrievedAt": "2026-11-22"
+    },
+    {
+      "type": "inferred",
+      "claim": "The Settings > General version check is not gated by system.showUpdate or any other server setting; only the desktop app's managed-update mode skips it. 2.10.0 made the same call from the same page, so this is not new in 3.x: the earlier capture did not open the settings page. It sends the running version, licence type and whether login is on, and Stirling's host sees the browser's address.",
+      "source": "SettingsPage and index chunks in static/assets of the 3.5.0 and 2.10.0 images",
+      "retrievedAt": "2026-11-22"
+    },
+    {
+      "type": "observed",
+      "claim": "An install created by the 2.10.0 package and given a new password was started on 3.5.0 with the same volumes plus the new storage volume. It upgraded its database without errors, signed in with the password set on 2.10.0, merged two PDFs, and made no request outside the server from the browser.",
+      "source": "Local Docker upgrade run, 2.10.0 package build then 3.5.0 package build",
+      "retrievedAt": "2026-11-22"
     },
     {
       "type": "documented",
-      "claim": "The self-hosted server processes ordinary PDF operations locally without requiring an upstream account.",
-      "source": "Stirling PDF documentation",
-      "url": "https://docs.stirlingpdf.com/",
-      "retrievedAt": "2026-07-16"
-    },
-    {
-      "type": "documented",
-      "claim": "Some user-invoked features can contact external services; trusted timestamping sends a document hash to a time-stamp authority.",
-      "source": "Stirling PDF Security feature documentation",
+      "claim": "Some user-invoked features contact external services: trusted timestamping sends a document hash to a time-stamp authority (DigiCert by default); downloading another OCR language asks GitHub; linking the server to a Stirling account talks to api2.stirling.com and auth.stirling.com; the optional AI engine in Cloud mode runs on Stirling Cloud. None of these is on by default.",
+      "source": "settings.yml.template and server classes in the 3.5.0 image; Stirling PDF Security feature documentation",
       "url": "https://docs.stirlingpdf.com/Functionality/Security/",
-      "retrievedAt": "2026-07-16"
+      "retrievedAt": "2026-11-22"
     },
     {
       "type": "observed",
-      "claim": "The MOS E2E network capture recorded this package on a MOS lab on 2026-10-05, through install, the package's own journey (signing in and replacing the default password, then merging two PDFs and downloading the result), a backup and a restore. It recorded every DNS lookup the package's containers made, read inside each container, every connection they opened to a public address, read on the Docker bridges, and every request the browser made to a host outside the suite. A control lookup and connection sent from inside each container showed up, so silence here is a measurement rather than a capture that failed. The server container made no lookup and no connection. The browser, on Stirling PDF's own pages, loaded https://js.stripe.com/basil/stripe.js, sent requests to r.stripe.com and m.stripe.com and loaded m.stripe.network/inner.html, which are Stripe's fraud-detection signals. It also loaded https://eu-assets.i.posthog.com/static/exception-autocapture.js and fetched https://api.iconify.design/material-symbols.json, all with SYSTEM_ENABLEANALYTICS=false applied. A browser capture on 2026-08-13, over a longer session, also saw eu.i.posthog.com. SYSTEM_ENABLEANALYTICS=false therefore does not stop the web client from loading PostHog or Stripe, and the package offers no other switch that does.",
-      "source": "MOS E2E `npm run e2e -- @app-cycle stirling-pdf`, run 20261005-112726-app-cycle-stirling-pdf (network/report.md), on the package version reviewed before this revision",
-      "retrievedAt": "2026-10-05"
-    },
-    {
-      "type": "observed",
-      "claim": "The package now patches the web client at build time, pointing PostHog's host and Stripe's script host at paths on Stirling PDF's own server, where those requests fail. Two builds were compared on the MOS lab, each with SYSTEM_ENABLEANALYTICS=false and its sign-in page open in a browser for 25 seconds. The unpatched image loaded js.stripe.com, m.stripe.network, m.stripe.com and r.stripe.com, and a script from eu-assets.i.posthog.com, before anyone signed in. The patched image made no request outside the server. Stirling PDF's in-app licence purchase, which uses Stripe, no longer works. Icons the interface fetches from api.iconify.design are unchanged.",
-      "source": "apps/stirling-pdf/Dockerfile and patch-web-client.py, both builds opened in Chromium against the MOS Hyper-V lab",
-      "retrievedAt": "2026-10-05"
+      "claim": "The package still patches the web client at build time, pointing PostHog's host and Stripe's script host at paths on Stirling PDF's own server, and the build stops unless each occurs exactly once. In 3.5.0 both hosts matched once. With the settings above neither library loads, so the patch is a backstop if an admin turns analytics on or opens billing; the in-app licence purchase still does not work.",
+      "source": "apps/stirling-pdf/Dockerfile and patch-web-client.py, built against 3.5.0",
+      "retrievedAt": "2026-11-22"
     }
   ],
   "outbound": [
     {
       "from": "browser",
-      "host": "api.iconify.design",
-      "purpose": "Fetches some of the interface's icons. It sees the browser's address and which icons were asked for.",
-      "receiver": "Iconify"
+      "host": "supabase.stirling.com",
+      "purpose": "Asks whether a newer Stirling PDF exists whenever Settings > General is opened. It sends the running version, licence type and whether sign-in is on, and sees the browser's address.",
+      "receiver": "Stirling PDF Inc."
     }
   ],
   "telemetryControls": [
     {
       "type": "configured",
-      "claim": "MOS points the web client's PostHog and Stripe at Stirling PDF's own server, so neither is contacted. The client starts both on every page, and SYSTEM_ENABLEANALYTICS=false, which MOS also sets, does not reach them. The build stops if upstream changes either host.",
+      "claim": "MOS turns off Stirling PDF's analytics (PostHog and Scarf), the feedback button and the startup update check with SYSTEM_ENABLEANALYTICS, SYSTEM_ENABLEPOSTHOG, SYSTEM_ENABLESCARF, SYSTEM_ENABLEFEEDBACK and SYSTEM_SHOWUPDATE, and skips the first-run setup wizard with SYSTEM_SETUPCOMPLETED=true. As environment values they override the in-app admin settings.",
+      "source": "apps/stirling-pdf/manifest.json",
+      "retrievedAt": "2026-11-22"
+    },
+    {
+      "type": "configured",
+      "claim": "As a backstop, MOS points the web client's PostHog and Stripe hosts at Stirling PDF's own server, so neither is contacted even if analytics is turned on or the billing screen is opened. The build stops if upstream changes either host.",
       "source": "apps/stirling-pdf/patch-web-client.py",
-      "retrievedAt": "2026-10-05"
+      "retrievedAt": "2026-11-22"
+    }
+  ],
+  "security": [
+    {
+      "type": "documented",
+      "claim": "Stirling PDF 3.1 to 3.4 fix security issues the package as MOS runs it is exposed to: sensitive endpoints are restricted to signed-in human users (3.1), request sizes are bounded and MFA settings protected (3.3), single-use invite tokens are consumed atomically (3.3), and stored job files are streamed instead of loaded whole (3.4). Upstream advises updating.",
+      "source": "Stirling PDF release notes 3.1.0, 3.3.0 and 3.4.0",
+      "url": "https://github.com/Stirling-Tools/Stirling-PDF/releases/tag/v3.3.0",
+      "retrievedAt": "2026-11-22"
     }
   ],
   "policies": [
     {
       "kind": "license",
-      "url": "https://github.com/Stirling-Tools/Stirling-PDF/blob/v2.10.0/LICENSE",
-      "retrievedAt": "2026-07-16",
-      "publisher": "Stirling Tools"
+      "url": "https://github.com/Stirling-Tools/Stirling-PDF/blob/v3.5.0/LICENSE",
+      "retrievedAt": "2026-11-22",
+      "publisher": "Stirling PDF Inc."
+    },
+    {
+      "kind": "terms",
+      "url": "https://www.stirling.com/legal/terms-of-service",
+      "retrievedAt": "2026-11-22",
+      "publisher": "Stirling PDF Inc."
+    },
+    {
+      "kind": "privacy",
+      "url": "https://www.stirling.com/legal/privacy-policy",
+      "retrievedAt": "2026-11-22",
+      "publisher": "Stirling PDF Inc."
     }
   ],
   "provenance": {
@@ -106,12 +146,13 @@
     "model": "claude-opus-5-5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
-    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
-    "repositoryCommit": "91dbeb466ec0008e687e9287d269b72ba3076933",
-    "humanReviewed": false
+    "skillRevision": "3da8b748652e29ae98eb8b1416df29dfc9970e37",
+    "repositoryCommit": "3da8b748652e29ae98eb8b1416df29dfc9970e37"
   },
   "openQuestions": [
-    "Optional tools may contact services beyond the documented timestamp-authority example when explicitly invoked.",
-    "The interface fetches some of its icons from api.iconify.design, which sees the browser's address and the icon names. Serving them from the package would need the icon data bundled, which was not attempted."
+    "Optional tools may contact services beyond the documented ones (timestamp authorities, OCR language downloads, account linking, Cloud AI) when explicitly invoked.",
+    "The server capture covered about six minutes of use. A scheduled task that runs less often, or the PDF Processor's free monthly allowance being counted remotely, was not observed and is not excluded.",
+    "The Settings > General version check to supabase.stirling.com predates this update but was not in the earlier review. It carries no document data; a human reviewer may want to confirm it does not need an awaiting-review note.",
+    "The licence is MIT for the core with proprietary directories, as in 2.10.0; 3.x adds the PDF Processor screen to them. Stirling's Terms (v1.1.0, 8 August 2026) name self-hosted software but defer to the open-source licence where they conflict."
   ]
 }
