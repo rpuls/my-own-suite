@@ -33,7 +33,8 @@ function startRequest(body) {
 // gives it its files and turns it on or off. Two of the files are keys, so only
 // the tunnel's own user may read them.
 class AiTunnel {
-  constructor({ execute, root = AI_TUNNEL_ROOT }) {
+  constructor({ chown = fsp.chown, execute, root = AI_TUNNEL_ROOT }) {
+    this.chown = chown;
     this.execute = execute;
     this.root = root;
   }
@@ -42,18 +43,18 @@ class AiTunnel {
     const target = path.join(this.root, name);
     const staged = `${target}.next`;
     await fsp.writeFile(staged, content, { mode: 0o400 });
-    await fsp.chown(staged, AI_TUNNEL_USER, AI_TUNNEL_USER);
+    await this.chown(staged, AI_TUNNEL_USER, AI_TUNNEL_USER);
     await fsp.rename(staged, target);
   }
 
   async start(body) {
     const request = startRequest(body);
-    await fsp.mkdir(this.root, { mode: 0o500, recursive: true });
-    await fsp.chown(this.root, AI_TUNNEL_USER, AI_TUNNEL_USER);
-    await fsp.chmod(this.root, 0o500);
+    await fsp.mkdir(this.root, { recursive: true });
     await this.writeFile('runtime-key', request.runtimeKey);
     await this.writeFile('gateway-key', request.gatewayKey);
     await this.writeFile('config.yaml', renderAiTunnelConfig(request));
+    await this.chown(this.root, AI_TUNNEL_USER, AI_TUNNEL_USER);
+    await fsp.chmod(this.root, 0o500);
     await this.execute(SYSTEMCTL, ['enable', AI_TUNNEL_UNIT], { timeoutMs: 30_000 });
     await this.execute(SYSTEMCTL, ['restart', AI_TUNNEL_UNIT], { timeoutMs: START_TIMEOUT_MS });
     return { running: true };

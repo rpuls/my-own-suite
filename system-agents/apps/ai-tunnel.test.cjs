@@ -16,8 +16,13 @@ const REQUEST = {
 function harness() {
   const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-ai-tunnel-')), 'ai-tunnel');
   const commands = [];
-  const tunnel = new AiTunnel({ execute: async (file, args) => { commands.push(args.join(' ')); }, root });
-  return { commands, root, tunnel };
+  const owned = [];
+  const tunnel = new AiTunnel({
+    chown: async (target, user, group) => { owned.push(`${path.basename(target)} ${user}:${group}`); },
+    execute: async (file, args) => { commands.push(args.join(' ')); },
+    root,
+  });
+  return { commands, owned, root, tunnel };
 }
 
 test('start gives the tunnel its keys and a config that keeps Harpoon off, then turns the unit on', async () => {
@@ -32,6 +37,7 @@ test('start gives the tunnel its keys and a config that keeps Harpoon off, then 
   assert.doesNotMatch(config, /sk-proj|mos_ai_/u);
   assert.equal(fs.readFileSync(path.join(h.root, 'runtime-key'), 'utf8'), REQUEST.runtimeKey);
   assert.equal(fs.readFileSync(path.join(h.root, 'gateway-key'), 'utf8'), REQUEST.gatewayKey);
+  assert.deepEqual(h.owned, ['runtime-key.next 65532:65532', 'gateway-key.next 65532:65532', 'config.yaml.next 65532:65532', 'ai-tunnel 65532:65532']);
   assert.deepEqual(h.commands, ['enable mos-ai-tunnel.service', 'restart mos-ai-tunnel.service']);
 });
 
@@ -52,6 +58,8 @@ test('start refuses anything but the four expected fields in their shapes', asyn
 test('stop turns the unit off and removes the keys', async () => {
   const h = harness();
   await h.tunnel.start(REQUEST);
+  // The agent runs as root, which the folder's read-only mode does not stop; a test runner is not root.
+  fs.chmodSync(h.root, 0o700);
   await h.tunnel.stop();
   assert.equal(h.commands.at(-1), 'disable --now mos-ai-tunnel.service');
   assert.equal(fs.existsSync(h.root), false);
