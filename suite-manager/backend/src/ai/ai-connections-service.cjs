@@ -111,16 +111,18 @@ class AiConnectionsService {
 
   // A tool seen for the first time is pinned as it is: it came through a
   // reviewed manifest. Only a later change to its definition needs the owner.
+  // MOS's own tools ship with the release that defines them, so they are never pinned.
   async pinnedCatalog() {
     const pins = this.aiStore.pins();
     const entries = await this.catalog.allTools();
-    for (const { tool } of entries) {
+    for (const { source, tool } of entries) {
+      if (source.id === BUILTIN_SOURCE_ID) continue;
       if (!pins.has(tool.name)) {
         this.aiStore.pin({ at: this.at(), hash: tool.hash, tool: tool.name });
         pins.set(tool.name, tool.hash);
       }
     }
-    return entries.map((entry) => ({ ...entry, review: reviewStateOf(entry.tool, pins) }));
+    return entries.map((entry) => ({ ...entry, review: entry.source.id === BUILTIN_SOURCE_ID ? 'pinned' : reviewStateOf(entry.tool, pins) }));
   }
 
   housekeeping() {
@@ -406,7 +408,7 @@ class AiConnectionsService {
     if (source.id === BUILTIN_SOURCE_ID) {
       try {
         const result = await source.call(tool.upstreamName, args, { client });
-        return { outcome: result.isError ? 'tool-error' : 'ok', result };
+        return { outcome: result.isError ? 'tool-error' : 'ok', result: untrustedResult(source.name, result) };
       } catch {
         return { outcome: 'failed', result: textResult('My Own Suite could not do that just now. Try again later.', true) };
       }

@@ -294,6 +294,107 @@ function containerLines(containers) {
 // support flow is an owner who cannot describe their problem attaching this to a
 // message; a single .txt survives every channel that mangles or blocks archives,
 // and the person reading it — increasingly an AI agent — needs no unpacking step.
+function troubleText({ trouble }) {
+  return trouble.length
+    ? trouble.map((line) => `  • ${line}`).join('\n')
+    : '  Nothing obviously wrong was detected. The detail below is the evidence\n  for that, and the problem may still be in it.';
+}
+
+function platformText({ catalog, collection, homeHost, platform }) {
+  return [
+    `MOS version        ${platform.version || 'unknown'}`,
+    `Update track       ${platform.updateTrack || 'unknown'}`,
+    `Install shape      ${platform.frontDoor || 'unknown'}`,
+    `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
+    `App agent          ${appAgentLine(platform.appAgentContractVersion)}`,
+    `Home host          ${homeHost || 'unknown'}`,
+    ...(collection ? [`Collected at       ${collection.collectedAt || 'not collected'}`] : []),
+    ...lastCheckLines(platform.lastCheck),
+    ...lastUpdateLines(platform.lastUpdate),
+    ...lastHttpsApplyLines(platform.lastHttpsApply),
+    ...catalogLines(catalog),
+  ].join('\n');
+}
+
+function hostText({ collection }) {
+  const host = collection?.host;
+  return [
+    host?.kernel && `Kernel:\n${host.kernel}`,
+    host?.node && `Node.js:\n${host.node}`,
+    host?.uptime && `Uptime:\n${host.uptime}`,
+    host?.memory && `Memory:\n${host.memory}`,
+    host?.disk && `Disk:\n${host.disk}`,
+    host?.dockerDisk && `Docker disk:\n${host.dockerDisk}`,
+  ].filter(Boolean).join('\n');
+}
+
+// Every part of the diagnostics, in the order the file prints them. The file and
+// the AI tool mos_diagnostics both read this list, so a new part of MOS becomes
+// one entry here: its section in the file, a topic for an AI, and the agent
+// collectors (by name, from the agent's own fixed list) it needs.
+const TOPICS = {
+  summary: {
+    agent: 'all',
+    render: troubleText,
+    says: 'What looks wrong right now, one line per finding. The place to start.',
+    title: 'WHAT LOOKS WRONG',
+  },
+  platform: {
+    agent: [],
+    render: platformText,
+    says: 'MOS version, update track, install shape and HTTPS, with the last update, update check and app catalog refresh.',
+    title: 'PLATFORM',
+  },
+  host: {
+    agent: ['host'],
+    render: hostText,
+    says: 'Kernel, Node.js, uptime, memory, disk and Docker disk use.',
+    title: 'HOST',
+  },
+  'host-patches': {
+    agent: ['host-patches'],
+    render: ({ collection }) => hostPatchLines(collection?.hostPatches).join('\n'),
+    says: 'Ubuntu security updates: who applies them, what is waiting, and whether a restart is needed.',
+    title: 'HOST PATCHES',
+  },
+  'web-server': {
+    agent: ['web-server'],
+    render: ({ collection }) => webServerLines(collection?.webServer),
+    says: 'The web server configuration: every address the suite answers on and where it points.',
+    title: 'WEB SERVER',
+  },
+  apps: {
+    agent: [],
+    render: ({ apps }) => appLines(apps),
+    says: 'Installed apps with version, status and their last failed install, update or removal. With app, only that app.',
+    title: 'APPS',
+  },
+  storage: {
+    agent: ['storage'],
+    render: ({ collection, drives }) => storageLines(drives, collection?.storage),
+    says: 'Drives apps keep files on that are not simply available, with recent drive and kernel messages about them.',
+    title: 'STORAGE DRIVES',
+  },
+  services: {
+    agent: ['units'],
+    render: ({ collection }) => unitLines(collection?.units),
+    says: "My Own Suite's own system services, their state and recent logs.",
+    title: 'SERVICES',
+  },
+  networks: {
+    agent: ['networks'],
+    render: ({ collection }) => networkLines(collection?.networks),
+    says: 'Docker networks and which containers are on each one.',
+    title: 'NETWORKS',
+  },
+  containers: {
+    agent: ['containers'],
+    render: ({ collection }) => containerLines(collection?.containers),
+    says: 'My Own Suite containers with their state and recent logs. With app, only that app\'s containers.',
+    title: 'CONTAINERS',
+  },
+};
+
 function buildSupportBundle({
   apps = [],
   catalog = null,
@@ -306,6 +407,7 @@ function buildSupportBundle({
 } = {}) {
   const createdAt = now().toISOString();
   const trouble = summarizeTrouble({ apps, catalog, collection, drives, platform });
+  const facts = { apps, catalog, collection, drives, homeHost, platform, trouble };
 
   const body = [
 `MY OWN SUITE — DIAGNOSTICS
@@ -323,37 +425,7 @@ address that stopped working cannot be diagnosed without them.
 Logs are shortened newest-first, so this stays small enough to read in full.
 
 `,
-    section('WHAT LOOKS WRONG', trouble.length
-      ? trouble.map((line) => `  • ${line}`).join('\n')
-      : '  Nothing obviously wrong was detected. The detail below is the evidence\n  for that, and the problem may still be in it.'),
-    section('PLATFORM', [
-      `MOS version        ${platform.version || 'unknown'}`,
-      `Update track       ${platform.updateTrack || 'unknown'}`,
-      `Install shape      ${platform.frontDoor || 'unknown'}`,
-      `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
-      `App agent          ${appAgentLine(platform.appAgentContractVersion)}`,
-      `Home host          ${homeHost || 'unknown'}`,
-      `Collected at       ${collection.collectedAt || 'not collected'}`,
-      ...lastCheckLines(platform.lastCheck),
-      ...lastUpdateLines(platform.lastUpdate),
-      ...lastHttpsApplyLines(platform.lastHttpsApply),
-      ...catalogLines(catalog),
-    ].join('\n')),
-    section('HOST', [
-      collection.host?.kernel && `Kernel:\n${collection.host.kernel}`,
-      collection.host?.node && `Node.js:\n${collection.host.node}`,
-      collection.host?.uptime && `Uptime:\n${collection.host.uptime}`,
-      collection.host?.memory && `Memory:\n${collection.host.memory}`,
-      collection.host?.disk && `Disk:\n${collection.host.disk}`,
-      collection.host?.dockerDisk && `Docker disk:\n${collection.host.dockerDisk}`,
-    ].filter(Boolean).join('\n')),
-    section('HOST PATCHES', hostPatchLines(collection.hostPatches).join('\n')),
-    section('WEB SERVER', webServerLines(collection.webServer)),
-    section('APPS', appLines(apps)),
-    section('STORAGE DRIVES', storageLines(drives, collection.storage)),
-    section('SERVICES', unitLines(collection.units)),
-    section('NETWORKS', networkLines(collection.networks)),
-    section('CONTAINERS', containerLines(collection.containers)),
+    ...Object.values(TOPICS).map((topic) => section(topic.title, topic.render(facts))),
   ].join('');
 
   // Redaction runs once, over the finished text. Safe here in a way it is not in
@@ -380,17 +452,17 @@ Logs are shortened newest-first, so this stays small enough to read in full.
 }
 
 // Gathers both halves — what the privileged agent can see and what only Suite
-// Manager knows — and renders the file. Split from buildSupportBundle so the
-// rendering is testable against fixtures with no store, agent or disk.
-async function assembleSupportBundle({
+// Manager knows. `collectors` are agent collector names (null reads them all, an
+// empty list none); `app` narrows the apps and their containers to one package.
+async function gatherFacts({
   agent,
+  app = null,
   appAgent = null,
   catalogStatus = null,
+  collectors = null,
   frontDoor = 'unknown',
   homeHost = '',
-  now = () => new Date(),
   platformVersion = 'unknown',
-  secretDir,
   store,
   suiteAddress = null,
   updateStatus = null,
@@ -398,8 +470,8 @@ async function assembleSupportBundle({
   // An unreachable diagnostics agent is not a failed export. It is the most
   // useful thing the file could say, so it becomes a finding rather than a 500:
   // an owner whose agent is down is exactly the owner asking for help.
-  const collection = await Promise.resolve()
-    .then(() => agent.collect())
+  const collection = collectors?.length === 0 ? null : await Promise.resolve()
+    .then(() => agent.collect({ app, only: collectors }))
     .catch((error) => ({ containers: [], host: {}, hostPatches: null, incomplete: [`diagnostics agent unreachable (${error.code || 'unknown'})`], units: [] }));
 
   const addressChange = (() => {
@@ -407,7 +479,7 @@ async function assembleSupportBundle({
   })();
   const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
   const drives = await Promise.resolve(appAgent?.storageInventory?.()).then((answer) => answer?.drives || null, () => null);
-  const apps = store.getAppInstances().map((instance) => ({
+  const apps = store.getAppInstances().filter((instance) => app === null || instance.packageId === app).map((instance) => ({
     displayName: instance.displayNameSnapshot || instance.packageId,
     installedAt: instance.installedAt,
     lastFailure: (() => {
@@ -418,13 +490,12 @@ async function assembleSupportBundle({
     status: instance.status,
   }));
 
-  return buildSupportBundle({
+  return {
     apps,
     catalog: catalogStatus,
     collection,
     drives,
     homeHost,
-    now,
     platform: {
       appAgentContractVersion: appAgentContractVersionOf(appAgentStatus),
       frontDoor,
@@ -450,14 +521,52 @@ async function assembleSupportBundle({
       updateTrack: updateStatus?.track?.label || 'unknown',
       version: platformVersion,
     },
-    secrets: collectRedactionSecrets({ secretDir }),
+  };
+}
+
+async function assembleSupportBundle({ now = () => new Date(), secretDir, ...context }) {
+  return buildSupportBundle({ ...(await gatherFacts(context)), now, secrets: collectRedactionSecrets({ secretDir }) });
+}
+
+// One topic for an AI: the same section the file prints, gathered from only the
+// collectors it needs, and masked with the same secrets.
+async function readTopic(topicId, { app = null, secretDir, ...context }) {
+  const topic = TOPICS[topicId];
+  if (!topic) throw Object.assign(new Error(`No diagnostics topic is called "${String(topicId).slice(0, 40)}". Topics: ${Object.keys(TOPICS).join(', ')}.`), { code: 'DIAGNOSTICS_UNKNOWN_TOPIC' });
+  const facts = await gatherFacts({ ...context, app, collectors: topic.agent === 'all' ? null : topic.agent });
+  const text = section(topic.title, topic.render({ ...facts, trouble: summarizeTrouble({ ...facts, collection: facts.collection ?? {} }) }));
+  return redactValuesWithReport(text, collectRedactionSecrets({ secretDir })).text;
+}
+
+// The one way in for both readers of diagnostics: the download button and the AI
+// tool. Everything is read when asked, so neither ever sees a stale answer.
+function createDiagnostics({ appAgent, appPackages, catalogService, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
+  const context = async () => ({
+    agent: diagnosticsAgent,
+    appAgent,
+    catalogStatus: catalogService.status(),
+    frontDoor,
+    homeHost: suiteAddress.readOrNull()?.host || homeHost,
+    platformVersion: catalogService.platformVersion,
+    secretDir: appPackages.secretDir,
+    store: setup.store,
+    suiteAddress: suiteAddress.readOrNull(),
+    updateStatus: await updates.status().catch(() => null),
   });
+  return {
+    file: async () => assembleSupportBundle(await context()),
+    read: async (topic, { app = null } = {}) => readTopic(topic, { ...(await context()), app }),
+  };
 }
 
 module.exports = {
+  TOPICS,
   assembleSupportBundle,
   buildSupportBundle,
+  createDiagnostics,
+  readTopic,
   collectRedactionSecrets,
   fullFilesystems,
+  section,
   summarizeTrouble,
 };

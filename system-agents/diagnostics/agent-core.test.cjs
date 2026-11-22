@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  COLLECTOR_NAMES,
   DiagnosticsAgentCore,
   LIMITS,
   MOS_UNITS,
@@ -49,12 +50,34 @@ test('the network map is collected, and a machine that cannot list networks lose
   assert.ok(partial.host.kernel);
 });
 
-test('collect takes no arguments, so no caller can widen what is read', () => {
-  // Structural rather than behavioural on purpose. The security argument for a
-  // root agent that reads host state is that the collector list is compiled in;
-  // the moment `collect` grows a parameter, that argument needs remaking, and
-  // this test is what forces someone to notice.
-  assert.equal(DiagnosticsAgentCore.prototype.collect.length, 0);
+test('a caller picks only among the compiled collectors, and names an app only by its id', async () => {
+  const core = new DiagnosticsAgentCore(adapter());
+  await assert.rejects(core.collect({ only: ['host', '/etc/shadow'] }), { code: 'DIAGNOSTICS_UNKNOWN_COLLECTOR' });
+  await assert.rejects(core.collect({ app: '../memos', only: ['containers'] }), { code: 'DIAGNOSTICS_UNKNOWN_APP' });
+  assert.deepEqual(COLLECTOR_NAMES, ['host', 'host-patches', 'web-server', 'networks', 'storage', 'units', 'containers']);
+});
+
+test('a narrowed collection reads only what was picked', async () => {
+  const read = [];
+  const core = new DiagnosticsAgentCore(adapter({
+    hostFacts: async () => { read.push('host'); return { kernel: 'linux' }; },
+    unitState: async () => { read.push('unit'); return { active: 'active', enabled: 'enabled', sub: 'running' }; },
+  }));
+  const collected = await core.collect({ only: ['host'] });
+  assert.deepEqual(read, ['host']);
+  assert.equal(collected.units, undefined);
+  assert.equal(collected.host.kernel, 'linux');
+});
+
+test('an app narrows the containers to the ones its package label names', async () => {
+  const core = new DiagnosticsAgentCore(adapter({
+    containers: async () => [
+      { labels: { 'mos.package': 'paperless-ngx' }, name: 'mos-app-paperless-ngx-paperless', state: 'running', status: 'Up' },
+      { labels: { 'mos.package': 'paperless' }, name: 'mos-app-paperless', state: 'running', status: 'Up' },
+    ],
+  }));
+  const { containers } = await core.collect({ app: 'paperless', only: ['containers'] });
+  assert.deepEqual(containers.map((container) => container.name), ['mos-app-paperless']);
 });
 
 test('a healthy unit contributes a short tail and a sick one the full budget', async () => {

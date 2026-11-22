@@ -81,10 +81,13 @@ async function harness({ answerMs = 0, now = () => new Date() } = {}) {
   const restarts = [];
   const instance = { displayNameSnapshot: 'Memos', enabled: true, id: 'inst-memos', packageId: 'memos', status: 'installed' };
   const appStore = { getAppInstances: () => [instance] };
+  const diagnosticReads = [];
   const catalog = new AiToolCatalog({
     appPackages: { installedPackageFor: () => ({ aiTools: AI_TOOLS, manifest: MANIFEST }) },
     builtin: createMosTools({
+      ai: { activity: (query) => connections.activity(query), clients: () => connections.aiStore.listClients() },
       appPackages: { refreshPackageRuntimeStatus: async () => ({}), restartPackageRuntime: async (packageId) => { restarts.push(packageId); } },
+      diagnostics: { read: async (topic, { app }) => { diagnosticReads.push([topic, app]); return `the ${topic} section`; } },
       runtimeUrls: () => ({}),
       store: appStore,
     }),
@@ -119,7 +122,7 @@ async function harness({ answerMs = 0, now = () => new Date() } = {}) {
   const listed = async (token) => (await rpc(token, 'tools/list', {})).body.result.tools.map((tool) => tool.name).sort();
   const call = async (token, name, args = {}) => (await rpc(token, 'tools/call', { arguments: args, name })).body.result;
   const newClient = (name = 'ChatGPT') => connections.createClient({ name, preset: 'chatgpt' });
-  return { call, catalog, close: () => new Promise((resolve) => server.close(resolve)), connections, listed, memos, newClient, post, restarts, rpc };
+  return { call, catalog, close: () => new Promise((resolve) => server.close(resolve)), connections, diagnosticReads, listed, memos, newClient, post, restarts, rpc };
 }
 
 test('an assistant sees nothing until its level for an app says so, and the level decides by kind', async (t) => {
@@ -241,12 +244,52 @@ test('Suite Manager lists apps and the dashboard at See and restarts an app at S
   t.after(h.close);
   const { client, token } = h.newClient('Claude Code');
   h.connections.setLevel(client.id, 'mos', 'see');
-  assert.deepEqual(await h.listed(token), ['mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_list_apps']);
-  assert.match((await h.call(token, 'mos_list_apps')).content[0].text, /"app": "memos"/u);
+  assert.deepEqual(await h.listed(token), ['mos_ai_activity', 'mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_diagnostics', 'mos_list_apps']);
+  const apps = (await h.call(token, 'mos_list_apps')).content[0].text;
+  assert.match(apps, /^<untrusted-data source="Suite Manager">/u);
+  assert.match(apps, /"app": "memos"/u);
 
   h.connections.setLevel(client.id, 'mos', 'act');
   assert.match((await h.call(token, 'mos_restart_app', { app: 'Memos' })).content[0].text, /Memos restarted/u);
   assert.deepEqual(h.restarts, ['memos']);
+});
+
+test('an assistant at See reads the AI activity, filtered by assistant or app', async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'memos', 'see');
+  h.connections.setLevel(client.id, 'mos', 'see');
+  await h.call(token, 'memos_memo_list_memos');
+
+  const activity = (await h.call(token, 'mos_ai_activity', { app: 'memos' })).content[0].text;
+  assert.match(activity, /Z · Claude Code · Memos · .+ · ok/u);
+  assert.match((await h.call(token, 'mos_ai_activity', { assistant: 'Nobody' })).content[0].text, /No assistant is called "Nobody"\. Assistants: Claude Code\./u);
+});
+
+test('diagnostics are read one topic at a time, narrowed to an app the owner has', async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'mos', 'see');
+
+  assert.match((await h.call(token, 'mos_diagnostics', { app: 'Memos', topic: 'containers' })).content[0].text, /the containers section/u);
+  assert.deepEqual(h.diagnosticReads, [['containers', 'memos']]);
+  assert.equal((await h.call(token, 'mos_diagnostics', { app: 'Nextcloud', topic: 'apps' })).isError, true);
+  assert.equal((await h.call(token, 'mos_diagnostics', { topic: '../../etc' })).isError, true);
+  assert.equal(h.diagnosticReads.length, 1);
+});
+
+test("Suite Manager's own tools are never pinned, so a new MOS release never waits on a review", async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'mos', 'see');
+  await h.listed(token);
+
+  assert.ok(![...h.connections.aiStore.pins().keys()].some((tool) => tool.startsWith('mos_')));
+  const mos = (await h.connections.status()).sources.find((source) => source.id === 'mos');
+  assert.ok(mos.tools.every((tool) => tool.review === 'pinned'));
 });
 
 test('the activity log keeps the assistant name after it is removed, and holds no content', async (t) => {

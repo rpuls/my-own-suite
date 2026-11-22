@@ -8,6 +8,7 @@ const { AiGateway } = require('../ai/ai-gateway.cjs');
 const { AiStore } = require('../ai/ai-store.cjs');
 const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../ai/mos-tools.cjs');
+const { createDiagnostics } = require('../diagnostics/support-bundle.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
@@ -191,8 +192,11 @@ function createServices({
     appUrlOf: (packageId) => appUrls.publicUrlOf(packageId).publicUrl,
     catalog: new AiToolCatalog({
       appPackages,
+      // Read through closures: both are built further down, and called only once a request arrives.
       builtin: createMosTools({
+        ai: { activity: (query) => aiConnections.activity(query), clients: () => aiConnections.aiStore.listClients() },
         appPackages,
+        diagnostics: { read: (topic, options) => createDiagnostics(services).read(topic, options) },
         homepage: homepageConfig,
         runtimeUrls: (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
         store: setup.store,

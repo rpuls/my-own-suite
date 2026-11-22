@@ -9,10 +9,10 @@ const { SystemDiagnosticsAdapter } = require('./system-adapter.cjs');
 const socketPath = process.env.MOS_DIAGNOSTICS_AGENT_SOCKET || '/run/mos-diagnostics-agent/agent.sock';
 const core = new DiagnosticsAgentCore(new SystemDiagnosticsAdapter());
 
-// A collection is expensive and an owner can click twice. One in flight at a
-// time, with the second caller joining the first rather than starting a
-// competing sweep of the same machine.
-let inFlight = null;
+// A collection is expensive and an owner can click twice. One in flight per
+// question, with a second identical caller joining the first rather than
+// starting a competing sweep of the same machine.
+const inFlight = new Map();
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
@@ -28,16 +28,23 @@ const server = http.createServer(async (request, response) => {
       respond(response, 200, await core.hostPatches());
       return;
     }
-    // No request body is read, here or anywhere in this agent. The collector
-    // list is compiled in; a caller cannot name a unit, a container, a path or
-    // a line count, so there is no input to validate and none to get wrong.
+    // No request body is read, here or anywhere in this agent. A caller may
+    // pick collectors by name and one app by id; core.collect() refuses any
+    // other name, so a unit, a container, a path or a line count is never input.
     if (request.method === 'POST' && url.pathname === '/v1/diagnostics/collect') {
-      if (!inFlight) inFlight = core.collect().finally(() => { inFlight = null; });
-      respond(response, 200, await inFlight);
+      const only = url.searchParams.get('only');
+      const question = { app: url.searchParams.get('app'), only: only ? only.split(',') : undefined };
+      const key = `${question.only || '*'}|${question.app || ''}`;
+      if (!inFlight.has(key)) inFlight.set(key, core.collect(question).finally(() => inFlight.delete(key)));
+      respond(response, 200, await inFlight.get(key));
       return;
     }
     respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
-  } catch {
+  } catch (error) {
+    if (/^DIAGNOSTICS_UNKNOWN_/u.test(error?.code || '')) {
+      respond(response, 400, { code: error.code, error: error.message });
+      return;
+    }
     respond(response, 500, { code: 'DIAGNOSTICS_AGENT_FAILED', error: 'Diagnostics could not be collected.' });
   }
 });
