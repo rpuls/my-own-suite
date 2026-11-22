@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.4.1",
-  "appVersion": "3.4.2",
+  "version": "0.4.2",
+  "appVersion": "3.5.1",
   "minimumMosVersion": "0.20.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
   "category": "office",
@@ -245,7 +245,10 @@
   "update": {
     "backupRequired": true,
     "downtime": "brief",
-    "rollback": "safe",
+    "migrations": [
+      "Paperless-ngx 3.5 changes how it stores tag hierarchies the first time it starts, keeping every tag and its parent. Earlier versions cannot open the database afterwards, so going back means restoring the backup taken before the update."
+    ],
+    "rollback": "unsupported",
     "minimumAppAgentVersion": 14
   }
 }

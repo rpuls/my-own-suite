@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "appId": "paperless-ngx",
-  "reviewedAt": "2026-11-16T12:00:00.000Z",
+  "reviewedAt": "2026-11-19T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.1",
-    "packageDigest": "sha256:0cc859fae89ef326dd9bf96de23271628afee06848482d80a4b7d1fa77f8709b",
+    "packageVersion": "0.4.2",
+    "packageDigest": "sha256:07cd50738d1d97760aebfff91552aee24c0f96e8d25ef2699a3f82238cf89b90",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -16,9 +16,9 @@
     "components": [
       {
         "name": "Paperless-ngx",
-        "version": "3.4.2",
+        "version": "3.5.1",
         "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
-        "digest": "sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84"
+        "digest": "sha256:8508853b8a0f8394074260957d0be186c8c64f346973b24a7583de4580f306b9"
       },
       {
         "name": "Valkey",
@@ -199,6 +199,19 @@
       "claim": "A packet capture inside the 3.4.2 package container's network namespace, attached as it started on volumes left by 3.4.0, covered a start with no migrations and no index rebuild, an upload with Dutch and English OCR, search, the thumbnail, preview and suggestions endpoints for documents made on both versions, a bulk edit, and the settings, config, statistics, status, tasks and mail-account endpoints. The only addresses it reached were the broker, the Docker network gateway and the control host example.org, contacted once by a request the reviewer sent from inside the container, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
       "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.4.2, observed 2026-11-16",
       "retrievedAt": "2026-11-16"
+    },
+    {
+      "type": "documented",
+      "claim": "Paperless-ngx 3.4.2 to 3.5.1 adds no outbound endpoint. The set of http(s) hosts in the server's Python source and in the compiled en-US web client is identical in the two pinned images, and RemoteVersionView remains the only hardcoded fetch. The changed server files are the tag hierarchy rewrite that replaces django-treenode, bulk edits handed to the Celery worker, Markdown notes, a manual workflow trigger, a daily local task that deletes expired sessions, row locking for first-user signup, permission fixes for tag deletion and the config view, and the ALLOWED_HOSTS default. The one network-related change is in the optional AI embedding code: a Hugging Face embedding model already cached under data/hf_cache now loads with local_files_only instead of checking the Hub, which only narrows egress for an owner who has turned AI on, which MOS does not. A search for sentry, posthog, matomo and google-analytics finds no library. The dependency changes are django-allauth 65.20.1 to 65.21.1, python-dotenv 1.2.4 and the removal of django-treenode.",
+      "source": "diff of /usr/src/paperless/src and /etc/s6-overlay between the pinned 3.4.2 (sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84) and 3.5.1 (sha256:8508853b8a0f8394074260957d0be186c8c64f346973b24a7583de4580f306b9) images, and the v3.5.0 and v3.5.1 release notes",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.5.0",
+      "retrievedAt": "2026-11-19"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture inside the 3.5.1 package container's network namespace, attached as it started on a database already migrated from 3.4.2, covered a start with no index rebuild, a document upload, full-text search, a bulk tag edit run as a background task, adding a note, the thumbnail, preview and suggestions endpoints, and the settings, config, statistics, status, tasks, mail-account, workflow and saved-view endpoints. The only DNS name it resolved was the internal alias 'broker', apart from the control host example.org, and the only public address it reached was the control host's, contacted once by a request the reviewer sent from inside the container, so the silence is a measurement. This was a local docker run with the package's environment rather than the MOS runtime projection; the MOS E2E network step is the authoritative check.",
+      "source": "local tcpdump of the apps/paperless-ngx Dockerfile build at 3.5.1, observed 2026-11-19",
+      "retrievedAt": "2026-11-19"
     }
   ],
   "outbound": [],
@@ -267,6 +280,13 @@
       "source": "Paperless-ngx v3.4.2 release notes and requirements.txt in the pinned image",
       "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.4.2",
       "retrievedAt": "2026-11-16"
+    },
+    {
+      "type": "documented",
+      "claim": "3.5.0 checks a user's permission on every descendant before deleting a parent tag, applies the same permission check to reading and changing the application configuration, locks rows so two simultaneous first-user signups cannot both become the first user, and updates django-allauth, which serves the login page, to 65.21.1. Upstream publishes no advisory for them. This package runs 3.5.1.",
+      "source": "Paperless-ngx v3.5.0 release notes (#14687, #14709, #14688, #14672) and src/paperless/adapter.py in the pinned image",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.5.0",
+      "retrievedAt": "2026-11-19"
     }
   ]
 }
