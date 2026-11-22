@@ -1094,15 +1094,44 @@ a.suite-files-name {
    names each problem, never the things that are fine. */
 .suite-overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-  align-items: start;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--mos-space-4);
 }
 
+/* Three to a row; a last row of two or one widens to fill it, and four make two pairs. */
 .suite-overview-tile {
-  display: grid;
+  --span: 2;
+  display: flex;
+  flex-direction: column;
   gap: var(--mos-space-3);
+  grid-column: span var(--span);
   padding: var(--mos-space-5) var(--mos-panel-pad);
+}
+
+.suite-overview-tile:nth-child(3n + 1):nth-last-child(2),
+.suite-overview-tile:nth-child(3n + 2):last-child,
+.suite-overview-tile:first-child:nth-last-child(4),
+.suite-overview-tile:first-child:nth-last-child(4) ~ .suite-overview-tile {
+  --span: 3;
+}
+
+.suite-overview-tile:nth-child(3n + 1):last-child:not(:nth-child(4)) {
+  --span: 6;
+}
+
+.suite-overview-tile > .mos-link {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+@media (max-width: 55rem) {
+  .suite-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .suite-overview-grid .suite-overview-tile {
+    grid-column: auto;
+  }
 }
 
 .suite-overview-tile.is-attention {
