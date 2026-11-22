@@ -6,6 +6,7 @@ import { setStep } from './ProgressSteps';
 import type { Owner } from '../setup/types';
 import { jsonResponse, postJson } from '../../lib/api';
 import { appSourceLabel } from '../../lib/app-sources';
+import type { AppSource } from '../../lib/app-sources';
 import { AppCard } from './AppCard';
 import { AppDetail } from './AppDetail';
 import { ExternalAppCard, ExternalAppDetail } from './ExternalApp';
@@ -16,6 +17,7 @@ import type { AppPackageSummary, CatalogStatus, ExternalCard, ExternalResolveRes
 export function AppsScreen({ owner }: { owner: Owner }) {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
+  const [sources, setSources] = useState<AppSource[]>([]);
   const [connectingId, setConnectingId] = useState('');
   const [error, setError] = useState('');
   const [installError, setInstallError] = useState('');
@@ -50,12 +52,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       setError('');
     }
     try {
-      const result = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
+      const result = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[]; sources: AppSource[] }>(
         await fetch('/suite-manager/api/apps/packages'),
         'Unable to load app packages.',
       );
       setPackages(result.packages);
       setCatalogStatus(result.catalog);
+      setSources(result.sources);
       setError('');
     } catch (caught) {
       if (!silent) setError(caught instanceof Error ? caught.message : 'Unable to load app packages.');
@@ -412,11 +415,10 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       </section>)}
     </div> : null}
 
-    {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus)} reveal="technical-mode" summary="App catalog">
+    {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus, { packages, sources })} reveal="technical-mode" summary="App catalog">
       {catalogStatus.error
-        ? <p>{catalogStatus.error.message}</p>
+        ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p>
         : <p>This list is the published catalog folded together with the app packages this MOS version shipped with; whichever offers the newer version of an app wins.</p>}
-      {catalogStatus.error ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p> : null}
     </AdvancedPanel> : null}
 
     {externalOpenCard && externalResolved ? <ExternalAppDetail

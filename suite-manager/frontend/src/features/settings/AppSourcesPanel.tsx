@@ -2,60 +2,12 @@ import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
-import { appSourceLabel, sourceCheckedLabel } from '../../lib/app-sources';
-
-// What MOS last learned from a source, and when it may ask again.
-type SourceCatalog = {
-  checkedAt: string | null;
-  error: { at: string | null; code: string; failures: number; message: string; retryAt: string | null } | null;
-  fetchedAt: string | null;
-  nextCheckAt: string | null;
-  packageCount: number | null;
-  revision: string | null;
-};
-
-type AppSource = {
-  addedAt: string;
-  catalog: SourceCatalog;
-  catalogPath: string;
-  id: string;
-  kind: string;
-  mosReviewed: false;
-  official: false;
-  publisher: string | null;
-  repository: string;
-  revision: string | null;
-  signed: boolean;
-  status: 'active' | 'unavailable' | 'compromised' | 'removed';
-  statusReason: string | null;
-  trust: string;
-  updatedAt: string;
-};
+import { appSourceLabel, sourceCheckedLabel, sourceFailureCopy as failureCopy, sourceFetchSummary } from '../../lib/app-sources';
+import type { AppSource, SourceCatalog } from '../../lib/app-sources';
 
 // A refresh answers 200 even when the host refused, so only this says what happened.
 // `not-due` is unreachable here: the owner asking directly always forces the check.
 type RefreshOutcome = 'failed' | 'moved' | 'not-active' | 'unchanged';
-
-// Plain language for what the git host actually answered, because the answers need
-// opposite responses from the owner. A repository that has gone private is theirs to
-// look at; a rate limit resolves on its own. MOS never claims the repository was
-// deleted: the host returns the same answer whether it was deleted, renamed, or made
-// private, so saying which would be a guess.
-function failureCopy(error: NonNullable<SourceCatalog['error']>): { detail: string; title: string } {
-  if (error.code === 'SOURCE_NOT_VISIBLE') {
-    return {
-      detail: 'GitHub will not show this repository to an anonymous request. It may have been deleted, renamed, or made private. Open it to see which, then refresh.',
-      title: 'This repository no longer answers',
-    };
-  }
-  if (error.code === 'SOURCE_RATE_LIMITED') {
-    return {
-      detail: 'GitHub is limiting how often this server may ask without an account. MOS waits and tries again on its own; nothing is wrong with the source.',
-      title: 'GitHub asked MOS to slow down',
-    };
-  }
-  return { detail: error.message, title: 'MOS could not check this source' };
-}
 
 type RefreshReport = { icon: 'check' | 'refresh'; note: string; title: string; tone: 'info' | 'warning' };
 
@@ -259,7 +211,7 @@ export function AppSourcesPanel() {
         <AdvancedPanel facts={sources.map((source) => ({
           code: true,
           label: appSourceLabel(source.repository),
-          value: `${source.revision ? source.revision.slice(0, 12) : 'unresolved'} · next check ${source.catalog.nextCheckAt || 'now'}`,
+          value: `${source.revision ? source.revision.slice(0, 12) : 'unresolved'} · ${sourceFetchSummary(source.catalog)}`,
         }))} reveal="technical-mode" summary="Source revisions">
           <p>MOS asks each source which commit it is at, no more often than every few hours, and only downloads it again when that commit has moved. A source that fails to answer is asked less and less often rather than more.</p>
         </AdvancedPanel>

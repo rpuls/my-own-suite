@@ -1,5 +1,6 @@
 import type { AdvancedFact } from '../../components/ui';
-import { sourceCheckedLabel } from '../../lib/app-sources';
+import { appSourceLabel, fetchTime, sourceCheckedLabel, sourceFetchSummary } from '../../lib/app-sources';
+import type { AppSource } from '../../lib/app-sources';
 import type { AppJob, AppPackageSummary, CatalogStatus, ExternalCard, InstallStep, ServiceRequires, UpdateComparison, UpdateStep } from './types';
 
 const UPDATE_STEPS: UpdateStep[] = [
@@ -134,16 +135,57 @@ export function failureCopy({ errorCode, kind }: { errorCode: string | null; kin
 // this MOS version shipped with, so nothing is broken — but the reason for it
 // existed only in the browser console, which is not a place an owner can be
 // asked to look.
-export function catalogFacts(status: CatalogStatus): AdvancedFact[] {
+function catalogState(status: CatalogStatus) {
+  if (!status.fetchedAt) return status.error ? 'Never fetched' : 'Not fetched yet';
+  if (status.error) return `Not refreshing · using the copy from ${fetchTime(status.fetchedAt)}`;
+  return status.freshness === 'stale' ? 'Out of date' : 'Up to date';
+}
+
+function lastCheck(status: CatalogStatus) {
+  if (!status.checkedAt) return 'never';
+  if (status.error) {
+    const run = status.error.failures > 1 ? ` (${status.error.failures} in a row)` : '';
+    return `${fetchTime(status.checkedAt)} · failed${run}`;
+  }
+  return `${fetchTime(status.checkedAt)} · succeeded · ${status.changedAt === status.fetchedAt ? 'new revision' : 'nothing new'}`;
+}
+
+function nextCheck(status: CatalogStatus) {
+  if (!status.nextCheckAt) return 'when the Apps page is next opened';
+  const waitsForLimit = status.error?.retryAt === status.nextCheckAt;
+  return `${fetchTime(status.nextCheckAt)}${waitsForLimit ? ", when GitHub's limit resets" : ''} · or when the Apps page is opened`;
+}
+
+export function catalogFacts(status: CatalogStatus, { packages, sources }: { packages: AppPackageSummary[]; sources: AppSource[] }): AdvancedFact[] {
+  const updatesOffered = packages.filter((app) => app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available?.sourceChannel !== 'added-source').length;
+  const revision = status.revision ? status.revision.slice(0, 12) : 'none';
   const facts: AdvancedFact[] = [
-    { label: 'Source', value: status.repository },
-    { label: 'Branch', value: status.ref || 'not resolved' },
-    { label: 'State', value: status.freshness },
-    { label: 'Last fetched', value: status.fetchedAt ? new Date(status.fetchedAt).toLocaleString() : 'never' },
-    { code: true, label: 'Revision', value: status.revision ? status.revision.slice(0, 12) : 'none' },
+    { label: 'Source', value: `${status.repository} · ${status.ref || 'branch not resolved'}` },
+    { label: 'State', value: catalogState(status) },
+    { label: 'Last checked', value: lastCheck(status) },
   ];
-  if (status.error) facts.push({ code: true, label: 'Error', value: status.error.code });
-  if (status.advisories) facts.push({ label: 'Advisories', value: status.advisories.error ? status.advisories.error.code : status.advisories.freshness });
+  if (status.error) {
+    facts.push(
+      { label: 'Why', value: status.error.message },
+      { label: 'Failed while', value: status.error.step },
+      { code: true, label: 'Error', value: status.error.code },
+      { label: 'Last success', value: status.fetchedAt ? `${fetchTime(status.fetchedAt)} · ${revision}` : 'never' },
+    );
+  } else {
+    facts.push({ label: 'Last changed', value: status.changedAt ? `${fetchTime(status.changedAt)} · ${revision}` : revision });
+  }
+  facts.push({ label: 'Next check', value: nextCheck(status) });
+  if (status.packageCount !== null) {
+    facts.push({ label: 'Offers', value: `${status.packageCount} ${status.packageCount === 1 ? 'app' : 'apps'} · ${updatesOffered} newer than installed` });
+  }
+  if (status.advisories) {
+    const advisories = status.advisories;
+    const published = typeof advisories.count === 'number' ? ` · ${advisories.count} published` : '';
+    facts.push({ label: 'Advisories', value: advisories.error ? `${advisories.error.code} · ${advisories.error.message}` : `${advisories.freshness}${published}` });
+  }
+  for (const source of sources) {
+    facts.push({ label: appSourceLabel(source.repository), value: source.status === 'active' ? sourceFetchSummary(source.catalog) : source.statusReason || source.status });
+  }
   return facts;
 }
 

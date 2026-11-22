@@ -211,7 +211,7 @@ test('failed refresh preserves last-known-good catalog and records a secret-free
   });
   await assert.rejects(() => offline.refresh(), { code: 'CATALOG_FETCH_FAILED' });
   assert.equal(offline.catalog().packages.immich.packageVersion, '1.2.0');
-  assert.equal(offline.status().error.message, 'Official catalog request failed.');
+  assert.equal(offline.status().error.message, 'MOS could not reach api.github.com. Check that this server is online.');
   assert.doesNotMatch(JSON.stringify(offline.status()), /secret-token/u);
 });
 
@@ -279,6 +279,70 @@ test('a restart reports the refresh failure the cache recorded, not a clean slat
   assert.equal((await restarted.refresh()).status.error, null); // inside the window, but the recorded attempt failed
 });
 
+test('a failed check says when, at which step and how many times in a row, and keeps the last success', async () => {
+  const serve = serveRepo();
+  const clock = { at: new Date('2026-07-14T10:00:00.000Z') };
+  let catalogDown = false;
+  const stateDir = tempDir();
+  const service = catalogService({
+    fetchImpl: async (url) => (catalogDown && url.endsWith('/apps/catalog.json') ? new Response('gone', { status: 500 }) : serve(url)),
+    now: () => clock.at,
+    stateDir,
+  });
+  await service.refresh();
+  assert.equal(service.status().changedAt, '2026-07-14T10:00:00.000Z');
+  assert.equal(service.status().packageCount, 1);
+
+  catalogDown = true;
+  for (const at of ['2026-07-14T11:00:00.000Z', '2026-07-14T12:00:00.000Z']) {
+    clock.at = new Date(at);
+    await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+  }
+  const failing = service.status();
+  assert.deepEqual(failing.error, {
+    at: '2026-07-14T12:00:00.000Z',
+    code: 'CATALOG_FETCH_FAILED',
+    failures: 2,
+    message: 'Official catalog request failed with HTTP 500.',
+    retryAt: null,
+    step: 'downloading the catalog',
+  });
+  assert.equal(failing.checkedAt, '2026-07-14T12:00:00.000Z');
+  assert.equal(failing.fetchedAt, '2026-07-14T10:00:00.000Z');
+  assert.equal(catalogService({ fetchImpl: serve, now: () => clock.at, stateDir }).status().error.failures, 2);
+});
+
+test('an unchanged catalog moves the last success but not when it last changed', async () => {
+  const clock = { at: new Date('2026-07-14T10:00:00.000Z') };
+  const service = catalogService({ fetchImpl: serveRepo(), now: () => clock.at, stateDir: tempDir() });
+  await service.refresh();
+  clock.at = new Date('2026-07-14T16:00:00.000Z');
+  const later = (await service.refresh()).status;
+  assert.equal(later.fetchedAt, '2026-07-14T16:00:00.000Z');
+  assert.equal(later.changedAt, '2026-07-14T10:00:00.000Z');
+});
+
+test('a GitHub rate limit is named as one, and the next check waits for it to reset', async () => {
+  const now = new Date('2026-07-14T10:00:00.000Z');
+  const resetAt = new Date('2026-07-14T10:40:00.000Z');
+  const service = catalogService({
+    fetchImpl: async () => new Response('rate limited', {
+      headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetAt.getTime() / 1000) },
+      status: 403,
+    }),
+    now: () => now,
+    random: () => 0.5,
+    stateDir: tempDir(),
+  });
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_RATE_LIMITED' });
+  assert.equal(service.status().error.retryAt, resetAt.toISOString());
+  assert.equal(service.status().error.step, 'asking GitHub for the newest commit on main');
+
+  service.schedule();
+  service.stop();
+  assert.equal(service.status().nextCheckAt, resetAt.toISOString());
+});
+
 // A fresh install refreshes before its network is up; that is not a security event.
 test('a catalog that cannot be fetched is not recorded as security activity', async () => {
   const events = [];
@@ -289,7 +353,7 @@ test('a catalog that cannot be fetched is not recorded as security activity', as
   });
 
   await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
-  assert.equal(service.status().error.message, 'Official catalog request failed.');
+  assert.equal(service.status().error.message, 'MOS could not reach api.github.com. Check that this server is online.');
   assert.deepEqual(events, []);
 });
 

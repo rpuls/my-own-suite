@@ -23,7 +23,21 @@ type CatalogMetadata = {
   tags: string[];
 };
 
-export type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; ref: string | null; repository: string; revision: string | null };
+// `fetchedAt` is the last check that succeeded, `checkedAt` the last one tried,
+// and `changedAt` when this server first read the revision it holds.
+export type CatalogStatus = {
+  advisories?: { count?: number | null; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null };
+  changedAt: string | null;
+  checkedAt: string | null;
+  error: { at: string | null; code: string; failures: number; message: string; retryAt: string | null; step: string } | null;
+  fetchedAt: string | null;
+  freshness: 'fresh' | 'stale' | 'unavailable';
+  nextCheckAt: string | null;
+  packageCount: number | null;
+  ref: string | null;
+  repository: string;
+  revision: string | null;
+};
 
 type CatalogUpdate = {
   // A checkout candidate has no fetched revision of its own, so `sourceRevision` is

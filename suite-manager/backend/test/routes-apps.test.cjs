@@ -29,7 +29,7 @@ test('the app list carries each app its public URL and jobs, and checks sources 
     },
     appUrls,
     catalogService: { status: () => ({ state: 'fresh' }) },
-    externalSourceService: { sweep: () => order.push('sweep') },
+    externalSourceService: { listSources: () => [{ id: 'src-1' }], sweep: () => order.push('sweep') },
     installJobs: { get: (id) => (id === 'notes' ? { status: 'running' } : null) },
     updateJobs: { get: () => null },
   };
@@ -44,6 +44,7 @@ test('the app list carries each app its public URL and jobs, and checks sources 
         { containersDown: true, id: 'notes', installJob: { status: 'running' }, instance: { status: 'installed' }, publicUrl: URLS.publicUrl, updateJob: null },
         { containersDown: false, id: 'vaultwarden', installJob: null, publicUrl: '', updateJob: null },
       ],
+      sources: [{ id: 'src-1' }],
     });
   });
 

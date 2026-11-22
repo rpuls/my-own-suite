@@ -162,7 +162,13 @@ function catalogLines(catalog) {
     `App catalog        ${catalog.freshness}${catalog.ref ? ` on ${catalog.ref}` : ''}${catalog.revision ? ` at ${catalog.revision.slice(0, 12)}` : ''}${catalog.fetchedAt ? `, fetched ${catalog.fetchedAt}` : ''}`,
     `Catalog source     ${catalog.repository || 'unknown'}`,
   ];
-  if (catalog.error) lines.push(`Catalog error      ${catalog.error.code}`, indent(catalog.error.message, 19));
+  if (catalog.checkedAt) {
+    const outcome = catalog.error ? `failed${catalog.error.failures > 1 ? `, ${catalog.error.failures} in a row` : ''}` : 'succeeded';
+    lines.push(`Catalog check      ${outcome} at ${catalog.checkedAt}${catalog.nextCheckAt ? `, next ${catalog.nextCheckAt}` : ''}`);
+  }
+  if (catalog.error) {
+    lines.push(`Catalog error      ${catalog.error.code}${catalog.error.step ? ` while ${catalog.error.step}` : ''}`, indent(catalog.error.message, 19));
+  }
   if (catalog.advisories) {
     lines.push(`Advisories         ${catalog.advisories.freshness}${typeof catalog.advisories.count === 'number' ? `, ${catalog.advisories.count} published` : ''}`);
     if (catalog.advisories.error) lines.push(`Advisory error     ${catalog.advisories.error.code}`, indent(catalog.advisories.error.message, 19));

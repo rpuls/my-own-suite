@@ -29,6 +29,7 @@ function catalogRoutes({ appPackages, appUrls, catalogService, externalSourceSer
             installJob: installJobs.get(app.id),
             updateJob: updateJobs.get(app.id),
           })),
+          sources: externalSourceService.listSources(),
         });
         // After the answer, on purpose: the Apps page never waits on a git host,
         // and a source found to have moved shows up on the next load.

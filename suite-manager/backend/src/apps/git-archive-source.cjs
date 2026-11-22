@@ -4,6 +4,7 @@ const zlib = require('node:zlib');
 
 const { DEFAULT_PACKAGE_LIMITS, canonicalPackagePath } = require('./package-contracts.cjs');
 const { ExternalSourceError } = require('./external-source-registry.cjs');
+const { rateLimit } = require('./git-host-rate-limit.cjs');
 
 // Published external app packages live in a `.mos/` folder at the root of a git
 // repository. That folder holds either one package, with its manifest at the
@@ -89,10 +90,10 @@ function fetchFailure(response, host) {
   if (status === 401 || status === 404) {
     return new ExternalSourceError('SOURCE_NOT_VISIBLE', 'The git host will not show this repository to an anonymous request. It may have been deleted, renamed, or made private.');
   }
-  if ((status === 403 || status === 429) && response.headers.get('x-ratelimit-remaining') === '0') {
-    const resetAt = Number(response.headers.get('x-ratelimit-reset'));
+  const limited = rateLimit(response);
+  if (limited) {
     const error = new ExternalSourceError('SOURCE_RATE_LIMITED', 'The git host is rate-limiting unauthenticated requests from this server.');
-    if (Number.isFinite(resetAt) && resetAt > 0) error.retryAt = new Date(resetAt * 1000).toISOString();
+    if (limited.retryAt) error.retryAt = limited.retryAt;
     return error;
   }
   if (status === 403) return new ExternalSourceError('SOURCE_FORBIDDEN', 'The git host refused the request for this repository.');

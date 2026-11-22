@@ -225,8 +225,10 @@ test('the host section names the Node.js every MOS service runs on', () => {
 test('a catalog that cannot be read is named in what looks wrong, and says what still works', () => {
   const catalog = {
     advisories: { count: null, error: null, fetchedAt: null, freshness: 'unavailable', revision: null },
-    error: { code: 'CATALOG_VERSION_SKEW', message: 'The published app catalog is not what MOS 0.20.0 reads, so it was not used: catalog.packages.immich.appVersion must be a non-empty string.' },
+    checkedAt: '2026-09-01T11:00:00.000Z',
+    error: { at: '2026-09-01T11:00:00.000Z', code: 'CATALOG_VERSION_SKEW', failures: 3, message: 'The published app catalog is not what MOS 0.20.0 reads, so it was not used: catalog.packages.immich.appVersion must be a non-empty string.', retryAt: null, step: 'reading the catalog' },
     fetchedAt: null,
+    nextCheckAt: '2026-09-01T11:20:00.000Z',
     freshness: 'unavailable',
     repository: 'https://github.com/rpuls/my-own-suite',
     revision: null,
@@ -239,7 +241,8 @@ test('a catalog that cannot be read is named in what looks wrong, and says what 
   assert.match(text, /Apps still update from the packages this MOS version shipped with/u);
   // And the evidence behind the finding, beside the update check it is parallel to.
   assert.match(text, /App catalog {8}unavailable/u);
-  assert.match(text, /Catalog error {6}CATALOG_VERSION_SKEW/u);
+  assert.match(text, /Catalog check {6}failed, 3 in a row at 2026-09-01T11:00:00\.000Z, next 2026-09-01T11:20:00\.000Z/u);
+  assert.match(text, /Catalog error {6}CATALOG_VERSION_SKEW while reading the catalog/u);
   assert.match(text, /Catalog source {5}https:\/\/github\.com\/rpuls\/my-own-suite/u);
 });
 

@@ -8,6 +8,7 @@ const { readAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
 const { readSigningPublicKey, verifyCatalogSignature } = require('./catalog-signature.cjs');
+const { rateLimit } = require('./git-host-rate-limit.cjs');
 
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
@@ -27,8 +28,15 @@ function githubRepository(repository) {
   return { owner: parts[0], repo: parts[1].replace(/\.git$/u, '') };
 }
 
+function httpFailure(response) {
+  const limited = rateLimit(response);
+  if (!limited) return new OfficialCatalogError('CATALOG_FETCH_FAILED', `Official catalog request failed with HTTP ${response.status}.`);
+  const error = new OfficialCatalogError('CATALOG_RATE_LIMITED', 'GitHub is limiting how often this server may ask without an account. MOS tries again by itself once the limit resets.');
+  return Object.assign(error, { retryAt: limited.retryAt });
+}
+
 async function boundedResponse(response, maximumBytes) {
-  if (!response.ok) throw new OfficialCatalogError('CATALOG_FETCH_FAILED', `Official catalog request failed with HTTP ${response.status}.`);
+  if (!response.ok) throw httpFailure(response);
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maximumBytes) throw new OfficialCatalogError('CATALOG_TOO_LARGE', 'Official catalog response exceeds the byte limit.');
   const bytes = Buffer.from(await response.arrayBuffer());
@@ -82,9 +90,10 @@ class OfficialCatalogService {
     // quiet and a change of state does not.
     this.loggedErrorCode = null;
     this.timer = null;
-    this.failures = 0;
+    this.nextCheckAt = null;
     this.refreshing = null;
     this.cache = this.readCache();
+    this.failures = this.cache?.error?.failures || 0;
     this.lastAttemptedAt = this.cache?.attemptedAt || null;
     this.lastError = this.cache?.error || null;
   }
@@ -172,10 +181,16 @@ class OfficialCatalogService {
         freshness: !advisoriesFetchedAt ? 'unavailable' : advisoriesAgeMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
         revision: this.cache?.advisoriesRevision || null,
       },
+      // When this server first read the revision it holds, unlike `fetchedAt`,
+      // which every successful check moves whether or not anything changed.
+      changedAt: this.cache?.changedAt || null,
+      checkedAt: this.lastAttemptedAt,
       error: this.lastError,
       fetchedAt,
       ref: this.cache?.ref || null,
       freshness: !fetchedAt ? 'unavailable' : ageMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
+      nextCheckAt: this.nextCheckAt,
+      packageCount: this.cache?.catalog ? Object.keys(this.cache.catalog.packages || {}).length : null,
       repository: this.repository,
       revision: this.cache?.revision || null,
     };
@@ -299,7 +314,10 @@ class OfficialCatalogService {
       return response;
     } catch (error) {
       if (error instanceof OfficialCatalogError) throw error;
-      throw new OfficialCatalogError('CATALOG_FETCH_FAILED', error?.name === 'AbortError' ? 'Official catalog request timed out.' : 'Official catalog request failed.');
+      const { host } = new URL(url);
+      throw new OfficialCatalogError('CATALOG_FETCH_FAILED', error?.name === 'AbortError'
+        ? `${host} did not answer in time.`
+        : `MOS could not reach ${host}. Check that this server is online.`);
     } finally { clearTimeout(timer); }
   }
 
@@ -325,6 +343,7 @@ class OfficialCatalogService {
   async performRefresh() {
     const attemptedAt = this.now().toISOString();
     this.lastAttemptedAt = attemptedAt;
+    let step = 'working out which update track this server follows';
     try {
       // The catalog is read from the ref this box's own code came from, so a
       // release can never be handed a catalog older than the validator reading
@@ -338,11 +357,13 @@ class OfficialCatalogService {
       // A catalog fetched for another ref is not this ref's answer, and its etag
       // would make a conditional request return 304 for the wrong document.
       if (this.cache && this.cache.ref !== catalogRef) this.cache = null;
+      step = `asking GitHub for the newest commit on ${catalogRef}`;
       const refUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/commits/${encodeURIComponent(catalogRef)}`;
       // The commit id alone: the full commit carries its whole diff, and a release
       // merge on `main` made that 1.2 MB, over the limit for every stable server.
       const revision = (await boundedResponse(await this.request(refUrl, { Accept: 'application/vnd.github.sha' }), 1024)).toString('utf8').trim();
       if (!COMMIT_PATTERN.test(revision)) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
+      step = 'downloading the catalog';
       const catalogUrl = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/catalog.json`;
       const response = await this.request(catalogUrl, this.cache?.revision === revision && this.cache?.etag ? { 'If-None-Match': this.cache.etag } : {});
       if (response.status === 304 && this.cache) {
@@ -353,10 +374,13 @@ class OfficialCatalogService {
         // to hold the publisher's key to have MOS act on them, so being able to
         // push to the repository, or to convince this box that you are GitHub, is
         // no longer enough to decide what it treats as reviewed.
+        step = 'downloading the catalog signature';
         const signature = await this.fetchSignature(revision, 'catalog.json');
+        step = 'checking the catalog against its signature';
         if (!verifyCatalogSignature({ bytes: catalogText, publicKey: this.signingPublicKey, signature })) {
           throw new OfficialCatalogError('CATALOG_SIGNATURE_INVALID', 'Official catalog is not signed by the key this MOS release trusts.');
         }
+        step = 'reading the catalog';
         const catalog = JSON.parse(catalogText);
         const errors = validateCatalog(catalog);
         // The signature verified, so the publisher wrote this document and meant
@@ -372,7 +396,8 @@ class OfficialCatalogService {
             `The published app catalog is not what MOS ${this.platformVersion} reads, so it was not used: ${errors.join(' ')}`,
           );
         }
-        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, ref: catalogRef, revision, signature };
+        const changedAt = this.cache?.revision === revision ? this.cache.changedAt || null : attemptedAt;
+        this.cache = { attemptedAt, catalog, catalogText, changedAt, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, ref: catalogRef, revision, signature };
       }
       this.failures = 0;
       this.lastError = null;
@@ -404,7 +429,14 @@ class OfficialCatalogService {
       return { catalog: this.catalog(), reusedForMs: 0, status: this.status() };
     } catch (error) {
       this.failures += 1;
-      const safeError = { code: error.code || 'CATALOG_FETCH_FAILED', message: error.message || 'Official catalog refresh failed.' };
+      const safeError = {
+        at: attemptedAt,
+        code: error.code || 'CATALOG_FETCH_FAILED',
+        failures: this.failures,
+        message: error.message || 'Official catalog refresh failed.',
+        retryAt: error.retryAt || null,
+        step,
+      };
       this.lastError = safeError;
       // Only a catalog its publisher did not sign is a security signal. A refresh
       // that merely did not happen is network timing, and stays in `lastError` and the log.
@@ -469,7 +501,11 @@ class OfficialCatalogService {
   schedule() {
     if (this.timer) return;
     const base = this.failures ? Math.min(CATALOG_REFRESH_POLICY.backoffInitialMs * (2 ** (this.failures - 1)), CATALOG_REFRESH_POLICY.backoffMaximumMs) : CATALOG_REFRESH_POLICY.catalogIntervalMs;
-    const delay = Math.round(base * (1 + ((this.random() * 2) - 1) * CATALOG_REFRESH_POLICY.jitterRatio));
+    const jittered = Math.round(base * (1 + ((this.random() * 2) - 1) * CATALOG_REFRESH_POLICY.jitterRatio));
+    // A rate limit names the moment it lifts; asking before then is refused again.
+    const untilRetry = this.lastError?.retryAt ? Date.parse(this.lastError.retryAt) - this.now().getTime() : 0;
+    const delay = Math.max(jittered, Number.isFinite(untilRetry) ? untilRetry : 0);
+    this.nextCheckAt = new Date(this.now().getTime() + delay).toISOString();
     this.timer = setTimeout(async () => {
       this.timer = null;
       try { await this.refresh(); } catch {}
