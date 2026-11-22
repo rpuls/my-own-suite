@@ -1439,6 +1439,60 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   display: inline-flex;
 }
 
+/* Info tip: the (i) beside a heading and the card it opens. The card is opaque,
+   unlike a tooltip, because it holds a picture and a paragraph meant to be read. */
+.mos-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mos-radius-pill);
+  background: none;
+  color: var(--mos-color-text-muted);
+  cursor: help;
+}
+
+.mos-info-button:hover,
+.mos-info-button:focus-visible {
+  color: var(--mos-color-accent);
+}
+
+.mos-info-button:focus-visible {
+  outline: 2px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-info-button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.mos-info-card {
+  display: grid;
+  gap: var(--mos-space-2);
+  width: 20rem;
+  padding: var(--mos-space-4);
+  background: var(--mos-color-bg-soft);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-weight: var(--mos-weight-regular);
+  text-align: left;
+}
+
+.mos-info-card > svg,
+.mos-info-card > img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mos-info-card > p {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+}
+
 /* A secret shown to be kept: the whole value on one block, in the face it was
    designed to be read back in, with the copy control beside it. Wrapping rather
    than truncating is the point — an ellipsis in the middle of a recovery key is

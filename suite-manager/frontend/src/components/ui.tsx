@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -24,6 +24,7 @@ export function Icon({ name }: { name: IconName }) {
     folder: <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
     'hard-drive': <><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z" /><path d="M2 12h20" /><path d="M6 16h.01M10 16h.01" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     lock: <><rect height="11" rx="2" width="16" x="4" y="11" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
     mail: <><rect height="14" rx="2" width="18" x="3" y="5" /><path d="m3 7 9 6 9-6" /></>,
@@ -614,7 +615,7 @@ export function SecretText({ label, masked = false, value }: { label: string; ma
 
 // Portalled like ActionMenu, so a flush panel's clipping cannot cut it off.
 // Placed below its anchor, or above it when the viewport has no room below.
-export function Tooltip({ children, label }: { children: ReactNode; label: ReactNode }) {
+export function Tooltip({ children, info = false, label }: { children: ReactNode; info?: boolean; label: ReactNode }) {
   const id = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
@@ -629,10 +630,17 @@ export function Tooltip({ children, label }: { children: ReactNode; label: React
     const fitsBelow = anchor.bottom + 8 + tip.offsetHeight <= window.innerHeight - edge;
     tip.style.top = `${fitsBelow ? anchor.bottom + 8 : anchor.top - 8 - tip.offsetHeight}px`;
   }, [open]);
-  return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={0}>
+  return <span ref={anchorRef} aria-describedby={id} className="mos-tooltip-anchor" onBlur={() => setOpen(false)} onFocus={() => setOpen(true)} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} tabIndex={info ? undefined : 0}>
     {children}
-    {createPortal(<span ref={tipRef} className="mos-overlay mos-tooltip" hidden={!open} id={id} role="tooltip">{label}</span>, document.body)}
+    {createPortal(<span ref={tipRef} className={`mos-overlay mos-tooltip${info ? ' mos-info-card' : ''}`} hidden={!open} id={id} role="tooltip">{label}</span>, document.body)}
   </span>;
+}
+
+// The (i) beside a heading: what the section is for, as an optional picture, a title and a few lines.
+export function InfoTip({ children, label, picture, title }: { children: ReactNode; label: string; picture?: ReactNode; title: ReactNode }) {
+  return <Tooltip info label={<>{picture}<strong>{title}</strong>{children}</>}>
+    <button aria-label={label} className="mos-info-button" type="button"><Icon name="info" /></button>
+  </Tooltip>;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
