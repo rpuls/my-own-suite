@@ -4,6 +4,7 @@ These public, versioned skills make MOS app review procedures inspectable:
 
 - [`add-mos-app`](./add-mos-app/SKILL.md) onboards a manifest-driven package and requires an initial privacy assessment.
 - [`update-mos-app`](./update-mos-app/SKILL.md) reviews every upstream release crossed, including breaking changes, migrations, rollback, and privacy changes.
+- [`land-app-updates`](./land-app-updates/SKILL.md) takes finished app updates to `staging` together, with one catalog signature.
 - [`assess-app-privacy`](./assess-app-privacy/SKILL.md) reviews version-specific telemetry, external services, Terms, privacy policies, and supporting evidence.
 - [`human-privacy-review`](./human-privacy-review/SKILL.md) walks an assessment item by item with a human reviewer before `lastHumanReview` may name them.
 
