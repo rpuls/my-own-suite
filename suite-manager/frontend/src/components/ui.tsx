@@ -277,8 +277,8 @@ export function FilterChips<T extends string>({ label, onChange, options, value 
   </div>;
 }
 
-export function Avatar({ background, initials, ink = '#ffffff' }: { background: string; initials: string; ink?: string }) {
-  return <span aria-hidden="true" className="mos-avatar" style={{ background, color: ink }}>{initials}</span>;
+export function Avatar({ background, initials, ink = '#ffffff', small = false }: { background: string; initials: string; ink?: string; small?: boolean }) {
+  return <span aria-hidden="true" className={`mos-avatar${small ? ' mos-avatar-small' : ''}`} style={{ background, color: ink }}>{initials}</span>;
 }
 
 // The settings row: label left, value right, hairline between neighbours. One
@@ -313,6 +313,10 @@ export function Panel({ children, className, density = 'regular' }: {
 // do to it on the right. `title` is an eyebrow by default, because it labels a
 // region of a panel the owner is already reading; `heading` makes it the title
 // of a panel that is itself one item in a longer page, such as one setting.
+// The icon a page gives each of its sections, so a section's title wears the same
+// icon as the page's own index. Only a titled head (`heading`) shows it.
+export const SectionIcon = createContext<IconName | null>(null);
+
 export function PanelHead({ actions, children, heading, title }: {
   actions?: ReactNode;
   children?: ReactNode;
@@ -320,9 +324,11 @@ export function PanelHead({ actions, children, heading, title }: {
   title: ReactNode;
 }) {
   const Heading = heading;
+  const icon = useContext(SectionIcon);
+  const titled = Heading ? <Heading className="mos-card-title">{title}</Heading> : null;
   return <div className="mos-panel-head">
     <div>
-      {Heading ? <Heading className="mos-card-title">{title}</Heading> : <p className="mos-eyebrow">{title}</p>}
+      {titled && icon ? <div className="mos-panel-head-title"><span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span>{titled}</div> : titled ?? <p className="mos-eyebrow">{title}</p>}
       {children}
     </div>
     {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}

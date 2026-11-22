@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { ActionMenu, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
+import { ActionMenu, Avatar, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
 import { whenWords } from '../../../lib/dates';
+import { avatarOf, sourceIconUrl } from '../../ai-activity/timeline';
 import { ChatGptSteps, ConnectInstructions, PrivacyLine, TunnelStatus } from './AddAssistantDialog';
 import {
   customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
@@ -114,7 +115,7 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source
   const offered = source.tools.some(isOffered);
   const lostToken = locked && level !== 'off';
   const label = <>
-    {source.name}
+    <span className="suite-ai-source-name"><img alt="" height="28" src={sourceIconUrl(source.id)} width="28" />{source.name}</span>
     {custom ? <> <span className="mos-pill">Custom</span></> : null}
     {source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}
     {lostToken ? <> <span className="mos-pill mos-pill-warning">Needs a token</span></> : null}
@@ -163,7 +164,7 @@ export function ClientItem({ actions, busy, changed, client, expanded, onToggle,
       {menu}
     </>}>
       <span className="suite-source-main">
-        <strong>{client.name}</strong>
+        <strong className="suite-ai-client-name">{client.name}<Avatar {...avatarOf(client.name)} small /></strong>
         <span className="suite-meta">{clientMeta(client, sources, tunnel)}</span>
       </span>
     </DisclosureRow>

@@ -4289,6 +4289,24 @@ button.suite-bk-group {
   margin: 0;
 }
 
+.suite-ai-client-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-ai-source-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+  vertical-align: middle;
+}
+
+.suite-ai-source-name > img {
+  flex: none;
+  border-radius: 0.5rem;
+}
+
 .suite-ai-secret {
   display: grid;
   gap: var(--mos-space-1);

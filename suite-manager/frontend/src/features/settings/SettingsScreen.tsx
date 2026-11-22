@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { Icon, Panel, PanelBody, type IconName } from '../../components/ui';
+import { Icon, Panel, PanelBody, SectionIcon, type IconName } from '../../components/ui';
 import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
@@ -201,7 +201,7 @@ export function SettingsScreen() {
               <p className="suite-meta">{group.description}</p>
             </div>
             {settings.map((setting) => <div className="suite-setting" hidden={!visible.includes(setting.id)} id={`set-${setting.id}`} key={setting.id}>
-              {SETTING_CARDS[setting.id]()}
+              <SectionIcon.Provider value={setting.icon}>{SETTING_CARDS[setting.id]()}</SectionIcon.Provider>
             </div>)}
           </section>;
         })}

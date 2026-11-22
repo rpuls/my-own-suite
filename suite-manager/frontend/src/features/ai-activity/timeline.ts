@@ -78,9 +78,12 @@ function detailOf(entry: AiActivityEntry) {
   return REFUSAL_WORDS[entry.outcome] ?? null;
 }
 
+export function sourceIconUrl(sourceId: string) {
+  return sourceId === 'mos' ? BUILTIN_ICON : `/suite-manager/api/apps/packages/${encodeURIComponent(sourceId)}/icon`;
+}
+
 function iconOf(entry: AiActivityEntry) {
-  if (entry.sourceId === 'mos') return BUILTIN_ICON;
-  return entry.sourceId ? `/suite-manager/api/apps/packages/${encodeURIComponent(entry.sourceId)}/icon` : null;
+  return entry.sourceId ? sourceIconUrl(entry.sourceId) : null;
 }
 
 function stepOf(entry: AiActivityEntry): TimelineStep {

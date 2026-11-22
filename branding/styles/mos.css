@@ -614,6 +614,13 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   padding-left: 0.3rem;
 }
 
+/* Beside a name in running text, sized to the line rather than to the row. */
+.mos-avatar.mos-avatar-small {
+  width: 1.375rem;
+  height: 1.375rem;
+  font-size: 0.5625rem;
+}
+
 .mos-filter-chip .mos-avatar {
   width: 1.6rem;
   height: 1.6rem;
@@ -1187,6 +1194,34 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-panel-head > :first-child > * {
   margin: 0;
+}
+
+/* A section title that wears its icon, as the page's own index shows it. */
+.mos-panel-head-title {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.mos-panel-head-title > * {
+  margin: 0;
+}
+
+.mos-panel-head-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-accent);
+}
+
+.mos-panel-head-icon svg {
+  width: 1.375rem;
+  height: 1.375rem;
 }
 
 /* The description under a section title. */
