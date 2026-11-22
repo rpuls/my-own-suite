@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.3.9",
+  "version": "0.4.1",
   "appVersion": "3.4.2",
   "minimumMosVersion": "0.20.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
@@ -12,7 +12,8 @@
     "screenshots/documents.png",
     "screenshots/search.png",
     "screenshots/document-detail.png",
-    "screenshots/recognised-text.png"
+    "screenshots/recognised-text.png",
+    "mcp-server.py"
   ],
   "catalog": {
     "description": "Scan a letter or drop in a PDF, and Paperless-ngx reads the text on the page, works out who sent it, and files it under the right type and tags. Months later you find it again by typing a word you happen to remember - a name from the letterhead, an amount, a policy number. Nothing is sent anywhere to make that work: the text recognition runs on your own server, and the original scan is kept exactly as it arrived.",
@@ -82,6 +83,7 @@
       "summary": "Paperless-ngx stores and processes your documents on your own server. Text recognition runs locally in the container, and the optional AI and cloud-OCR features are off unless you configure them yourself.",
       "notes": [
         "Only the Paperless web service is reachable through Caddy; the Valkey broker stays internal to the package network.",
+        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Paperless as the admin you set up and reaches nothing else.",
         "Optional remote OCR through Azure AI and optional AI suggestions through an OpenAI-compatible service or Ollama are disabled by default, and MOS does not configure them.",
         "MOS turns off Paperless' own update check, which would contact GitHub, because MOS handles app updates itself.",
         "Documents, thumbnails and the search index live in package-owned MOS volumes; back them up before relying on this package for records you cannot scan again."
@@ -139,6 +141,19 @@
         "label": "Time zone, such as Europe/Amsterdam",
         "required": true,
         "default": "Europe/Amsterdam"
+      },
+      {
+        "id": "aiKey",
+        "type": "password",
+        "label": "Key MOS uses for AI access",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated key for AI access",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
       }
     ]
   },
@@ -179,6 +194,15 @@
           "export:/usr/src/paperless/export",
           "consume:/usr/src/paperless/consume"
         ]
+      },
+      "mcp": {
+        "dockerfile": "Dockerfile.mcp",
+        "internalPort": 8100,
+        "env": {
+          "PAPERLESS_ADMIN_USER": "${config.adminUsername}",
+          "PAPERLESS_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "MOS_AI_KEY": "${secret.aiKey}"
+        }
       }
     }
   },
@@ -205,11 +229,23 @@
       "protocol": "paperless-ngx-rest",
       "title": "Paperless document archive",
       "internalBaseUrl": "http://paperless:8000"
+    },
+    "mcp": {
+      "type": "mcp-server",
+      "interfaceVersion": 1,
+      "protocol": "mcp-streamable-http",
+      "service": "mcp",
+      "path": "/mcp",
+      "auth": {
+        "kind": "package-secret",
+        "secret": "aiKey"
+      }
     }
   },
   "update": {
     "backupRequired": true,
     "downtime": "brief",
-    "rollback": "safe"
+    "rollback": "safe",
+    "minimumAppAgentVersion": 14
   }
 }

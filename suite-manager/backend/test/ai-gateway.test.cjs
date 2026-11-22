@@ -16,7 +16,7 @@ const test = require('node:test');
 
 const { AiConnectionsService, WRITES_PER_HOUR, withFixedArguments } = require('../src/ai/ai-connections-service.cjs');
 const { AiGateway } = require('../src/ai/ai-gateway.cjs');
-const { AiStore } = require('../src/ai/ai-store.cjs');
+const { ACTIVITY_MAX_ROWS, AiStore } = require('../src/ai/ai-store.cjs');
 const { AiToolCatalog } = require('../src/ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../src/ai/mos-tools.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
@@ -28,21 +28,24 @@ const MANIFEST = {
       auth: { hint: 'Make one in Memos.', kind: 'owner-token', verifyTool: 'auth_get_current_user' },
       path: '/mcp',
       service: 'memos',
-      tools: {
-        memo_create_memo: { fixed: { 'body.visibility': 'PRIVATE' }, kind: 'add', title: 'Save a new note' },
-        memo_delete_memo: 'destructive',
-        memo_list_memos: { kind: 'read', title: 'Search notes' },
-        memo_share_memo: 'serious',
-        memo_update_memo: { fixed: { updateMask: 'content' }, kind: 'change', title: 'Edit a note' },
-      },
       type: 'mcp-server',
     },
   },
   id: 'memos',
   name: 'Memos',
 };
+const AI_TOOLS = {
+  schemaVersion: 1,
+  tools: {
+    memo_create_memo: { fixed: { 'body.visibility': 'PRIVATE' }, kind: 'add', title: 'Save a new note' },
+    memo_delete_memo: 'destructive',
+    memo_list_memos: { kind: 'read', title: 'Search notes' },
+    memo_share_memo: 'serious',
+    memo_update_memo: { fixed: { updateMask: 'content' }, kind: 'change', title: 'Edit a note' },
+  },
+};
 
-function fakeMemos() {
+function fakeMemos({ answerMs = 0 } = {}) {
   const calls = [];
   const tool = (name, description) => ({ description, inputSchema: { type: 'object' }, name });
   const tools = [
@@ -54,6 +57,7 @@ function fakeMemos() {
     tool('space_delete_space', 'Delete a space and every memo in it.'),
   ];
   const fetchImpl = async (url, init) => {
+    if (answerMs) await new Promise((resolve) => setTimeout(resolve, answerMs));
     const message = JSON.parse(init.body);
     const authorized = init.headers.Authorization === `Bearer ${APP_TOKEN}`;
     let result;
@@ -69,18 +73,21 @@ function fakeMemos() {
   return { calls, fetchImpl, tools };
 }
 
-async function harness({ now = () => new Date() } = {}) {
+async function harness({ answerMs = 0, now = () => new Date() } = {}) {
   const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'));
   const store = new SuiteManagerStore(stateDir);
   const secretDir = path.join(stateDir, 'app-secrets');
-  const memos = fakeMemos();
+  const memos = fakeMemos({ answerMs });
   const restarts = [];
   const instance = { displayNameSnapshot: 'Memos', enabled: true, id: 'inst-memos', packageId: 'memos', status: 'installed' };
   const appStore = { getAppInstances: () => [instance] };
+  const diagnosticReads = [];
   const catalog = new AiToolCatalog({
-    appPackages: { installedPackageFor: () => ({ manifest: MANIFEST }) },
+    appPackages: { installedPackageFor: () => ({ aiTools: AI_TOOLS, manifest: MANIFEST }) },
     builtin: createMosTools({
+      ai: { activity: (query) => connections.activity(query), clients: () => connections.aiStore.listClients() },
       appPackages: { refreshPackageRuntimeStatus: async () => ({}), restartPackageRuntime: async (packageId) => { restarts.push(packageId); } },
+      diagnostics: { read: async (topic, { app }) => { diagnosticReads.push([topic, app]); return `the ${topic} section`; } },
       runtimeUrls: () => ({}),
       store: appStore,
     }),
@@ -115,7 +122,7 @@ async function harness({ now = () => new Date() } = {}) {
   const listed = async (token) => (await rpc(token, 'tools/list', {})).body.result.tools.map((tool) => tool.name).sort();
   const call = async (token, name, args = {}) => (await rpc(token, 'tools/call', { arguments: args, name })).body.result;
   const newClient = (name = 'ChatGPT') => connections.createClient({ name, preset: 'chatgpt' });
-  return { call, catalog, close: () => new Promise((resolve) => server.close(resolve)), connections, listed, memos, newClient, post, restarts, rpc };
+  return { call, catalog, close: () => new Promise((resolve) => server.close(resolve)), connections, diagnosticReads, listed, memos, newClient, post, restarts, rpc };
 }
 
 test('an assistant sees nothing until its level for an app says so, and the level decides by kind', async (t) => {
@@ -206,6 +213,16 @@ test('writes stop at the hourly limit with a plain refusal, while reading goes o
   assert.ok(h.connections.activity({ clientId: client.id }).entries.some((entry) => entry.outcome === 'limit-reached'));
 });
 
+test('changes sent all at once still stop at the hourly limit', async (t) => {
+  const h = await harness({ answerMs: 50 });
+  t.after(h.close);
+  const { client, token } = h.newClient();
+  h.connections.setLevel(client.id, 'memos', 'act');
+
+  const results = await Promise.all(Array.from({ length: WRITES_PER_HOUR + 10 }, (_, index) => h.call(token, 'memos_memo_create_memo', { body: { content: `note ${index}` } })));
+  assert.equal(results.filter((result) => !result.isError).length, WRITES_PER_HOUR);
+});
+
 test('a tool whose definition changed after an app update stays off until the owner accepts it', async (t) => {
   const h = await harness();
   t.after(h.close);
@@ -222,17 +239,57 @@ test('a tool whose definition changed after an app update stays off until the ow
   assert.deepEqual(await h.listed(token), ['memos_memo_list_memos']);
 });
 
-test('Suite health lists apps at See and restarts one at See and do', async (t) => {
+test('Suite Manager lists apps and the dashboard at See and restarts an app at See and do', async (t) => {
   const h = await harness();
   t.after(h.close);
   const { client, token } = h.newClient('Claude Code');
   h.connections.setLevel(client.id, 'mos', 'see');
-  assert.deepEqual(await h.listed(token), ['mos_check_app', 'mos_list_apps']);
-  assert.match((await h.call(token, 'mos_list_apps')).content[0].text, /"app": "memos"/u);
+  assert.deepEqual(await h.listed(token), ['mos_ai_activity', 'mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_diagnostics', 'mos_list_apps']);
+  const apps = (await h.call(token, 'mos_list_apps')).content[0].text;
+  assert.match(apps, /^<untrusted-data source="Suite Manager">/u);
+  assert.match(apps, /"app": "memos"/u);
 
   h.connections.setLevel(client.id, 'mos', 'act');
   assert.match((await h.call(token, 'mos_restart_app', { app: 'Memos' })).content[0].text, /Memos restarted/u);
   assert.deepEqual(h.restarts, ['memos']);
+});
+
+test('an assistant at See reads the AI activity, filtered by assistant or app', async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'memos', 'see');
+  h.connections.setLevel(client.id, 'mos', 'see');
+  await h.call(token, 'memos_memo_list_memos');
+
+  const activity = (await h.call(token, 'mos_ai_activity', { app: 'memos' })).content[0].text;
+  assert.match(activity, /Z · Claude Code · Memos · .+ · ok/u);
+  assert.match((await h.call(token, 'mos_ai_activity', { assistant: 'Nobody' })).content[0].text, /No assistant is called "Nobody"\. Assistants: Claude Code\./u);
+});
+
+test('diagnostics are read one topic at a time, narrowed to an app the owner has', async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'mos', 'see');
+
+  assert.match((await h.call(token, 'mos_diagnostics', { app: 'Memos', topic: 'containers' })).content[0].text, /the containers section/u);
+  assert.deepEqual(h.diagnosticReads, [['containers', 'memos']]);
+  assert.equal((await h.call(token, 'mos_diagnostics', { app: 'Nextcloud', topic: 'apps' })).isError, true);
+  assert.equal((await h.call(token, 'mos_diagnostics', { topic: '../../etc' })).isError, true);
+  assert.equal(h.diagnosticReads.length, 1);
+});
+
+test("Suite Manager's own tools are never pinned, so a new MOS release never waits on a review", async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'mos', 'see');
+  await h.listed(token);
+
+  assert.ok(![...h.connections.aiStore.pins().keys()].some((tool) => tool.startsWith('mos_')));
+  const mos = (await h.connections.status()).sources.find((source) => source.id === 'mos');
+  assert.ok(mos.tools.every((tool) => tool.review === 'pinned'));
 });
 
 test('the activity log keeps the assistant name after it is removed, and holds no content', async (t) => {
@@ -251,6 +308,37 @@ test('the activity log keeps the assistant name after it is removed, and holds n
   assert.doesNotMatch(JSON.stringify(h.connections.activity()), /secret recipe/u);
   assert.deepEqual(h.connections.summary(), { hasActivity: true, hasConnections: false });
   assert.equal((await h.rpc(token, 'tools/list', {})).status, 401);
+});
+
+test('the same call again within a minute counts up one row, and anything else starts a new one', async (t) => {
+  let clock = new Date('2026-11-19T10:00:00Z');
+  const h = await harness({ now: () => clock });
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'memos', 'see');
+  for (let call = 0; call < 3; call += 1) await h.call(token, 'memos_memo_list_memos');
+  await h.call(token, 'memos_memo_create_memo', { body: { content: 'x' } });
+  clock = new Date(clock.getTime() + 2 * 60_000);
+  await h.call(token, 'memos_memo_list_memos');
+
+  const rows = h.connections.activity().entries.map((entry) => [entry.tool, entry.outcome, entry.repeats]);
+  assert.deepEqual(rows, [
+    ['memos_memo_list_memos', 'ok', 1],
+    ['memos_memo_create_memo', 'not-allowed', 1],
+    ['memos_memo_list_memos', 'ok', 3],
+  ]);
+});
+
+test('the activity log drops its oldest rows past the row ceiling, so a call loop cannot grow it without end', async () => {
+  const aiStore = new AiStore(new SuiteManagerStore(await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'))));
+  const rejected = (tool) => aiStore.recordActivity({ at: new Date().toISOString(), durationMs: 1, method: 'auth', outcome: 'rejected', tool });
+  rejected('first');
+  // Jumps the id counter instead of writing the ceiling's worth of rows.
+  aiStore.db.prepare("INSERT INTO ai_activity (id, at, method, outcome, duration_ms) VALUES (?, '', 'auth', 'rejected', 0)").run(ACTIVITY_MAX_ROWS + 5);
+  rejected('second');
+
+  const ids = aiStore.db.prepare('SELECT id FROM ai_activity ORDER BY id').all().map((row) => row.id);
+  assert.deepEqual(ids, [ACTIVITY_MAX_ROWS + 5, ACTIVITY_MAX_ROWS + 6]);
 });
 
 test('a token the app refuses is not saved, and a turned-off assistant is refused', async (t) => {
@@ -278,6 +366,8 @@ test('the HTTP edge refuses plain HTTP, browser origins, unknown clients and bat
   assert.equal((await h.post([list], bearer)).status, 400);
   assert.equal((await h.post({ jsonrpc: '2.0', method: 'notifications/initialized' }, bearer)).status, 202);
   assert.equal((await h.post(list, { 'X-MOS-Gateway-Key': token, Authorization: 'Bearer chatgpt-own-token' })).status, 200);
+  // Unmarked by Caddy and on loopback: the ChatGPT tunnel, on this machine.
+  assert.equal((await h.post(list, { 'X-MOS-Gateway-Key': token, 'X-Forwarded-Proto': '' })).status, 200);
 
   assert.equal((await h.rpc(token, 'initialize', { protocolVersion: '2025-11-25' })).body.result.protocolVersion, '2025-11-25');
   assert.equal((await h.rpc(token, 'resources/list', {})).body.error.code, -32601);

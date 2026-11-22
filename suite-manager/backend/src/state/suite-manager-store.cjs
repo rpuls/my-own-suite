@@ -558,6 +558,34 @@ const MIGRATIONS = [
     `,
     version: 22,
   },
+  {
+    // The dashboard files as they were after each change, so an owner can step
+    // back without a backup. Small text, kept to the most recent few.
+    name: 'homepage-checkpoints',
+    sql: `
+      CREATE TABLE homepage_checkpoints (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        files TEXT NOT NULL,
+        digest TEXT NOT NULL
+      ) STRICT;
+    `,
+    version: 23,
+  },
+  {
+    // The same call repeated back to back is one row with a count, so a loop cannot bury the real log.
+    name: 'ai-activity-repeats',
+    sql: `
+      ALTER TABLE ai_activity ADD COLUMN repeats INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE ai_activity ADD COLUMN last_at TEXT NOT NULL DEFAULT '';
+      UPDATE ai_activity SET last_at = at;
+      DROP INDEX ai_activity_at_idx;
+      CREATE INDEX ai_activity_last_at_idx ON ai_activity(last_at);
+    `,
+    version: 24,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {
@@ -965,6 +993,33 @@ class SuiteManagerStore {
       `).run(file, revision, at, id);
       this.recordHomepageRevision({ at, file, revision });
     });
+  }
+
+  latestHomepageCheckpoint() {
+    return this.database.prepare('SELECT id, at, actor, summary, files, digest FROM homepage_checkpoints ORDER BY id DESC LIMIT 1').get() || null;
+  }
+
+  homepageCheckpoint(id) {
+    return this.database.prepare('SELECT id, at, actor, summary, files, digest FROM homepage_checkpoints WHERE id = ?').get(id) || null;
+  }
+
+  homepageCheckpoints() {
+    return this.database.prepare('SELECT id, at, actor, summary FROM homepage_checkpoints ORDER BY id DESC').all();
+  }
+
+  addHomepageCheckpoint({ actor, at, digest, files, keep, summary }) {
+    this.transaction(() => {
+      this.database.prepare('INSERT INTO homepage_checkpoints (at, actor, summary, files, digest) VALUES (?, ?, ?, ?, ?)').run(at, actor, summary, files, digest);
+      this.database.prepare('DELETE FROM homepage_checkpoints WHERE id NOT IN (SELECT id FROM homepage_checkpoints ORDER BY id DESC LIMIT ?)').run(keep);
+    });
+  }
+
+  deleteHomepageCheckpoint(id) {
+    return this.database.prepare('DELETE FROM homepage_checkpoints WHERE id = ?').run(id).changes === 1;
+  }
+
+  deleteHomepageCheckpointsBefore(id) {
+    this.database.prepare('DELETE FROM homepage_checkpoints WHERE id < ?').run(id);
   }
 
   failHomepageOperation({ at, errorCode, id }) {

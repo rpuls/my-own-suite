@@ -4,8 +4,9 @@ const SIGN_IN = 'Sign in to manage your AI.';
 const ACTIVITY_SIGN_IN = 'Sign in to see what your AI did.';
 const CLIENT = '\\/settings\\/ai\\/clients\\/([^/]+)';
 
-function aiRoutes({ aiConnections }) {
-  const answerStatus = async (response) => jsonResponse(response, 200, await aiConnections.status());
+function aiRoutes({ aiConnections, chatGptTunnel }) {
+  const fullStatus = async () => ({ ...await aiConnections.status(), tunnel: await chatGptTunnel.status() });
+  const answerStatus = async (response) => jsonResponse(response, 200, await fullStatus());
   return [
     {
       method: 'GET',
@@ -20,7 +21,26 @@ function aiRoutes({ aiConnections }) {
       bodyLimit: 4 * 1024,
       handler: async ({ body, response }) => {
         const { client, token } = aiConnections.createClient(await body());
-        jsonResponse(response, 200, { client, status: await aiConnections.status(), token });
+        jsonResponse(response, 200, { client, status: await fullStatus(), token });
+      },
+    },
+    {
+      method: 'POST',
+      path: '/settings/ai/tunnel',
+      signIn: SIGN_IN,
+      bodyLimit: 8 * 1024,
+      handler: async ({ body, response }) => {
+        const client = await chatGptTunnel.connect(await body());
+        jsonResponse(response, 200, { client, status: await fullStatus() });
+      },
+    },
+    {
+      method: 'POST',
+      path: '/settings/ai/tunnel/start',
+      signIn: SIGN_IN,
+      handler: async ({ response }) => {
+        await chatGptTunnel.start();
+        await answerStatus(response);
       },
     },
     {
@@ -39,6 +59,7 @@ function aiRoutes({ aiConnections }) {
       signIn: SIGN_IN,
       handler: async ({ params: [clientId], response }) => {
         aiConnections.deleteClient(clientId);
+        await chatGptTunnel.clientRemoved(clientId);
         await answerStatus(response);
       },
     },
@@ -48,7 +69,7 @@ function aiRoutes({ aiConnections }) {
       signIn: SIGN_IN,
       handler: async ({ params: [clientId], response }) => {
         const { token } = aiConnections.rotateClientToken(clientId);
-        jsonResponse(response, 200, { status: await aiConnections.status(), token });
+        jsonResponse(response, 200, { status: await fullStatus(), token });
       },
     },
     {

@@ -7,9 +7,11 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  TOPICS,
   buildSupportBundle,
   collectRedactionSecrets,
   fullFilesystems,
+  readTopic,
   summarizeTrouble,
 } = require('../src/diagnostics/support-bundle.cjs');
 
@@ -324,4 +326,56 @@ test('a drive its apps cannot use leads the summary, with the attach runs and ke
   assert.doesNotMatch(text, /^Spare/mu);
   assert.match(text, /Drive events \(plug-ins, Eject, Check drive\):\n {2}\[mos-storage\] drive 20C2CDDCC2CDB676 mounted/u);
   assert.match(text, /Kernel lines about drives:\n {2}ntfs3: sdc1: volume is dirty/u);
+});
+
+function topicReader(collection, asked) {
+  const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-topic-'));
+  fs.mkdirSync(path.join(secretDir, 'inst-vw'));
+  fs.writeFileSync(path.join(secretDir, 'inst-vw', 'ADMIN_TOKEN.secret'), 'vaultwarden-admin-token');
+  const instances = [
+    { displayNameSnapshot: 'Vaultwarden', id: 'inst-vw', installedAt: '2026-08-01', packageId: 'vaultwarden', packageVersion: '1.2.0', status: 'installed' },
+    { displayNameSnapshot: 'Memos', id: 'inst-memos', installedAt: '2026-08-02', packageId: 'memos', packageVersion: '0.2.2', status: 'installed' },
+  ];
+  return (topic, app = null) => readTopic(topic, {
+    agent: { collect: async (question) => { asked.push(question); return collection; } },
+    app,
+    secretDir,
+    store: { getAddressChange: () => ({}), getAppInstances: () => instances, latestFailedAppOperation: () => null },
+  });
+}
+
+test('one topic reads only the collectors it needs, and is masked like the file', async () => {
+  const asked = [];
+  const collection = { ...healthyCollection(), containers: [{ ...healthyCollection().containers[0], log: 'admin token vaultwarden-admin-token accepted' }] };
+  const read = topicReader(collection, asked);
+
+  const containers = await read('containers', 'vaultwarden');
+  assert.deepEqual(asked, [{ app: 'vaultwarden', only: ['containers'] }]);
+  assert.ok(containers.startsWith(`${'─'.repeat(74)}\nCONTAINERS\n`));
+  assert.ok(!containers.includes('vaultwarden-admin-token'));
+  assert.ok(containers.includes('[redacted]'));
+});
+
+test('the apps topic narrows to one app, and a topic needing no agent asks it nothing', async () => {
+  const asked = [];
+  const apps = await topicReader(healthyCollection(), asked)('apps', 'memos');
+  assert.deepEqual(asked, []);
+  assert.ok(apps.includes('Memos (memos)'));
+  assert.ok(!apps.includes('Vaultwarden'));
+});
+
+test('the summary sweeps everything, and an unknown topic is refused with the real ones', async () => {
+  const asked = [];
+  const read = topicReader(healthyCollection(), asked);
+  assert.ok((await read('summary')).includes('WHAT LOOKS WRONG'));
+  assert.deepEqual(asked, [{ app: null, only: null }]);
+  await assert.rejects(read('everything'), { code: 'DIAGNOSTICS_UNKNOWN_TOPIC', message: /Topics: summary, platform, host/u });
+});
+
+test('the file prints one section per topic, in the order of the topic list', () => {
+  const { text } = buildSupportBundle({ collection: healthyCollection(), now });
+  const titles = Object.values(TOPICS).map((topic) => topic.title);
+  const positions = titles.map((title) => text.indexOf(`\n${title}\n`));
+  assert.ok(positions.every((position) => position > 0));
+  assert.deepEqual([...positions].sort((left, right) => left - right), positions);
 });

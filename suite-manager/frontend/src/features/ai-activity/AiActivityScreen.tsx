@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, FilterChips, Icon, Notice } from '../../components/ui';
 import { aiActivity, aiRequest, type AiActivityEntry, type AiClient } from '../settings/ai/model';
-import { avatarColour, initialsOf, plural, timelineOf, type TimelineRequest, type TimelineStep } from './timeline';
+import { avatarOf, plural, timelineOf, type TimelineRequest, type TimelineStep } from './timeline';
 
 const AI_SETTINGS_PATH = '/suite-manager/settings#set-ai';
+const DASHBOARD_HISTORY_PATH = '/suite-manager/customize#history';
 
 function errorText(caught: unknown, fallback: string) {
   return caught instanceof Error ? caught.message : fallback;
@@ -15,7 +16,7 @@ function clock(at: string) {
 }
 
 function AiAvatar({ name }: { name: string }) {
-  return <Avatar colour={avatarColour(name)} initials={initialsOf(name)} />;
+  return <Avatar {...avatarOf(name)} />;
 }
 
 function Step({ step }: { step: TimelineStep }) {
@@ -24,7 +25,7 @@ function Step({ step }: { step: TimelineStep }) {
     {step.tone === 'problem'
       ? <span aria-label="Refused" className="suite-ai-step-icon suite-ai-step-stop" role="img"><Icon name="shield" /></span>
       : step.iconUrl ? <img alt={step.sourceName} className="suite-ai-step-icon" height="22" src={step.iconUrl} width="22" /> : <span aria-label={step.sourceName} className="suite-ai-step-icon" role="img"><Icon name="apps" /></span>}
-    <span className="suite-ai-step-text">{step.text}{details ? <span className="suite-ai-step-detail">{details}</span> : null}</span>
+    <span className="suite-ai-step-text">{step.text}{details ? <span className="suite-ai-step-detail">{details}</span> : null}{step.undoable ? <> <a className="mos-link suite-ai-step-undo" href={DASHBOARD_HISTORY_PATH}>Undo</a></> : null}</span>
   </li>;
 }
 

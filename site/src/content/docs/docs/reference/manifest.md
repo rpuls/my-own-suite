@@ -263,11 +263,11 @@ These work today for official packages but their shape is **not** frozen; avoid 
 - `role` (`capability-provider`), `exports`, `integrations`, `configTargets`, `usefulness` — the capability system. Proven by exactly one relationship (Seafile ⇄ ONLYOFFICE); it will be locked when more relationships have shaped it.
 - `homepage.widget` — only the monthly calendar widget exists; a general widget contract is future work.
 - `routes[].internalIcalBridge` — a token-gated read-only proxy path, expected to be replaced by a general bridge contract.
-- `exports` entries of type `mcp-server` — the tools an app offers to the owner's AI, described below. Proven by one app (Memos).
+- `exports` entries of type `mcp-server`, and the `ai-tools.json` beside the manifest — the tools an app offers to the owner's AI, described below. Proven by two apps: Memos, with its own MCP server, and Paperless-ngx, which ships one.
 
 ### AI tools (`mcp-server` export)
 
-An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer its tools to the AI an owner connects in **Settings → AI assistants**. The AI never reaches the app directly: it talks to one gateway in Suite Manager, which shows it only the tools the owner allowed and forwards each call to the app. The app declares its server as an export:
+An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer its tools to the AI an owner connects in **Settings → AI assistants**. The AI never reaches the app directly: it talks to one gateway in Suite Manager, which shows it only the tools the owner allowed and forwards each call to the app. The manifest says how MOS reaches the app's server, as an export:
 
 ```json
 "exports": {
@@ -282,16 +282,6 @@ An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer i
       "hint": "In Memos, open Settings → Access Tokens, choose Create, and pick No expiration.",
       "tokenPage": "/setting#access-token",
       "verifyTool": "auth_get_current_user"
-    },
-    "tools": {
-      "memo_list_memos": { "kind": "read", "title": "Search notes" },
-      "memo_create_memo": {
-        "kind": "add",
-        "title": "Save a new note",
-        "note": "New notes are always private.",
-        "fixed": { "body.visibility": "PRIVATE" }
-      },
-      "memo_delete_memo": "destructive"
     }
   }
 }
@@ -301,12 +291,35 @@ An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer i
 | --- | --- |
 | `type` | `mcp-server`. A package declares at most one. |
 | `interfaceVersion`, `protocol` | `1` and `mcp-streamable-http` today. |
-| `service`, `path` | The routed service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server; a `url` is refused, so an export can never point MOS somewhere else. |
-| `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. It is never given to an AI. |
-| `auth.hint` | Optional. One sentence, at most 200 characters, telling the owner where the app makes that token. |
+| `service`, `path` | The service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server, and publishes that port for itself when no route reaches the service; a `url` is refused, so an export can never point MOS somewhere else. |
+| `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. `package-secret`: the package ships its own MCP service, and MOS presents a key it generated, so the owner does nothing. Neither is ever given to an AI. |
+| `auth.secret` | With `package-secret`. The id of a generated secret setup field; MOS sends it as `Authorization: Bearer <value>`, and the package passes the same `${secret.<id>}` to its MCP service. |
+| `auth.hint` | Optional, with `owner-token`. One sentence, at most 200 characters, telling the owner where the app makes that token. |
 | `auth.tokenPage` | Optional. The path inside the app where tokens are made, starting with `/`. MOS's **Open** button lands there. |
 | `auth.verifyTool` | Optional. A tool MOS calls with a pasted token before saving it, so a wrong token is refused on the spot. |
-| `tools` | Every tool MOS may offer, by the name the app's server uses. A tool the app serves but the manifest does not list is never offered. |
+
+The tools it may offer are listed in `ai-tools.json`, at the package root beside the manifest. The package digest covers it, so the catalog signature does too, and changing it needs a package version bump like any other package file. An `mcp-server` export without the file, or the file without the export, fails validation.
+
+```json
+{
+  "schemaVersion": 1,
+  "tools": {
+    "memo_list_memos": { "kind": "read", "title": "Search notes" },
+    "memo_create_memo": {
+      "kind": "add",
+      "title": "Save a new note",
+      "note": "New notes are always private.",
+      "fixed": { "body.visibility": "PRIVATE" }
+    },
+    "memo_delete_memo": "destructive"
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `schemaVersion` | `1`. |
+| `tools` | Every tool MOS may offer, by the name the app's server uses. A tool the app serves but the file does not list is never offered. List the jobs an owner would ask an AI to do, not the app's whole API: every offered tool's description takes room in the AI's context. |
 | `tools.<name>` | A kind as a string, or an object with `kind` plus optional `title` (at most 60 characters, the words owners see), `note` (at most 160, shown under the tool), and `fixed`. |
 | `tools.<name>.fixed` | Arguments MOS sets on every call, whatever the AI sent, by dotted path (`body.visibility`), each a string, number or boolean. This is how a new note is kept private. |
 

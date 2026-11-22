@@ -3,10 +3,13 @@ const path = require('node:path');
 
 const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { AiConnectionsService } = require('../ai/ai-connections-service.cjs');
+const { ChatGptTunnel } = require('../ai/chatgpt-tunnel.cjs');
 const { AiGateway } = require('../ai/ai-gateway.cjs');
 const { AiStore } = require('../ai/ai-store.cjs');
 const { AiToolCatalog } = require('../ai/ai-tool-catalog.cjs');
 const { createMosTools } = require('../ai/mos-tools.cjs');
+const { AttentionService } = require('../attention/attention-service.cjs');
+const { createDiagnostics } = require('../diagnostics/support-bundle.cjs');
 const { SuiteAddressFile, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { createAppPublicUrls } = require('../address/app-public-urls.cjs');
 const { SuiteAddressService } = require('../address/suite-address-service.cjs');
@@ -152,6 +155,7 @@ function createServices({
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
     appHosts: () => appPackages.appRouteHosts(),
+    installedAppIds: () => new Set(setup.store.getAppInstances().filter((instance) => instance.status === 'installed').map((instance) => instance.id)),
     store: setup.store,
     suiteAddress,
   });
@@ -189,8 +193,12 @@ function createServices({
     appUrlOf: (packageId) => appUrls.publicUrlOf(packageId).publicUrl,
     catalog: new AiToolCatalog({
       appPackages,
+      // Read through closures: both are built further down, and called only once a request arrives.
       builtin: createMosTools({
+        ai: { activity: (query) => aiConnections.activity(query), clients: () => aiConnections.aiStore.listClients() },
         appPackages,
+        diagnostics: { read: (topic, options) => createDiagnostics(services).read(topic, options) },
+        homepage: homepageConfig,
         runtimeUrls: (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
         store: setup.store,
       }),
@@ -201,6 +209,12 @@ function createServices({
     suiteAddress,
   });
   const aiGateway = new AiGateway({ connections: aiConnections });
+  const chatGptTunnel = new ChatGptTunnel({
+    aiConnections,
+    appAgent,
+    secretDir: appPackages.secretDir,
+    suiteManagerPort: Number(process.env.PORT || process.env.MOS_SUITE_MANAGER_PORT || '3100'),
+  });
   const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
   const signIn = new SignInService({ alerts, recordSecurityEvent, securityLogger, setup, throttle, vault });
   const appUrls = createAppPublicUrls({ appPackages, homepageConfig, suiteAddress });
@@ -237,12 +251,15 @@ function createServices({
     store: setup.store,
   });
   const updates = new UpdateService({ agent: updateAgent, backupAgent, diagnosticsAgent });
+  const attention = new AttentionService({ aiConnections, appPackages, backupAgent, chatGptTunnel, installJobs, storage, store: setup.store, updateJobs, updates });
 
   const services = {
     addressService,
+    attention,
     aiConnections,
     aiGateway,
     appAgent,
+    chatGptTunnel,
     appPackages,
     appUrls,
     backupAgent,
@@ -283,17 +300,19 @@ async function startCatalogRefresh(catalogService) {
 }
 
 // Candidates left by a Suite Manager killed mid-download belong to nobody once it restarts.
-async function startServices({ addressService, appPackages, appUrls, catalogService, files, setup }) {
+async function startServices({ addressService, appPackages, appUrls, attention, catalogService, files, setup }) {
   const recoveries = await appPackages.recoverInterruptedUpdates({ publicUrlFor: appUrls.publicUrls() });
   const sweptCandidates = sweepCandidateRoot(setup.store.stateDir);
   await files.sweep().catch(() => {});
   void startCatalogRefresh(catalogService);
   addressService.watchEasyDoor();
+  attention.watch();
   return { recoveries, sweptCandidates };
 }
 
-function stopServices({ addressService, catalogService, setup }) {
+function stopServices({ addressService, attention, catalogService, setup }) {
   catalogService.stop();
+  attention.stop();
   addressService.stopWatchingEasyDoor();
   setup.close();
 }

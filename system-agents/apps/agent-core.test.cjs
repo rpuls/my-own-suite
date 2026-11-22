@@ -241,6 +241,14 @@ test('app apply validates internal iCal bridge shape', async () => {
   }), AppRuntimeError);
 });
 
+test('a service only Suite Manager calls is published on loopback like a routed one, and an internal one is not', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async applyAppServices(input) { calls.push(input); return { steps: [] }; } });
+  const service = (id, loopbackPort, extra = {}) => ({ ...request.compose.services[0], id, loopbackPort, ...extra });
+  await core.apply({ ...request, compose: { ...request.compose, services: [request.compose.services[0], service('mcp', 18124, { loopback: true }), service('broker', 18125)] } });
+  assert.deepEqual(calls[0].services.map(({ id, public: published }) => [id, published]), [['web', true], ['mcp', true], ['broker', false]]);
+});
+
 test('app apply validates exact shape and delegates sanitized runtime fields', async () => {
   const calls = [];
   const core = new AppAgentCore({

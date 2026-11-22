@@ -1,10 +1,11 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
+    alert: <><path d="M12 3 2.5 20h19L12 3Z" /><path d="M12 10v4.5" /><path d="M12 17.5h.01" /></>,
     apps: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><path d="M14 17.5h7M17.5 14v7" /></>,
     'arrow-right': <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
@@ -277,8 +278,8 @@ export function FilterChips<T extends string>({ label, onChange, options, value 
   </div>;
 }
 
-export function Avatar({ colour, initials }: { colour: string; initials: string }) {
-  return <span aria-hidden="true" className="mos-avatar" style={{ background: colour }}>{initials}</span>;
+export function Avatar({ background, initials, ink = '#ffffff', small = false }: { background: string; initials: string; ink?: string; small?: boolean }) {
+  return <span aria-hidden="true" className={`mos-avatar${small ? ' mos-avatar-small' : ''}`} style={{ background, color: ink }}>{initials}</span>;
 }
 
 // The settings row: label left, value right, hairline between neighbours. One
@@ -313,6 +314,10 @@ export function Panel({ children, className, density = 'regular' }: {
 // do to it on the right. `title` is an eyebrow by default, because it labels a
 // region of a panel the owner is already reading; `heading` makes it the title
 // of a panel that is itself one item in a longer page, such as one setting.
+// The icon a page gives each of its sections, so a section's title wears the same
+// icon as the page's own index. Only a titled head (`heading`) shows it.
+export const SectionIcon = createContext<IconName | null>(null);
+
 export function PanelHead({ actions, children, heading, title }: {
   actions?: ReactNode;
   children?: ReactNode;
@@ -320,9 +325,11 @@ export function PanelHead({ actions, children, heading, title }: {
   title: ReactNode;
 }) {
   const Heading = heading;
+  const icon = useContext(SectionIcon);
+  const titled = Heading ? <Heading className="mos-card-title">{title}</Heading> : null;
   return <div className="mos-panel-head">
     <div>
-      {Heading ? <Heading className="mos-card-title">{title}</Heading> : <p className="mos-eyebrow">{title}</p>}
+      {titled && icon ? <div className="mos-panel-head-title"><span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span>{titled}</div> : titled ?? <p className="mos-eyebrow">{title}</p>}
       {children}
     </div>
     {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}
@@ -649,27 +656,33 @@ function keepFocusInside(container: HTMLElement, event: KeyboardEvent) {
   }
 }
 
-export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
+export function Dialog({ children, className, dismissible = true, footer, header, onClose, title }: { children: ReactNode; className?: string; dismissible?: boolean; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   const editedRef = useRef(false);
   const pressedBackdropRef = useRef(false);
+  const dismissibleRef = useRef(dismissible);
   useEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+    dismissibleRef.current = dismissible;
+  }, [dismissible, onClose]);
   useEffect(() => {
     if (!dialogRef.current?.contains(document.activeElement)) closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !editedRef.current) onCloseRef.current();
+      if (event.key === 'Escape' && dismissibleRef.current && !editedRef.current) onCloseRef.current();
       if (event.key === 'Tab' && dialogRef.current) keepFocusInside(dialogRef.current, event);
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+  // Every dialog is header, body and optional footer; only the body scrolls,
+  // and only vertically, so the title, × and actions never leave the screen.
+  //
   // One rule for every dialog: Escape and a click on the backdrop dismiss it
   // until the owner changes any field in it; from then on only × and the
-  // dialog's own buttons close it. A click counts as a backdrop click only when
+  // dialog's own buttons close it, and the same from the start when it is not
+  // `dismissible`, such as a setup still waiting to finish. A click counts as a backdrop click only when
   // it also started there, so a text selection dragged past the edge is not one.
   //
   // Portalled to <body> for the same reason as Drawer and ActionMenu: a dialog
@@ -678,7 +691,7 @@ export function Dialog({ children, className, footer, header, onClose, title }: 
   // `position: fixed` centres it on the panel instead of the screen and its
   // frost blurs nothing. Screen-centred and frosted is the only correct result.
   return createPortal(
-    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && pressedBackdropRef.current && !editedRef.current) onCloseRef.current(); }} onPointerDown={(event) => { pressedBackdropRef.current = event.target === event.currentTarget; }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} onChange={() => { editedRef.current = true; }} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
+    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && pressedBackdropRef.current && dismissibleRef.current && !editedRef.current) onCloseRef.current(); }} onPointerDown={(event) => { pressedBackdropRef.current = event.target === event.currentTarget; }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} onChange={() => { editedRef.current = true; }} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div><div className="suite-dialog-body">{children}</div>{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
     document.body,
   );
 }

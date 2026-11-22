@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { BetaNotice } from '../../components/disclaimers';
-import { Icon } from '../../components/ui';
+import { Avatar, Icon, type IconName } from '../../components/ui';
+import { formatBytes } from '../../lib/bytes';
+import { whenWords } from '../../lib/dates';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
-import { STORAGE_SETTINGS_PATH } from '../../lib/navigation';
-import { StorageWidget } from '../storage/StorageWidget';
+import { BACKUPS_PATH, navigateOnClick, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
+import { issuesOf, useOverview, type AttentionIssue } from '../../lib/overview';
+import { avatarOf, sourceIconUrl } from '../ai-activity/timeline';
+import { formatInZone } from '../backups/model';
 import type { Owner } from '../setup/types';
 
 type DashboardScreenProps = {
@@ -12,17 +16,10 @@ type DashboardScreenProps = {
   owner: Owner;
 };
 
-// Only the shape the welcome screen needs: whether anything is installed. The
-// Apps screen owns the full package model.
-type InstalledProbe = { instance: object | null };
-
-// Whether this suite has at least one app the owner actually installed.
-async function readInstalledCount(): Promise<number> {
-  const response = await fetch('/suite-manager/api/apps/packages');
-  if (!response.ok) throw new Error('Unable to read installed apps.');
-  const body = await response.json() as { packages?: InstalledProbe[] };
-  return (body.packages || []).filter((item) => item.instance).length;
-}
+const APPS_PATH = '/suite-manager/apps';
+const UPDATES_PATH = '/suite-manager/updates';
+const AI_SETTINGS_PATH = '/suite-manager/settings#set-ai';
+const AI_ACTIVITY_PATH = '/suite-manager/ai-activity';
 
 function CommunityCard() {
   return <section className="mos-panel suite-card suite-community-card">
@@ -55,65 +52,117 @@ function CommunityCard() {
   </section>;
 }
 
+function FirstSteps({ onNavigate }: Pick<DashboardScreenProps, 'onNavigate'>) {
+  return <section className="mos-panel suite-card suite-firstrun-card">
+    <h2 className="mos-card-title">First steps</h2>
+    <p className="suite-meta mos-meta">Three things to get your suite going.</p>
+    <div className="suite-firstrun-steps">
+      <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('apps', APPS_PATH)} type="button">
+        <Icon name="apps" /><span>1. Install an app</span>
+      </button>
+      <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('customize', '/suite-manager/customize')} type="button">
+        <Icon name="customize" /><span>2. Add it to your Homepage</span>
+      </button>
+      <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('backups', BACKUPS_PATH)} type="button">
+        <Icon name="backup" /><span>3. Make your first backup</span>
+      </button>
+    </div>
+  </section>;
+}
+
+// The picture beside a problem: the app's own icon with a status dot, the
+// assistant's avatar, or a warning sign for anything that is neither.
+function IssueLead({ issue }: { issue: AttentionIssue }) {
+  if (issue.assistant) return <Avatar {...avatarOf(issue.assistant)} small />;
+  if (issue.app) {
+    return <span className="suite-overview-issue-app">
+      <img alt="" height="24" src={sourceIconUrl(issue.app)} width="24" />
+      <span aria-hidden="true" className="suite-overview-dot" />
+    </span>;
+  }
+  return <span className="suite-overview-issue-alert"><Icon name="alert" /></span>;
+}
+
+// One part of the suite at a glance. Information only: it names what is wrong and
+// links to where it is fixed, and never acts itself.
+function OverviewTile({ children, icon, issues, link, title }: {
+  children: ReactNode;
+  icon: IconName;
+  issues: AttentionIssue[];
+  link: { label: string; path: string };
+  title: string;
+}) {
+  const ok = issues.length === 0;
+  return <section className={`mos-panel suite-overview-tile${ok ? '' : ' is-attention'}`}>
+    <div className="suite-overview-title">
+      <span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span>
+      <h2 className="mos-card-title">{title}</h2>
+      {ok ? <span aria-label="All is well" className="suite-overview-check" role="img"><Icon name="check" /></span> : null}
+    </div>
+    <div className="suite-overview-facts">{children}</div>
+    {issues.length ? <ul className="suite-overview-issues">
+      {issues.map((issue) => <li key={issue.id}><IssueLead issue={issue} /><p>{issue.text} <span>{issue.detail}</span></p></li>)}
+    </ul> : null}
+    <a className="mos-link" href={link.path} onClick={navigateOnClick(link.path)}>{link.label}</a>
+  </section>;
+}
+
+function lowerFirst(text: string) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function statusLine(count: number) {
+  if (count === 0) return 'Everything is running.';
+  return `${count === 1 ? '1 thing needs' : `${count} things need`} you. Everything else is running.`;
+}
+
 export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
-  // `null` while the answer is unknown: the welcome hero says something
-  // different in each case, and guessing "no apps" would tell an owner with a
-  // full suite to go install their first one.
-  const [installedCount, setInstalledCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void readInstalledCount()
-      .then((count) => { if (!cancelled) setInstalledCount(count); })
-      .catch(() => { if (!cancelled) setInstalledCount(null); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const hasApps = installedCount !== null && installedCount > 0;
+  const overview = useOverview();
   const firstName = owner.name.trim().split(/\s+/)[0] || owner.name;
+  // A first visit and a full suite read differently, so nothing is guessed while the answer is on its way.
+  const hasApps = overview ? overview.apps.total > 0 : null;
 
   return (
     <section className="mos-shell suite-dashboard">
       <div className="suite-hero">
-        <h1>{hasApps ? `Welcome back, ${firstName}` : "You're all set — install your first app"}</h1>
+        <h1>{hasApps === false ? "You're all set — install your first app" : `Welcome back, ${firstName}`}</h1>
         <p className="suite-lead mos-body-lg">
-          {hasApps
-            ? 'Suite Manager is your control room: add apps, keep them updated, and back everything up. Your dashboard is one tap away on the menu.'
-            : 'Suite Manager is your control room: add apps, keep them updated, and back everything up. The best first move is installing an app — everything else grows from there.'}
+          {hasApps === false
+            ? 'Suite Manager is your control room: add apps, keep them updated, and back everything up. The best first move is installing an app — everything else grows from there.'
+            : overview ? statusLine(issuesOf(overview).length) : 'Checking how your suite is doing.'}
         </p>
-        {/* No call to action here: installing an app is already step 1 of the
-            First steps card, which is where the ordering is stated. */}
       </div>
 
-      <div className="suite-dashboard-grid">
-        <section className="mos-panel suite-card suite-status-card">
-          <h2 className="mos-card-title">Signed in</h2>
-          <p className="suite-meta mos-meta">Owner</p>
-          <strong>{owner.name}</strong>
-          <span>{owner.email}</span>
-        </section>
+      {hasApps === false ? <FirstSteps onNavigate={onNavigate} /> : null}
 
-        <section className="mos-panel suite-card suite-firstrun-card">
-          <h2 className="mos-card-title">{hasApps ? 'Keep it healthy' : 'First steps'}</h2>
-          <p className="suite-meta mos-meta">{hasApps ? 'The three things worth doing regularly.' : 'Three things to get your suite going.'}</p>
-          <div className="suite-firstrun-steps">
-            <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('apps', '/suite-manager/apps')} type="button">
-              <Icon name="apps" /><span>{hasApps ? 'Add another app' : '1. Install an app'}</span>
-            </button>
-            <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('customize', '/suite-manager/customize')} type="button">
-              <Icon name="customize" /><span>{hasApps ? 'Tidy up your dashboard' : '2. Add it to your Homepage'}</span>
-            </button>
-            <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => onNavigate('backups', '/suite-manager/backups')} type="button">
-              <Icon name="backup" /><span>{hasApps ? 'See your backups' : '3. Make your first backup'}</span>
-            </button>
-          </div>
-        </section>
-      </div>
+      {overview && hasApps ? <div className="suite-overview-grid">
+        <OverviewTile icon="apps" issues={overview.apps.issues} link={{ label: 'Open Apps', path: APPS_PATH }} title="Apps">
+          <p><strong>{overview.apps.running} running</strong>{overview.apps.issues.length ? ` · ${overview.apps.issues.length} need${overview.apps.issues.length === 1 ? 's' : ''} you` : ''}</p>
+        </OverviewTile>
 
-      <StorageWidget onManage={() => onNavigate('settings', STORAGE_SETTINGS_PATH)} />
+        {overview.ai.connected || overview.ai.issues.length ? <OverviewTile icon="sparkle" issues={overview.ai.issues} link={overview.ai.issues.length ? { label: 'AI assistants in Settings', path: AI_SETTINGS_PATH } : { label: 'AI activity', path: AI_ACTIVITY_PATH }} title="AI assistants">
+          <p><strong>{overview.ai.connected} connected</strong></p>
+          {overview.ai.lastUsed ? <p>Last used {lowerFirst(whenWords(overview.ai.lastUsed.at))}, by {overview.ai.lastUsed.by}.</p> : null}
+        </OverviewTile> : null}
 
-      {/* Below what the owner came here to do. It is a caveat about the software,
-          not a task, so it should not sit between them and their next step. */}
+        {overview.updates ? <OverviewTile icon="update" issues={overview.updates.issues} link={{ label: 'Open Updates', path: UPDATES_PATH }} title="Updates">
+          <p><strong>{overview.updates.available ? `${overview.updates.available} is available` : 'Up to date'}</strong></p>
+          {overview.updates.checkedAt ? <p>Checked {lowerFirst(whenWords(overview.updates.checkedAt))}.</p> : null}
+        </OverviewTile> : null}
+
+        {overview.backups ? <OverviewTile icon="backup" issues={overview.backups.issues} link={{ label: 'Open Backups', path: BACKUPS_PATH }} title="Backups">
+          <p><strong>{overview.backups.lastAt ? `Last backup ${lowerFirst(whenWords(overview.backups.lastAt))}` : 'No backups yet'}</strong></p>
+          {overview.backups.nextAt && overview.backups.timeZone ? <p>Next {formatInZone(overview.backups.nextAt, overview.backups.timeZone)}.</p> : null}
+        </OverviewTile> : null}
+
+        {overview.storage ? <OverviewTile icon="usb-drive" issues={overview.storage.issues} link={{ label: 'Storage in Settings', path: STORAGE_SETTINGS_PATH }} title="Storage">
+          {overview.storage.systemFreeBytes !== null ? <p><strong>{formatBytes(overview.storage.systemFreeBytes)} free</strong> on the system drive</p> : null}
+          {overview.storage.places ? <p>{overview.storage.places} more {overview.storage.places === 1 ? 'place' : 'places'} connected.</p> : null}
+        </OverviewTile> : null}
+      </div> : null}
+
+      {/* Below what the owner came here to see. It is a caveat about the software,
+          not a status, so it should not sit between them and their suite. */}
       <BetaNotice />
 
       <CommunityCard />

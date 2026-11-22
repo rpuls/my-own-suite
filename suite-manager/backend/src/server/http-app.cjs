@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { MCP_PATH } = require('../ai/ai-gateway.cjs');
+const { MCP_PATH, fromThisMachine } = require('../ai/ai-gateway.cjs');
 const { parseCookies, sessionTokenFrom } = require('./cookies.cjs');
 const { FRONTEND_ASSET_PREFIX, SUITE_MANAGER_BASE_PATH, serveFrontend, serveFrontendAsset, serveHomeIcon } = require('./frontend.cjs');
 const { isCrossOriginWrite, isHttpsRequest, normalizedHost } = require('./request.cjs');
@@ -27,7 +27,9 @@ function createRequestHandler(services) {
     const sessionToken = sessionTokenFrom(cookies, isHttpsRequest(request));
 
     try {
-      if (!addressService.allowedHosts().has(requestHost)) {
+      // The ChatGPT tunnel calls the gateway on 127.0.0.1, a host no browser uses for MOS.
+      const tunnelled = url.pathname === MCP_PATH && fromThisMachine(request);
+      if (!tunnelled && !addressService.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
         return;
       }

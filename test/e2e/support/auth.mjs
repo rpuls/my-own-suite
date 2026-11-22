@@ -66,6 +66,9 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     await expect(page.getByRole('heading', { name: /Before you start/iu })).toBeVisible({ timeout: 30000 });
     await acceptTermsIfPending(page);
   }
+  // The handover page paints only after its secrets load, so wait for it or for Suite Manager before deciding.
+  const handover = page.getByRole('heading', { name: /^(Save your (server login|recovery key)|Suite Manager cannot open yet)/u });
+  await expect(handover.or(page.getByRole('button', { name: 'Open navigation menu' }))).toBeVisible({ timeout: 30000 });
   await saveHandoverIfPending(page);
   await gotoHomeDashboard(page, entryUrl);
   await expectSignedInApi(page, entryUrl);

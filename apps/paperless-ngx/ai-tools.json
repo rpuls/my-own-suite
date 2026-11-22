@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "search_documents": {
+      "kind": "read",
+      "title": "Search documents"
+    },
+    "get_document": {
+      "kind": "read",
+      "title": "Read a document"
+    },
+    "list_labels": {
+      "kind": "read",
+      "title": "See tags, senders and types"
+    },
+    "add_note": {
+      "kind": "add",
+      "title": "Add a note to a document"
+    },
+    "update_document": {
+      "kind": "change",
+      "title": "File a document",
+      "note": "Filing changes a title, date, sender, type or tags, never the document itself."
+    }
+  }
+}

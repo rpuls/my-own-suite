@@ -4,6 +4,7 @@ import { CustomizeYamlNotice } from '../../components/disclaimers';
 import { AdvancedPanel, Notice } from '../../components/ui';
 import { AddHomepageItemDialog } from './AddHomepageItemDialog';
 import { CodeEditor } from './CodeEditor';
+import { HomepageHistory } from './HomepageHistory';
 
 const API = '/suite-manager/api/customize';
 const FILES = [
@@ -68,6 +69,7 @@ export function CustomizeScreen() {
   const [error, setError] = useState<ApiError | null>(null);
   const [steps, setSteps] = useState<string[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
   const dirty = content !== savedContent;
   const selected = FILES.find((item) => item.name === file)!;
   const groups = useMemo(() => groupsFrom(file === 'services.template.yaml' ? content : savedContent), [content, file, savedContent]);
@@ -95,7 +97,7 @@ export function CustomizeScreen() {
     setBusy(true); setError(null); setSteps([]);
     try {
       const value = await api<ApplyResult>('/file/apply', { content, expectedRevision: revision, file });
-      setRevision(value.revision); setSavedContent(content); setSteps(value.steps || ['written']);
+      setRevision(value.revision); setSavedContent(content); setSteps(value.steps || ['written']); setHistoryKey((key) => key + 1);
     } catch (caught) { setError(caught as ApiError); }
     finally { setBusy(false); }
   }
@@ -104,11 +106,11 @@ export function CustomizeScreen() {
     let expectedRevision = revision;
     if (file !== 'services.template.yaml') expectedRevision = (await api<FileResult>('/file/read', { file: 'services.template.yaml' })).revision;
     const value = await api<ApplyResult>(kind === 'service' ? '/add-home-service' : '/add-link', { entry, expectedRevision, requestId: createRequestId() });
-    setSteps(value.steps || ['written']); setAddOpen(false); await load('services.template.yaml'); setSteps(value.steps || ['written']);
+    setSteps(value.steps || ['written']); setAddOpen(false); await load('services.template.yaml'); setSteps(value.steps || ['written']); setHistoryKey((key) => key + 1);
   }
 
   return <section className="mos-shell suite-customize">
-    <div className="suite-hero"><h1>Customize</h1><p className="suite-lead mos-body-lg">Edit dashboard files or add links and services already running on your home network.</p></div>
+    <div className="suite-hero"><h1>Customize</h1><p className="suite-lead mos-body-lg">Arrange your dashboard: ask your AI, or edit the files yourself.</p></div>
     {!agentAvailable ? <Notice title="Homepage agent unavailable" variant="warning"><p>Editing requires the installed MOS Homepage system agent.</p></Notice> : null}
     <section className="mos-panel suite-card suite-customize-panel">
       <header className="suite-customize-header"><div><h2>{selected.name}</h2><p className="suite-meta">{selected.description}</p></div>{file === 'services.template.yaml' ? <button className="mos-btn mos-btn-primary" disabled={busy || !agentAvailable} onClick={() => setAddOpen(true)} type="button">Add to Homepage</button> : null}</header>
@@ -142,6 +144,7 @@ export function CustomizeScreen() {
         </div>
       </div>
     </section>
+    <HomepageHistory onRestored={() => { void load(); setHistoryKey((key) => key + 1); }} refreshKey={historyKey} />
     {addOpen ? <AddHomepageItemDialog groups={groups} onAdd={add} onClose={() => setAddOpen(false)} previewHomeService={(input) => api('/home-service-preview', input)} /> : null}
   </section>;
 }

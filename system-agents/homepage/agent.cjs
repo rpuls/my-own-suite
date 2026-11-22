@@ -13,12 +13,13 @@ const server = routeTable({
   'POST /v1/homepage/read': (body) => core.read(body),
   'POST /v1/homepage/validate': (body) => core.validate(body),
   'POST /v1/homepage/apply': (body) => core.apply(body),
+  'POST /v1/homepage/apply-files': (body) => core.applyFiles(body),
   'POST /v1/homepage/add-link': (body) => core.add(body, false),
   'POST /v1/homepage/add-home-service': (body) => core.add(body, true),
   'POST /v1/homepage/remove-link': (body) => core.removeLink(body),
   'POST /v1/homepage/reconcile-urls': (body) => core.reconcileUrls(body),
 }, {
-  bodyLimit: 600 * 1024,
+  bodyLimit: 2560 * 1024,
   failure(error) {
     const known = error instanceof HomepageConfigError || error instanceof HomepageApplyError;
     return {

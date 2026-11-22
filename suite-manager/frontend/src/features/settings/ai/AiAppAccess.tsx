@@ -24,7 +24,7 @@ function RemoveTokenDialog({ allowed, busy, onClose, onRemove, source }: { allow
   </Dialog>;
 }
 
-// On an app's own page: which AI may use it, and the token the app let MOS in
+// On an app's own page: which AI may use it, and the access token the app gave MOS
 // with. What each AI may do is still chosen under Settings.
 export function AiAppAccess({ packageId }: { packageId: string }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
