@@ -504,7 +504,7 @@ export function AppConfigDialog({
       /> : null}
 
       {/* Everything MOS generated, plus the variables an owner added. It sits
-          behind technical controls because none of it is a decision an ordinary
+          behind developer mode because none of it is a decision an ordinary
           owner has to make — the app is configured correctly without it. */}
       <AdvancedPanel layout="row" reveal="technical-mode">
         {generatedFields.length || rows.length ? <Rows lead>

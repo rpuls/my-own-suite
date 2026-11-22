@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { Icon, Notice, Panel, PanelBody, PanelHead } from '../../components/ui';
 
-// Deliberately not behind Technical controls, and the one place in Suite Manager
+// Deliberately not behind Developer mode, and the one place in Suite Manager
 // where that is the whole point. This exists for an owner who cannot describe
 // what is wrong, which is exactly the owner who will never have found a
 // technical toggle — gating it would hide the feature from its only user.

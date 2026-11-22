@@ -13,7 +13,7 @@ import { SuiteAddressPanel } from './SuiteAddressPanel';
 import { TechnicalControlsPanel } from './TechnicalControlsPanel';
 import { StoragePanel } from '../storage/StoragePanel';
 
-type GroupId = 'advanced' | 'ai' | 'apps' | 'help' | 'security' | 'suite';
+type GroupId = 'ai' | 'apps' | 'maintenance' | 'security' | 'suite';
 
 type SettingId = 'activity' | 'address' | 'ai' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
@@ -22,8 +22,7 @@ const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
   { description: 'Who controls this suite and how it protects your data.', id: 'security', title: 'Account & security' },
   { description: 'Where your apps come from, and where your files and backups are kept.', id: 'apps', title: 'Apps & storage' },
   { description: 'How AI and your suite work together.', id: 'ai', title: 'AI' },
-  { description: 'Extra detail for people who want to see under the hood.', id: 'advanced', title: 'Advanced' },
-  { description: 'For when something is not working.', id: 'help', title: 'Help' },
+  { description: 'For looking inside your suite, and for when something is not working.', id: 'maintenance', title: 'Maintenance' },
 ];
 
 // The one index of this page: it drives the sidebar, the search and the order of
@@ -37,8 +36,8 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
   { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
   { group: 'ai', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini lm studio open webui ollama mcp connect token tools permissions agent llm', title: 'AI assistants' },
-  { group: 'advanced', icon: 'settings', id: 'technical', keywords: 'technical controls advanced logs config developer overrides expert', title: 'Technical controls' },
-  { group: 'help', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
+  { group: 'maintenance', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
+  { group: 'maintenance', icon: 'braces', id: 'technical', keywords: 'developer mode technical controls advanced details logs config overrides expert', title: 'Developer mode' },
 ];
 
 // Every whitespace-separated term has to appear somewhere in the setting.

@@ -610,7 +610,7 @@ export function AppDetail({
       // A published assessment describes the app as MOS ships it. Owner-set
       // environment can change what leaves the server, so an instance that has
       // any says so — a fact about this owner's own data, which is why it is not
-      // behind technical controls.
+      // behind developer mode.
       overrideNotice={ownerEnv.length ? 'You have changed this app’s configuration. The assessment below describes it as MOS ships it.' : null}
       appVersion={app.appVersion}
       packageId={app.id}

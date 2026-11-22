@@ -181,7 +181,7 @@ export function StoragePanel() {
   return <>
     <Panel>
       <PanelHead
-        actions={<button className="mos-btn mos-btn-primary mos-btn-sm" onClick={() => setFlow({ kind: 'add' })} type="button"><Icon name="plus" />Add storage</button>}
+        actions={<button className="mos-btn mos-btn-secondary" onClick={() => setFlow({ kind: 'add' })} type="button">Add storage</button>}
         heading="h3"
         title="Storage"
       >

@@ -28,7 +28,7 @@ test('only the shared AdvancedPanel and its stylesheet know the advanced-panel c
   assert.deepEqual(offenders, [], [
     `These files render the .${ADVANCED_CLASS} class themselves: ${offenders.join(', ')}.`,
     'Advanced surface must go through <AdvancedPanel> in components/ui.tsx, which decides its own',
-    'visibility: it renders nothing at all unless the owner has switched technical controls on',
+    'visibility: it renders nothing at all unless the owner has switched developer mode on',
     '(reveal="technical-mode"), or the surrounding UI is already reporting a failure',
     '(reveal="on-failure"). A hand-rolled disclosure skips that gate, so package ids, digests, ports,',
     'volume names and raw logs go back in front of every owner on a healthy screen — which is the',

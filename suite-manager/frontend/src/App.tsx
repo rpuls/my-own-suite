@@ -64,7 +64,7 @@ export default function App() {
 
   // The provider wraps the whole signed-in tree and nothing above it, and this
   // component has already returned for `loading`, so every screen knows whether
-  // technical controls are on before its first paint. No second fetch, and no
+  // developer mode is on before its first paint. No second fetch, and no
   // advanced panel that appears a moment after the page settles.
   return (
     <TechnicalControlsProvider enabled={state.preferences.technicalControls} setEnabled={setTechnicalControls}>
