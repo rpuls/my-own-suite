@@ -73,12 +73,18 @@ function scrollToAnchor(id: string) {
 }
 
 // The setting being read: the last visible card whose top has passed the reading
-// line, or the last card once the page cannot scroll any further.
+// line, or the last card once the page cannot scroll any further. A jump holds its
+// target until the owner scrolls by hand, since a card near the bottom never reaches the line.
 function useActiveSetting(visible: SettingId[]) {
   const [active, setActive] = useState<SettingId | null>(visible[0] ?? null);
+  const held = useRef(false);
   const key = visible.join(' ');
   useEffect(() => {
+    function release() {
+      held.current = false;
+    }
     function update() {
+      if (held.current) return;
       let current = visible[0] ?? null;
       for (const id of visible) {
         const card = document.getElementById(`set-${id}`);
@@ -88,14 +94,21 @@ function useActiveSetting(visible: SettingId[]) {
       setActive(current);
     }
     update();
+    const manual = ['wheel', 'touchstart', 'keydown', 'mousedown'] as const;
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
+    for (const event of manual) window.addEventListener(event, release, { passive: true });
     return () => {
       window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
+      for (const event of manual) window.removeEventListener(event, release);
     };
   }, [key]);
-  return [active, setActive] as const;
+  function hold(id: SettingId) {
+    held.current = true;
+    setActive(id);
+  }
+  return [active, hold] as const;
 }
 
 // The settings whose card holds something that stopped working, from the same checks as the start page.

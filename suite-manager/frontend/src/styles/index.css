@@ -128,6 +128,12 @@
   border-top: var(--mos-border-hairline);
 }
 
+.suite-diagnostics-action {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--mos-space-3);
+}
+
 .suite-settings-search {
   position: relative;
 }

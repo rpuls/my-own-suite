@@ -46,8 +46,11 @@ export function DiagnosticsPanel() {
   }
 
   return <Panel>
-    <PanelHead actions={<button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button"><Icon name="download" />{creating ? 'Collecting...' : 'Create file'}</button>} heading="h3" title="Diagnostics file">
+    <PanelHead heading="h3" title="Diagnostics file">
       <p>One file with what is running, what failed recently, and why. Read it yourself, send it to someone helping you, or give it to an AI assistant. Passwords and app secrets are removed before the file is written.</p>
+      <div className="suite-diagnostics-action">
+        <button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button"><Icon name="download" />{creating ? 'Collecting...' : 'Create file'}</button>
+      </div>
     </PanelHead>
     {error || created ? <PanelBody>
       {error ? <Notice title="The file could not be created" variant="error"><p>{error}</p></Notice> : null}
