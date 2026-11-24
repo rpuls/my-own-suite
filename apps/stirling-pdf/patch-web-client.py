@@ -1,7 +1,7 @@
 """Points the web client's PostHog and Stripe at Stirling's own server, where the requests fail.
 
-The client starts both on every page whatever SYSTEM_ENABLEANALYTICS says. Each swap must match
-exactly once, or the build stops rather than ship them.
+A backstop: 3.5.0 loads PostHog only with analytics on and Stripe only on its billing screen, and
+earlier versions loaded both on every page. Each swap must match exactly once, or the build stops.
 """
 import shutil
 import sys
@@ -9,7 +9,7 @@ import zipfile
 
 JAR = '/app/app.jar'
 SWAPS = {
-    'api_host:"https://eu.i.posthog.com"': 'api_host:"/mos-blocked/posthog"',
+    'host:"https://eu.i.posthog.com"': 'host:"/mos-blocked/posthog"',
     '"https://js.stripe.com"': '"/mos-blocked/stripe"',
 }
 
