@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActionMenu, Avatar, Dialog, DisclosureRow, InfoTip, Notice, Panel, PanelBody, PanelHead, PanelHeadButton, PanelItem, PanelList, Rows, RowSwitch } from '../../../components/ui';
 import { avatarOf } from '../../ai-activity/timeline';
 import { AiDirectionPicture } from './AiDirectionPicture';
+import { AppName } from './AiParts';
 import { AiServiceDialog, answeredIn, type SavedService } from './AiServiceDialog';
 import { aiServiceRequest, type AiService, type AiServiceApp, type AiServicesStatus, type AiServiceTest } from './model';
 
@@ -91,7 +92,7 @@ function ServiceItem({ apps, busy, expanded, onEdit, onRemove, onSwitch, onTest,
             description={switching === app.packageId ? `Restarting ${app.name}...` : app.running ? undefined : `${app.name} is stopped. It uses this when it next starts.`}
             disabled={busy}
             key={app.packageId}
-            label={app.name}
+            label={<AppName id={app.packageId} name={app.name} />}
             onChange={(event) => onSwitch(app, event.target.checked)}
           />)}
         </Rows>

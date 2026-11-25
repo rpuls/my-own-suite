@@ -104,6 +104,10 @@ const SETUP_OPTIONS: Array<{ label: string; value: SetupChoice }> = [{ label: 'O
 
 // Until the app has given MOS a token, the switch offers only Set up, so it never shows
 // a level that cannot take effect; the levels appear once the token is accepted.
+export function AppName({ id, name }: { id: string; name: string }) {
+  return <span className="suite-ai-source-name"><img alt="" height="28" src={sourceIconUrl(id)} width="28" />{name}</span>;
+}
+
 function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source }: {
   busy: boolean;
   client: AiClient;
@@ -121,7 +125,7 @@ function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source
   const offered = source.tools.some(isOffered);
   const lostToken = locked && level !== 'off';
   const label = <>
-    <span className="suite-ai-source-name"><img alt="" height="28" src={sourceIconUrl(source.id)} width="28" />{source.name}</span>
+    <AppName id={source.id} name={source.name} />
     {custom ? <> <span className="mos-pill">Custom</span></> : null}
     {source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}
     {lostToken ? <> <span className="mos-pill mos-pill-warning">Needs a token</span></> : null}
