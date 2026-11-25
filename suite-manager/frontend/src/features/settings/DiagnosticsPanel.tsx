@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Icon, Notice, Panel, PanelBody, PanelHead } from '../../components/ui';
+import { Notice, Panel, PanelBody, PanelHead, PanelHeadButton } from '../../components/ui';
 
 // Deliberately not behind Developer mode, and the one place in Suite Manager
 // where that is the whole point. This exists for an owner who cannot describe
@@ -49,7 +49,7 @@ export function DiagnosticsPanel() {
     <PanelHead heading="h3" title="Diagnostics file">
       <p>One file with what is running, what failed recently, and why. Read it yourself, send it to someone helping you, or give it to an AI assistant. Passwords and app secrets are removed before the file is written.</p>
       <div className="suite-diagnostics-action">
-        <button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button"><Icon name="download" />{creating ? 'Collecting...' : 'Create file'}</button>
+        <PanelHeadButton disabled={creating} onClick={() => void create()}>{creating ? 'Collecting...' : 'Create file'}</PanelHeadButton>
       </div>
     </PanelHead>
     {error || created ? <PanelBody>

@@ -339,6 +339,20 @@ export function PanelHead({ actions, children, heading, title }: {
   </div>;
 }
 
+// The one look a settings card's head action has, so no card picks its own
+// colour, size or icon. A guard test keeps raw buttons out of those heads.
+export function PanelHeadButton({ children, disabled, href, onClick }: {
+  children: ReactNode;
+  disabled?: boolean;
+  href?: string;
+  onClick?: () => void;
+}) {
+  const className = 'mos-btn mos-btn-secondary';
+  return href
+    ? <a className={className} href={href}>{children}</a>
+    : <button className={className} disabled={disabled} onClick={onClick} type="button">{children}</button>;
+}
+
 // A full-bleed strip that comments on the section next to it — a fact that
 // belongs to the list rather than to any one row in it. Adjacency is the
 // explanation, which is why it is a band and not a notice somewhere else.

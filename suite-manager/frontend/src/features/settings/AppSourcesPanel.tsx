@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelHeadButton, PanelItem, PanelList } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { appSourceLabel, sourceCheckedLabel, sourceFailureCopy as failureCopy, sourceFetchSummary } from '../../lib/app-sources';
 import type { AppSource, SourceCatalog } from '../../lib/app-sources';
@@ -164,7 +164,7 @@ export function AppSourcesPanel() {
 
   return <>
     <Panel>
-      <PanelHead actions={<a className="mos-btn mos-btn-secondary" href="/suite-manager/apps">Add source</a>} heading="h3" title="App sources">
+      <PanelHead actions={<PanelHeadButton href="/suite-manager/apps">Add source</PanelHeadButton>} heading="h3" title="App sources">
         <p>Extra catalogs you added on top of the MOS App Catalog. Their apps appear on the Apps page, where you add a new one.</p>
       </PanelHead>
       {sources.length ? <PanelList>

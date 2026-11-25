@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, Avatar, Dialog, DisclosureRow, InfoTip, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Rows, RowSwitch } from '../../../components/ui';
+import { ActionMenu, Avatar, Dialog, DisclosureRow, InfoTip, Notice, Panel, PanelBody, PanelHead, PanelHeadButton, PanelItem, PanelList, Rows, RowSwitch } from '../../../components/ui';
 import { avatarOf } from '../../ai-activity/timeline';
 import { AiDirectionPicture } from './AiDirectionPicture';
 import { AiServiceDialog, answeredIn, type SavedService } from './AiServiceDialog';
@@ -35,6 +35,21 @@ function RemoveServiceDialog({ busy, onClose, onRemove, service, users }: { busy
     title={`Remove ${service.name}?`}
   >
     <p>MOS forgets this service and its key.{users.length ? ` ${users.map((app) => app.name).join(', ')} ${users.length === 1 ? 'loses its' : 'lose their'} AI features and ${users.length === 1 ? 'restarts' : 'restart'}.` : ''}</p>
+  </Dialog>;
+}
+
+type PendingSwitch = { app: AiServiceApp; on: boolean; service: AiService };
+
+function ConfirmRestartDialog({ onClose, onConfirm, pending: { app, on, service } }: { onClose: () => void; onConfirm: () => void; pending: PendingSwitch }) {
+  return <Dialog
+    footer={<>
+      <button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" onClick={onConfirm} type="button">Restart {app.name}</button>
+    </>}
+    onClose={onClose}
+    title={`${on ? 'Let' : 'Stop'} ${app.name} ${on ? 'use' : 'using'} ${service.name}?`}
+  >
+    <p>{app.name} restarts to {on ? 'pick it up' : 'let it go'}. For a minute or so it cannot be opened, and anything not yet saved in it is lost.</p>
   </Dialog>;
 }
 
@@ -98,6 +113,7 @@ export function AiServicesPanel() {
   const [editing, setEditing] = useState<AiService | null>(null);
   const [removing, setRemoving] = useState<AiService | null>(null);
   const [tested, setTested] = useState<{ id: string; test: AiServiceTest } | null>(null);
+  const [pending, setPending] = useState<PendingSwitch | null>(null);
 
   useEffect(() => {
     aiServiceRequest('GET', '', 'Unable to load your AI services.').then(setStatus, (caught) => setError(errorText(caught, 'Unable to load your AI services.')));
@@ -120,6 +136,13 @@ export function AiServicesPanel() {
     }
   }
 
+  function applySwitch({ app, on, service }: PendingSwitch) {
+    setPending(null);
+    setSwitching(app.packageId);
+    const fallback = `${app.name} could not be changed.`;
+    void run(() => aiServiceRequest('PUT', `/apps/${encodeURIComponent(app.packageId)}`, fallback, { serviceId: on ? service.id : null }), fallback, setStatus);
+  }
+
   function saved({ restartFailures, status: next, test }: SavedService) {
     const id = editing?.id ?? next.services[next.services.length - 1]?.id ?? '';
     setStatus(next);
@@ -134,7 +157,7 @@ export function AiServicesPanel() {
   const apps = status?.apps ?? [];
 
   return <Panel>
-    <PanelHead actions={status ? <button className={`mos-btn ${services.length ? 'mos-btn-secondary' : 'mos-btn-primary'}`} disabled={busy} onClick={() => setAdding(true)} type="button">Add</button> : null} heading="h3" title={<>AI services<InfoTip label="What AI services are" picture={<AiDirectionPicture direction="out" />} title="Let your apps use AI">
+    <PanelHead actions={status ? <PanelHeadButton disabled={busy} onClick={() => setAdding(true)}>Add</PanelHeadButton> : null} heading="h3" title={<>AI services<InfoTip label="What AI services are" picture={<AiDirectionPicture direction="out" />} title="Let your apps use AI">
       <p>Give your suite an AI service to call. Apps that have AI features then use it by themselves, for things like suggestions and summaries. Each app stays off until you turn it on.</p>
     </InfoTip></>}>
       <p>Add an AI service once. Apps that have AI features use it, with nothing to set up inside each app.</p>
@@ -148,10 +171,7 @@ export function AiServicesPanel() {
         key={service.id}
         onEdit={() => setEditing(service)}
         onRemove={() => setRemoving(service)}
-        onSwitch={(app, on) => {
-          setSwitching(app.packageId);
-          void run(() => aiServiceRequest('PUT', `/apps/${encodeURIComponent(app.packageId)}`, `${app.name} could not be changed.`, { serviceId: on ? service.id : null }), `${app.name} could not be changed.`, setStatus);
-        }}
+        onSwitch={(app, on) => (app.running ? setPending : applySwitch)({ app, on, service })}
         onTest={() => {
           setOpen(service.id);
           void run(() => aiServiceRequest<{ status: AiServicesStatus; test: AiServiceTest }>('POST', `/${service.id}/test`, 'The service could not be tested.'), 'The service could not be tested.', (result) => {
@@ -167,6 +187,7 @@ export function AiServicesPanel() {
     </PanelList> : status ? <PanelBody>
       <p className="suite-meta">No AI service yet. Add a model you run at home, or one on the internet, to let your apps use it.</p>
     </PanelBody> : null}
+    {pending ? <ConfirmRestartDialog onClose={() => setPending(null)} onConfirm={() => applySwitch(pending)} pending={pending} /> : null}
     {adding || editing ? <AiServiceDialog onClose={() => { setAdding(false); setEditing(null); }} onSaved={saved} service={editing ?? undefined} /> : null}
     {removing ? <RemoveServiceDialog
       busy={busy}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, DisclosureRow, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelItem, PanelList, Spinner, Tooltip, type AdvancedFact } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, DisclosureRow, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelHeadButton, PanelItem, PanelList, Spinner, Tooltip, type AdvancedFact } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
 import { whenWords } from '../../lib/dates';
 import { filesPath, navigateTo } from '../../lib/navigation';
@@ -181,7 +181,7 @@ export function StoragePanel() {
   return <>
     <Panel>
       <PanelHead
-        actions={<button className="mos-btn mos-btn-secondary" onClick={() => setFlow({ kind: 'add' })} type="button">Add storage</button>}
+        actions={<PanelHeadButton onClick={() => setFlow({ kind: 'add' })}>Add storage</PanelHeadButton>}
         heading="h3"
         title="Storage"
       >
