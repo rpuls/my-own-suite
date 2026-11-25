@@ -255,8 +255,7 @@ export function UpdatesScreen() {
     });
   }
 
-  // MOS told the owner a restart was needed, so MOS performs it. Nothing is
-  // reloaded afterwards: the server is going away.
+  // MOS told the owner a restart was needed, so MOS performs it.
   async function restartHost() {
     setRestarting(true);
     setError('');

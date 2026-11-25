@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Dialog, Icon, Panel, PanelBand, PanelBody, Row, RowValue, Rows, Spinner } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, Panel, PanelBand, PanelBody, Row, RowValue, Rows } from '../../components/ui';
+import { HostRestartHold } from './HostRestartHold';
 
 type HostHealth = {
   at: string | null;
@@ -175,8 +176,9 @@ export function HostPatchesPanel({ asksForPassword, busy, formatDate, host, onRe
           />
         </Rows>
       </PanelBody> : null}
-      {restarting ? <PanelBody><p className="suite-meta"><Spinner />Restarting. This page stops responding for a few minutes and comes back on its own.</p></PanelBody> : null}
     </Panel>
+
+    {restarting ? <HostRestartHold asksForPassword={asksForPassword} /> : null}
 
     {asking ? <RestartDialog
       asksForPassword={asksForPassword}

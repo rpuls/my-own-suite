@@ -60,7 +60,7 @@ function backupNote({ destinationLabel, job }: UpdateProgress) {
   return null;
 }
 
-function HoldHead({ icon, subtitle, title }: { icon: ReactNode; subtitle?: string; title: string }) {
+export function HoldHead({ icon, subtitle, title }: { icon: ReactNode; subtitle?: string; title: string }) {
   return <div className="suite-hold-head">
     <span className="suite-hold-icon">{icon}</span>
     <div>
