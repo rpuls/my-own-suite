@@ -1,5 +1,5 @@
 import type { AdvancedFact, Place } from '../../../components/ui';
-import { lowerFirst, whenWords } from '../../../lib/dates';
+import { lowerFirst, shortWhenWords, whenWords } from '../../../lib/dates';
 import { cappedNames, nameList, type AiService, type AiServiceApp, type AiServiceTest } from './model';
 
 // What card 2 and its dialogs say, kept apart from how they are laid out. Apps and a
@@ -37,9 +37,17 @@ export function placeWords(service: AiService) {
   return service.place === 'private' ? 'Private network' : hostnameOf(service.baseUrl);
 }
 
-export function serviceMeta(service: AiService, apps: AiServiceApp[]) {
+// How the last test went, in the words card 1 uses for an assistant's last contact.
+export function healthWords(service: AiService, checking: boolean) {
+  if (checking) return 'Checking…';
+  if (!service.test.at) return 'Not tested yet';
+  const when = lowerFirst(shortWhenWords(service.test.at));
+  return service.test.error ? `Did not answer ${when}` : `Answered ${when}`;
+}
+
+export function serviceMeta(service: AiService, apps: AiServiceApp[], checking: boolean) {
   const users = namesOf(usersOf(service, apps));
-  return [placeWords(service), users.length ? `Used by ${cappedNames(users, META_NAMES)}` : 'Not used by an app yet', service.model].join(' · ');
+  return [placeWords(service), users.length ? `Used by ${cappedNames(users, META_NAMES)}` : 'Not used by an app yet', healthWords(service, checking)].join(' · ');
 }
 
 export function rowDestination(service: AiService) {
@@ -63,6 +71,10 @@ export function testFailedBody(service: AiService, users: AiServiceApp[]) {
   return online
     ? `${cannot}Check the address and the API key, or whether the provider is having trouble.`
     : `${cannot}Check that the computer is on, that its model server is running, and that it accepts connections from other computers. ${SERVING_ON_NETWORK}`;
+}
+
+export function testPassedTitle(service: AiService) {
+  return `${service.name} answered a test ${lowerFirst(whenWords(service.test.at ?? ''))}`;
 }
 
 export function testAnswered(test: AiServiceTest) {

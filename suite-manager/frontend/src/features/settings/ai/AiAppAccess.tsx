@@ -49,7 +49,7 @@ function ServiceRow({ app, services }: { app: AiServiceApp; services: AiService[
   if (!service) {
     return <Row help="None yet" label={label}><SettingsLink href={SERVICES_PATH}>Set one up under AI in your apps</SettingsLink></Row>;
   }
-  return <Row help={`${service.name} · ${service.test.error ? 'Last test failed' : placeWords(service)}`} label={label}>
+  return <Row help={`${service.name} · ${service.test.error ? 'Not working' : placeWords(service)}`} label={label}>
     <SettingsLink href={SERVICES_PATH}>AI in your apps</SettingsLink>
   </Row>;
 }

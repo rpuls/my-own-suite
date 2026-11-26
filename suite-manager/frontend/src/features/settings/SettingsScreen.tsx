@@ -33,7 +33,7 @@ const GROUPS: Array<{ description: ReactNode; id: GroupId; title: string }> = [
 const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords: string; title: string }> = [
   { group: 'suite', icon: 'globe', id: 'address', keywords: 'domain certificate https url cloudflare acme dns token home where lives move easy door', title: 'Suite address' },
   { group: 'suite', icon: 'mail', id: 'email', keywords: 'smtp mail email relay host port username password from sender test notifications', title: 'Email relay' },
-  { group: 'suite', icon: 'screens', id: 'appearance', keywords: 'appearance theme light dark mode auto system colour color night', title: 'Appearance' },
+  { group: 'suite', icon: 'palette', id: 'appearance', keywords: 'appearance theme light dark mode auto system colour color night', title: 'Appearance' },
   { group: 'security', icon: 'key', id: 'password', keywords: 'password owner account login change sign in', title: 'Owner password' },
   { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },

@@ -40,7 +40,7 @@ async function request(baseUrl, path, { apiKey, body, fetchImpl }) {
     });
   } catch (error) {
     throw new AiServiceError('AI_SERVICE_UNREACHABLE', error?.name === 'TimeoutError'
-      ? `${hostOf(baseUrl)} did not answer in time.`
+      ? `${hostOf(baseUrl)} did not answer within ${TIMEOUT_MS / 1000} seconds. A model that is still loading can take longer, so test again in a minute.`
       : `MOS could not reach ${hostOf(baseUrl)}. Check the address, and that the computer running it is on.`, 502);
   }
   if (response.ok) return response;

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { AiDirectionPicture, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelHeadButton, PanelHeadHood, PanelList, PendingLine, PendingRow } from '../../../components/ui';
 import { AI_IN_APPS_GUIDE_URL } from '../../../lib/links';
@@ -9,6 +9,17 @@ import { aiServiceRequest, type AiService, type AiServiceApp, type AiServicesSta
 import { HEAD_FIRST_SENTENCE, headLead, HOOD_LINE, notRestartedAfterRemove, usersOf } from './service-words';
 
 const LOAD_FAILED = 'Could not load this.';
+const STALE_MS = 15 * 60_000;
+
+function isStale(service: AiService) {
+  return !service.test.at || Date.now() - Date.parse(service.test.at) > STALE_MS;
+}
+
+// Takes only the one service's test from a status, so a check never undoes a change made meanwhile.
+function withTestOf(current: AiServicesStatus, fresh: AiServicesStatus, id: string): AiServicesStatus {
+  const test = fresh.services.find((service) => service.id === id)?.test;
+  return test ? { ...current, services: current.services.map((service) => service.id === id ? { ...service, test } : service) } : current;
+}
 
 function errorText(caught: unknown, fallback: string) {
   return caught instanceof Error ? caught.message : fallback;
@@ -67,6 +78,8 @@ export function AiServicesPanel() {
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState('');
   const [testing, setTesting] = useState('');
+  const [checking, setChecking] = useState('');
+  const checked = useRef(false);
   const [open, setOpen] = useState('');
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<AiService | null>(null);
@@ -79,7 +92,27 @@ export function AiServicesPanel() {
 
   function load() {
     setLoadFailed(false);
-    aiServiceRequest('GET', '', LOAD_FAILED).then(setStatus, () => setLoadFailed(true));
+    aiServiceRequest('GET', '', LOAD_FAILED).then((next) => {
+      setStatus(next);
+      if (!checked.current) {
+        checked.current = true;
+        void checkStale(next.services);
+      }
+    }, () => setLoadFailed(true));
+  }
+
+  // One at a time and without locking the card: the owner can work on while a slow model answers.
+  async function checkStale(services: AiService[]) {
+    for (const service of services.filter(isStale)) {
+      setChecking(service.id);
+      try {
+        const result = await aiServiceRequest<{ status: AiServicesStatus }>('POST', `/${service.id}/test`, 'The service could not be tested.');
+        setStatus((current) => current && withTestOf(current, result.status, service.id));
+      } catch {
+        // The row keeps the test it had.
+      }
+    }
+    setChecking('');
   }
 
   useEffect(load, []);
@@ -173,6 +206,7 @@ export function AiServicesPanel() {
       {services.map((service) => <ServiceItem
         apps={apps}
         busy={busy}
+        checking={checking === service.id}
         expanded={open === service.id}
         key={service.id}
         onEdit={() => setEditing(service)}

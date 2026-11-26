@@ -23,7 +23,7 @@ Any service with an OpenAI-compatible API can work, which is why most addresses 
 - **With a search model, Paperless-ngx sends the text of every document to it** in the background, to build its search.
 - **Everyone who uses an app you turned on sends through it:** other people with a Paperless-ngx account, and everyone who edits in ONLYOFFICE.
 - [Each app's page](/docs/apps/) says what it sends under its privacy assessment.
-- **MOS itself calls an AI service only from Settings:** to list its models when you enter its address or key, and to test it when you add it, save a change or press Test.
+- **MOS itself calls an AI service only from Settings:** to list its models when you enter its address or key, and to test it when you add it, save a change or press Test, and when you open Settings and its last test is more than 15 minutes old.
 
 ## What it costs
 
@@ -62,7 +62,7 @@ An online service charges your key for everything the apps you turn on send, inc
 - **One service per app;** turning an app on under another service moves it.
 - **Several services are fine:** one on your own computer for private things, one online for heavy work.
 - **Turning an app on or off restarts it;** for a minute or so it cannot be opened.
-- **If the service stops answering,** the apps' AI features stop until it answers again; use Test in its menu in Settings to check.
+- **If the service stops answering,** the apps' AI features stop until it answers again. Its row in Settings says when it last answered, and its Test button checks it now.
 - **A service that passes the test can still lack something an app's own features need,** such as a search model or a request type its server does not support.
 - **Removing a service turns AI off in every app that used it,** and restarts them.
 - **Use your server's address on your network, never `localhost` or a name ending in `.local`:** an app runs in its own container, where localhost means the app itself.

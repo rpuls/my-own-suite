@@ -2,7 +2,7 @@ import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect,
 import { createPortal } from 'react-dom';
 import { AI_DIRECTION_WORDS, AI_ICON_PATHS, AI_PICTURE, AI_PICTURE_VIEWBOX, SUITE_MARK, type AiDirection, type AiIconName, type AiPictureSize } from './ai-drawing';
 
-export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'chat-spark' | 'check' | 'chevron-right' | 'chip-spark' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'home' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'chat-spark' | 'check' | 'chevron-right' | 'chip-spark' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'home' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'palette' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
 
 function aiIcon(name: AiIconName) {
   return <>{AI_ICON_PATHS[name].map((d) => <path d={d} key={d} />)}</>;
@@ -40,6 +40,7 @@ export function Icon({ name }: { name: IconName }) {
     mail: <><rect height="14" rx="2" width="18" x="3" y="5" /><path d="m3 7 9 6 9-6" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
+    palette: <><path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r="0.6" /><circle cx="17.5" cy="10.5" r="0.6" /><circle cx="6.5" cy="12.5" r="0.6" /><circle cx="8.5" cy="7.5" r="0.6" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
     'network-drive': <><path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H9l2 2h8.5A1.5 1.5 0 0 1 21 7.5v6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 13.5Z" /><path d="M12 15v3.5" /><circle cx="12" cy="20" r="1.5" /><path d="M3 20h7.5M13.5 20H21" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,

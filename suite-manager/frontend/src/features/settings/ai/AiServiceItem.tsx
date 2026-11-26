@@ -1,8 +1,8 @@
-import { ActionMenu, AdvancedPanel, DestinationLine, DisclosureRow, Icon, Notice, PanelBand, PanelItem, PlaceTile, Rows, RowSwitch } from '../../../components/ui';
+import { ActionMenu, AdvancedPanel, DestinationLine, DisclosureRow, Icon, Notice, Panel, PanelBand, PanelItem, PlaceTile, Rows, RowSwitch } from '../../../components/ui';
 import { AI_VALUES_REFERENCE_URL, appPrivacyUrl } from '../../../lib/links';
 import { AppName } from './AiParts';
 import type { AiService, AiServiceApp, AiServiceTest } from './model';
-import { connectionFacts, rowDestination, serviceMeta, switchHelp, testAnswered, testFailedBody, testFailedTitle, usersOf } from './service-words';
+import { connectionFacts, rowDestination, serviceMeta, switchHelp, testAnswered, testFailedBody, testFailedTitle, testPassedTitle, usersOf } from './service-words';
 
 // Suite Manager has no page of one app yet, so "its page" is the Apps page it opens from.
 const APPS_PATH = '/suite-manager/apps';
@@ -12,6 +12,7 @@ export type SwitchError = { message: string; packageId: string; serviceId: strin
 export type ServiceItemProps = {
   apps: AiServiceApp[];
   busy: boolean;
+  checking: boolean;
   expanded: boolean;
   onEdit: () => void;
   onRemove: () => void;
@@ -62,15 +63,23 @@ function AppSwitch({ app, busy, failed, onSwitch, other, restarting, service, sw
   </>;
 }
 
-// The state comes only from the last test MOS ran: nothing checks a service in the background.
-function TestOutcome({ busy, onTest, service, tested, users }: { busy: boolean; onTest: () => void; service: AiService; tested: AiServiceTest | null; users: AiServiceApp[] }) {
-  if (tested?.ok) return <Notice title="The service answered" variant="success"><p>{testAnswered(tested)}</p></Notice>;
-  if (!service.test.error) return null;
-  return <Notice title={testFailedTitle(service)} variant="warning">
-    <p>{testFailedBody(service, users)}</p>
-    <div><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onTest} type="button">Test again</button></div>
-    <AdvancedPanel output={service.test.error} reveal="on-failure" summary="What went wrong" />
-  </Notice>;
+function StatusBand(props: Parameters<typeof PanelBand>[0]) {
+  return <Panel density="tight"><PanelBand layout="row" {...props} /></Panel>;
+}
+
+// The state comes only from the last test MOS ran; Settings runs one when it opens and the last is over 15 minutes old.
+function TestOutcome({ busy, checking, onTest, service, tested, testing, users }: { busy: boolean; checking: boolean; onTest: () => void; service: AiService; tested: AiServiceTest | null; testing: boolean; users: AiServiceApp[] }) {
+  if (testing || checking) return <StatusBand busy note="This can take up to 30 seconds." title={`Testing ${service.name}…`} tone="info" />;
+  const button = (words: string) => <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onTest} type="button">{words}</button>;
+  if (service.test.error) {
+    return <Notice title={testFailedTitle(service)} variant="warning">
+      <p>{testFailedBody(service, users)}</p>
+      <div>{button('Test again')}</div>
+      <AdvancedPanel output={service.test.error} reveal="on-failure" summary="What went wrong" />
+    </Notice>;
+  }
+  if (!service.test.at) return <StatusBand note="Test it to see that it answers your server." title="Not tested yet" tone="info">{button('Test')}</StatusBand>;
+  return <StatusBand icon="check" note={tested?.ok ? testAnswered(tested) : 'Your apps call this same address.'} title={testPassedTitle(service)} tone="accent">{button('Test again')}</StatusBand>;
 }
 
 function ServiceApps({ apps, busy, onSwitch, restartFailed, service, services, switchError, switching }: Pick<ServiceItemProps, 'apps' | 'busy' | 'onSwitch' | 'restartFailed' | 'service' | 'services' | 'switchError' | 'switching'>) {
@@ -94,25 +103,25 @@ function ServiceApps({ apps, busy, onSwitch, restartFailed, service, services, s
 }
 
 export function ServiceItem(props: ServiceItemProps) {
-  const { apps, busy, expanded, onEdit, onRemove, onTest, onToggle, service, tested, testing } = props;
+  const { apps, busy, checking, expanded, onEdit, onRemove, onTest, onToggle, service, tested, testing } = props;
   const users = usersOf(service, apps);
   return <PanelItem flush>
     <DisclosureRow
-      aside={service.test.error ? <span className="mos-pill mos-pill-warning">Last test failed</span> : null}
+      aside={service.test.error && !checking ? <span className="mos-pill mos-pill-warning">Not working</span> : null}
       expanded={expanded}
       lead={<PlaceTile place={service.place} />}
       onToggle={onToggle}
       trailing={<ActionMenu ariaLabel={`More for ${service.name}`} disabled={busy} items={[
-        { label: 'Test', onSelect: onTest },
+        ...(checking ? [] : [{ label: 'Test', onSelect: onTest }]),
         { label: 'Change', onSelect: onEdit },
         { label: 'Remove', onSelect: onRemove },
       ]} />}
     >
       <strong>{service.name}</strong>
-      <span className="suite-meta suite-ai-service-meta">{serviceMeta(service, apps)}</span>
+      <span className="suite-meta suite-ai-service-meta">{serviceMeta(service, apps, checking)}</span>
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
-      {testing ? <PanelBand busy note="This can take up to 30 seconds." title={`Testing ${service.name}…`} tone="info" /> : <TestOutcome busy={busy} onTest={onTest} service={service} tested={tested} users={users} />}
+      <TestOutcome busy={busy || checking} checking={checking} onTest={onTest} service={service} tested={tested} testing={testing} users={users} />
       <ServiceApps {...props} />
       <AdvancedPanel facts={connectionFacts(service, users)} reveal="technical-mode" summary="Connection details">
         <p><ArrowLink external href={AI_VALUES_REFERENCE_URL}>{'${ai.*} in the manifest reference'}</ArrowLink></p>
