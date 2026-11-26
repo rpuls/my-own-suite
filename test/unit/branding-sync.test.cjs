@@ -31,6 +31,10 @@ test('branding sync writes shared CSS to MOS targets from the canonical source',
   assert.match(suiteCss, /url\('\/suite-manager\/assets\/brand\/fonts\/open-sans-400\.ttf'\)/);
   assert.doesNotMatch(suiteCss, /url\('\/brand\//);
   assert.match(homepageCss, /--color-500: 99 226 179;/);
+  const lightBlock = canonical.match(/\[data-theme='light'\]\s*\{([^}]*)\}/)[1];
+  for (const token of ['bg', 'text', 'text-muted', 'accent-text']) {
+    assert.ok(homepageCss.includes(lightBlock.match(new RegExp(`--mos-color-${token}:\s*([^;]+);`))[1]), `Homepage light ${token} comes from mos.css`);
+  }
   assert.match(homepageCss, /\.service-card/);
   assert.match(homepageCss, /linear-gradient\(155deg/);
   assert.ok(siteCss.endsWith(canonical));

@@ -101,6 +101,13 @@ function syncDirectory(sourceDir, destinationDir) {
   }
 }
 
+function extractLightToken(source, tokenName) {
+  const block = source.match(/\[data-theme='light'\]\s*\{([^}]*)\}/u);
+  const value = block?.[1].match(new RegExp(`${tokenName}:\\s*([^;]+);`, 'u'));
+  if (!value) throw new Error(`Unable to find ${tokenName} in the light theme block.`);
+  return value[1].trim();
+}
+
 function syncWallpaper() {
   const styles = fs.readFileSync(canonicalStylesPath, 'utf8');
   const mark = fs.readFileSync(canonicalMarkSvgPath, 'utf8').replace(/\r\n?/gu, '\n')
@@ -142,6 +149,7 @@ function syncHomepageTheme(sourcePath, destinationPath) {
   const bgSoft = hexToRgb(extractBrandHex(source, '--mos-color-bg-soft'));
   const text = hexToRgb(extractBrandHex(source, '--mos-color-text'));
   const white = { r: 255, g: 255, b: 255 };
+  const light = (token) => extractLightToken(source, `--mos-color-${token}`);
 
   const palette = {
     50: mixRgb(accent, white, 0.88),
@@ -158,15 +166,15 @@ function syncHomepageTheme(sourcePath, destinationPath) {
 
   const generatedBlock = `/* sync-branding:homepage:start */
 :root {
-  --mos-bg: rgb(var(--bg-color));
-  --mos-bg-soft: color-mix(in srgb, rgb(var(--bg-color)) 88%, rgb(var(--color-100)));
-  --mos-surface: color-mix(in srgb, rgb(var(--color-100)) 42%, transparent);
-  --mos-surface-strong: color-mix(in srgb, rgb(var(--color-100)) 58%, transparent);
-  --mos-border: color-mix(in srgb, rgb(var(--color-300)) 28%, transparent);
-  --mos-text: rgb(var(--color-800));
-  --mos-muted: color-mix(in srgb, rgb(var(--color-700)) 78%, transparent);
-  --mos-accent: rgb(var(--color-500));
-  --mos-accent-soft: color-mix(in srgb, rgb(var(--color-400)) 18%, transparent);
+  --mos-bg: ${light('bg')};
+  --mos-bg-soft: ${light('bg-soft')};
+  --mos-surface: ${light('surface')};
+  --mos-surface-strong: ${light('surface-strong')};
+  --mos-border: ${light('surface-border')};
+  --mos-text: ${light('text')};
+  --mos-muted: ${light('text-muted')};
+  --mos-accent: ${light('accent-text')};
+  --mos-accent-soft: ${light('accent-soft')};
   --mos-shadow: none;
 }
 
@@ -198,7 +206,7 @@ html.dark {
 }
 
 .theme-mos .text-theme-800 {
-  color: rgb(${rgbToTriplet(bgSoft)});
+  color: ${light('text')};
 }
 
 .theme-mos.dark .text-theme-800,

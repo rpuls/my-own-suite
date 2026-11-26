@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Suite Manager | My Own Suite</title>
+    <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#061526" />
+    <script>
+      (function () {
+        var theme;
+        try { theme = localStorage.getItem('mos-theme'); } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f8fd' : '#061526';
+      })();
+    </script>
     <link rel="icon" href="/suite-manager/assets/brand/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/suite-manager/assets/brand/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/suite-manager/assets/brand/favicon-16x16.png" />

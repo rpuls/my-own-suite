@@ -154,9 +154,9 @@ function unavailableHandler(indent = '  ') {
 // never what the page depends on.
 //
 // Colours are the MOS brand tokens by value, because the page has no build
-// step and no stylesheet to import: light-theme text and background from
-// `[data-theme='light']` and the default dark ones from `:root` in
-// branding/styles/mos.css.
+// step and no stylesheet to import: both themes from branding/styles/mos.css.
+// The owner's `mos-theme` choice applies where the page shares Suite Manager's
+// origin; elsewhere, or without script, the OS preference decides.
 function renderUnavailablePage() {
   return `<!doctype html>
 <html lang="en">
@@ -166,10 +166,16 @@ function renderUnavailablePage() {
 <meta http-equiv="refresh" content="15">
 <title>My Own Suite is busy</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    --bg: #f4f8fd; --text: #0d2135; --muted: #4a6076; --accent: #1c9e6d; --accent-text: #0b6a47;
+    --rule: rgba(9, 30, 54, 0.09); --track: rgba(9, 30, 54, 0.14); --halo: rgba(40, 188, 132, 0.24);
+    color-scheme: light dark;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   body {
-    background: #f4f8fd;
-    color: #0d2135;
+    background: var(--bg);
+    color: var(--text);
     display: flex;
     font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
@@ -180,28 +186,28 @@ function renderUnavailablePage() {
   h1 { font-size: 1.5rem; letter-spacing: -0.03em; line-height: 1.3; margin: 0 0 0.75rem; }
   h2 { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; margin: 0 0 0.5rem; text-transform: uppercase; }
   p { margin: 0 0 0.75rem; }
-  .meta { color: #4a6076; font-size: 0.9rem; }
+  .meta { color: var(--muted); font-size: 0.9rem; }
   #mos-progress {
-    border-top: 1px solid rgba(9, 30, 54, 0.09);
-    border-bottom: 1px solid rgba(9, 30, 54, 0.09);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
     margin: 1.25rem 0;
     padding: 1rem 0 0.5rem;
   }
-  #mos-progress h2 { color: #1c9e6d; }
+  #mos-progress h2 { color: var(--accent-text); }
   #mos-progress-now { font-weight: 600; }
   #mos-progress-count { margin-bottom: 0.35rem; }
   #mos-progress-bar {
-    background: rgba(9, 30, 54, 0.14);
+    background: var(--track);
     border-radius: 999px;
     height: 0.5rem;
     margin: 0 0 0.75rem;
     overflow: hidden;
   }
-  #mos-progress-fill { background: #1c9e6d; border-radius: 999px; display: block; height: 100%; width: 0; }
+  #mos-progress-fill { background: var(--accent); border-radius: 999px; display: block; height: 100%; width: 0; }
   #mos-progress-plan, #mos-progress-plan ul { list-style: none; margin: 0 0 0.75rem; padding: 0; }
   #mos-progress-plan li { padding: 0.15rem 0 0.15rem 1.4rem; position: relative; }
   #mos-progress-plan li::before {
-    background: rgba(9, 30, 54, 0.14);
+    background: var(--track);
     border-radius: 999px;
     content: "";
     height: 0.5rem;
@@ -210,11 +216,11 @@ function renderUnavailablePage() {
     top: 0.65rem;
     width: 0.5rem;
   }
-  #mos-progress-plan li.is-done { color: #4a6076; }
-  #mos-progress-plan li.is-done::before { background: #1c9e6d; }
+  #mos-progress-plan li.is-done { color: var(--muted); }
+  #mos-progress-plan li.is-done::before { background: var(--accent); }
   #mos-progress-plan li.is-now { font-weight: 600; }
-  #mos-progress-plan li.is-now::before { background: #1c9e6d; box-shadow: 0 0 0 3px rgba(40, 188, 132, 0.24); }
-  #mos-progress-plan li.is-next { color: #4a6076; }
+  #mos-progress-plan li.is-now::before { background: var(--accent); box-shadow: 0 0 0 3px var(--halo); }
+  #mos-progress-plan li.is-next { color: var(--muted); }
   /* The group's own parts: one indent in, smaller, and only worth reading
      while that group is the one running — which is when it opens itself. */
   #mos-progress-plan summary { cursor: pointer; list-style: none; }
@@ -235,21 +241,16 @@ function renderUnavailablePage() {
   #mos-progress-plan ul li { font-weight: 400; padding-left: 1.1rem; }
   #mos-progress-plan ul li::before { height: 0.35rem; left: 0.33rem; top: 0.6rem; width: 0.35rem; }
   #mos-progress-plan ul li.is-now { font-weight: 600; }
+  :root[data-theme="dark"] { --bg: #061526; --text: #eef4ff; --muted: #b8c9de; --accent: #63e2b3; --accent-text: #63e2b3; --rule: rgba(255, 255, 255, 0.08); --track: rgba(255, 255, 255, 0.18); --halo: rgba(99, 226, 179, 0.18); }
   @media (prefers-color-scheme: dark) {
-    body { background: #061526; color: #eef4ff; }
-    .meta { color: #b8c9de; }
-    #mos-progress { border-color: rgba(255, 255, 255, 0.08); }
-    #mos-progress h2 { color: #63e2b3; }
-    #mos-progress-bar { background: rgba(255, 255, 255, 0.18); }
-    #mos-progress-fill { background: #63e2b3; }
-    #mos-progress-plan li::before { background: rgba(255, 255, 255, 0.18); }
-    #mos-progress-plan li.is-done::before, #mos-progress-plan li.is-now::before { background: #63e2b3; }
-    #mos-progress-plan li.is-now::before { box-shadow: 0 0 0 3px rgba(99, 226, 179, 0.18); }
-    #mos-progress-plan li.is-done, #mos-progress-plan li.is-next { color: #b8c9de; }
+    :root:not([data-theme="light"]) { --bg: #061526; --text: #eef4ff; --muted: #b8c9de; --accent: #63e2b3; --accent-text: #63e2b3; --rule: rgba(255, 255, 255, 0.08); --track: rgba(255, 255, 255, 0.18); --halo: rgba(99, 226, 179, 0.18); }
   }
 </style>
 </head>
 <body>
+<script>
+try { var t = localStorage.getItem("mos-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <main>
 <h1>My Own Suite is busy right now</h1>
 <p>The server is running, but Suite Manager is not answering yet.</p>

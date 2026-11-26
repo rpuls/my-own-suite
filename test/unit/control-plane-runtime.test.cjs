@@ -257,13 +257,14 @@ test('the status page stands alone and asks the browser to come back', () => {
   assert.match(page, /<title>[^<]+<\/title>/u);
   assert.match(page, /restore or an update/u);
   assert.match(page, /prefers-color-scheme: dark/u);
+  assert.match(page, /localStorage\.getItem\("mos-theme"\)/u);
   assert.ok(page.includes(renderUnavailablePageScript()), 'the page carries the script verbatim');
   assert.equal(page.match(/fetch\(/gu).length, 1);
   assert.ok(page.includes(`fetch('${PROGRESS_ROUTE}'`));
 
   // With no script running, the progress section is hidden markup and the
   // page is the static one it always was: the words come before the script.
-  const staticText = page.slice(0, page.indexOf('<script>'));
+  const staticText = page.slice(0, page.lastIndexOf('<script>'));
   assert.match(staticText, /My Own Suite is busy right now/u);
   assert.match(staticText, /Nothing is lost while it waits/u);
   assert.match(staticText, /<section id="mos-progress" hidden/u);

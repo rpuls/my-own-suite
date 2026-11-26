@@ -5,6 +5,7 @@ import { AI_GUIDE_URL } from '../../lib/links';
 import { useOverview, type Overview } from '../../lib/overview';
 import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
 import { AiServicesPanel } from './ai/AiServicesPanel';
+import { AppearancePanel } from './AppearancePanel';
 import { AppSourcesPanel } from './AppSourcesPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { EmailRelayPanel } from './EmailRelayPanel';
@@ -17,7 +18,7 @@ import { StoragePanel } from '../storage/StoragePanel';
 
 type GroupId = 'ai' | 'apps' | 'maintenance' | 'security' | 'suite';
 
-type SettingId = 'activity' | 'address' | 'ai' | 'ai-services' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
+type SettingId = 'activity' | 'address' | 'ai' | 'ai-services' | 'appearance' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
 const GROUPS: Array<{ description: ReactNode; id: GroupId; title: string }> = [
   { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
@@ -32,6 +33,7 @@ const GROUPS: Array<{ description: ReactNode; id: GroupId; title: string }> = [
 const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords: string; title: string }> = [
   { group: 'suite', icon: 'globe', id: 'address', keywords: 'domain certificate https url cloudflare acme dns token home where lives move easy door', title: 'Suite address' },
   { group: 'suite', icon: 'mail', id: 'email', keywords: 'smtp mail email relay host port username password from sender test notifications', title: 'Email relay' },
+  { group: 'suite', icon: 'screens', id: 'appearance', keywords: 'appearance theme light dark mode auto system colour color night', title: 'Appearance' },
   { group: 'security', icon: 'key', id: 'password', keywords: 'password owner account login change sign in', title: 'Owner password' },
   { group: 'security', icon: 'lock', id: 'encryption', keywords: 'disk encryption boot startup password recovery key tpm chip theft stolen', title: 'Disk encryption' },
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
@@ -56,6 +58,7 @@ const SETTING_CARDS: Record<SettingId, () => ReactNode> = {
   address: () => <SuiteAddressPanel />,
   ai: () => <AiConnectionsPanel />,
   'ai-services': () => <AiServicesPanel />,
+  appearance: () => <AppearancePanel />,
   diagnostics: () => <DiagnosticsPanel />,
   email: () => <EmailRelayPanel />,
   encryption: () => <EncryptionPanel />,

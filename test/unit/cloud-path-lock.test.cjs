@@ -155,19 +155,19 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '19a7d71fb58a6b1dcef6435dc356777d66479ae83ef7c7d8bfa78e2be9259f59',
+    digest: '7c41c7d96a349a5f32de9f3e7e4093ee781f131ce93cc7618ee3b3f980e68a28',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '8ff10645896eca35890ae2e1b06dd7a4558af904ad5f54b1a3071e4bfc90c692',
+    digest: 'cb26718b8cf99ac0ff569e81653028dfe4765b4dc63e0154d914b7237632b51d',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '3be25954de673e276174be92c7ff9e5d9d362a2bc8b253013b242f51d742b18f',
+    digest: 'f1e0f81e9cb7fb18fdfa11f61cf85024c1ad8b345fa68d1810b3602d2519b3fd',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
@@ -177,8 +177,9 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved for the Easy Door site block
     // and for its install id; nothing the installer prints changed either time.
-    // All four moved for the drive coldplug at the end of the bootstrap, which prints nothing.
-    digest: 'b3340c5969edb3a93b22cc9cafe7c014aa896708e1bc83b373909d4f3e5addf4',
+    // All four moved for the drive coldplug at the end of the bootstrap, and for the
+    // unavailable page's light theme; neither prints anything.
+    digest: 'b7711b4ed80e3c0f218f0ea57b8899bdb82ea4562b3a2c064058de484b89b9b7',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

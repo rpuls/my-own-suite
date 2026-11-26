@@ -98,7 +98,7 @@ export const GLYPHS = {
 export const POSTURES: Record<PrivacyPostureId, { border: string; color: string; label: string; sentence: string; soft: string }> = {
   'private-by-default': {
     border: 'var(--mos-color-accent-border)',
-    color: 'var(--mos-color-accent)',
+    color: 'var(--mos-color-accent-text)',
     label: 'Private by default',
     sentence: 'Runs entirely on your machine. Nothing leaves your server unless you share it.',
     soft: 'var(--mos-color-accent-soft)',
@@ -213,7 +213,7 @@ const PHRASES: Record<PrivacyDimensionKey, Record<string, { level: 0 | 1 | 2; ph
 const VERDICTS: Record<0 | 1 | 2, PrivacyVerdict> = {
   0: { border: 'var(--mos-color-danger-border)', color: 'var(--mos-color-danger)', soft: 'var(--mos-color-danger-soft)', word: 'Outside' },
   1: { border: 'var(--mos-color-warning-border)', color: 'var(--mos-color-warning)', soft: 'var(--mos-color-warning-soft)', word: 'Limited' },
-  2: { border: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent)', soft: 'var(--mos-color-accent-soft)', word: 'Private' },
+  2: { border: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent-text)', soft: 'var(--mos-color-accent-soft)', word: 'Private' },
 };
 
 const UNKNOWN_VERDICT: PrivacyVerdict = { border: 'var(--mos-color-surface-border)', color: 'var(--mos-color-text-muted)', soft: 'var(--mos-color-surface-strong)', word: 'Unknown' };

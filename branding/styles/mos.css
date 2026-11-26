@@ -71,6 +71,11 @@
   --mos-color-accent-soft: rgba(99, 226, 179, 0.12);
   --mos-color-accent-border: rgba(99, 226, 179, 0.32);
   --mos-color-accent-focus: rgba(99, 226, 179, 0.18);
+  --mos-color-accent-text: #63e2b3;
+
+  /* -- Affirmative fill: primary button, switch on, checked marks -- */
+  --mos-color-primary-start: #63e2b3;
+  --mos-color-primary-end: #28bc84;
 
   /* -- Brand mark ink (deep teal used in the logo) --------------- */
   --mos-color-mark: #0d6e6e;
@@ -185,7 +190,7 @@
 }
 
 /* ============================================================
-   Light theme variant (docs). Opt in by setting
+   Light theme variant. Opt in by setting
    data-theme="light" on <html> or any container. Only tokens
    that change are redeclared — the rest inherit.
    ============================================================ */
@@ -216,19 +221,23 @@
   --mos-color-accent-soft: rgba(40, 188, 132, 0.12);
   --mos-color-accent-border: rgba(40, 188, 132, 0.34);
   --mos-color-accent-focus: rgba(40, 188, 132, 0.24);
-  --mos-color-link-hover: #12855a;
+  --mos-color-accent-text: #0b6a47;
+  --mos-color-link-hover: #0a5f40;
+  /* Brighter than the light accent so the dark ink stays readable on it. */
+  --mos-color-primary-start: #28bc84;
+  --mos-color-primary-end: #1c9e6d;
 
-  --mos-color-danger: #c53f3f;
-  --mos-color-danger-soft: rgba(197, 63, 63, 0.1);
-  --mos-color-danger-border: rgba(197, 63, 63, 0.4);
-  --mos-color-warning: #a4650d;
-  --mos-color-warning-soft: rgba(164, 101, 13, 0.1);
+  --mos-color-danger: #b42318;
+  --mos-color-danger-soft: rgba(180, 35, 24, 0.08);
+  --mos-color-danger-border: rgba(180, 35, 24, 0.4);
+  --mos-color-warning: #7a4d00;
+  --mos-color-warning-soft: rgba(224, 160, 40, 0.16);
   --mos-color-warning-border: rgba(164, 101, 13, 0.4);
-  --mos-color-info: #2b6fb0;
+  --mos-color-info: #1f5a92;
   --mos-color-info-soft: rgba(43, 111, 176, 0.1);
   --mos-color-info-border: rgba(43, 111, 176, 0.4);
   --mos-color-info-surface: rgba(43, 111, 176, 0.07);
-  --mos-color-success: #12855a;
+  --mos-color-success: #0b6a47;
   --mos-color-success-soft: rgba(40, 188, 132, 0.12);
   --mos-color-success-border: rgba(40, 188, 132, 0.4);
 
@@ -276,7 +285,7 @@ body[data-theme='light'] {
 }
 
 a {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
   text-decoration: none;
 }
 
@@ -383,7 +392,7 @@ summary:focus-visible {
 }
 
 .mos-btn-primary {
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   color: var(--mos-color-button-primary-text);
   box-shadow: var(--mos-shadow-soft);
 }
@@ -480,7 +489,7 @@ summary:focus-visible {
    affirmative the rest of the product uses. */
 .mos-switch-input:checked + .mos-switch-track {
   border-color: var(--mos-color-accent-border);
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   box-shadow: var(--mos-shadow-soft);
 }
 
@@ -688,7 +697,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   height: 0.375rem;
   border-radius: var(--mos-radius-pill);
   background:
-    linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong))
+    linear-gradient(90deg, var(--mos-color-primary-start), var(--mos-color-primary-end))
       0 / var(--mos-range-fill, 0%) 100% no-repeat,
     var(--mos-color-surface-strong);
   border: 1px solid var(--mos-color-surface-border);
@@ -704,7 +713,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
 .mos-range::-moz-range-progress {
   height: 0.375rem;
   border-radius: var(--mos-radius-pill);
-  background: linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(90deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
 }
 
 /* A 1.125rem knob on a 0.375rem track needs lifting by half the difference to
@@ -717,7 +726,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   margin-top: -0.4375rem;
   border: 0;
   border-radius: var(--mos-radius-pill);
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   box-shadow: var(--mos-shadow-soft);
   transition: transform var(--mos-transition);
 }
@@ -727,7 +736,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   height: 1.125rem;
   border: 0;
   border-radius: var(--mos-radius-pill);
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   box-shadow: var(--mos-shadow-soft);
 }
 
@@ -808,7 +817,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-select-box input:checked + .mos-select-box-mark {
   border-color: transparent;
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   color: var(--mos-color-button-primary-text);
 }
 
@@ -830,7 +839,7 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   display: block;
   height: 100%;
   border-radius: var(--mos-radius-pill);
-  background: linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(90deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
   transition: width 400ms linear;
 }
 
@@ -1106,7 +1115,7 @@ label.mos-row {
 
 .mos-row-action:hover {
   background: var(--mos-color-surface-muted);
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-row-action-danger:hover {
@@ -1422,7 +1431,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   height: 2.5rem;
   border-radius: 0.75rem;
   background: var(--mos-color-accent-soft);
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-panel-head-icon svg {
@@ -1518,7 +1527,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 .mos-panel-band-accent > .mos-panel-band-icon {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-panel-band-info {
@@ -1668,7 +1677,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-info-button:hover,
 .mos-info-button:focus-visible {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-info-button:focus-visible {
@@ -1784,7 +1793,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 .mos-pill-accent {
   border-color: var(--mos-color-accent-border);
   background: var(--mos-color-accent-soft);
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 /* A pill that says this row needs the owner's attention without claiming anything
@@ -1798,7 +1807,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-eyebrow {
   display: inline-block;
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
   font-size: var(--mos-text-eyebrow);
   font-weight: var(--mos-weight-black);
   letter-spacing: var(--mos-letter-spacing-eyebrow);
@@ -1811,7 +1820,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-link {
   width: fit-content;
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
   text-decoration: none;
   font-weight: var(--mos-weight-bold);
 }
@@ -1826,7 +1835,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 .mos-connect-visual {
   width: min(280px, 100%);
   height: auto;
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-connect-visual-sm {
@@ -1880,7 +1889,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 .mos-ai-pic .mark {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-ai-pic .beam,
@@ -1992,7 +2001,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 
 .mos-destination.is-home > .suite-icon,
 .mos-destination.is-private > .suite-icon {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-destination.is-internet > .suite-icon {
@@ -2017,7 +2026,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   border-radius: 10px;
   background: var(--mos-color-accent-soft);
   box-shadow: inset 0 0 0 1px var(--mos-color-accent-border);
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-place-tile.is-internet {
@@ -2182,7 +2191,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 .mos-radio-input:checked + .mos-radio-mark::after {
-  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  background: linear-gradient(160deg, var(--mos-color-primary-start), var(--mos-color-primary-end));
 }
 
 .mos-radio-input:focus-visible + .mos-radio-mark {
@@ -2219,7 +2228,7 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 .mos-choice-row.is-accent {
-  color: var(--mos-color-accent);
+  color: var(--mos-color-accent-text);
 }
 
 .mos-choice-row.is-disabled,

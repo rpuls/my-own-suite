@@ -107,7 +107,7 @@ function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSummary |
   const text = badgeTextFor(privacy);
   const dash = shieldDashArray(privacy);
   return <span aria-hidden="true" className={`suite-privacy-shield is-${size}${text.length > 1 ? ' is-wide' : ''}`}>
-    <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} strokeDasharray={dash || undefined} strokeLinejoin="round" strokeWidth="1.6" /></svg>
+    <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} strokeDasharray={dash || undefined} strokeLinejoin="round" strokeWidth="1.6" style={{ fill: posture.soft, stroke: posture.color }} /></svg>
     <span style={{ color: posture.color }}>{text}</span>
   </span>;
 }
@@ -182,7 +182,7 @@ function NotAssessedBody() {
           <strong>{fact.label}</strong>
           <span>{fact.detail}</span>
         </span>
-        <span className="suite-privacy-verdict" style={{ background: 'var(--mos-color-accent-soft)', borderColor: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent)' }}>Enforced</span>
+        <span className="suite-privacy-verdict" style={{ background: 'var(--mos-color-accent-soft)', borderColor: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent-text)' }}>Enforced</span>
       </div>)}
     </div>
     <Notice title="What you are trusting" variant="warning">

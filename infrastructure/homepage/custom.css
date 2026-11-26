@@ -5,15 +5,15 @@
 
 /* sync-branding:homepage:start */
 :root {
-  --mos-bg: rgb(var(--bg-color));
-  --mos-bg-soft: color-mix(in srgb, rgb(var(--bg-color)) 88%, rgb(var(--color-100)));
-  --mos-surface: color-mix(in srgb, rgb(var(--color-100)) 42%, transparent);
-  --mos-surface-strong: color-mix(in srgb, rgb(var(--color-100)) 58%, transparent);
-  --mos-border: color-mix(in srgb, rgb(var(--color-300)) 28%, transparent);
-  --mos-text: rgb(var(--color-800));
-  --mos-muted: color-mix(in srgb, rgb(var(--color-700)) 78%, transparent);
-  --mos-accent: rgb(var(--color-500));
-  --mos-accent-soft: color-mix(in srgb, rgb(var(--color-400)) 18%, transparent);
+  --mos-bg: #f4f8fd;
+  --mos-bg-soft: #e8f0f9;
+  --mos-surface: rgba(9, 30, 54, 0.04);
+  --mos-surface-strong: rgba(9, 30, 54, 0.07);
+  --mos-border: rgba(9, 30, 54, 0.14);
+  --mos-text: #0d2135;
+  --mos-muted: #4a6076;
+  --mos-accent: #0b6a47;
+  --mos-accent-soft: rgba(40, 188, 132, 0.12);
   --mos-shadow: none;
 }
 
@@ -45,7 +45,7 @@ html.dark {
 }
 
 .theme-mos .text-theme-800 {
-  color: rgb(11 33 56);
+  color: #0d2135;
 }
 
 .theme-mos.dark .text-theme-800,
@@ -74,6 +74,10 @@ body {
     linear-gradient(120deg, color-mix(in srgb, var(--mos-accent) 8%, transparent), transparent 42%),
     linear-gradient(180deg, transparent, color-mix(in srgb, var(--mos-bg) 20%, transparent));
   opacity: 0.9;
+}
+
+#theme {
+  display: none !important;
 }
 
 .service-card,

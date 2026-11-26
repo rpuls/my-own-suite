@@ -31,7 +31,44 @@
     root.classList.add(desiredTheme);
   }
 
+  var osDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function readChoice() {
+    try {
+      return window.localStorage.getItem("mos-theme");
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function wantsDark() {
+    var choice = readChoice();
+    return choice === "dark" || (choice !== "light" && osDark.matches);
+  }
+
+  // Suite Manager shares this origin; Homepage's own toggle is overruled so the two never disagree.
+  function applyColorMode() {
+    var dark = wantsDark();
+
+    root.classList.toggle("dark", dark);
+    root.classList.toggle("scheme-dark", dark);
+    root.classList.toggle("scheme-light", !dark);
+
+    try {
+      window.localStorage.setItem("theme-mode", dark ? "dark" : "light");
+    } catch (error) {
+      return;
+    }
+  }
+
   function start() {
+    var colorObserver = new MutationObserver(applyColorMode);
+
+    applyColorMode();
+    colorObserver.observe(root, { attributes: true, attributeFilter: ["class"] });
+    osDark.addEventListener("change", applyColorMode);
+    window.addEventListener("storage", applyColorMode);
+
     var observer = new MutationObserver(function () {
       applyMosThemeOnce();
     });

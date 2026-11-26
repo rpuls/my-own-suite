@@ -2,13 +2,14 @@ import { indentWithTab } from '@codemirror/commands';
 import { yaml } from '@codemirror/lang-yaml';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { type Diagnostic, linter, lintGutter } from '@codemirror/lint';
+import { Compartment } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { basicSetup, EditorView } from 'codemirror';
 import { useEffect, useRef } from 'react';
 import { parseDocument } from 'yaml';
 
-const mosEditorTheme = EditorView.theme({
+const editorStyles = {
   '&': { backgroundColor: 'var(--mos-color-bg-soft)', color: 'var(--mos-color-text)', fontSize: '0.92rem' },
   '&.cm-focused': { outline: 'var(--mos-focus-ring)', outlineOffset: '-2px' },
   '.cm-content': { caretColor: 'var(--mos-color-accent)', fontFamily: '"Cascadia Code", "Courier New", monospace', lineHeight: '1.5', padding: '0.9rem 0' },
@@ -18,7 +19,17 @@ const mosEditorTheme = EditorView.theme({
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--mos-color-accent-soft)' },
   '.cm-selectionBackground': { backgroundColor: 'var(--mos-color-accent-focus) !important' },
   '.cm-tooltip': { backgroundColor: 'var(--mos-color-surface-elevated)', border: '1px solid var(--mos-color-surface-border)', color: 'var(--mos-color-text)' },
-}, { dark: true });
+};
+
+const themeCompartment = new Compartment();
+
+function editorThemeFor(dark: boolean) {
+  return EditorView.theme(editorStyles, { dark });
+}
+
+function isDarkTheme() {
+  return document.documentElement.dataset.theme !== 'light';
+}
 
 const mosHighlightStyle = HighlightStyle.define([
   { tag: tags.comment, color: 'var(--mos-color-text-muted)', fontStyle: 'italic' },
@@ -27,7 +38,7 @@ const mosHighlightStyle = HighlightStyle.define([
   { tag: [tags.number, tags.bool, tags.null], color: 'var(--mos-color-warning)' },
   { tag: [tags.keyword, tags.operatorKeyword], color: 'var(--mos-color-text-strong)' },
   { tag: [tags.operator, tags.punctuation, tags.separator], color: 'var(--mos-color-text-muted)' },
-  { tag: [tags.variableName, tags.definition(tags.variableName)], color: 'var(--mos-color-accent)' },
+  { tag: [tags.variableName, tags.definition(tags.variableName)], color: 'var(--mos-color-accent-text)' },
   { tag: [tags.atom, tags.labelName], color: 'var(--mos-color-info)' },
   { tag: tags.invalid, color: 'var(--mos-color-danger)' },
 ]);
@@ -52,7 +63,7 @@ export function CodeEditor({ onChange, value }: { onChange: (value: string) => v
     const editor = new EditorView({
       doc: value,
       extensions: [
-        basicSetup, yaml(), lintGutter(), yamlLinter(), keymap.of([indentWithTab]), mosEditorTheme,
+        basicSetup, yaml(), lintGutter(), yamlLinter(), keymap.of([indentWithTab]), themeCompartment.of(editorThemeFor(isDarkTheme())),
         syntaxHighlighting(mosHighlightStyle), EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': 'Homepage YAML editor', spellcheck: 'false' }),
         EditorView.updateListener.of((update) => { if (update.docChanged) onChangeRef.current(update.state.doc.toString()); }),
@@ -60,7 +71,9 @@ export function CodeEditor({ onChange, value }: { onChange: (value: string) => v
       parent: root.current,
     });
     view.current = editor;
-    return () => { editor.destroy(); view.current = null; };
+    const followTheme = new MutationObserver(() => editor.dispatch({ effects: themeCompartment.reconfigure(editorThemeFor(isDarkTheme())) }));
+    followTheme.observe(document.documentElement, { attributeFilter: ['data-theme'], attributes: true });
+    return () => { followTheme.disconnect(); editor.destroy(); view.current = null; };
   }, []);
   useEffect(() => {
     const editor = view.current;
