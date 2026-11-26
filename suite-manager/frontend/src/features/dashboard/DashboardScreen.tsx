@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { BetaNotice } from '../../components/disclaimers';
-import { Avatar, Icon, type IconName } from '../../components/ui';
+import { Avatar, Icon, PendingLine, type IconName } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
 import { whenWords } from '../../lib/dates';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
 import { BACKUPS_PATH, navigateOnClick, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
-import { issuesOf, useOverview, type AttentionIssue } from '../../lib/overview';
+import { issuesOf, useOverview, type AttentionIssue, type Overview, type OverviewTile as TileKey } from '../../lib/overview';
 import { avatarOf, sourceIconUrl } from '../ai-activity/timeline';
 import { formatInZone } from '../backups/model';
 import type { Owner } from '../setup/types';
@@ -83,17 +83,69 @@ function IssueLead({ issue }: { issue: AttentionIssue }) {
   return <span className="suite-overview-issue-alert"><Icon name="alert" /></span>;
 }
 
+type TileLink = { label: string; path: string };
+
+const TILES: Record<TileKey, { icon: IconName; link: TileLink; title: string }> = {
+  apps: { icon: 'apps', link: { label: 'Open Apps', path: APPS_PATH }, title: 'Apps' },
+  ai: { icon: 'sparkle', link: { label: 'AI activity', path: AI_ACTIVITY_PATH }, title: 'AI assistants' },
+  updates: { icon: 'update', link: { label: 'Open Updates', path: UPDATES_PATH }, title: 'Updates' },
+  backups: { icon: 'backup', link: { label: 'Open Backups', path: BACKUPS_PATH }, title: 'Backups' },
+  storage: { icon: 'usb-drive', link: { label: 'Storage in Settings', path: STORAGE_SETTINGS_PATH }, title: 'Storage' },
+};
+
+// Which tiles a suite shows is remembered, so the outlines drawn while the next answer
+// is on its way are the tiles that answer will fill. No apps means no tiles: first steps instead.
+const SHOWN_TILES_KEY = 'mos-overview-tiles';
+const FIRST_VISIT_TILES: TileKey[] = ['apps', 'updates', 'backups', 'storage'];
+
+function shownTiles(overview: Overview): TileKey[] {
+  if (overview.apps.total === 0) return [];
+  const shown: TileKey[] = ['apps'];
+  if (overview.ai.connected || overview.ai.issues.length) shown.push('ai');
+  if (overview.updates) shown.push('updates');
+  if (overview.backups) shown.push('backups');
+  if (overview.storage) shown.push('storage');
+  return shown;
+}
+
+function rememberedTiles(): TileKey[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(SHOWN_TILES_KEY) ?? 'null');
+    return Array.isArray(saved) ? saved.filter((key): key is TileKey => key in TILES) : FIRST_VISIT_TILES;
+  } catch {
+    return FIRST_VISIT_TILES;
+  }
+}
+
+function rememberTiles(tiles: TileKey[]) {
+  try { localStorage.setItem(SHOWN_TILES_KEY, JSON.stringify(tiles)); } catch { /* the outlines fall back to the usual set */ }
+}
+
+function PendingTile({ tile }: { tile: TileKey }) {
+  const { icon, link, title } = TILES[tile];
+  return <section aria-hidden="true" className="mos-panel mos-pending suite-overview-tile">
+    <div className="suite-overview-title">
+      <span className="mos-panel-head-icon"><Icon name={icon} /></span>
+      <h2 className="mos-card-title">{title}</h2>
+      <span className="suite-overview-check mos-pending-mark" />
+    </div>
+    <div className="suite-overview-facts"><PendingLine width="45%" /><PendingLine width="80%" /></div>
+    <span className="mos-link">{link.label}</span>
+  </section>;
+}
+
 // One part of the suite at a glance. Information only: it names what is wrong and
 // links to where it is fixed, and never acts itself.
-function OverviewTile({ children, icon, issues, link, title }: {
+function OverviewTile({ children, issues, link, tile }: {
   children: ReactNode;
-  icon: IconName;
   issues: AttentionIssue[];
-  link: { label: string; path: string };
-  title: string;
+  link?: TileLink;
+  tile: TileKey;
 }) {
   const ok = issues.length === 0;
-  return <section className={`mos-panel suite-overview-tile${ok ? '' : ' is-attention'}`}>
+  const { icon, title } = TILES[tile];
+  const { label, path } = link ?? TILES[tile].link;
+  return <section className={`mos-panel mos-arrive suite-overview-tile${ok ? '' : ' is-attention'}`}>
     <div className="suite-overview-title">
       <span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span>
       <h2 className="mos-card-title">{title}</h2>
@@ -103,7 +155,7 @@ function OverviewTile({ children, icon, issues, link, title }: {
     {issues.length ? <ul className="suite-overview-issues">
       {issues.map((issue) => <li key={issue.id}><IssueLead issue={issue} /><p>{issue.text} <span>{issue.detail}</span></p></li>)}
     </ul> : null}
-    <a className="mos-link" href={link.path} onClick={navigateOnClick(link.path)}>{link.label}</a>
+    <a className="mos-link" href={path} onClick={navigateOnClick(path)}>{label}</a>
   </section>;
 }
 
@@ -121,6 +173,9 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
   const firstName = owner.name.trim().split(/\s+/)[0] || owner.name;
   // A first visit and a full suite read differently, so nothing is guessed while the answer is on its way.
   const hasApps = overview ? overview.apps.total > 0 : null;
+  const [pendingTiles] = useState(rememberedTiles);
+  const shown = overview ? shownTiles(overview) : [];
+  useEffect(() => { if (overview) rememberTiles(shownTiles(overview)); }, [overview]);
 
   return (
     <section className="mos-shell suite-dashboard">
@@ -135,27 +190,31 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
 
       {hasApps === false ? <FirstSteps onNavigate={onNavigate} /> : null}
 
+      {!overview && pendingTiles.length ? <div aria-busy="true" className="suite-overview-grid">
+        {pendingTiles.map((tile) => <PendingTile key={tile} tile={tile} />)}
+      </div> : null}
+
       {overview && hasApps ? <div className="suite-overview-grid">
-        <OverviewTile icon="apps" issues={overview.apps.issues} link={{ label: 'Open Apps', path: APPS_PATH }} title="Apps">
+        <OverviewTile issues={overview.apps.issues} tile="apps">
           <p><strong>{overview.apps.running} running</strong>{overview.apps.issues.length ? ` · ${overview.apps.issues.length} need${overview.apps.issues.length === 1 ? 's' : ''} you` : ''}</p>
         </OverviewTile>
 
-        {overview.ai.connected || overview.ai.issues.length ? <OverviewTile icon="sparkle" issues={overview.ai.issues} link={overview.ai.issues.length ? { label: 'AI assistants in Settings', path: AI_SETTINGS_PATH } : { label: 'AI activity', path: AI_ACTIVITY_PATH }} title="AI assistants">
+        {shown.includes('ai') ? <OverviewTile issues={overview.ai.issues} link={overview.ai.issues.length ? { label: 'AI assistants in Settings', path: AI_SETTINGS_PATH } : undefined} tile="ai">
           <p><strong>{overview.ai.connected} connected</strong></p>
           {overview.ai.lastUsed ? <p>Last used {lowerFirst(whenWords(overview.ai.lastUsed.at))}, by {overview.ai.lastUsed.by}.</p> : null}
         </OverviewTile> : null}
 
-        {overview.updates ? <OverviewTile icon="update" issues={overview.updates.issues} link={{ label: 'Open Updates', path: UPDATES_PATH }} title="Updates">
+        {overview.updates ? <OverviewTile issues={overview.updates.issues} tile="updates">
           <p><strong>{overview.updates.available ? `${overview.updates.available} is available` : 'Up to date'}</strong></p>
           {overview.updates.checkedAt ? <p>Checked {lowerFirst(whenWords(overview.updates.checkedAt))}.</p> : null}
         </OverviewTile> : null}
 
-        {overview.backups ? <OverviewTile icon="backup" issues={overview.backups.issues} link={{ label: 'Open Backups', path: BACKUPS_PATH }} title="Backups">
+        {overview.backups ? <OverviewTile issues={overview.backups.issues} tile="backups">
           <p><strong>{overview.backups.lastAt ? `Last backup ${lowerFirst(whenWords(overview.backups.lastAt))}` : 'No backups yet'}</strong></p>
           {overview.backups.nextAt && overview.backups.timeZone ? <p>Next {formatInZone(overview.backups.nextAt, overview.backups.timeZone)}.</p> : null}
         </OverviewTile> : null}
 
-        {overview.storage ? <OverviewTile icon="usb-drive" issues={overview.storage.issues} link={{ label: 'Storage in Settings', path: STORAGE_SETTINGS_PATH }} title="Storage">
+        {overview.storage ? <OverviewTile issues={overview.storage.issues} tile="storage">
           {overview.storage.systemFreeBytes !== null ? <p><strong>{formatBytes(overview.storage.systemFreeBytes)} free</strong> on the system drive</p> : null}
           {overview.storage.places ? <p>{overview.storage.places} more {overview.storage.places === 1 ? 'place' : 'places'} connected.</p> : null}
         </OverviewTile> : null}

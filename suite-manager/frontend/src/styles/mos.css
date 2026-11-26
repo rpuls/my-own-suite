@@ -109,6 +109,11 @@
   --mos-frost-filter-strong: blur(28px) saturate(135%);
   --mos-frost-filter-backdrop: blur(10px) saturate(110%);
 
+  /* -- Pending (content on its way) -------------------------------- */
+  --mos-color-pending-line: rgba(238, 244, 255, 0.22);
+  --mos-pending-glow-rest: inset 0 0 22px -8px rgba(99, 226, 179, 0.1);
+  --mos-pending-glow-peak: inset 0 0 44px -4px rgba(99, 226, 179, 0.55);
+
   /* -- Typography --------------------------------------------------- */
   --mos-font-sans:
     'Open Sans', 'Segoe UI', system-ui, -apple-system,
@@ -235,6 +240,9 @@
   --mos-color-focus-visible: #061526;
   --mos-shadow-soft: 0 12px 32px rgba(13, 33, 53, 0.1);
   --mos-shadow-strong: 0 20px 48px rgba(13, 33, 53, 0.14);
+  --mos-color-pending-line: rgba(13, 33, 53, 0.22);
+  --mos-pending-glow-rest: inset 0 0 22px -8px rgba(40, 188, 132, 0.1);
+  --mos-pending-glow-peak: inset 0 0 44px -4px rgba(40, 188, 132, 0.45);
 }
 
 * {
@@ -1132,6 +1140,59 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 .mos-panel-strong {
   background: var(--mos-color-surface-elevated);
   box-shadow: var(--mos-shadow-strong);
+}
+
+/* Pending: the outline of a panel whose content is on its way, glowing so a wait never
+   reads as frozen. The real panel replaces it in place with .mos-arrive. Reduced motion
+   keeps the glow on purpose: it moves nothing. */
+.mos-panel.mos-pending {
+  border-style: dashed;
+  border-color: var(--mos-color-pending-line);
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--mos-pending-glow-rest);
+  animation: mos-pending-glow 2.8s ease-in-out infinite;
+}
+
+@keyframes mos-pending-glow {
+  0%, 100% { box-shadow: var(--mos-pending-glow-rest); }
+  50% { box-shadow: var(--mos-pending-glow-peak); }
+}
+
+.mos-pending .mos-panel-head-icon,
+.mos-pending .mos-pending-mark {
+  background: transparent;
+  outline: 1px dashed var(--mos-color-pending-line);
+  outline-offset: -1px;
+}
+
+.mos-pending .mos-link {
+  color: var(--mos-color-text-muted);
+}
+
+.mos-pending-line {
+  position: relative;
+  display: block;
+  height: calc(1em * var(--mos-line-height-body));
+}
+
+.mos-pending-line::after {
+  position: absolute;
+  bottom: 0.42em;
+  left: 0;
+  width: var(--mos-pending-width, 70%);
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--mos-color-pending-line) 0 6px, transparent 6px 10px);
+  content: "";
+}
+
+.mos-arrive {
+  animation: mos-arrive 450ms ease-out;
+}
+
+@keyframes mos-arrive {
+  from { opacity: 0; }
 }
 
 /* Panel sections — the flush pattern.

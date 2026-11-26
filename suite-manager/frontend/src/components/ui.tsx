@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
 export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
@@ -804,4 +804,9 @@ export function Spinner() {
     <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
     <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
   </svg>;
+}
+
+// A line of text still on its way, inside a .mos-pending panel; width is its expected share of the row.
+export function PendingLine({ width = '70%' }: { width?: string }) {
+  return <span aria-hidden="true" className="mos-pending-line" style={{ '--mos-pending-width': width } as CSSProperties} />;
 }

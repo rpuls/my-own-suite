@@ -213,7 +213,7 @@ class AttentionService {
         systemFreeBytes: system?.availableBytes ?? null,
       } : null,
       updates: facts.updates?.serviceAvailable ? {
-        available: facts.updates.updateAvailable === true ? facts.updates.latestRelease?.version || 'a new version' : null,
+        available: facts.updates.updateAvailable === true ? facts.updates.latestRelease?.version || 'A new version' : null,
         checkedAt: facts.updates.checkedAt || null,
         issues: of('updates'),
       } : null,
