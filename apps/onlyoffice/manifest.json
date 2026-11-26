@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "appVersion": "9.3.1",
-  "minimumMosVersion": "0.20.0",
+  "minimumMosVersion": "0.24.0",
   "packageFiles": [
     "entrypoint.sh",
     "screenshots/document.png",
@@ -80,7 +80,8 @@
         "MOS sets METRICS_ENABLED=false so the server's optional StatsD metrics stay off.",
         "MOS sets PLUGINS_ENABLED=false, so the server no longer downloads its default plugins from the ONLYOFFICE marketplace on GitHub every time it starts.",
         "No ONLYOFFICE account or license server is contacted; the Community Edition enforces its limits locally.",
-        "Opening documents that reference external images or links, or enabling editor plugins or AI, can still make the server reach out to third-party sites."
+        "AI Tools appear in the editor only after you turn ONLYOFFICE on under Settings → AI services. Your server then sends the text you ask the AI about to the AI service you chose there, and to nothing else.",
+        "Opening documents that reference external images or links, or enabling editor plugins, can still make the server reach out to third-party sites."
       ]
     },
     "links": {
@@ -135,7 +136,10 @@
           "PLUGINS_ENABLED": "false",
           "JWT_ENABLED": "true",
           "JWT_SECRET": "${secret.jwtSecret}",
-          "SECURE_LINK_SECRET": "${secret.secureLinkSecret}"
+          "SECURE_LINK_SECRET": "${secret.secureLinkSecret}",
+          "MOS_AI_BASE_URL": "${ai.baseUrl}",
+          "MOS_AI_API_KEY": "${ai.apiKey}",
+          "MOS_AI_MODEL": "${ai.model}"
         },
         "volumes": [
           "data:/var/www/onlyoffice/Data"

@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-05T14:01:23.550Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.6",
-    "packageDigest": "sha256:cd3ec6dcdacc359682c783939ed6839db3cc86f6f76fdee7f6a4f95699fcb2c0",
+    "packageVersion": "0.2.7",
+    "packageDigest": "sha256:18ad262958f8bf627f97125fe7a11089ca3d5bd98c752fd42f9974d6e27cfc10",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -25,7 +25,7 @@
       "The browser-based ONLYOFFICE editor JavaScript served to each user's browser",
       "The ONLYOFFICE desktop and mobile client apps, which are distributed separately, are not shipped by this package, and are where ONLYOFFICE's known third-party trackers (for example the Google and Facebook trackers reported in the Android app) live",
       "The connected document platform (for example Seafile) that stores files and sends them to ONLYOFFICE for editing",
-      "Optional ONLYOFFICE editor plugins or AI features that call third-party services when enabled by a user"
+      "Optional ONLYOFFICE editor plugins, other than the AI plugin this package ships, that call third-party services when enabled by a user"
     ]
   },
   "posture": "privacy-configured",
@@ -99,6 +99,12 @@
       "claim": "This package version sets PLUGINS_ENABLED=false and removes the Google Fonts link from the welcome pages. Its image, built on the lab and run for four minutes with the welcome page loaded, made no DNS lookup and opened no connection to a public address, apart from a control lookup and connection sent from inside the container, which both showed up. The welcome page still answered and no longer referenced Google Fonts, and the plugin manager did not run.",
       "source": "apps/onlyoffice/Dockerfile and manifest.json, built and captured on the MOS Hyper-V lab",
       "retrievedAt": "2026-10-05"
+    },
+    {
+      "type": "configured",
+      "claim": "The package ships ONLYOFFICE's AI plugin 3.0.8 inside its image and wires it to an AI service the owner adds under Settings → AI services and turns on for ONLYOFFICE by its own switch. Until then the MOS_AI_* variables are left out of the container, the entrypoint removes the plugin and any aiSettings from local.json, and the editor shows no AI Tools. Once turned on, the entrypoint writes that one service as the server-wide aiSettings provider, so users cannot add providers of their own. The editor then sends each AI request to the Document Server's own /ai-proxy, which relays it only to a URL that starts with that provider's address and adds the key itself, so the key never reaches the browser and the plugin's fallback proxy at plugins-services.onlyoffice.com is not used. The text a user asks about goes to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text.",
+      "source": "apps/onlyoffice/manifest.json, apps/onlyoffice/entrypoint.sh; ONLYOFFICE/server DocService/sources/ai/aiProxyHandler.js at v9.3.1; sdkjs-plugins/content/ai/scripts/engine/engine.js at onlyoffice.github.io 689547aa716c",
+      "retrievedAt": "2026-11-25"
     }
   ],
   "outbound": [],
@@ -112,7 +118,7 @@
     },
     {
       "type": "configured",
-      "claim": "MOS sets PLUGINS_ENABLED=false, so the start script no longer runs the plugin manager, which otherwise downloads the default plugins from the ONLYOFFICE marketplace on GitHub at every start. The plugins already in the image still load.",
+      "claim": "MOS sets PLUGINS_ENABLED=false, so the start script no longer runs the plugin manager, which otherwise downloads the default plugins from the ONLYOFFICE marketplace on GitHub at every start. The Community image itself carries only the marketplace plugin, so the AI plugin is the one plugin the package adds. It is fetched once while the image builds, from a pinned onlyoffice.github.io commit and checked against its sha256, and never downloaded at start.",
       "source": "apps/onlyoffice/manifest.json",
       "retrievedAt": "2026-10-05"
     },
@@ -143,7 +149,8 @@
   },
   "openQuestions": [
     "Document content transits and is temporarily held by the Document Server during editing; the exact retention and cleanup of cached documents in the data volume was not independently verified for this version.",
-    "External resources referenced inside documents, and optional editor plugins or AI features, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent.",
+    "The AI plugin's requests were traced in its source and the server's, not captured on a running server; a capture with an AI service turned on is still owed.",
+    "External resources referenced inside documents, and optional editor plugins, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent.",
     "The 2026-10-05 captures covered install, start-up and the welcome page. Documents edited through a connected app were not captured, so requests driven by document content, such as external images, remain documented rather than observed."
   ]
 }

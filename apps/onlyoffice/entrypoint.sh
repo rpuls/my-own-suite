@@ -48,6 +48,36 @@ sync_secure_link_secret() {
   done
 }
 
+json_string() {
+  printf '"%s"' "$(printf '%s' "$1" | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+}
+
+ai_settings() {
+  url="$(json_string "$MOS_AI_BASE_URL")"
+  key="$(json_string "${MOS_AI_API_KEY:-}")"
+  model="$(json_string "$MOS_AI_MODEL")"
+  printf '{"providers":{"My Own Suite":{"name":"My Own Suite","url":%s,"key":%s,"models":[{"id":%s,"name":%s}]}},' "$url" "$key" "$model" "$model"
+  printf '"models":[{"id":%s,"name":%s,"provider":"My Own Suite","capabilities":1}],' "$model" "$model"
+  printf '"actions":{"Chat":{"model":%s},"Summarization":{"model":%s},"Translation":{"model":%s},"TextAnalyze":{"model":%s}}}' "$model" "$model" "$model" "$model"
+}
+
+# Runs at every start, so turning the AI service off in MOS also removes what an
+# earlier start added. With a server-side provider, users get no AI settings of their own.
+configure_ai() {
+  config=/etc/onlyoffice/documentserver/local.json
+  json=/var/www/onlyoffice/documentserver/npm/json
+  plugin=/var/www/onlyoffice/documentserver/sdkjs-plugins/ai
+
+  "$json" -q -I -f "$config" -e 'delete this.aiSettings'
+  rm -rf "$plugin"
+  if [ -z "${MOS_AI_BASE_URL:-}" ] || [ -z "${MOS_AI_MODEL:-}" ]; then
+    return 0
+  fi
+
+  cp -R /opt/onlyoffice/ai-plugin "$plugin"
+  "$json" -q -I -f "$config" -e "this.aiSettings = $(ai_settings)"
+}
+
 prepare_supervisor_log_dirs() {
   mkdir -p \
     /var/log/onlyoffice/documentserver/adminpanel \
@@ -68,6 +98,7 @@ if [ -n "${PORT:-}" ]; then
 fi
 
 sync_secure_link_secret
+configure_ai
 prepare_supervisor_log_dirs
 
 exec /app/ds/run-document-server.sh
