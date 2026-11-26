@@ -70,7 +70,7 @@ const CHECKS = [
     tile: 'ai',
     grace: true,
     find: ({ tunnel }) => (tunnel?.state === 'refused' ? [{
-      assistant: tunnel.name, detail: 'and cannot reach your apps until then.', key: tunnel.clientId, text: `${tunnel.name} needs to be set up again`,
+      assistant: tunnel.name, detail: 'Remove it and add it again in Settings.', key: tunnel.clientId, text: `${tunnel.name} cannot reach your suite`,
     }] : []),
   },
   {
@@ -149,7 +149,7 @@ class AttentionService {
       status: instance.status,
     }));
     const clients = this.aiConnections.aiStore.listClients();
-    const tunnelClient = tunnel ? clients.find((client) => client.id === tunnel.clientId) : null;
+    const tunnelClient = tunnel ? clients.find((client) => client.id === tunnel.clientId && client.enabled) : null;
     return {
       ai: { clients, tokenless: this.tokenlessSources(clients) },
       apps,

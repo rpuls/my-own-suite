@@ -19,9 +19,10 @@ Your suite does reach outward for a few things, and they are all the boring kind
 - **sslip.io** — on a rented server, the free naming service behind its generated address.
 - **Cloudflare** — only if you set up a real domain with HTTPS, and only to prove the domain is yours.
 - **An email relay or a storage bucket** — only if you connect one, and only the provider you chose.
-- **An AI assistant** — only if you connect one, and only what the apps you opened to it return. An AI running on your own computer keeps that inside your network; a cloud AI receives it on the provider's servers. For ChatGPT, your server keeps a connection open to OpenAI while ChatGPT is connected, and ChatGPT's requests come back through it.
+- **An AI assistant** — only if you add one under Settings → AI assistants, and only what the apps you opened to it return. Whoever runs the assistant's AI model reads that: usually an AI company, even when the program is installed on your computer. Only a model on a computer of your own keeps it off any AI company's servers. For ChatGPT, your server keeps a connection open to OpenAI while ChatGPT is connected, and ChatGPT's requests come back through it.
+- **An AI service** — only if you add one under Settings → AI in your apps and turn it on for an app, and only what that app sends for its AI features. A model on a computer of your own keeps that off any AI company's servers; a provider online receives it on its servers.
 
-Those services see the ordinary metadata any download involves: your server's address, and what it asked for. A container registry therefore knows an image was pulled, exactly as it would for anyone using Docker. But nothing about how you *use* your suite — your files, your photos, your passwords, who signs in, what you do all day — ever leaves it.
+Those services see the ordinary metadata any download involves: your server's address, and what it asked for. A container registry therefore knows an image was pulled, exactly as it would for anyone using Docker. But nothing about how you *use* your suite — your files, your photos, your passwords, who signs in, what you do all day — leaves it unless you send it somewhere yourself: through an email relay, to an AI assistant you connected, or to an AI service you turned on for an app.
 
 ## This website
 

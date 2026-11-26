@@ -1,0 +1,14 @@
+---
+// The Settings section icon of either AI card, drawn inline because docs pages do not mount IconSprite.
+import { AI_ICON_PATHS, type AiIconName } from '../lib/ai-drawing'
+
+interface Props {
+  name: AiIconName
+  size?: number
+}
+const { name, size = 16 } = Astro.props
+---
+
+<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {AI_ICON_PATHS[name].map((d) => <path d={d} />)}
+</svg>

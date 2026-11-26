@@ -1018,6 +1018,56 @@ label.mos-row {
   flex-wrap: wrap;
 }
 
+/* The row's help on the left and one quiet action on the right, under the control. */
+.mos-row-foot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+}
+
+.mos-row-foot > .mos-row-help {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mos-row-aside {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--mos-text-small);
+  line-height: 1.4;
+}
+
+/* On a phone a Segmented takes the full width under its label, each step an
+   equal share, and an aside goes under the help. */
+@media (max-width: 34rem) {
+  .mos-row-main:has(> .mos-segmented) {
+    flex-wrap: wrap;
+  }
+
+  .mos-row-main > .mos-segmented {
+    width: 100%;
+  }
+
+  .mos-row-main > .mos-segmented > .mos-segmented-option {
+    flex: 1;
+  }
+
+  .mos-row-main > .mos-segmented .mos-segmented-label {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .mos-row-foot {
+    flex-direction: column;
+    gap: var(--mos-space-1);
+  }
+
+  .mos-row-foot > .mos-row-aside {
+    align-self: flex-end;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mos-row-input {
     transition: none;
@@ -1187,6 +1237,33 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   content: "";
 }
 
+/* A list row on its way, its lead in the shape it will take: round for who, the place tile's square for where. */
+.mos-pending-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+}
+
+.mos-pending-lead {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+}
+
+.mos-pending-lead.is-tile {
+  width: 2rem;
+  height: 2rem;
+  margin: 0 0.125rem;
+  border-radius: 10px;
+}
+
+.mos-pending-lines {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .mos-arrive {
   animation: mos-arrive 450ms ease-out;
 }
@@ -1249,17 +1326,85 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   padding: var(--mos-space-5) var(--mos-panel-pad) var(--mos-space-4);
 }
 
-/* The title side of a header: stacked, and allowed to shrink so a long
+/* The title side of an eyebrow header: stacked, and allowed to shrink so a long
    description wraps instead of pushing the actions off the row. */
-.mos-panel-head > :first-child {
+.mos-panel-head:not(.mos-panel-head-titled) > :first-child {
   display: grid;
   gap: var(--mos-space-1);
   flex: 1 1 20rem;
   min-width: 0;
 }
 
-.mos-panel-head > :first-child > * {
+.mos-panel-head:not(.mos-panel-head-titled) > :first-child > *,
+.mos-panel-head-text > * {
   margin: 0;
+}
+
+/* A titled head: the title and the actions share the first row at every width,
+   and the description runs under both. */
+.mos-panel-head-titled {
+  display: block;
+}
+
+.mos-panel-head-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title actions" "text text";
+  align-items: center;
+  gap: var(--mos-space-1) var(--mos-space-3);
+}
+
+.mos-panel-head-grid > .mos-panel-head-title {
+  grid-area: title;
+}
+
+.mos-panel-head-grid > .mos-panel-head-actions {
+  grid-area: actions;
+}
+
+.mos-panel-head-grid > .mos-panel-head-text {
+  grid-area: text;
+}
+
+.mos-panel-head-text {
+  display: grid;
+  gap: var(--mos-space-1);
+  min-width: 0;
+}
+
+/* With a figure, wide heads put it on the title row just left of the actions, so
+   every card's figure ends at the same x; a narrow head gives it a line of its own. */
+.mos-panel-head-titled.has-figure {
+  container-type: inline-size;
+}
+
+.has-figure > .mos-panel-head-grid {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "title figure actions" "text text text";
+  column-gap: 0.875rem;
+  row-gap: var(--mos-space-3);
+}
+
+.mos-panel-head-figure {
+  display: flex;
+  min-width: 0;
+}
+
+.mos-panel-head-grid > .mos-panel-head-figure {
+  grid-area: figure;
+  justify-self: end;
+}
+
+@container (max-width: 40rem) {
+  .has-figure > .mos-panel-head-grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title actions" "figure figure" "text text";
+    row-gap: 0.625rem;
+  }
+
+  .mos-panel-head-grid > .mos-panel-head-figure {
+    justify-self: start;
+  }
 }
 
 /* A section title that wears its icon, as the page's own index shows it. */
@@ -1291,10 +1436,21 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 }
 
 /* The description under a section title. */
-.mos-panel-head > :first-child > p {
+.mos-panel-head:not(.mos-panel-head-titled) > :first-child > p,
+.mos-panel-head-text > p {
   font-size: var(--mos-text-section);
   line-height: 1.5;
   color: var(--mos-color-text-muted);
+}
+
+/* The "Under the hood:" line after the lead: the exact term, for the reader who wants it. */
+.mos-panel-head-text > .mos-panel-head-hood {
+  font-size: 0.8125rem;
+}
+
+.mos-panel-head-hood > strong {
+  font-weight: var(--mos-weight-semibold);
+  color: var(--mos-color-text);
 }
 
 .mos-panel-head-actions {
@@ -1682,6 +1838,218 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   width: min(168px, 100%);
 }
 
+/* AI direction drawing: who asks whom. Chat bubble to house (AI assistants) or
+   house to cloud (AI in your apps). Mint is always the suite (.s) and blue always
+   the AI (.a); the arrow takes the asker's colour. A picture, never a control.
+   md is the height of a button, sm sits in a dialog, lg carries the party labels. */
+.mos-ai-pic {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.mos-ai-pic.is-md {
+  width: auto;
+  height: 44px;
+}
+
+.mos-ai-pic.is-sm {
+  width: auto;
+  height: 36px;
+}
+
+.mos-ai-pic.is-lg {
+  width: auto;
+  height: 104px;
+}
+
+.mos-ai-pic .s,
+.mos-ai-pic .a {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.mos-ai-pic .s {
+  fill: var(--mos-color-accent-soft);
+  stroke: var(--mos-color-accent);
+}
+
+.mos-ai-pic .a {
+  fill: var(--mos-color-info-soft);
+  stroke: var(--mos-color-info);
+}
+
+.mos-ai-pic .spark {
+  fill: var(--mos-color-info);
+}
+
+.mos-ai-pic .mark {
+  color: var(--mos-color-accent);
+}
+
+.mos-ai-pic .beam,
+.mos-ai-pic .head {
+  fill: none;
+  stroke: var(--mos-color-info);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.mos-ai-pic .beam {
+  stroke-width: 2.5;
+  stroke-dasharray: 0.01 6;
+}
+
+.mos-ai-pic .head {
+  stroke-width: 2;
+}
+
+.mos-ai-pic.is-out .beam,
+.mos-ai-pic.is-out .head {
+  stroke: var(--mos-color-accent);
+}
+
+.mos-ai-pic text {
+  fill: var(--mos-color-text-muted);
+  font-size: 10px;
+  font-weight: var(--mos-weight-semibold);
+  text-anchor: middle;
+}
+
+.mos-ai-pic.is-lg .s,
+.mos-ai-pic.is-lg .a,
+.mos-ai-pic.is-lg .head {
+  stroke-width: 2.5;
+}
+
+.mos-ai-pic.is-lg .beam {
+  stroke-width: 3;
+  stroke-dasharray: 0.01 8;
+}
+
+/* When its panel arrives, the beam's dots travel once toward the head, then stop. */
+.mos-arrive .mos-ai-pic .beam {
+  animation: mos-ai-beam 900ms ease-out;
+}
+
+@keyframes mos-ai-beam {
+  from { stroke-dashoffset: 24; }
+}
+
+/* On its own line under a narrow head, the drawing's blank left margin lines up
+   with the title's edge. */
+@container (max-width: 40rem) {
+  .mos-panel-head-figure > .mos-ai-pic {
+    margin-left: -7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-arrive .mos-ai-pic .beam {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .mos-ai-pic .s,
+  .mos-ai-pic .a {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .mos-ai-pic .spark,
+  .mos-ai-pic text {
+    fill: CanvasText;
+  }
+
+  .mos-ai-pic .mark {
+    color: CanvasText;
+  }
+
+  .mos-ai-pic .beam,
+  .mos-ai-pic .head,
+  .mos-ai-pic.is-out .beam,
+  .mos-ai-pic.is-out .head {
+    stroke: LinkText;
+  }
+}
+
+/* Where data goes: one muted sentence behind the place's icon. Accent for the
+   suite's own network, info for the internet, muted when it depends. */
+.mos-destination {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-2);
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: 0.84375rem;
+  line-height: 1.5;
+}
+
+.mos-destination > .suite-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+}
+
+.mos-destination.is-home > .suite-icon,
+.mos-destination.is-private > .suite-icon {
+  color: var(--mos-color-accent);
+}
+
+.mos-destination.is-internet > .suite-icon {
+  color: var(--mos-color-info);
+}
+
+/* One flow per line, where a destination names more than one. */
+.mos-destination-line {
+  display: block;
+}
+
+/* The place a row stands for, at the row's lead: the section-icon tile, smaller.
+   The icon tile is the same tile for a row's subject, in front of its label. */
+.mos-place-tile,
+.mos-icon-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  background: var(--mos-color-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--mos-color-accent-border);
+  color: var(--mos-color-accent);
+}
+
+.mos-place-tile.is-internet {
+  background: var(--mos-color-info-soft);
+  box-shadow: inset 0 0 0 1px var(--mos-color-info-border);
+  color: var(--mos-color-info);
+}
+
+.mos-place-tile > .suite-icon,
+.mos-icon-tile > .suite-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.mos-row-label:has(> .mos-icon-tile) {
+  display: inline-flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
+  gap: var(--mos-space-2) var(--mos-space-3);
+}
+
+.mos-row:has(> .mos-row-main > .mos-row-label > .mos-icon-tile) > .mos-row-help {
+  padding-left: calc(2rem + var(--mos-space-3));
+}
+
 /* How full a piece of storage is. One track, a segment per thing on it in the
    order of the legend, and what is left as the track itself. The compact bar is
    the same track at a glance; storage with no fixed size draws no track at all. */
@@ -1756,7 +2124,8 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   min-width: 0;
 }
 
-.mos-panel-band-row > .mos-btn {
+.mos-panel-band-row > .mos-btn,
+.mos-panel-band-row > .mos-link {
   flex: none;
 }
 
@@ -1960,6 +2329,15 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   height: 1.3rem;
 }
 
+/* An avatar or place tile in place of the icon, centred in one column width so
+   the names of a mixed list still line up. */
+.mos-disclosure-lead {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  width: 2.25rem;
+}
+
 .mos-disclosure-body {
   display: grid;
   flex: 1 1 auto;
@@ -2060,7 +2438,37 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
     padding: 0 0 var(--mos-space-3) var(--mos-panel-pad);
   }
 
+  /* A lone kebab is small enough to stay on the name line, beside a head that
+     gives way to it. */
+  .mos-disclosure-trailing:has(> .suite-icon-button:only-child) {
+    order: 0;
+    flex: none;
+    padding: 0;
+  }
+
+  .mos-disclosure-head {
+    flex-basis: 0;
+  }
+
+  /* The aside drops under the row's text rather than hiding, so a state pill is
+     still seen, and announced once, on a phone. */
+  .mos-disclosure-head:has(> .mos-disclosure-aside) {
+    flex-wrap: wrap;
+    row-gap: var(--mos-space-1);
+  }
+
   .mos-disclosure-aside {
-    display: none;
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .mos-disclosure-head:has(> .mos-disclosure-aside):has(> :is(.mos-disclosure-icon, .mos-disclosure-lead)) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--mos-space-3);
+  }
+
+  .mos-disclosure-head:has(> :is(.mos-disclosure-icon, .mos-disclosure-lead)) > .mos-disclosure-aside {
+    grid-column: 2;
   }
 }

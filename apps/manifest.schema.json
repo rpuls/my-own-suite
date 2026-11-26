@@ -115,6 +115,10 @@
           },
           "description": "Short capability highlights for the detail view."
         },
+        "aiFeatures": {
+          "$ref": "#/$defs/text",
+          "description": "Since 0.24.0. One plain-language sentence on what the app does with the AI service the owner turns on for it, shown beside the app's switch in Settings and on the public site. Only meaningful in a package that reads ${ai.*}."
+        },
         "resourceHint": {
           "type": "object",
           "required": ["level"],

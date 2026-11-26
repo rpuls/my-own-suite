@@ -1,0 +1,29 @@
+---
+// Who asks whom: a chat reaching into the suite, or the suite reaching out to an AI service. Suite
+// Manager's twin is AiDirectionPicture in suite-manager/frontend/src/components/ui.tsx; both draw from
+// ../lib/ai-drawing.ts and share their look through .mos-ai-pic. Docs figures and landing cards use lg.
+import AiDirectionHouse from './AiDirectionHouse.astro'
+import { AI_DIRECTION_WORDS, AI_PICTURE, AI_PICTURE_VIEWBOX, type AiDirection, type AiPictureSize } from '../lib/ai-drawing'
+
+interface Props {
+  direction: AiDirection
+  size: AiPictureSize
+}
+const { direction, size } = Astro.props
+const inward = direction === 'in'
+const { label, parties } = AI_DIRECTION_WORDS[direction]
+---
+
+<svg class={`mos-ai-pic is-${direction} is-${size}`} viewBox={AI_PICTURE_VIEWBOX[size]} role="img" aria-label={label}>
+  {inward
+    ? <Fragment><path class="a" d={AI_PICTURE.chat} /><path class="spark" d={AI_PICTURE.chatSpark} /></Fragment>
+    : <AiDirectionHouse />}
+  <path class="beam" d={AI_PICTURE.beam} />
+  <path class="head" d={AI_PICTURE.head} />
+  <g transform={AI_PICTURE.answerer}>
+    {inward
+      ? <AiDirectionHouse />
+      : <g transform={AI_PICTURE.cloudFit}><path class="a" d={AI_PICTURE.cloud} /><path class="spark" d={AI_PICTURE.cloudSpark} /></g>}
+  </g>
+  {size === 'lg' ? parties.map((party, index) => <text x={AI_PICTURE.labelX[index]} y={AI_PICTURE.labelY}>{party}</text>) : null}
+</svg>

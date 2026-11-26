@@ -131,6 +131,7 @@ function publicCatalog(manifest) {
   const links = isRecord(catalog.links) ? catalog.links : {};
 
   return {
+    aiFeatures: hasText(catalog.aiFeatures) ? catalog.aiFeatures : '',
     description: hasText(catalog.description) ? catalog.description : '',
     demoDeployTargets: Array.isArray(catalog.demoDeployTargets) ? catalog.demoDeployTargets
       .filter((target) => isRecord(target) && APP_ID_PATTERN.test(String(target.provider || '')) && hasText(target.label) && safeUrl(target.url))

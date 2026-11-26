@@ -1,15 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { InfoTip, Notice, Panel, PanelBody, PanelHead, PanelHeadButton, PanelList } from '../../../components/ui';
-import { AiDirectionPicture } from './AiDirectionPicture';
-import { AddAssistantDialog } from './AddAssistantDialog';
-import { ClientItem, NewTokenDialog, RemoveClientDialog, type ClientActions } from './AiParts';
-import { aiRequest, levelOf, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
+import { AiDirectionPicture, Icon, Panel, PanelBand, PanelBody, PanelHead, PanelHeadButton, PanelHeadHood, PanelList, PendingLine, PendingRow } from '../../../components/ui';
+import { AI_ASSISTANTS_GUIDE_URL } from '../../../lib/links';
+import { navigateOnClick } from '../../../lib/navigation';
+import { ADDRESS_SETTINGS_PATH, AddAssistantDialog } from './AddAssistantDialog';
+import { ClientItem, NewTokenDialog, RemoveClientDialog, type ClientActions, type FailureSpot } from './AiParts';
+import { examplePrompts, headLead } from './assistant-words';
+import { aiRequest, levelOf, nameList, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
 
 const REFRESH_MS = 15_000;
-// While the connect dialog waits for the AI's first contact.
+// While the connect dialog waits for the assistant's first contact.
 const CONNECT_POLL_MS = 3_000;
-const ADDRESS_SETTINGS_PATH = '/suite-manager/settings#set-address';
+const AI_ACTIVITY_PATH = '/suite-manager/ai-activity';
+const LEAD_FIRST_SENTENCE = 'Ask your AI chat to look things up or make changes for you.';
+
+type Failure = { clientId: string; message: string; spot: FailureSpot | 'remove' };
 
 function errorText(caught: unknown, fallback: string) {
   return caught instanceof Error ? caught.message : fallback;
@@ -19,11 +24,71 @@ function clientPath(client: AiClient, rest = '') {
   return `/clients/${encodeURIComponent(client.id)}${rest}`;
 }
 
-// Lets the owner's AI use the apps they choose: one level per app per AI, with
+function AssistantsHead({ actions, hood, lead }: { actions?: ReactNode; hood: ReactNode; lead: ReactNode }) {
+  return <PanelHead actions={actions} figure={<AiDirectionPicture direction="in" size="md" />} heading="h3" title="AI assistants">
+    {lead}
+    {hood}
+  </PanelHead>;
+}
+
+const HOOD_LINE = <PanelHeadHood>your suite is an MCP server, and each assistant gets its own token.</PanelHeadHood>;
+
+function PendingAssistants() {
+  return <Panel className="mos-pending">
+    <AssistantsHead hood={<PendingLine width="80%" />} lead={<><PendingLine width="95%" /><PendingLine width="55%" /></>} />
+    <PanelList>
+      <PendingRow lead="avatar" meta="60%" name="30%" />
+      <PendingRow lead="avatar" meta="45%" name="24%" />
+    </PanelList>
+  </Panel>;
+}
+
+function UnloadedAssistants({ onRetry }: { onRetry: () => void }) {
+  return <Panel>
+    <AssistantsHead hood={HOOD_LINE} lead={<p>{LEAD_FIRST_SENTENCE}</p>} />
+    <PanelBand icon="alert" layout="row" note="It tries again by itself." title="Could not load this." tone="warning">
+      <button className="mos-btn mos-btn-secondary" onClick={onRetry} type="button">Try again</button>
+    </PanelBand>
+  </Panel>;
+}
+
+const SET_UP_ADDRESS = <a className="mos-link" href={ADDRESS_SETTINGS_PATH}>Set up your suite address<Icon name="arrow-right" /></a>;
+
+// The tunnel reaches the MCP server on loopback, so only direct assistants need the HTTPS address.
+function NoAddressBand({ clients }: { clients: AiClient[] }) {
+  const direct = clients.filter((client) => client.route === 'direct').map((client) => client.name);
+  if (direct.length) {
+    return <PanelBand icon="alert" layout="row" note="ChatGPT is not affected." title={`Your suite has no HTTPS address now, so ${nameList(direct)} cannot reach it.`} tone="warning">{SET_UP_ADDRESS}</PanelBand>;
+  }
+  return <PanelBand icon="info" layout="row" note="ChatGPT works without one." title="Most AI assistants reach your suite at its HTTPS address, and your suite does not have one yet." tone="info">{SET_UP_ADDRESS}</PanelBand>;
+}
+
+function NoAssistantYet({ sources }: { sources: AiSource[] }) {
+  return <PanelBody>
+    <p className="suite-meta">
+      No assistant yet. You need an AI program on a computer that lets you add a server by address and token, or ChatGPT. Then ask it things like {examplePrompts(sources)}{' '}
+      <a className="mos-link" href={AI_ASSISTANTS_GUIDE_URL} rel="noreferrer" target="_blank">How it works<Icon name="arrow-right" /></a>
+    </p>
+  </PanelBody>;
+}
+
+function WhereReadsGo({ withActivity }: { withActivity: boolean }) {
+  return <PanelBand
+    icon="info"
+    layout="row"
+    note="Only a model that runs on a computer of your own keeps it off any AI company's servers."
+    title="What an assistant reads goes to whoever runs its AI model: usually an AI company, even when the program is installed on your computer."
+  >
+    {withActivity ? <a className="mos-link" href={AI_ACTIVITY_PATH} onClick={navigateOnClick(AI_ACTIVITY_PATH)}>AI activity<Icon name="arrow-right" /></a> : null}
+  </PanelBand>;
+}
+
+// Lets the owner's AI chat use the apps they allow: one level per app per assistant, with
 // single tools adjusted under Customize.
 export function AiConnectionsPanel() {
   const [status, setStatus] = useState<AiStatus | null>(null);
-  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [busy, setBusy] = useState('');
   const [openClient, setOpenClient] = useState('');
   const [changedClient, setChangedClient] = useState('');
@@ -35,14 +100,15 @@ export function AiConnectionsPanel() {
   const [removing, setRemoving] = useState<AiClient | null>(null);
   const loadedOnce = useRef(false);
 
-  // A failed background refresh keeps what is on screen; only a page with nothing loaded yet reports it.
+  // A failed background refresh keeps what is on screen; only a card with nothing loaded yet reports it.
   async function load() {
     try {
-      const loaded = await aiRequest('GET', '', 'Unable to load your AI.');
+      const loaded = await aiRequest('GET', '', 'Unable to load your assistants.');
       loadedOnce.current = true;
+      setLoadFailed(false);
       setStatus(loaded);
-    } catch (caught) {
-      if (!loadedOnce.current) setError(errorText(caught, 'Unable to load your AI.'));
+    } catch {
+      if (!loadedOnce.current) setLoadFailed(true);
     }
   }
 
@@ -58,14 +124,14 @@ export function AiConnectionsPanel() {
     return () => window.clearInterval(timer);
   }, [addIssued, chatGptAdded]);
 
-  async function run(key: string, fallback: string, action: () => Promise<AiStatus>) {
-    setBusy(key);
-    setError('');
+  async function run(client: AiClient, spot: Failure['spot'], fallback: string, action: () => Promise<AiStatus>) {
+    setBusy(`client:${client.id}`);
+    setFailure(null);
     try {
       setStatus(await action());
       return true;
     } catch (caught) {
-      setError(errorText(caught, fallback));
+      setFailure({ clientId: client.id, message: errorText(caught, fallback), spot });
       return false;
     } finally {
       setBusy('');
@@ -76,21 +142,21 @@ export function AiConnectionsPanel() {
     setBusy('add');
     setAddError('');
     try {
-      const created = await aiRequest<IssuedToken>('POST', '/clients', 'The AI could not be added.', { name });
+      const created = await aiRequest<IssuedToken>('POST', '/clients', 'The assistant could not be added.', { name });
       setStatus(created.status);
       if (created.client) setAddIssued({ clientId: created.client.id, token: created.token });
     } catch (caught) {
-      setAddError(errorText(caught, 'The AI could not be added.'));
+      setAddError(errorText(caught, 'The assistant could not be added.'));
     } finally {
       setBusy('');
     }
   }
 
-  async function connectChatGpt(tunnelId: string, runtimeKey: string) {
+  async function connectChatGpt(tunnelId: string, apiKey: string) {
     setBusy('add');
     setAddError('');
     try {
-      const created = await aiRequest<{ client: AiClient; status: AiStatus }>('POST', '/tunnel', 'ChatGPT could not be connected.', { runtimeKey, tunnelId });
+      const created = await aiRequest<{ client: AiClient; status: AiStatus }>('POST', '/tunnel', 'ChatGPT could not be connected.', { runtimeKey: apiKey, tunnelId });
       setStatus(created.status);
       setChatGptAdded(created.client.id);
     } catch (caught) {
@@ -113,18 +179,26 @@ export function AiConnectionsPanel() {
     setAdding(false);
     setAddIssued(null);
     setChatGptAdded('');
-    if (pending) await run(`client:${pending}`, 'The AI could not be removed.', () => aiRequest('DELETE', `/clients/${encodeURIComponent(pending)}`, 'The AI could not be removed.'));
+    if (!pending) return;
+    setBusy(`client:${pending}`);
+    try {
+      setStatus(await aiRequest('DELETE', `/clients/${encodeURIComponent(pending)}`, 'The assistant could not be removed.'));
+    } catch {
+      void load();
+    } finally {
+      setBusy('');
+    }
   }
 
   function actionsFor(client: AiClient, sources: AiSource[]): ClientActions {
-    const key = `client:${client.id}`;
-    const change = async (fallback: string, action: () => Promise<AiStatus>) => {
-      if (await run(key, fallback, action)) setChangedClient(client.id);
+    const change = async (spot: FailureSpot, fallback: string, action: () => Promise<AiStatus>) => {
+      if (await run(client, spot, fallback, action)) setChangedClient(client.id);
     };
+    const levelPath = (sourceId: string, rest = '') => clientPath(client, `/levels/${encodeURIComponent(sourceId)}${rest}`);
     return {
-      onAccept: (tool) => void change('The tool could not be accepted.', () => aiRequest('POST', `/tools/${encodeURIComponent(tool)}/accept`, 'The tool could not be accepted.')),
-      onException: (tool: string, exception: AiException | null) => void change('The tool could not be changed.', () => aiRequest('PUT', clientPath(client, `/exceptions/${encodeURIComponent(tool)}`), 'The tool could not be changed.', { exception })),
-      onLevel: (sourceId: string, level: AiLevel) => void change('The setting could not be changed.', () => aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(sourceId)}`), 'The setting could not be changed.', { level })),
+      onAccept: (sourceId, tool) => void change(`tools:${sourceId}`, 'The tool could not be accepted.', () => aiRequest('POST', `/tools/${encodeURIComponent(tool)}/accept`, 'The tool could not be accepted.')),
+      onException: (sourceId, tool, exception: AiException | null) => void change(`tools:${sourceId}`, 'The tool could not be changed.', () => aiRequest('PUT', clientPath(client, `/exceptions/${encodeURIComponent(tool)}`), 'The tool could not be changed.', { exception })),
+      onLevel: (sourceId: string, level: AiLevel) => void change(`level:${sourceId}`, 'The setting could not be changed.', () => aiRequest('PUT', levelPath(sourceId), 'The setting could not be changed.', { level })),
       onSourceToken: async (sourceId, token) => {
         try {
           setStatus(await aiRequest('PUT', `/sources/${encodeURIComponent(sourceId)}/token`, 'The token could not be saved.', { token }));
@@ -133,41 +207,39 @@ export function AiConnectionsPanel() {
           return errorText(caught, 'The token could not be saved.');
         }
       },
-      // Apps that follow the default keep what they had: only apps added later take the new default.
-      onDefaultLevel: (level) => void run(key, 'The setting could not be changed.', async () => {
+      // Apps that follow the default keep what they had: only apps installed later take the new default.
+      onDefaultLevel: (level) => void run(client, 'row', 'The setting could not be changed.', async () => {
         for (const source of sources.filter((candidate) => !client.levels[candidate.id])) {
-          await aiRequest('PUT', clientPath(client, `/levels/${encodeURIComponent(source.id)}`), 'The setting could not be changed.', { level: levelOf(client, source.id) });
+          await aiRequest('PUT', levelPath(source.id), 'The setting could not be changed.', { level: levelOf(client, source.id) });
         }
         return aiRequest('PUT', clientPath(client), 'The setting could not be changed.', { defaultLevel: level });
       }),
-      onRemove: () => setRemoving(client),
-      onReset: (sourceId) => void change('The tools could not be reset.', () => aiRequest('DELETE', clientPath(client, `/levels/${encodeURIComponent(sourceId)}/exceptions`), 'The tools could not be reset.')),
-      onRotate: () => void run(key, 'A new token could not be made.', async () => {
+      onRemove: () => { setFailure(null); setRemoving(client); },
+      onReset: (sourceId) => void change(`tools:${sourceId}`, 'The tools could not be reset.', () => aiRequest('DELETE', levelPath(sourceId, '/exceptions'), 'The tools could not be reset.')),
+      onRotate: () => void run(client, 'row', 'A new token could not be made.', async () => {
         const issued = await aiRequest<IssuedToken>('POST', clientPath(client, '/token'), 'A new token could not be made.');
         setRotated({ client, token: issued.token });
         return issued.status;
       }),
-      onStartTunnel: () => void run(key, 'The tunnel could not be turned on.', () => aiRequest('POST', '/tunnel/start', 'The tunnel could not be turned on.')),
-      onToggleEnabled: () => void run(key, 'The AI could not be changed.', () => aiRequest('PUT', clientPath(client), 'The AI could not be changed.', { enabled: !client.enabled })),
+      onStartTunnel: () => void run(client, 'row', 'The tunnel could not be turned on.', () => aiRequest('POST', '/tunnel/start', 'The tunnel could not be turned on.')),
+      onToggleEnabled: () => void run(client, 'row', 'The assistant could not be changed.', () => aiRequest('PUT', clientPath(client), 'The assistant could not be changed.', { enabled: !client.enabled })),
     };
   }
 
   async function removeClient(client: AiClient) {
-    if (await run(`client:${client.id}`, 'The AI could not be removed.', () => aiRequest('DELETE', clientPath(client), 'The AI could not be removed.'))) setRemoving(null);
+    if (await run(client, 'remove', 'The assistant could not be removed.', () => aiRequest('DELETE', clientPath(client), 'The assistant could not be removed.'))) setRemoving(null);
   }
 
-  const sources = status?.sources ?? [];
-  const clients = status?.clients ?? [];
-  const reachable = Boolean(status?.mcpUrl);
-  const issuedClient = clients.find((client) => client.id === (addIssued?.clientId ?? chatGptAdded));
+  if (!status) return loadFailed ? <UnloadedAssistants onRetry={() => void load()} /> : <PendingAssistants />;
 
-  return <Panel>
-    <PanelHead actions={status ? <PanelHeadButton disabled={Boolean(busy) || !reachable} onClick={() => { setAddError(''); setAdding(true); }}>Add</PanelHeadButton> : null} heading="h3" title={<>AI assistants<InfoTip label="What AI assistants are" picture={<AiDirectionPicture direction="in" />} title="Control your suite with AI chat">
-      <p>Connect an AI chat you already use. From there you can ask about what is in your suite and have it do things for you. You decide what each one may see and change.</p>
-    </InfoTip></>}>
-      <p>Use your apps from any AI chat that supports MCP.</p>
-    </PanelHead>
-    {error ? <PanelBody><Notice title="Something went wrong" variant="error"><p>{error}</p></Notice></PanelBody> : null}
+  const { clients, mcpUrl, sources, tunnel } = status;
+  const failuresOf = (client: AiClient) => (failure?.clientId === client.id ? { [failure.spot]: failure.message } : {});
+  const issuedClient = clients.find((client) => client.id === (addIssued?.clientId ?? chatGptAdded));
+  const add = <PanelHeadButton accessibleLabel="Add an AI assistant" disabled={Boolean(busy) || (!mcpUrl && Boolean(tunnel))} onClick={() => { setAddError(''); setAdding(true); }}>Add</PanelHeadButton>;
+
+  return <Panel className="mos-arrive">
+    <AssistantsHead actions={add} hood={HOOD_LINE} lead={<p>{headLead(sources)}</p>} />
+    {mcpUrl ? null : <NoAddressBand clients={clients} />}
     {clients.length ? <PanelList>
       {clients.map((client) => <ClientItem
         actions={actionsFor(client, sources)}
@@ -175,18 +247,17 @@ export function AiConnectionsPanel() {
         changed={changedClient === client.id}
         client={client}
         expanded={openClient === client.id}
+        failures={failuresOf(client)}
         key={client.id}
+        mcpUrl={mcpUrl}
         onToggle={() => setOpenClient(openClient === client.id ? '' : client.id)}
         sources={sources}
-        tunnel={status?.tunnel?.clientId === client.id ? status.tunnel : null}
+        tunnel={tunnel?.clientId === client.id ? tunnel : null}
       />)}
-    </PanelList> : status ? <PanelBody>
-      {reachable
-        ? <p className="suite-meta">No AI is connected yet. Add one to use your apps from your AI chat, such as Claude Code, LM Studio or Open WebUI.</p>
-        : <p className="suite-meta">An AI can connect once your suite has an HTTPS address. <a className="mos-link" href={ADDRESS_SETTINGS_PATH}>Set up your suite address</a></p>}
-    </PanelBody> : null}
-    {adding && status?.mcpUrl ? <AddAssistantDialog busy={busy === 'add'} chatGptAdded={Boolean(chatGptAdded)} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={status.mcpUrl} onAbort={() => void abortAdd()} onClose={closeAdd} onConnectChatGpt={(tunnelId, runtimeKey) => void connectChatGpt(tunnelId, runtimeKey)} onCreate={(name) => void addClient(name)} onDone={closeAdd} tunnel={status.tunnel} /> : null}
-    {rotated && status?.mcpUrl ? <NewTokenDialog client={rotated.client} mcpUrl={status.mcpUrl} onClose={() => setRotated(null)} token={rotated.token} /> : null}
-    {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
+    </PanelList> : <NoAssistantYet sources={sources} />}
+    <WhereReadsGo withActivity={clients.length > 0} />
+    {adding ? <AddAssistantDialog busy={busy === 'add'} chatGptAdded={Boolean(chatGptAdded)} connected={Boolean(issuedClient?.lastUsedAt)} error={addError} issued={addIssued?.token ?? null} mcpUrl={mcpUrl} onAbort={() => void abortAdd()} onClose={closeAdd} onConnectChatGpt={(tunnelId, apiKey) => void connectChatGpt(tunnelId, apiKey)} onCreate={(name) => void addClient(name)} onDone={closeAdd} tunnel={tunnel} /> : null}
+    {rotated && mcpUrl ? <NewTokenDialog client={rotated.client} mcpUrl={mcpUrl} onClose={() => setRotated(null)} token={rotated.token} /> : null}
+    {removing ? <RemoveClientDialog busy={busy === `client:${removing.id}`} client={removing} error={failure?.clientId === removing.id && failure.spot === 'remove' ? failure.message : ''} onClose={() => setRemoving(null)} onRemove={() => void removeClient(removing)} /> : null}
   </Panel>;
 }

@@ -41,6 +41,11 @@ export type CatalogApp = {
   // who receives it, so the evidence has to be readable somewhere.
   privacyAssessment: PrivacyAssessment | null
   advisories: PrivacyAdvisory[]
+  // The two AI roles: an AI chat can use the app (an mcp-server export), and the app asks an AI service (${ai.*}).
+  mcpServer: boolean
+  asksAiService: boolean
+  // The package's own sentence on what it does with an AI service (catalog.aiFeatures); empty when it has none.
+  aiFeatures: string
   features: CatalogFeature[]
   links: Record<string, string>
   tags: string[]
@@ -237,6 +242,12 @@ function advisoriesFor(manifest: any): PrivacyAdvisory[] {
   )
 }
 
+// Mirrors aiVariablesOf in suite-manager/backend/src/ai/ai-service-values.cjs: an app asks a service when any env value reads ${ai.*}.
+function manifestUsesAi(manifest: any): boolean {
+  return Object.values(manifest.resources?.services ?? {}).some((service: any) =>
+    Object.values(service?.env ?? {}).some((value) => /\$\{ai\./u.test(String(value))))
+}
+
 // Friendly labels for manifest category slugs; unknown slugs fall back
 // to a capitalized form so new categories never break the site.
 const CATEGORY_LABELS: Record<string, string> = {
@@ -391,6 +402,9 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       privacyAssessment: privacyAssessmentFor(path, manifest),
       privacyReview: privacyReviewFor(path, manifest),
       advisories: advisoriesFor(manifest),
+      mcpServer: Object.values(manifest.exports ?? {}).some((entry: any) => entry?.type === 'mcp-server'),
+      asksAiService: manifestUsesAi(manifest),
+      aiFeatures: typeof catalog.aiFeatures === 'string' ? catalog.aiFeatures.trim() : '',
       features,
       links: catalog.links && typeof catalog.links === 'object' ? catalog.links : {},
       tags: Array.isArray(catalog.tags) ? catalog.tags.map(String) : [],

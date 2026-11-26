@@ -1,7 +1,8 @@
 'use strict';
 
-// The two calls MOS itself makes to an AI service: list its models, and ask it
-// one question to prove the address, key and model work together.
+// The calls MOS itself makes to an AI service: list its models, ask the chat
+// model one question, and ask the search model for one embedding, to prove the
+// address, key and models work together.
 
 const { CodedError } = require('../../../../shared/coded-error.cjs');
 
@@ -53,27 +54,34 @@ async function request(baseUrl, path, { apiKey, body, fetchImpl }) {
   throw new AiServiceError('AI_SERVICE_REFUSED', said ? `The service answered: ${said}` : `The service answered with an error (HTTP ${response.status}).`, 502);
 }
 
+async function jsonOf(response) {
+  try { return await response.json(); } catch { return null; }
+}
+
+function wrongFormat() {
+  return new AiServiceError('AI_SERVICE_REFUSED', 'The service answered, but not in the format apps expect.', 502);
+}
+
 async function listModels({ apiKey, baseUrl }, { fetchImpl = globalThis.fetch } = {}) {
-  const response = await request(baseUrl, '/models', { apiKey, fetchImpl });
-  let body;
-  try { body = await response.json(); } catch { body = null; }
+  const body = await jsonOf(await request(baseUrl, '/models', { apiKey, fetchImpl }));
   const models = Array.isArray(body?.data) ? body.data.map((model) => model?.id).filter((id) => typeof id === 'string' && id) : [];
   return [...new Set(models)].sort().slice(0, MAX_MODELS);
 }
 
 async function ask({ apiKey, baseUrl, model }, { fetchImpl = globalThis.fetch, now = Date.now } = {}) {
   const started = now();
-  const response = await request(baseUrl, '/chat/completions', {
+  const body = await jsonOf(await request(baseUrl, '/chat/completions', {
     apiKey,
     body: { messages: [{ content: 'Reply with the single word: ok', role: 'user' }], model },
     fetchImpl,
-  });
-  let body;
-  try { body = await response.json(); } catch { body = null; }
-  if (!Array.isArray(body?.choices) || !body.choices.length) {
-    throw new AiServiceError('AI_SERVICE_REFUSED', 'The service answered, but not in the format apps expect.', 502);
-  }
+  }));
+  if (!Array.isArray(body?.choices) || !body.choices.length) throw wrongFormat();
   return { ms: now() - started };
 }
 
-module.exports = { AiServiceError, ask, listModels };
+async function embed({ apiKey, baseUrl, model }, { fetchImpl = globalThis.fetch } = {}) {
+  const body = await jsonOf(await request(baseUrl, '/embeddings', { apiKey, body: { input: 'ok', model }, fetchImpl }));
+  if (!Array.isArray(body?.data) || !body.data.length) throw wrongFormat();
+}
+
+module.exports = { AiServiceError, ask, embed, listModels };

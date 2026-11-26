@@ -1,0 +1,39 @@
+---
+// An app page's AI rows, from its package: an mcp-server export lets your AI chat use the app, and a
+// manifest that reads the AI service values gives the app AI features of its own.
+import AiSectionIcon from './AiSectionIcon.astro'
+import { AI_SIDES, aiAppFor } from '../lib/ai-apps'
+
+interface Props {
+  appId: string
+}
+const entry = aiAppFor(Astro.props.appId)
+const labelId = `ai-block-${Astro.props.appId}`
+---
+
+{entry && (
+  <div class="ai-block" role="group" aria-labelledby={labelId}>
+    <p class="ai-block-label" id={labelId}>AI</p>
+    {entry.offersTools && (
+      <div class="ai-block-row">
+        <span class="ai-block-icon"><AiSectionIcon name={AI_SIDES.in.icon} size={18} /></span>
+        <div>
+          <p><strong>{AI_SIDES.in.card}:</strong> your AI chat can use {entry.app.name}, as far as you allow.</p>
+          <a href={AI_SIDES.in.guide}>{AI_SIDES.in.guideTitle} →</a>
+        </div>
+      </div>
+    )}
+    {entry.asksService && (
+      <div class="ai-block-row">
+        <span class="ai-block-icon"><AiSectionIcon name={AI_SIDES.out.icon} size={18} /></span>
+        <div>
+          <p>
+            <strong>{AI_SIDES.out.card}:</strong> {entry.app.aiFeatures || `${entry.app.name}'s own AI features can ask an AI service you add.`}
+            {entry.experimental && <span class="mos-pill mos-pill-warning">Experimental</span>}
+          </p>
+          <a href={AI_SIDES.out.guide}>{AI_SIDES.out.guideTitle} →</a>
+        </div>
+      </div>
+    )}
+  </div>
+)}

@@ -30,6 +30,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`requirements`](#server-requirements-requirements) | 0.21.0 | What the app needs from the server, starting with `https`; Suite Manager disables Install and says why on a server that lacks it. |
 | [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks, created and mounted by MOS. |
 | [`${ai.*}`](#the-ai-service-namespace) | 0.24.0 | The AI service the owner chose for the app, projected into an app that has AI features. |
+| [`catalog.aiFeatures`](#the-ai-service-namespace) | 0.24.0 | One sentence on what the app does with that AI service, shown beside its switch and on the site. |
 
 ## A complete minimal manifest
 
@@ -258,7 +259,7 @@ Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${
 
 ### The AI service namespace
 
-`${ai.*}` projects an AI service the owner added under **Settings → AI services** into an app that has AI features. Every service speaks the OpenAI-compatible format, and the owner turns it on per app, so an app receives these values only after its own switch is flipped. The keys are `enabled` (`true`), `baseUrl` (the address, such as `https://host/v1`, with no trailing slash), `chatCompletionsUrl` (the same address with `/chat/completions` appended, for an app that wants the full path), `apiKey`, `model`, and for apps that search content by meaning `embeddingModel` and `embeddingProtocol` (the word `openai`).
+`${ai.*}` projects an AI service the owner added under **Settings → AI in your apps** into an app that has AI features. Every service speaks the OpenAI-compatible format, and the owner turns it on per app, so an app receives these values only after its own switch is flipped. The keys are `enabled` (`true`), `baseUrl` (the address, such as `https://host/v1`, with no trailing slash), `chatCompletionsUrl` (the same address with `/chat/completions` appended, for an app that wants the full path), `apiKey`, `model`, and for apps that search content by meaning `embeddingModel` and `embeddingProtocol` (the word `openai`).
 
 ```json
 "env": {
@@ -272,7 +273,9 @@ Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${
 
 A variable that reads a value MOS does not have is left out of the container, never set to an empty string. So with no service chosen for the app, every variable above is unset and the app runs as it did before; a service with no key leaves only the key variable out; and a service with no search model leaves out the variables that read `embeddingModel` or `embeddingProtocol`. To switch on something that depends on one of these, reference it in the same value: `"${ai.embeddingProtocol}-like"` is `openai-like` when a search model is set and absent otherwise. A fixed value beside them, such as `"APP_AI_BACKEND": "openai"`, is always set, so only use one where the app ignores it while its AI is off.
 
-`${ai.apiKey}` is secret-grade, like `${smtp.password}`: it resolves only when a runtime is materialized, never enters a stored projection or a package digest, and is redacted from logs and diagnostics. An app that references the namespace is listed under **Settings → AI services** with a switch, and flipping it restarts the app so it picks the values up. The namespace was added in MOS 0.24.0; a package that references it must set `minimumMosVersion` to `0.24.0`. A package whose app can now reach an owner-chosen AI service must say so in its privacy review.
+`${ai.apiKey}` is secret-grade, like `${smtp.password}`: it resolves only when a runtime is materialized, never enters a stored projection or a package digest, and is redacted from logs and diagnostics. An app that references the namespace is listed under **Settings → AI in your apps** with a switch, and flipping it restarts the app so it picks the values up. The namespace was added in MOS 0.24.0; a package that references it must set `minimumMosVersion` to `0.24.0`. A package whose app can now reach an owner-chosen AI service must say so in its privacy review.
+
+Say what the app does with the service in `catalog.aiFeatures`: one plain sentence, such as "Suggests a title, tags and who sent it for each document, from what the document says." Settings shows it beside the app's switch, and the public site lists it among the apps with AI features, so neither carries app-specific copy of its own. An app without it is still listed, with its name alone. The field was added in MOS 0.24.0, the same release as the namespace.
 
 **Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — a still-future namespace is reserved and arrives gated by `minimumMosVersion`.
 
@@ -287,7 +290,7 @@ These work today for official packages but their shape is **not** frozen; avoid 
 
 ### AI tools (`mcp-server` export)
 
-An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer its tools to the AI an owner connects in **Settings → AI assistants**. The AI never reaches the app directly: it talks to one gateway in Suite Manager, which shows it only the tools the owner allowed and forwards each call to the app. The manifest says how MOS reaches the app's server, as an export:
+An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer its tools to the AI an owner connects in **Settings → AI assistants**. The AI never reaches the app directly: it talks to Suite Manager's MCP server, which shows it only the tools the owner allowed and forwards each call to the app. The manifest says how MOS reaches the app's server, as an export:
 
 ```json
 "exports": {
@@ -353,7 +356,7 @@ The **kind** is the reviewed promise about what a tool does, and it decides when
 | `serious` | Cannot be undone, or reaches other people | Never offered yet |
 | `destructive` | Deletes or destroys | Never offered |
 
-Writes are capped at 30 an hour per AI. MOS fingerprints each tool's name, description and input schema the first time it sees them; a tool that later changes is held as **Needs review** until the owner accepts it. A package update that starts offering tools asks the owner's consent like any other new permission. Because `exports` is provisional, using `mcp-server` needs no `minimumMosVersion` bump.
+How Suite Manager offers, limits and records these tools: [How MOS works with AI](/docs/reference/ai/#the-mcp-server-ai-assistants). A package update that starts offering tools asks the owner's consent like any other new permission. Because `exports` is provisional, using `mcp-server` needs no `minimumMosVersion` bump.
 
 ## What stays out — permanently
 

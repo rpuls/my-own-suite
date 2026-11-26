@@ -1,0 +1,69 @@
+---
+title: Turn on AI features in your apps
+description: Add an AI service once, on a computer of your own or online, and turn it on for the apps that have AI features. Nothing is sent until you do.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+import AiAppList from '../../../../components/AiAppList.astro'
+import AiFigure from '../../../../components/AiFigure.astro'
+
+<AiFigure directions={['out']} />
+
+Some apps have AI features of their own: answering questions, summaries, writing help. They need an AI service to ask. Like [the email relay](/docs/guides/email-relay/), you set it up once in Settings instead of inside each app. Unlike it, no app asks it until you turn it on for that app, and each app can ask a different service.
+
+:::note[Under the hood]
+Any service with an OpenAI-compatible API can work, which is why most addresses end in `/v1`. MOS itself lists models with `GET /models` (you can also type the model's ID) and tests with `POST /chat/completions`. Apps call the endpoints their features need. Apps receive the address, key and model when they start, which is why turning an app on restarts it. MOS never sits in between: the app talks to the service directly.
+:::
+
+## What it means for your privacy
+
+- **It is a door you open yourself:** until you turn a service on for an app, that app sends nothing to an AI through it.
+- **Run the model on a computer of your own, and no AI company reads what it is sent.** Settings tells you when the address is on your own network.
+- **A service on your network can itself pass requests on to an online model;** MOS cannot see that.
+- **With a search model, Paperless-ngx sends the text of every document to it** in the background, to build its search.
+- **Everyone who uses an app you turned on sends through it:** other people with a Paperless-ngx account, and everyone who edits in ONLYOFFICE.
+- [Each app's page](/docs/apps/) says what it sends under its privacy assessment.
+- **MOS itself calls an AI service only from Settings:** to list its models when you enter its address or key, and to test it when you add it, save a change or press Test.
+
+## What it costs
+
+An online service charges your key for everything the apps you turn on send, including Paperless-ngx's background indexing and every ONLYOFFICE editor's requests. **A subscription to an AI chat does not cover it.**
+
+## What you need
+
+- **An AI service:** a model with an address, from a service with an OpenAI-compatible API. Its address (most end in `/v1`), the model's name, and an API key if it asks for one. A ChatGPT or other chat subscription is not one.
+- **On your own hardware:** a computer on your network running a model server, with the setting that serves on your local network turned on (many answer only on their own computer until you do); common ones that offer this kind of API are LM Studio (its server), Ollama, llama.cpp's server and vLLM (compatibility examples, no recommendation).
+- **On a cloud server:** a provider online, or a model on a computer your server can reach.
+
+## Set it up
+
+<Steps>
+
+1. **Settings → AI in your apps → Add.**
+
+2. **Name it and paste the address, up to `/v1`;** MOS says when it is on your own network.
+
+3. **Add the key if the service needs one, and pick the model from the list.**
+
+4. **Search model (embedding model):** only for apps that search your content by meaning, such as document chat. Those apps send it the text of everything they keep. Leave it empty if you are not sure.
+
+5. **Test, then Add.**
+
+6. **Turn it on for an app, and confirm;** it restarts once to pick it up.
+
+</Steps>
+
+## Which apps ask it, and for what
+
+<AiAppList />
+
+## Good to know
+
+- **One service per app;** turning an app on under another service moves it.
+- **Several services are fine:** one on your own computer for private things, one online for heavy work.
+- **Turning an app on or off restarts it;** for a minute or so it cannot be opened.
+- **If the service stops answering,** the apps' AI features stop until it answers again; use Test in its menu in Settings to check.
+- **A service that passes the test can still lack something an app's own features need,** such as a search model or a request type its server does not support.
+- **Removing a service turns AI off in every app that used it,** and restarts them.
+- **Use your server's address on your network, never `localhost` or a name ending in `.local`:** an app runs in its own container, where localhost means the app itself.
+- **If AI was set up inside Paperless-ngx before, clear it there:** its own setting wins over this one.

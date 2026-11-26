@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Icon, Panel, PanelBody, SectionIcon, type IconName } from '../../components/ui';
+import { AI_GUIDE_URL } from '../../lib/links';
 import { useOverview, type Overview } from '../../lib/overview';
 import { AiConnectionsPanel } from './ai/AiConnectionsPanel';
 import { AiServicesPanel } from './ai/AiServicesPanel';
@@ -18,11 +19,11 @@ type GroupId = 'ai' | 'apps' | 'maintenance' | 'security' | 'suite';
 
 type SettingId = 'activity' | 'address' | 'ai' | 'ai-services' | 'diagnostics' | 'email' | 'encryption' | 'password' | 'sources' | 'storage' | 'technical';
 
-const GROUPS: Array<{ description: string; id: GroupId; title: string }> = [
+const GROUPS: Array<{ description: ReactNode; id: GroupId; title: string }> = [
   { description: 'Where your suite lives and how it talks to the outside world.', id: 'suite', title: 'Your suite' },
   { description: 'Who controls this suite and how it protects your data.', id: 'security', title: 'Account & security' },
   { description: 'Where your apps come from, and where your files and backups are kept.', id: 'apps', title: 'Apps & storage' },
-  { description: 'How AI and your suite work together.', id: 'ai', title: 'AI' },
+  { description: <>AI can meet your suite from two sides. Each is off until you set it up. <a className="mos-link suite-settings-link" href={`${AI_GUIDE_URL}#why-two-and-not-one`} rel="noreferrer" target="_blank">Why two<Icon name="arrow-right" /></a></>, id: 'ai', title: 'AI' },
   { description: 'For looking inside your suite, and for when something is not working.', id: 'maintenance', title: 'Maintenance' },
 ];
 
@@ -36,8 +37,8 @@ const SETTINGS: Array<{ group: GroupId; icon: IconName; id: SettingId; keywords:
   { group: 'security', icon: 'shield', id: 'activity', keywords: 'security events activity log refused throttled audit', title: 'Security activity' },
   { group: 'apps', icon: 'apps', id: 'sources', keywords: 'app sources catalog repository github refresh revisions extra', title: 'App sources' },
   { group: 'apps', icon: 'usb-drive', id: 'storage', keywords: 'storage drive usb disk files folders movies photos space capacity external bucket cloud s3 eject check install stick', title: 'Storage' },
-  { group: 'ai', icon: 'sparkle', id: 'ai', keywords: 'ai assistants claude chatgpt gemini lm studio open webui ollama mcp connect token tools permissions agent llm', title: 'AI assistants' },
-  { group: 'ai', icon: 'cloud-sparkle', id: 'ai-services', keywords: 'ai services model llm api key endpoint openai compatible ollama lm studio local apps use', title: 'AI services' },
+  { group: 'ai', icon: 'chat-spark', id: 'ai', keywords: 'ai assistant assistants ai chat chat agent mcp mcp server connect connector token bearer tools permissions claude chatgpt gpt openai openai platform lm studio open webui llm tunnel activity', title: 'AI assistants' },
+  { group: 'ai', icon: 'chip-spark', id: 'ai-services', keywords: 'ai service services ai for your apps ai inside your apps model models llm openai compatible api base url v1 endpoint api key embedding embeddings search model local lm studio ollama vllm llama.cpp suggestions paperless onlyoffice', title: 'AI in your apps' },
   { group: 'maintenance', icon: 'download', id: 'diagnostics', keywords: 'diagnostics help support troubleshoot problem broken not working logs ai', title: 'Diagnostics file' },
   { group: 'maintenance', icon: 'braces', id: 'technical', keywords: 'developer mode technical controls advanced details logs config overrides expert', title: 'Developer mode' },
 ];
@@ -194,10 +195,18 @@ export function SettingsScreen() {
     window.requestAnimationFrame(() => scrollToAnchor(`set-${id}`));
   }
 
-  // A link from another screen names its card, as the start page's drives do.
+  // A link names its card: from another screen, as the start page's drives do, or from a
+  // dialog on this one, such as the AI add dialogs pointing at the other AI card.
   useEffect(() => {
-    const linked = SETTINGS.find((setting) => window.location.hash === `#set-${setting.id}`);
-    if (linked) jump(linked.id);
+    function followLink() {
+      const linked = SETTINGS.find((setting) => window.location.hash === `#set-${setting.id}`);
+      if (!linked) return;
+      setQuery('');
+      jump(linked.id);
+    }
+    followLink();
+    window.addEventListener('hashchange', followLink);
+    return () => window.removeEventListener('hashchange', followLink);
   }, []);
 
   return <section className="mos-shell mos-page mos-page-wider">
@@ -224,10 +233,12 @@ export function SettingsScreen() {
         {/* Hidden rather than unmounted, so a search never throws away a half-typed form. */}
         {GROUPS.map((group) => {
           const settings = SETTINGS.filter((setting) => setting.group === group.id);
-          return <section className="suite-settings-group" hidden={!settings.some((setting) => visible.includes(setting.id))} id={`grp-${group.id}`} key={group.id}>
+          const shown = settings.filter((setting) => visible.includes(setting.id));
+          return <section className="suite-settings-group" hidden={!shown.length} id={`grp-${group.id}`} key={group.id}>
             <div className="suite-settings-group-head">
               <h2 className="mos-eyebrow">{group.title}</h2>
-              <p className="suite-meta">{group.description}</p>
+              {/* A description speaks for the whole group, so it goes when a search leaves only part of it. */}
+              {shown.length === settings.length ? <p className="suite-meta">{group.description}</p> : null}
             </div>
             {settings.map((setting) => <div className="suite-setting" hidden={!visible.includes(setting.id)} id={`set-${setting.id}`} key={setting.id}>
               <SectionIcon.Provider value={setting.icon}>{SETTING_CARDS[setting.id]()}</SectionIcon.Provider>

@@ -1,0 +1,39 @@
+---
+// What an assistant can do in each app: Suite Manager's own tools, then every app that offers tools,
+// grouped as the levels allow them. An app under a privacy-review-invalidated advisory is left out.
+import { aiApps, type AiTool } from '../lib/ai-apps'
+import BrandMark from './BrandMark.astro'
+
+const toolApps = aiApps.filter((entry) => entry.offersTools && !entry.experimental)
+const groupsOf = (lookUp: AiTool[], change: AiTool[]) =>
+  [{ label: 'Look things up', tools: lookUp }, { label: 'Make changes', tools: change }].filter((group) => group.tools.length)
+---
+
+<div class="ai-tools not-content">
+  <section class="ai-tools-app" aria-labelledby="ai-tools-suite-manager">
+    <span class="mos-app-icon ai-tools-icon is-suite"><BrandMark size={22} /></span>
+    <h3 class="ai-tools-name" id="ai-tools-suite-manager">Suite Manager</h3>
+    <div class="ai-tools-body">
+      <p>Check how every app is doing, read every app's recent logs to look into a problem, see what your AI assistants did, restart any app that is stuck, and rearrange your Homepage dashboard, including removing links (MOS keeps the last 20 versions under History).</p>
+      <p class="ai-tools-fine">Logs can name your files and the people who use your apps, also in apps set to Off. Passwords and keys MOS knows are masked; secrets typed into an app directly are not.</p>
+    </div>
+  </section>
+  {toolApps.map(({ app, changeTools, lookUpTools }) => (
+    <section class="ai-tools-app" aria-labelledby={`ai-tools-${app.id}`}>
+      <span class="mos-app-icon ai-tools-icon"><img src={app.icon} alt="" /></span>
+      <h3 class="ai-tools-name" id={`ai-tools-${app.id}`}><a href={`/docs/apps/${app.id}/`}>{app.name}</a></h3>
+      <div class="ai-tools-body ai-tools-groups">
+        {groupsOf(lookUpTools, changeTools).map((group) => (
+          <div>
+            <p class="ai-tools-group-label">{group.label}</p>
+            <ul>
+              {group.tools.map((tool) => (
+                <li><strong>{tool.title}</strong>{tool.note && <span class="ai-tools-note">{tool.note}</span>}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  ))}
+</div>

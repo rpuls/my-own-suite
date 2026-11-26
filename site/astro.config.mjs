@@ -76,6 +76,9 @@ export default defineConfig({
             'docs/guides/customize-homepage',
             'docs/guides/https-domain',
             'docs/guides/email-relay',
+            'docs/guides/ai',
+            'docs/guides/ai-assistants',
+            'docs/guides/ai-in-your-apps',
             'docs/guides/backup-restore',
             'docs/guides/keeping-copies',
             'docs/guides/updates'
@@ -92,6 +95,7 @@ export default defineConfig({
             'docs/reference/host-agents',
             'docs/reference/app-packages',
             'docs/reference/manifest',
+            'docs/reference/ai',
             'docs/privacy/how-we-assess'
           ]
         },

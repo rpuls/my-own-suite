@@ -1,3 +1,4 @@
+import type { Place } from '../../../components/ui';
 import { jsonResponse } from '../../../lib/api';
 
 export type AiLevel = 'act' | 'off' | 'see';
@@ -30,6 +31,8 @@ export type AiClient = {
   enabled: boolean;
   exceptions: Record<string, AiException>;
   id: string;
+  // The MCP address a direct assistant was given; null for the tunnel and for one MOS never recorded.
+  issuedUrl: string | null;
   lastUsedAt: string | null;
   levels: Record<string, AiLevel>;
   name: string;
@@ -92,16 +95,31 @@ export type AiService = {
   embeddingModel: string | null;
   id: string;
   keyConfigured: boolean;
-  locality: 'home' | 'internet';
   model: string;
   name: string;
+  place: Place;
   test: { at: string | null; error: string | null };
 };
 
-export type AiServiceApp = { name: string; packageId: string; running: boolean; serviceId: string | null };
+// `variables` are the environment variables the package fills from ${ai.*}, each with the keys it reads.
+export type AiServiceApp = {
+  aiFeatures: string;
+  name: string;
+  official: boolean;
+  packageId: string;
+  readsSearchModel: boolean;
+  reviewInvalidated: boolean;
+  running: boolean;
+  serviceId: string | null;
+  variables: Array<{ keys: string[]; name: string }>;
+};
 export type AiServicesStatus = { apps: AiServiceApp[]; services: AiService[] };
-export type AiServiceTest = { error?: string; ms?: number; ok: boolean };
-export type AiServiceCheck = { error: string | null; locality: AiService['locality']; models: string[] };
+export type AiServiceTest = { error?: string; ms?: number; ok: boolean; searched?: boolean };
+export type AddressAdvice = 'endpoint' | 'local-name' | 'loopback';
+// message: the sentence for an address MOS refuses, worded once by the backend.
+export type AiServiceCheck = { advice: AddressAdvice | null; error: string | null; message: string | null; models: string[]; place: Place; trimmed: string | null };
+// Package ids of the apps that did not restart after a change or a remove.
+export type ServiceChange = { restartFailures: string[]; status: AiServicesStatus; test?: AiServiceTest };
 
 export function aiServiceRequest<T = AiServicesStatus>(method: Method, path: string, fallback: string, body?: unknown): Promise<T> {
   return request<T>(`/suite-manager/api/settings/ai-services${path}`, method, fallback, body);
@@ -157,6 +175,39 @@ export function toolAllowed(client: AiClient, sourceId: string, tool: AiTool & {
 
 export function customizedTools(client: AiClient, source: AiSource) {
   return source.tools.filter((tool) => client.exceptions[tool.name]);
+}
+
+export function countOf(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+// "Suite Manager, Memos and Paperless-ngx"; past `shown` names, "Suite Manager, Memos, Paperless-ngx and 2 more".
+// The one cap on names in a line: past `shown`, the rest are counted.
+export function cappedNames(names: string[], shown: number) {
+  return names.length > shown ? `${names.slice(0, shown).join(', ')} and ${names.length - shown} more` : names.join(', ');
+}
+
+export function nameList(names: string[], shown = 3) {
+  if (names.length <= 1) return names.join('');
+  if (names.length <= shown) return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return cappedNames(names, shown);
+}
+
+export type AiCardAnchor = 'set-ai' | 'set-ai-services';
+
+// The wrong-door link of each add dialog: the hash change makes Settings clear its search and scroll to
+// the other card, then focus lands on that card's Add, or on its heading when Add is not there.
+export function goToAiCard(anchor: AiCardAnchor) {
+  window.history.replaceState(window.history.state, '', `#${anchor}`);
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
+  const focusCard = () => {
+    const card = document.getElementById(anchor);
+    const target = card?.querySelector<HTMLElement>('.mos-panel-head-actions .mos-btn:not(:disabled)') ?? card?.querySelector<HTMLElement>('.mos-card-title');
+    target?.focus({ preventScroll: true });
+  };
+  // At once, so the closing dialog finds focus elsewhere and leaves it; again once a cleared search has shown the card.
+  focusCard();
+  window.requestAnimationFrame(focusCard);
 }
 
 export const OUTCOME_WORDS: Record<AiOutcome, string> = {

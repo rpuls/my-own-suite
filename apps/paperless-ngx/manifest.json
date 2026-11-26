@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "appVersion": "3.5.1",
   "minimumMosVersion": "0.24.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
@@ -56,6 +56,7 @@
       "archive",
       "evernote-alternative"
     ],
+    "aiFeatures": "Suggests a title, tags and who sent it for each document, from what the document says.",
     "features": [
       {
         "title": "Search the words inside your paper",

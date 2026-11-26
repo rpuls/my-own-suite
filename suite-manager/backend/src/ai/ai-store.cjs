@@ -11,7 +11,7 @@ const LEVELS = ['off', 'see', 'act'];
 
 const CLIENT_COLUMNS = `
   id, name, preset, route, default_level AS defaultLevel, enabled,
-  created_at AS createdAt, last_used_at AS lastUsedAt
+  created_at AS createdAt, last_used_at AS lastUsedAt, issued_url AS issuedUrl
 `;
 
 function clientRow(row) {
@@ -47,10 +47,10 @@ class AiStore {
     return clientRow(this.db.prepare(`SELECT ${CLIENT_COLUMNS} FROM ai_clients WHERE token_hash = ?`).get(tokenHash));
   }
 
-  createClient({ at, id, name, preset, route, tokenHash }) {
+  createClient({ at, id, issuedUrl, name, preset, route, tokenHash }) {
     this.db.prepare(`
-      INSERT INTO ai_clients (id, name, preset, route, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, name, preset, route, tokenHash, at);
+      INSERT INTO ai_clients (id, name, preset, route, token_hash, created_at, issued_url) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, preset, route, tokenHash, at, issuedUrl);
   }
 
   updateClient(id, { defaultLevel, enabled, name }) {
@@ -65,16 +65,16 @@ class AiStore {
     return true;
   }
 
-  replaceClientToken({ id, tokenHash }) {
-    return this.db.prepare('UPDATE ai_clients SET token_hash = ? WHERE id = ?').run(tokenHash, id).changes === 1;
+  replaceClientToken({ id, issuedUrl, tokenHash }) {
+    return this.db.prepare('UPDATE ai_clients SET token_hash = ?, issued_url = ? WHERE id = ?').run(tokenHash, issuedUrl, id).changes === 1;
   }
 
   deleteClient(id) {
     return this.db.prepare('DELETE FROM ai_clients WHERE id = ?').run(id).changes === 1;
   }
 
-  markClientUsed({ at, id }) {
-    this.db.prepare('UPDATE ai_clients SET last_used_at = ? WHERE id = ?').run(at, id);
+  markClientUsed({ at, id, reachedUrl }) {
+    this.db.prepare('UPDATE ai_clients SET last_used_at = ?, issued_url = COALESCE(?, issued_url) WHERE id = ?').run(at, reachedUrl, id);
   }
 
   levelFor(client, source) {

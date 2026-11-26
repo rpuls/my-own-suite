@@ -191,14 +191,14 @@ class AiConnectionsService {
   createClient({ name: rawName, preset: rawPreset, route = 'direct' } = {}, { allowTunnel = false } = {}) {
     const name = String(rawName ?? '').trim();
     if (!name || name.length > CLIENT_NAME_MAX) {
-      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
+      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the assistant a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
     const preset = String(rawPreset ?? 'other');
-    if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which AI this is.');
+    if (!PRESET_PATTERN.test(preset)) throw new AiConnectionsError('AI_PRESET_INVALID', 'Choose which assistant this is.');
     if (!ROUTES.has(route) && !(allowTunnel && route === 'tunnel')) throw new AiConnectionsError('AI_ROUTE_UNAVAILABLE', 'That way of connecting is not available yet.', 409);
     const token = newClientToken();
     const id = crypto.randomUUID();
-    this.aiStore.createClient({ at: this.at(), id, name, preset, route, tokenHash: hashToken(token) });
+    this.aiStore.createClient({ at: this.at(), id, issuedUrl: route === 'direct' ? this.mcpUrl() : null, name, preset, route, tokenHash: hashToken(token) });
     return { client: this.aiStore.listClients().find((client) => client.id === id), token };
   }
 
@@ -206,16 +206,16 @@ class AiConnectionsService {
     if (defaultLevel !== undefined && !LEVELS.includes(defaultLevel)) throw this.invalidLevel();
     const trimmed = name === undefined ? undefined : String(name).trim();
     if (trimmed !== undefined && (!trimmed || trimmed.length > CLIENT_NAME_MAX)) {
-      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the AI a name of at most ${CLIENT_NAME_MAX} characters.`);
+      throw new AiConnectionsError('AI_CLIENT_NAME_INVALID', `Give the assistant a name of at most ${CLIENT_NAME_MAX} characters.`);
     }
-    if (enabled !== undefined && typeof enabled !== 'boolean') throw new AiConnectionsError('AI_CLIENT_INVALID', 'Turn the AI on or off.');
+    if (enabled !== undefined && typeof enabled !== 'boolean') throw new AiConnectionsError('AI_CLIENT_INVALID', 'Turn the assistant on or off.');
     if (!this.aiStore.updateClient(clientId, { defaultLevel, enabled, name: trimmed })) throw this.unknownClient();
   }
 
   rotateClientToken(clientId) {
     if (this.requireClient(clientId).route === 'tunnel') throw new AiConnectionsError('AI_TUNNEL_TOKEN', 'ChatGPT reaches MOS through its tunnel, which holds its own key.', 409);
     const token = newClientToken();
-    if (!this.aiStore.replaceClientToken({ id: clientId, tokenHash: hashToken(token) })) throw this.unknownClient();
+    if (!this.aiStore.replaceClientToken({ id: clientId, issuedUrl: this.mcpUrl(), tokenHash: hashToken(token) })) throw this.unknownClient();
     return { token };
   }
 
@@ -224,7 +224,7 @@ class AiConnectionsService {
   }
 
   unknownClient() {
-    return new AiConnectionsError('AI_CLIENT_NOT_FOUND', 'That AI is not connected.', 404);
+    return new AiConnectionsError('AI_CLIENT_NOT_FOUND', 'That assistant is not in MOS.', 404);
   }
 
   invalidLevel() {
@@ -316,11 +316,14 @@ class AiConnectionsService {
 
   // ---- the gateway's side ----
 
-  authenticate(presentedToken) {
+  // An assistant that calls at the suite's current address has been given it, so it no longer holds an old one.
+  authenticate(presentedToken, host = null) {
     if (!presentedToken) return null;
     const client = this.aiStore.clientByTokenHash(hashToken(presentedToken));
     if (!client?.enabled) return null;
-    this.aiStore.markClientUsed({ at: this.at(), id: client.id });
+    const current = this.mcpUrl();
+    const reachedUrl = client.route === 'direct' && host && current && new URL(current).host === host ? current : null;
+    this.aiStore.markClientUsed({ at: this.at(), id: client.id, reachedUrl });
     return client;
   }
 

@@ -1,6 +1,6 @@
 const { jsonResponse } = require('../responses.cjs');
 
-const SIGN_IN = 'Sign in to manage AI services.';
+const SIGN_IN = 'Sign in to manage AI in your apps.';
 const SERVICE = '\\/settings\\/ai-services\\/([^/]+)';
 const BODY_LIMIT = 8 * 1024;
 

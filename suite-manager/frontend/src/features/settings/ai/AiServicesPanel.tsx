@@ -1,169 +1,174 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
-import { ActionMenu, Avatar, Dialog, DisclosureRow, InfoTip, Notice, Panel, PanelBody, PanelHead, PanelHeadButton, PanelItem, PanelList, Rows, RowSwitch } from '../../../components/ui';
-import { avatarOf } from '../../ai-activity/timeline';
-import { AiDirectionPicture } from './AiDirectionPicture';
-import { AppName } from './AiParts';
-import { AiServiceDialog, answeredIn, type SavedService } from './AiServiceDialog';
-import { aiServiceRequest, type AiService, type AiServiceApp, type AiServicesStatus, type AiServiceTest } from './model';
+import { AiDirectionPicture, Icon, Notice, Panel, PanelBand, PanelBody, PanelHead, PanelHeadButton, PanelHeadHood, PanelList, PendingLine, PendingRow } from '../../../components/ui';
+import { AI_IN_APPS_GUIDE_URL } from '../../../lib/links';
+import { RemoveServiceDialog, SwitchConfirmDialog, type PendingSwitch } from './AiServiceConfirm';
+import { AiServiceDialog } from './AiServiceDialog';
+import { ServiceItem, type SwitchError } from './AiServiceItem';
+import { aiServiceRequest, type AiService, type AiServiceApp, type AiServicesStatus, type AiServiceTest, type ServiceChange } from './model';
+import { HEAD_FIRST_SENTENCE, headLead, HOOD_LINE, notRestartedAfterRemove, usersOf } from './service-words';
+
+const LOAD_FAILED = 'Could not load this.';
 
 function errorText(caught: unknown, fallback: string) {
   return caught instanceof Error ? caught.message : fallback;
 }
 
-function hostOf(baseUrl: string) {
-  try { return new URL(baseUrl).host; } catch { return baseUrl; }
+function ServicesHead({ actions, children }: { actions?: ReactNode; children: ReactNode }) {
+  return <PanelHead actions={actions} figure={<AiDirectionPicture direction="out" size="md" />} heading="h3" title="AI in your apps">{children}</PanelHead>;
 }
 
-function usedBy(service: AiService, apps: AiServiceApp[]) {
-  const names = apps.filter((app) => app.serviceId === service.id).map((app) => app.name);
-  return names.length ? `used by ${names.join(', ')}` : 'not used by an app yet';
+function HoodLine() {
+  return <PanelHeadHood>{HOOD_LINE}</PanelHeadHood>;
 }
 
-function whereItGoes(service: AiService) {
-  return service.locality === 'home'
-    ? `An app you turn on here sends what it works on to ${hostOf(service.baseUrl)}, on your own network. Nothing leaves your home.`
-    : `An app you turn on here sends what it works on to ${hostOf(service.baseUrl)}, on the internet. Apps you leave off send nothing.`;
+function PendingServicesPanel() {
+  return <Panel className="mos-pending">
+    <ServicesHead><PendingLine width="90%" /><PendingLine width="30%" /><PendingLine width="74%" /></ServicesHead>
+    <PanelList>
+      <PendingRow lead="tile" meta="70%" name="26%" />
+      <PendingRow lead="tile" meta="58%" name="20%" />
+    </PanelList>
+  </Panel>;
 }
 
-function RemoveServiceDialog({ busy, onClose, onRemove, service, users }: { busy: boolean; onClose: () => void; onRemove: () => void; service: AiService; users: AiServiceApp[] }) {
-  return <Dialog
-    footer={<>
-      <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-danger" disabled={busy} onClick={onRemove} type="button">{busy ? 'Removing...' : 'Remove'}</button>
-    </>}
-    onClose={() => { if (!busy) onClose(); }}
-    title={`Remove ${service.name}?`}
-  >
-    <p>MOS forgets this service and its key.{users.length ? ` ${users.map((app) => app.name).join(', ')} ${users.length === 1 ? 'loses its' : 'lose their'} AI features and ${users.length === 1 ? 'restarts' : 'restart'}.` : ''}</p>
-  </Dialog>;
+// No app list and no Add: both come from the status that failed.
+function FailedServicesPanel({ onRetry }: { onRetry: () => void }) {
+  return <Panel>
+    <ServicesHead><p>{HEAD_FIRST_SENTENCE}</p><HoodLine /></ServicesHead>
+    <PanelBand icon="alert" layout="row" title="Could not load this." tone="warning">
+      <button className="mos-btn mos-btn-secondary" onClick={onRetry} type="button">Try again</button>
+    </PanelBand>
+  </Panel>;
 }
 
-type PendingSwitch = { app: AiServiceApp; on: boolean; service: AiService };
-
-function ConfirmRestartDialog({ onClose, onConfirm, pending: { app, on, service } }: { onClose: () => void; onConfirm: () => void; pending: PendingSwitch }) {
-  return <Dialog
-    footer={<>
-      <button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-primary" onClick={onConfirm} type="button">Restart {app.name}</button>
-    </>}
-    onClose={onClose}
-    title={`${on ? 'Let' : 'Stop'} ${app.name} ${on ? 'use' : 'using'} ${service.name}?`}
-  >
-    <p>{app.name} restarts to {on ? 'pick it up' : 'let it go'}. For a minute or so it cannot be opened, and anything not yet saved in it is lost.</p>
-  </Dialog>;
+function EmptyServices({ apps }: { apps: AiServiceApp[] }) {
+  const link = (href: string, words: string) => <a className="mos-link suite-settings-link" href={href} rel="noreferrer" target="_blank">{words}<Icon name="arrow-right" /></a>;
+  return <PanelBody>
+    {apps.length
+      ? <p className="suite-meta">No AI service yet. Add one, a model on your own computer or a provider&apos;s API (a chat subscription is not one), then turn it on for each app that should ask it. {link(AI_IN_APPS_GUIDE_URL, 'How it works')}</p>
+      : <p className="suite-meta">No AI service yet. Apps that can ask one show up here when you install them. {link(`${AI_IN_APPS_GUIDE_URL}#which-apps-ask-it-and-for-what`, 'Which apps can')}</p>}
+  </PanelBody>;
 }
 
-function ServiceItem({ apps, busy, expanded, onEdit, onRemove, onSwitch, onTest, onToggle, service, switching, tested }: {
-  apps: AiServiceApp[];
-  busy: boolean;
-  expanded: boolean;
-  onEdit: () => void;
-  onRemove: () => void;
-  onSwitch: (app: AiServiceApp, on: boolean) => void;
-  onTest: () => void;
-  onToggle: () => void;
-  service: AiService;
-  switching: string;
-  tested: AiServiceTest | null;
-}) {
-  const place = service.locality === 'home' ? 'On your network' : hostOf(service.baseUrl);
-  return <PanelItem flush>
-    <DisclosureRow expanded={expanded} label={`${expanded ? 'Hide' : 'Show'} which apps use ${service.name}`} onToggle={onToggle} trailing={<>
-      {service.test.error ? <span className="mos-pill mos-pill-warning">Not answering</span> : null}
-      <ActionMenu ariaLabel={`More for ${service.name}`} disabled={busy} items={[
-        { label: 'Test', onSelect: onTest },
-        { label: 'Change', onSelect: onEdit },
-        { label: 'Remove', onSelect: onRemove },
-      ]} />
-    </>}>
-      <span className="suite-source-main">
-        <strong className="suite-ai-client-name">{service.name}<Avatar {...avatarOf(service.name)} small /></strong>
-        <span className="suite-meta">{place} · {service.model} · {usedBy(service, apps)}</span>
-      </span>
-    </DisclosureRow>
-    {expanded ? <div className="suite-ai-grants">
-      {tested?.ok ? <Notice title="It works" variant="success"><p>{answeredIn(tested.ms)}</p></Notice> : null}
-      {!tested?.ok && service.test.error ? <Notice title={`${service.name} did not answer the last test`} variant="warning"><p>{service.test.error}</p></Notice> : null}
-      {apps.length ? <>
-        <Rows>
-          {apps.map((app) => <RowSwitch
-            checked={app.serviceId === service.id}
-            description={switching === app.packageId ? `Restarting ${app.name}...` : app.running ? undefined : `${app.name} is stopped. It uses this when it next starts.`}
-            disabled={busy}
-            key={app.packageId}
-            label={<AppName id={app.packageId} name={app.name} />}
-            onChange={(event) => onSwitch(app, event.target.checked)}
-          />)}
-        </Rows>
-        <p className="suite-meta">{whereItGoes(service)}</p>
-      </> : <p className="suite-meta">None of your installed apps can use an AI service yet.</p>}
-    </div> : null}
-  </PanelItem>;
+function NotRestartedNotice({ names, service }: { names: string[]; service: string }) {
+  const words = notRestartedAfterRemove(names, service);
+  return <Notice title={words.title} variant="warning">
+    <p>{words.body} <a className="mos-link suite-settings-link" href="/suite-manager/apps">{words.link}<Icon name="arrow-right" /></a></p>
+  </Notice>;
 }
 
-// The AI services the owner's apps may call, and which app uses which. Flipping
-// an app's switch restarts that app, because that is how it receives the service.
+// The AI services the owner's apps may ask, and which app asks which. Flipping an
+// app's switch restarts that app, because that is how it receives the service.
 export function AiServicesPanel() {
   const [status, setStatus] = useState<AiServicesStatus | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState('');
+  const [testing, setTesting] = useState('');
   const [open, setOpen] = useState('');
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<AiService | null>(null);
   const [removing, setRemoving] = useState<AiService | null>(null);
   const [tested, setTested] = useState<{ id: string; test: AiServiceTest } | null>(null);
   const [pending, setPending] = useState<PendingSwitch | null>(null);
+  const [switchError, setSwitchError] = useState<SwitchError | null>(null);
+  const [restartFailed, setRestartFailed] = useState<{ packageIds: string[]; serviceId: string } | null>(null);
+  const [removeFailed, setRemoveFailed] = useState<{ names: string[]; service: string } | null>(null);
 
-  useEffect(() => {
-    aiServiceRequest('GET', '', 'Unable to load your AI services.').then(setStatus, (caught) => setError(errorText(caught, 'Unable to load your AI services.')));
-  }, []);
-
-  function notRestarted(names: string[] | undefined) {
-    setError(names?.length ? `${names.join(', ')} could not be restarted. Restart ${names.length === 1 ? 'it' : 'them'} from the Apps page to apply the change.` : '');
+  function load() {
+    setLoadFailed(false);
+    aiServiceRequest('GET', '', LOAD_FAILED).then(setStatus, () => setLoadFailed(true));
   }
 
-  async function run<T>(action: () => Promise<T>, fallback: string, done: (result: T) => void) {
+  useEffect(load, []);
+
+  // Each new change clears what the last one left behind.
+  function startChange() {
     setBusy(true);
     setError('');
+    setSwitchError(null);
+    setRestartFailed(null);
+    setRemoveFailed(null);
+  }
+
+  async function applySwitch({ app, on, service }: PendingSwitch) {
+    setPending(null);
+    startChange();
+    setSwitching(app.packageId);
     try {
-      done(await action());
+      setStatus(await aiServiceRequest('PUT', `/apps/${encodeURIComponent(app.packageId)}`, `${app.name} could not be changed.`, { serviceId: on ? service.id : null }));
     } catch (caught) {
-      setError(errorText(caught, fallback));
+      setSwitchError({ message: errorText(caught, `${app.name} could not be changed.`), packageId: app.packageId, serviceId: service.id });
     } finally {
       setBusy(false);
       setSwitching('');
     }
   }
 
-  function applySwitch({ app, on, service }: PendingSwitch) {
-    setPending(null);
-    setSwitching(app.packageId);
-    const fallback = `${app.name} could not be changed.`;
-    void run(() => aiServiceRequest('PUT', `/apps/${encodeURIComponent(app.packageId)}`, fallback, { serviceId: on ? service.id : null }), fallback, setStatus);
+  async function testService(service: AiService) {
+    setOpen(service.id);
+    setBusy(true);
+    setError('');
+    setTesting(service.id);
+    try {
+      const result = await aiServiceRequest<{ status: AiServicesStatus; test: AiServiceTest }>('POST', `/${service.id}/test`, 'The service could not be tested.');
+      setStatus(result.status);
+      setTested({ id: service.id, test: result.test });
+    } catch (caught) {
+      setTested(null);
+      setError(errorText(caught, 'The service could not be tested.'));
+    } finally {
+      setBusy(false);
+      setTesting('');
+    }
   }
 
-  function saved({ restartFailures, status: next, test }: SavedService) {
-    const id = editing?.id ?? next.services[next.services.length - 1]?.id ?? '';
+  async function removeService(service: AiService) {
+    startChange();
+    try {
+      const result = await aiServiceRequest<ServiceChange>('DELETE', `/${service.id}`, 'The AI service could not be removed.');
+      setStatus(result.status);
+      setRemoving(null);
+      const names = result.status.apps.filter((app) => result.restartFailures.includes(app.packageId)).map((app) => app.name);
+      if (names.length) setRemoveFailed({ names, service: service.name });
+    } catch (caught) {
+      setError(errorText(caught, 'The AI service could not be removed.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saved({ restartFailures, status: next, test }: ServiceChange) {
+    const id = editing?.id ?? next.services.find((service) => !status?.services.some((known) => known.id === service.id))?.id ?? '';
     setStatus(next);
-    setTested(id ? { id, test } : null);
+    setTested(id && test ? { id, test } : null);
     setOpen(id);
     setAdding(false);
     setEditing(null);
-    notRestarted(restartFailures);
+    setSwitchError(null);
+    setRestartFailed(restartFailures.length ? { packageIds: restartFailures, serviceId: id } : null);
   }
 
-  const services = status?.services ?? [];
-  const apps = status?.apps ?? [];
+  function askToSwitch(app: AiServiceApp, on: boolean, service: AiService) {
+    const previous = on ? status?.services.find((candidate) => candidate.id === app.serviceId && candidate.id !== service.id) ?? null : null;
+    setPending({ app, on, previous, service });
+  }
 
-  return <Panel>
-    <PanelHead actions={status ? <PanelHeadButton disabled={busy} onClick={() => setAdding(true)}>Add</PanelHeadButton> : null} heading="h3" title={<>AI services<InfoTip label="What AI services are" picture={<AiDirectionPicture direction="out" />} title="Let your apps use AI">
-      <p>Give your suite an AI service to call. Apps that have AI features then use it by themselves, for things like suggestions and summaries. Each app stays off until you turn it on.</p>
-    </InfoTip></>}>
-      <p>Add an AI service once. Apps that have AI features use it, with nothing to set up inside each app.</p>
-    </PanelHead>
-    {error ? <PanelBody><Notice title="Something went wrong" variant="error"><p>{error}</p></Notice></PanelBody> : null}
+  if (loadFailed) return <FailedServicesPanel onRetry={load} />;
+  if (!status) return <PendingServicesPanel />;
+  const { apps, services } = status;
+
+  return <Panel className="mos-arrive">
+    <ServicesHead actions={<PanelHeadButton accessibleLabel="Add an AI service" disabled={busy} onClick={() => setAdding(true)}>Add</PanelHeadButton>}>
+      <p>{headLead(apps)}</p>
+      <HoodLine />
+    </ServicesHead>
+    {error || removeFailed ? <PanelBody>
+      {error ? <Notice title="Something went wrong" variant="error"><p>{error}</p></Notice> : null}
+      {removeFailed ? <NotRestartedNotice names={removeFailed.names} service={removeFailed.service} /> : null}
+    </PanelBody> : null}
     {services.length ? <PanelList>
       {services.map((service) => <ServiceItem
         apps={apps}
@@ -172,34 +177,26 @@ export function AiServicesPanel() {
         key={service.id}
         onEdit={() => setEditing(service)}
         onRemove={() => setRemoving(service)}
-        onSwitch={(app, on) => (app.running ? setPending : applySwitch)({ app, on, service })}
-        onTest={() => {
-          setOpen(service.id);
-          void run(() => aiServiceRequest<{ status: AiServicesStatus; test: AiServiceTest }>('POST', `/${service.id}/test`, 'The service could not be tested.'), 'The service could not be tested.', (result) => {
-            setStatus(result.status);
-            setTested({ id: service.id, test: result.test });
-          });
-        }}
+        onSwitch={(app, on) => askToSwitch(app, on, service)}
+        onTest={() => void testService(service)}
         onToggle={() => setOpen(open === service.id ? '' : service.id)}
+        restartFailed={restartFailed?.serviceId === service.id ? restartFailed.packageIds : []}
         service={service}
+        services={services}
+        switchError={switchError}
         switching={switching}
         tested={tested?.id === service.id ? tested.test : null}
+        testing={testing === service.id}
       />)}
-    </PanelList> : status ? <PanelBody>
-      <p className="suite-meta">No AI service yet. Add a model you run at home, or one on the internet, to let your apps use it.</p>
-    </PanelBody> : null}
-    {pending ? <ConfirmRestartDialog onClose={() => setPending(null)} onConfirm={() => applySwitch(pending)} pending={pending} /> : null}
-    {adding || editing ? <AiServiceDialog onClose={() => { setAdding(false); setEditing(null); }} onSaved={saved} service={editing ?? undefined} /> : null}
+    </PanelList> : <EmptyServices apps={apps} />}
+    {pending ? <SwitchConfirmDialog onClose={() => setPending(null)} onConfirm={() => void applySwitch(pending)} pending={pending} /> : null}
+    {adding || editing ? <AiServiceDialog apps={apps} onClose={() => { setAdding(false); setEditing(null); }} onSaved={saved} service={editing ?? undefined} /> : null}
     {removing ? <RemoveServiceDialog
       busy={busy}
       onClose={() => setRemoving(null)}
-      onRemove={() => void run(() => aiServiceRequest<{ restartFailures: string[]; status: AiServicesStatus }>('DELETE', `/${removing.id}`, 'The AI service could not be removed.'), 'The AI service could not be removed.', (result) => {
-        setStatus(result.status);
-        setRemoving(null);
-        notRestarted(result.restartFailures);
-      })}
+      onRemove={() => void removeService(removing)}
       service={removing}
-      users={apps.filter((app) => app.serviceId === removing.id)}
+      users={usersOf(removing, apps)}
     /> : null}
   </Panel>;
 }

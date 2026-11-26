@@ -1,0 +1,40 @@
+---
+title: How MOS works with AI
+description: The machinery behind Settings → AI — the MCP server AI assistants call, and how apps receive the AI service they ask.
+---
+
+import AiFigure from '../../../../components/AiFigure.astro'
+
+This page is for readers who want the machinery behind **Settings → AI**. Nothing here is needed to use it. The two settings work separately: AI assistants call your suite's MCP server, and the apps you turn on call an AI service themselves. [AI and your suite](/docs/guides/ai/) explains both without the machinery.
+
+## The MCP server (AI assistants)
+
+<AiFigure directions={['in']} />
+
+- **Endpoint.** One MCP endpoint in Suite Manager at `/ai/mcp`, Streamable HTTP (protocol 2025-03-26 or newer): POST with JSON responses, and GET answers 405. No sessions, no SSE stream, batches refused, and tools without `listChanged`, which is why a client may need to reload its tool list. Requests with an `Origin` header are refused (403). HTTPS only, with the loopback exception the tunnel uses.
+- **Tokens.** A bearer token per assistant (`mos_ai_…`), stored as a hash. Static tokens only, no OAuth: a 401 carries `WWW-Authenticate: Bearer` without resource metadata. When your suite address is public, the token is the only lock.
+- **The ChatGPT tunnel.** OpenAI's `tunnel-client-runtime` runs in `mos-ai-tunnel.service` and polls OpenAI outbound, so nothing is opened to the internet. It runs as a non-root user with a read-only filesystem, no capabilities and `no-new-privileges`, and stays off after a restore until you turn ChatGPT on again. The tunnel client adds ChatGPT's own MOS token to every request as `X-MOS-Gateway-Key`, so MOS identifies the tunnel, not the person in ChatGPT.
+- **What a call may do.** One decision point allows or refuses each call. Only tools listed in the package's `ai-tools.json` are returned. See runs `read` tools, and See and do adds `add` and `change`; `serious` and `destructive` are never offered. A per-tool exception wins over the level.
+- **Limits.** 30 successful change calls an hour per assistant; one dashboard change can move many tiles at once. Each tool is pinned by a hash of its name, description, input schema and annotations when MOS first sees it. When the hash changes, the tool is held for review, and accepting it once accepts it for every assistant.
+- **Results.** Wrapped as `<untrusted-data>` and cut at 256 K characters. Arguments are capped at 64 KB, request bodies at 1 MB.
+- **Activity log.** Tool, source, outcome and time; no arguments, no content. Only `tools/call` is recorded, refused calls included, and repeats within 60 seconds fold into one entry with a count. Entries are kept 90 days, capped at 100,000.
+
+## AI service settings (AI in your apps)
+
+<AiFigure directions={['out']} />
+
+MOS does not proxy these calls: each app receives the address, key and model when it starts and calls the service itself.
+
+- **Values.** Projected into the app's environment when it starts. MOS stores the key in a secret file, and apps receive it as an environment variable when they start, like `${smtp.password}`. A variable whose `${ai.*}` value is empty is left out.
+- **One service per app.** Each app asks one service. You can add several, such as one on a computer of your own and one online.
+- **Locality.** `privateAddress` (in Suite Manager's ai-service-values.cjs) reads the address alone, never the network path:
+  - **private:** private IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), unique-local IPv6 (`fc00::/7`), names without a dot, and names ending in `.local`, `.lan`, `.home`, `.internal` or `.home.arpa`;
+  - **internet:** everything else, including a public name that resolves inside your network, and an address that does not parse.
+
+  Settings says "on your own network" for a home address only when the suite runs on your own hardware; on a cloud server it says "Private network".
+- **Calls MOS makes itself.** MOS calls a service to list models when an address or key is entered, and to test it on add, on save and on Test. The stored key is sent only to the address it was saved with.
+
+The package side, one link each:
+
+- **Tools an app offers:** [The manifest contract → AI tools](/docs/reference/manifest/#ai-tools-mcp-server-export)
+- **Values an app receives:** [The manifest contract → the AI service namespace](/docs/reference/manifest/#the-ai-service-namespace)

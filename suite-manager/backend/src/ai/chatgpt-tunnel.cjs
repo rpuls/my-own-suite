@@ -52,8 +52,8 @@ class ChatGptTunnel {
   async connect({ name, runtimeKey: rawKey, tunnelId: rawId } = {}) {
     const tunnelId = String(rawId ?? '').trim();
     const runtimeKey = String(rawKey ?? '').trim();
-    if (!TUNNEL_ID_PATTERN.test(tunnelId)) throw new ChatGptTunnelError('AI_TUNNEL_ID_INVALID', 'Paste the tunnel ID as OpenAI shows it. It starts with tunnel_.');
-    if (!RUNTIME_KEY_PATTERN.test(runtimeKey)) throw new ChatGptTunnelError('AI_TUNNEL_KEY_INVALID', 'Paste the runtime key exactly as OpenAI showed it.');
+    if (!TUNNEL_ID_PATTERN.test(tunnelId)) throw new ChatGptTunnelError('AI_TUNNEL_ID_INVALID', 'Paste the tunnel ID exactly as OpenAI showed it.');
+    if (!RUNTIME_KEY_PATTERN.test(runtimeKey)) throw new ChatGptTunnelError('AI_TUNNEL_KEY_INVALID', 'Paste the API key exactly as OpenAI showed it.');
     const existing = this.stored();
     if (existing && this.aiConnections.aiStore.clientById(existing.clientId)) {
       throw new ChatGptTunnelError('AI_TUNNEL_EXISTS', 'ChatGPT is already connected. Remove it first to connect another tunnel.', 409);

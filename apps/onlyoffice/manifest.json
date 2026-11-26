@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "appVersion": "9.3.1",
   "minimumMosVersion": "0.24.0",
   "packageFiles": [
@@ -59,6 +59,7 @@
       "editor",
       "collaboration"
     ],
+    "aiFeatures": "Proofreads, rewrites, summarises and translates text in the editor, and answers questions in a chat beside your document.",
     "features": [
       {
         "title": "Browser office editing",

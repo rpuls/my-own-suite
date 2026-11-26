@@ -1,0 +1,19 @@
+---
+// Link cards to the two AI guides, each led by its small direction drawing.
+import { Icon } from '@astrojs/starlight/components'
+import AiDirectionPicture from './AiDirectionPicture.astro'
+import { AI_SIDES } from '../lib/ai-apps'
+import type { AiDirection } from '../lib/ai-drawing'
+
+const directions: AiDirection[] = ['in', 'out']
+---
+
+<div class="ai-guide-cards not-content">
+  {directions.map((direction) => (
+    <a class="ai-guide-card" href={AI_SIDES[direction].guide}>
+      <span class="ai-guide-card-picture" aria-hidden="true"><AiDirectionPicture direction={direction} size="sm" /></span>
+      <Icon class="ai-guide-card-go" name="right-arrow" size="1.5rem" />
+      <span class="ai-guide-card-title">{AI_SIDES[direction].guideTitle}</span>
+    </a>
+  ))}
+</div>

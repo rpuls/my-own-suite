@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { BetaNotice } from '../../components/disclaimers';
 import { Avatar, Icon, PendingLine, type IconName } from '../../components/ui';
 import { formatBytes } from '../../lib/bytes';
-import { whenWords } from '../../lib/dates';
+import { lowerFirst, whenWords } from '../../lib/dates';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
 import { BACKUPS_PATH, navigateOnClick, STORAGE_SETTINGS_PATH } from '../../lib/navigation';
 import { issuesOf, useOverview, type AttentionIssue, type Overview, type OverviewTile as TileKey } from '../../lib/overview';
@@ -87,7 +87,7 @@ type TileLink = { label: string; path: string };
 
 const TILES: Record<TileKey, { icon: IconName; link: TileLink; title: string }> = {
   apps: { icon: 'apps', link: { label: 'Open Apps', path: APPS_PATH }, title: 'Apps' },
-  ai: { icon: 'sparkle', link: { label: 'AI activity', path: AI_ACTIVITY_PATH }, title: 'AI assistants' },
+  ai: { icon: 'chat-spark', link: { label: 'AI activity', path: AI_ACTIVITY_PATH }, title: 'AI assistants' },
   updates: { icon: 'update', link: { label: 'Open Updates', path: UPDATES_PATH }, title: 'Updates' },
   backups: { icon: 'backup', link: { label: 'Open Backups', path: BACKUPS_PATH }, title: 'Backups' },
   storage: { icon: 'usb-drive', link: { label: 'Storage in Settings', path: STORAGE_SETTINGS_PATH }, title: 'Storage' },
@@ -97,6 +97,12 @@ const TILES: Record<TileKey, { icon: IconName; link: TileLink; title: string }> 
 // is on its way are the tiles that answer will fill. No apps means no tiles: first steps instead.
 const SHOWN_TILES_KEY = 'mos-overview-tiles';
 const FIRST_VISIT_TILES: TileKey[] = ['apps', 'updates', 'backups', 'storage'];
+
+// Added is not connected, so the count never says "connected".
+function assistantCount(turnedOn: number) {
+  if (!turnedOn) return 'No assistant turned on';
+  return turnedOn === 1 ? '1 assistant' : `${turnedOn} assistants`;
+}
 
 function shownTiles(overview: Overview): TileKey[] {
   if (overview.apps.total === 0) return [];
@@ -159,10 +165,6 @@ function OverviewTile({ children, issues, link, tile }: {
   </section>;
 }
 
-function lowerFirst(text: string) {
-  return text.charAt(0).toLowerCase() + text.slice(1);
-}
-
 function statusLine(count: number) {
   if (count === 0) return 'Everything is running.';
   return `${count === 1 ? '1 thing needs' : `${count} things need`} you. Everything else is running.`;
@@ -200,8 +202,8 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
         </OverviewTile>
 
         {shown.includes('ai') ? <OverviewTile issues={overview.ai.issues} link={overview.ai.issues.length ? { label: 'AI assistants in Settings', path: AI_SETTINGS_PATH } : undefined} tile="ai">
-          <p><strong>{overview.ai.connected} connected</strong></p>
-          {overview.ai.lastUsed ? <p>Last used {lowerFirst(whenWords(overview.ai.lastUsed.at))}, by {overview.ai.lastUsed.by}.</p> : null}
+          <p><strong>{assistantCount(overview.ai.connected)}</strong></p>
+          {overview.ai.lastUsed ? <p>{overview.ai.lastUsed.by} last connected {lowerFirst(whenWords(overview.ai.lastUsed.at))}.</p> : null}
         </OverviewTile> : null}
 
         {overview.updates ? <OverviewTile issues={overview.updates.issues} tile="updates">

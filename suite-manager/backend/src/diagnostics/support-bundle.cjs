@@ -64,8 +64,14 @@ const DRIVE_TROUBLE = {
   'read-only': 'was opened read-only because it was not ejected cleanly; it needs Check drive.',
 };
 
+// A detail either finishes the text ("and did not start again.") or is a sentence of its own.
+function issueSentence({ detail, text }) {
+  if (!detail) return text;
+  return /^[A-Z]/u.test(detail) ? `${text}. ${detail}` : `${text} ${detail}`;
+}
+
 function summarizeTrouble({ apps = [], attention = [], catalog = null, collection = {}, drives = null, platform = {} }) {
-  const trouble = attention.filter((issue) => issue.inDiagnostics).map((issue) => `${issue.text} ${issue.detail}`.trim());
+  const trouble = attention.filter((issue) => issue.inDiagnostics).map(issueSentence);
   if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
   // A catalog that will not refresh is quiet by design — the app list and its
   // update offers fall back to the packages this MOS version shipped with — so

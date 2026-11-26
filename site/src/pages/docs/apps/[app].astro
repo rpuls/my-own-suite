@@ -5,6 +5,7 @@
 // the page; the package README renders verbatim as the technical
 // reference, so there is no docs copy to keep in sync.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import AppAiBlock from '../../../components/AppAiBlock.astro'
 import PrivacyAssessment from '../../../components/PrivacyAssessment.astro'
 import PrivacyPosture from '../../../components/PrivacyPosture.astro'
 import TryOutsideMos from '../../../components/TryOutsideMos.astro'
@@ -135,6 +136,7 @@ const headings = [
 
   <h2 id="good-to-know">Good to know</h2>
   <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" appVersion={app.appVersion} privacy={app.privacyReview} reportUrl={app.privacyAssessment ? '#privacy-assessment' : null} />
+  <AppAiBlock appId={app.id} />
   <ul>
     {app.resources && (
       <li>

@@ -29,7 +29,9 @@ test('AI services are listed, added, tested, edited, given to apps and removed t
     assert.deepEqual((await call('PUT', '/settings/ai-services/apps/paperless-ngx', { body: { serviceId: ID } })).json(), { set: true });
     assert.deepEqual((await call('PUT', '/settings/ai-services/apps/paperless-ngx', { body: { serviceId: null } })).json(), { set: true });
     assert.deepEqual((await call('DELETE', `/settings/ai-services/${ID}`)).json(), { removed: true });
-    assert.equal((await call('GET', '/settings/ai-services', { signedIn: false })).status, 401);
+    const signedOut = await call('GET', '/settings/ai-services', { signedIn: false });
+    assert.equal(signedOut.status, 401);
+    assert.equal(signedOut.json().error, 'Sign in to manage AI in your apps.');
   });
 
   assert.deepEqual(calls, [

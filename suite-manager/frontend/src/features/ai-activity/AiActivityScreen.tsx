@@ -44,11 +44,16 @@ function Request({ request }: { request: TimelineRequest }) {
   </div>;
 }
 
-// What the AI did, one card per thing the owner asked for: which action ran and
+// An assistant's row in Settings links here with ?assistant=<its id>, already filtered to it.
+function linkedAssistant() {
+  return new URLSearchParams(window.location.search).get('assistant') ?? '';
+}
+
+// What the assistants did, actions close together on one card: which action ran and
 // how it went, never what was read or written.
 export function AiActivityScreen() {
   const [clients, setClients] = useState<AiClient[]>([]);
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(linkedAssistant);
   const [entries, setEntries] = useState<AiActivityEntry[] | null>(null);
   const [nextBefore, setNextBefore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,7 +61,7 @@ export function AiActivityScreen() {
   const days = useMemo(() => timelineOf(entries ?? []), [entries]);
 
   useEffect(() => {
-    aiRequest('GET', '', 'Unable to load your AI.').then((status) => setClients(status.clients), () => setClients([]));
+    aiRequest('GET', '', 'Unable to load your assistants.').then((status) => setClients(status.clients), () => setClients([]));
   }, []);
 
   async function load(before: number | null) {
@@ -79,20 +84,21 @@ export function AiActivityScreen() {
     <div className="suite-ai-timeline">
       <div className="suite-hero">
         <h1>AI activity</h1>
-        <p className="suite-lead mos-body-lg">Everything your AI did in your apps, one card per request. MOS keeps which action ran, never what was read or written, for 90 days.</p>
+        <p className="suite-lead mos-body-lg">What your AI assistants did with your apps. Actions close together share one card, and repeats are counted. MOS keeps which action it tried and whether it ran or was refused, never what was read or written, for up to 90 days.</p>
+        <p className="suite-meta">What your apps send to an AI service is not listed here.</p>
       </div>
-      {clients.length > 1 ? <FilterChips
+      {clients.length > 1 || clientId ? <FilterChips
         label="Show activity for"
         onChange={setClientId}
-        options={[{ label: 'Every AI', value: '' }, ...clients.map((client) => ({ label: client.name, lead: <AiAvatar name={client.name} />, value: client.id }))]}
+        options={[{ label: 'Every assistant', value: '' }, ...clients.map((client) => ({ label: client.name, lead: <AiAvatar name={client.name} />, value: client.id }))]}
         value={clientId}
       /> : null}
       {error ? <Notice title="Something went wrong" variant="error"><p>{error}</p></Notice> : null}
-      {entries && !entries.length ? <p className="suite-meta">Nothing yet. When an AI you connected uses your apps, it shows up here.</p> : null}
+      {entries && !entries.length ? <p className="suite-meta">Nothing yet. When an assistant you connected uses your apps, it shows up here.</p> : null}
       {days.map((day) => <section aria-label={day.title} className="suite-ai-day" key={day.key}>
         <h2 className="suite-ai-day-head">
           <span>{day.title}</span>
-          <span className="suite-ai-day-sum">{[plural(day.requests.length, 'request'), day.changes ? plural(day.changes, 'change') : null].filter(Boolean).join(' · ')}</span>
+          <span className="suite-ai-day-sum">{[plural(day.actions, 'action'), day.changes ? plural(day.changes, 'change') : null].filter(Boolean).join(' · ')}</span>
         </h2>
         {day.requests.map((request) => <Request key={request.key} request={request} />)}
       </section>)}

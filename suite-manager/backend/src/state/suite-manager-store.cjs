@@ -610,6 +610,14 @@ const MIGRATIONS = [
     `,
     version: 25,
   },
+  {
+    // The MCP address a direct assistant was given, so a suite that moves can tell who still has the old one.
+    name: 'ai-client-issued-url',
+    sql: `
+      ALTER TABLE ai_clients ADD COLUMN issued_url TEXT;
+    `,
+    version: 26,
+  },
 ];
 
 class OwnerAlreadyExistsError extends CodedError {

@@ -58,8 +58,8 @@
     "onlyoffice": {
       "appVersion": "9.3.1",
       "minimumMosVersion": "0.24.0",
-      "packageDigest": "sha256:18ad262958f8bf627f97125fe7a11089ca3d5bd98c752fd42f9974d6e27cfc10",
-      "packageVersion": "0.2.7",
+      "packageDigest": "sha256:a0e992022282d851649fb0c59ead2143e39d8ac08db80c2e7218ab850378e8e7",
+      "packageVersion": "0.2.8",
       "path": "apps/onlyoffice",
       "privacy": {
         "posture": "privacy-configured",
@@ -69,8 +69,8 @@
     "paperless-ngx": {
       "appVersion": "3.5.1",
       "minimumMosVersion": "0.24.0",
-      "packageDigest": "sha256:dacb5930e6a427ea7de50d532ae64d30a82090e9a2b8a4cc603f2124d81dc9ad",
-      "packageVersion": "0.4.3",
+      "packageDigest": "sha256:64646da5ce2c208d6d5e32473b18bef77e4ac377d42d3c35bf5af0a623c0d209",
+      "packageVersion": "0.4.4",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",

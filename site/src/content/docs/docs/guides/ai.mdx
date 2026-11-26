@@ -1,0 +1,46 @@
+---
+title: AI and your suite
+description: Your AI chat can use the apps you allow, and the apps you turn on can ask an AI service. Two separate settings, both off until you set them up.
+---
+
+import AiFigure from '../../../../components/AiFigure.astro'
+import AiGuideCards from '../../../../components/AiGuideCards.astro'
+
+<AiFigure directions={['in', 'out']} />
+
+My Own Suite never connects your suite to an AI for you. If you use one, it can meet your suite from two sides, and you can use either, both or neither. (Some apps run small models of their own on your server, such as Immich's face and text search. Those stay on your server and are not part of these settings.)
+
+## Why two, and not one
+
+<ul class="ai-asks">
+  <li class="is-in"><strong>You ask your AI chat</strong> to find last year's energy bill, and it searches Paperless-ngx through your suite.</li>
+  <li class="is-out"><strong>Paperless-ngx asks the AI service</strong> to suggest a title for a letter you just scanned.</li>
+</ul>
+
+They are separate because you decide different things: for an assistant, what it may see and do in your apps; for an app, whether it may send what it holds to an AI service.
+
+One program on your laptop can do both jobs. You then add it in each place.
+
+## Side by side
+
+| <span class="sr-only">Compare</span> | <span class="ai-asker is-in" aria-hidden="true"></span>AI assistants | <span class="ai-asker is-out" aria-hidden="true"></span>AI in your apps |
+| --- | --- | --- |
+| **Who asks** | Your AI chat | One of your apps |
+| **Who answers** | Your apps | An AI service |
+| **What you add** | An assistant, with an address and a token, or ChatGPT | An address and a model, on a computer of your own or online |
+| **What you decide** | For each assistant, per app: Off, See, or See and do | Per app: on or off, and which service |
+| **Where what is read goes** | To whoever runs your AI chat's model: usually an AI company, even when the program is on your computer | To whoever runs the AI service |
+| **What MOS records** | Every action it tried, under AI activity | Nothing: the app talks to the service directly |
+| **Under the hood** | Your suite is an MCP server | Your apps call an OpenAI-compatible API |
+| **In Settings** | Settings → AI assistants | Settings → AI in your apps |
+
+Each guide says exactly what is sent: [AI assistants](/docs/guides/ai-assistants/#what-it-means-for-your-privacy) · [AI in your apps](/docs/guides/ai-in-your-apps/#what-it-means-for-your-privacy).
+
+## Which one do I want?
+
+- "I want to ask my AI chat about my notes and documents" → [Use your apps from your AI chat](/docs/guides/ai-assistants/).
+- "I want to ask Paperless-ngx about my documents", "I want AI help while I write" → [Turn on AI features in your apps](/docs/guides/ai-in-your-apps/).
+- "I pay for an AI chat and want Paperless-ngx to use it" → that needs an API key from the provider, which is billed on its own; your chat plan does not cover it.
+- "I want one private AI on my own computer for everything" → Both: add it under AI assistants so it can use your apps, and as an AI service so your apps can ask it. For the second, your suite must be able to reach that computer.
+
+<AiGuideCards />

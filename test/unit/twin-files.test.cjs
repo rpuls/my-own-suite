@@ -22,3 +22,14 @@ test('privacy posture twin modules are byte-identical', () => {
     'The privacy-posture.ts twins have drifted. Apply the intended change to both copies (they must stay byte-identical).',
   );
 });
+
+test('AI drawing geometry twin modules are byte-identical', () => {
+  const [suiteManagerCopy, siteCopy] = [
+    'suite-manager/frontend/src/components/ai-drawing.ts',
+    'site/src/lib/ai-drawing.ts',
+  ].map((relative) => fs.readFileSync(path.join(repoRoot, relative)));
+  assert.ok(
+    suiteManagerCopy.equals(siteCopy),
+    'The ai-drawing.ts twins have drifted. Apply the intended change to both copies (they must stay byte-identical).',
+  );
+});

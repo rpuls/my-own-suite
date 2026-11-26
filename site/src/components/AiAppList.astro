@@ -1,0 +1,24 @@
+---
+// Every catalog app whose package reads the AI service values, each with its package's own catalog.aiFeatures
+// sentence (a generic line when it has none) and a link to its privacy assessment.
+import { aiApps } from '../lib/ai-apps'
+
+const askingApps = aiApps.filter((entry) => entry.asksService)
+---
+
+<ul class="ai-apps not-content">
+  {askingApps.map(({ app, experimental }) => (
+    <li class="ai-apps-item">
+      <span class="mos-app-icon ai-apps-icon"><img src={app.icon} alt="" /></span>
+      <div class="ai-apps-body">
+        <p class="ai-apps-name"><a href={`/docs/apps/${app.id}/`}>{app.name}</a>{experimental && <span class="mos-pill mos-pill-warning">Experimental</span>}</p>
+        <p class="ai-apps-features">
+          {app.aiFeatures || `${app.name}'s own AI features can ask an AI service you add.`}
+          {experimental
+            ? ' Its privacy assessment is being redone.'
+            : app.privacyAssessment && <> <a href={`/docs/apps/${app.id}/#privacy-assessment`}>What it sends →</a></>}
+        </p>
+      </div>
+    </li>
+  ))}
+</ul>

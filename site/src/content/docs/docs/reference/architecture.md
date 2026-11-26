@@ -22,9 +22,10 @@ Nothing load-bearing in MOS is invented here. Each job goes to an established op
 A MOS install is a single Ubuntu 24.04 machine running a small set of systemd services:
 
 - **Caddy** is the only public entry point, on ports 80/443. It is not distro Caddy: MOS builds a version-pinned Caddy with two DNS modules compiled in, Cloudflare for an owned domain and acme-dns for the Easy Door certificate, installs it to `/usr/local/libexec/mos/`, and verifies the module list on install and on every update.
-- **Suite Manager** (Node.js) listens only on loopback `127.0.0.1:3100`. It owns the `home.<domain>` origin: it serves the control room under `/suite-manager/`, authenticates every request to the origin, and reverse-proxies everything else to Homepage.
+- **Suite Manager** (Node.js) listens only on loopback `127.0.0.1:3100`. It owns the `home.<domain>` origin: it serves the control room under `/suite-manager/`, authenticates every request to the origin, and reverse-proxies everything else to Homepage. It also serves `/ai/mcp`, the MCP server for AI assistants, which accepts a bearer token per assistant instead of the session, on HTTPS only; see [How MOS works with AI](/docs/reference/ai/).
 - **Homepage** (the dashboard) runs as a digest-pinned container on loopback `127.0.0.1:3200`, with no route of its own — it is only reachable through Suite Manager's session check. An unauthenticated visitor never sees your dashboard.
 - **Installed apps** get their own hosts (`<app>.<domain>`) routed by Caddy to loopback ports, declared by each [app package](/docs/reference/app-packages/).
+- **mos-ai-tunnel** runs OpenAI's tunnel client, only while ChatGPT is connected.
 
 ## The privilege boundary
 

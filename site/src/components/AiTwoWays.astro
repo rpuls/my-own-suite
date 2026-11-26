@@ -1,0 +1,302 @@
+---
+// The two ways AI meets the suite, as two cards that line up row by row: an AI chat uses the apps you
+// allow, and the apps you turn on ask an AI service. The words differ on purpose; only the drawings mirror.
+import AiDirectionPicture from './AiDirectionPicture.astro'
+import BrandMark from './BrandMark.astro'
+import { aiApps } from '../lib/ai-apps'
+import { catalogApps } from '../lib/app-catalog'
+
+// An app whose privacy review is not current for this version stays off both lists until it is reassessed.
+const listed = aiApps.filter((entry) => !entry.experimental && entry.app.privacyReview.status === 'reviewed')
+const appsYouCanAllow = listed.filter((entry) => entry.offersTools).map((entry) => entry.app)
+const appsWithAiFeatures = listed.filter((entry) => entry.asksService).map((entry) => entry.app)
+const iconOf = (id: string) => catalogApps.find((app) => app.id === id)?.icon ?? ''
+
+// Only apps that offer tools to an AI today, so the example shows nothing MOS cannot do.
+const chatSources = [
+  { appId: 'paperless-ngx', app: 'Paperless-ngx', item: 'Invoice: heating service, March 2026' },
+  { appId: 'paperless-ngx', app: 'Paperless-ngx', item: 'Service contract, Warmth & Co.' },
+  { appId: 'memos', app: 'Memos', item: 'Note: ask about the pressure valve' }
+]
+
+const assistantFacts =['Tools that delete your data or share it are never offered', 'every action listed']
+const serviceFacts = [
+  'No AI setup inside each app',
+  'a chat subscription does not cover it',
+  'MOS shows when the address is on your own network'
+]
+---
+
+<section class="band ai-two-ways" id="ai" aria-labelledby="ai-heading">
+  <div class="shell">
+    <div class="section-head center ai-head">
+      <span class="mos-eyebrow">Works with your AI</span>
+      <h2 class="mos-section-title" id="ai-heading"><span>Your AI chat can use your apps.</span> <span>Your apps can ask an AI.</span></h2>
+      <p class="mos-body-lg mos-meta">Each stays off until you set it up, and MOS never connects one for you. Run the model on a computer of your own, and no AI company reads what it is sent.</p>
+    </div>
+
+    <div class="ai-cards">
+      <article class="mos-panel mos-panel-flush ai-card is-in" aria-labelledby="ai-in-title">
+        <h3 class="ai-title" id="ai-in-title"><a href="/docs/guides/ai-assistants/">Use your apps from your AI <span class="nowrap">chat <span class="arrow" aria-hidden="true">→</span></span></a></h3>
+        <div class="ai-figure"><AiDirectionPicture direction="in" size="lg" /></div>
+        <div class="ai-vignette">
+          <div class="vignette" role="img" aria-label="Example: you ask your AI chat when your central heating is next serviced, and it answers from two documents in Paperless-ngx and a note in Memos.">
+            <div class="vignette-bar">
+              <svg class="chat-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat-spark" /></svg>
+              <span>Your AI chat</span>
+            </div>
+            <div class="chat">
+              <div class="turn is-you">
+                <span class="turn-who">You</span>
+                <span class="bubble">When is the next service for my central heating?</span>
+              </div>
+              <div class="turn is-ai">
+                <span class="turn-who">AI</span>
+                <span class="bubble">On 14 March 2027, a year after the last one. The invoice and the service contract are in Paperless-ngx, and your note in Memos says to ask about the pressure valve.</span>
+                <ul class="sources">
+                  {chatSources.map((source) => (
+                    <li class="tool-chip">
+                      {iconOf(source.appId) && <span class="mos-app-icon"><img src={iconOf(source.appId)} alt="" loading="lazy" /></span>}
+                      <span><span class="tool-app">{source.app}</span> <span class="dot">·</span> {source.item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="ai-body">Ask your AI chat to look things up across your apps, check that everything runs, or tidy your dashboard. You choose app by app: Off, See, or See and do.</p>
+        <p class="ai-facts">{assistantFacts.map((fact, index) => <Fragment><span class="fact">{fact}{index < assistantFacts.length - 1 && <span class="sep">·</span>}</span>{' '}</Fragment>)}</p>
+        <div class="ai-apps">
+          <p class="ai-apps-label" id="ai-in-apps">Apps you can allow</p>
+          <ul aria-labelledby="ai-in-apps">
+            <li class="app-chip"><span class="mos-app-icon is-suite"><BrandMark size={14} /></span>Suite Manager</li>
+            {appsYouCanAllow.map((app) => (
+              <li class="app-chip">{app.icon && <span class="mos-app-icon"><img src={app.icon} alt="" loading="lazy" /></span>}{app.name}</li>
+            ))}
+          </ul>
+        </div>
+        <p class="ai-spec">MCP server · bearer token, or OpenAI's tunnel for ChatGPT</p>
+      </article>
+
+      <article class="mos-panel mos-panel-flush ai-card is-out" aria-labelledby="ai-out-title">
+        <h3 class="ai-title" id="ai-out-title"><a href="/docs/guides/ai-in-your-apps/">Turn on AI features in your <span class="nowrap">apps <span class="arrow" aria-hidden="true">→</span></span></a></h3>
+        <div class="ai-figure"><AiDirectionPicture direction="out" size="lg" /></div>
+        <div class="ai-vignette">
+          <div class="vignette">
+            <div class="vignette-bar">
+              <svg class="chip-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chip-spark" /></svg>
+              <span id="ai-out-apps">Apps with AI features</span>
+            </div>
+            <ul class="feature-list" aria-labelledby="ai-out-apps">
+              {appsWithAiFeatures.map((app) => (
+                <li class="feature-item">
+                  {app.icon && <span class="mos-app-icon"><img src={app.icon} alt="" loading="lazy" /></span>}
+                  <span class="feature-text"><strong>{app.name}</strong>{app.aiFeatures && <span>{app.aiFeatures}</span>}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <p class="ai-body">Add an AI service once, a model on a computer of your own or a provider's API, and turn it on for the apps that should ask it.</p>
+        <p class="ai-facts">{serviceFacts.map((fact, index) => <Fragment><span class="fact">{fact}{index < serviceFacts.length - 1 && <span class="sep">·</span>}</span>{' '}</Fragment>)}</p>
+        <p class="ai-spec">OpenAI-compatible API · chat and embedding models</p>
+      </article>
+    </div>
+
+    <div class="ai-close"><a class="mos-link" href="/docs/guides/ai/">AI and your suite →</a></div>
+  </div>
+</section>
+
+<script>
+  // The section is already on screen when its drawings arrive, so only their beams move (.mos-arrive in mos.css).
+  const figures = document.querySelectorAll<HTMLElement>('.ai-two-ways .ai-figure')
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      entry.target.classList.add('mos-arrive')
+      observer.unobserve(entry.target)
+    }
+  }, { threshold: 0.6 })
+  figures.forEach((figure) => observer.observe(figure))
+</script>
+
+<style>
+  .ai-head { max-width: 62rem; }
+  .ai-head .mos-section-title > span { display: inline-block; text-wrap: balance; }
+  .ai-head .mos-body-lg { max-width: 40rem; text-wrap: balance; }
+
+  .ai-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(7, auto);
+    column-gap: var(--mos-space-7);
+    max-width: 68.75rem;
+    margin: 0 auto;
+  }
+
+  .ai-card {
+    grid-row: 1 / span 7;
+    grid-template-rows: subgrid;
+    min-width: 0;
+  }
+
+  .ai-card > * { min-width: 0; margin: 0; padding-inline: var(--mos-panel-pad); }
+
+  .ai-figure {
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-block: var(--mos-space-5);
+    border-bottom: var(--mos-border-hairline);
+  }
+  .ai-figure.mos-arrive { animation: none; }
+  .is-in .ai-figure { background: color-mix(in srgb, var(--mos-color-info) 6%, transparent); }
+  .is-out .ai-figure { background: color-mix(in srgb, var(--mos-color-accent) 6%, transparent); }
+
+  .ai-title {
+    grid-row: 2;
+    padding-top: var(--mos-space-6);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .ai-title a { color: var(--mos-color-text-strong); }
+  .ai-title a:hover { color: var(--mos-color-accent); }
+  .ai-title .nowrap { white-space: nowrap; }
+  .ai-title .arrow { display: inline-block; color: var(--mos-color-accent); transition: transform var(--mos-transition); }
+  .ai-title a:hover .arrow { transform: translateX(3px); }
+
+  .ai-vignette { grid-row: 3; display: flex; padding-top: var(--mos-space-4); }
+
+  .ai-body { grid-row: 4; padding-top: var(--mos-space-5); font-size: 0.98rem; line-height: 1.6; text-wrap: pretty; }
+
+  .ai-facts { grid-row: 5; padding-top: var(--mos-space-3); font-size: 0.88rem; line-height: 1.55; color: var(--mos-color-text-muted); text-wrap: pretty; }
+  .ai-facts .sep { padding-left: 0.35rem; opacity: 0.7; }
+
+  .ai-apps { grid-row: 6; display: grid; gap: 0.6rem; align-content: start; padding-top: var(--mos-space-5); }
+  .ai-apps-label {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--mos-color-text-muted);
+  }
+  .ai-apps ul { display: flex; flex-wrap: wrap; gap: var(--mos-space-2); margin: 0; padding: 0; list-style: none; }
+  /* Concentric corners: the chip's radius is the icon's plus the inset between them. */
+  .app-chip {
+    --chip-inset: 0.25rem;
+    --chip-icon-radius: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mos-space-2);
+    padding: var(--chip-inset) 0.8rem var(--chip-inset) var(--chip-inset);
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: calc(var(--chip-icon-radius) + var(--chip-inset));
+    font-size: 0.88rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .app-chip .mos-app-icon { width: 1.75rem; height: 1.75rem; border: 0; border-radius: var(--chip-icon-radius); }
+  .app-chip .is-suite { color: var(--mos-color-accent); }
+
+  .ai-spec {
+    grid-row: 7;
+    padding-block: 1.1rem var(--mos-space-6);
+    font-family: var(--mos-font-mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--mos-color-text-muted);
+  }
+
+  .ai-close { display: flex; justify-content: center; margin-top: var(--mos-space-7); }
+
+  .vignette {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: var(--mos-border-hairline);
+    border-radius: var(--mos-radius-sm);
+    background: var(--mos-color-bg);
+  }
+  .vignette-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--mos-space-2);
+    padding: 0.55rem 0.85rem;
+    border-bottom: var(--mos-border-hairline);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--mos-color-text-muted);
+  }
+  .vignette-bar .chat-ico { flex: none; fill: none; stroke: var(--mos-color-info); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .vignette .mos-app-icon { width: 1.25rem; height: 1.25rem; }
+
+  .chat { flex: 1; display: grid; align-content: start; gap: 0.6rem; padding: 0.9rem 0.9rem 1rem; }
+  .turn { display: grid; gap: var(--mos-space-1); max-width: 88%; }
+  .turn-who { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mos-color-text-muted); }
+  .turn.is-you { justify-self: end; justify-items: end; }
+  .turn.is-ai { justify-self: start; }
+  .turn.is-ai .turn-who { color: var(--mos-color-info); }
+  .bubble { padding: var(--mos-space-2) var(--mos-space-3); font-size: 0.88rem; line-height: 1.5; }
+  .is-you .bubble { background: var(--mos-color-surface-strong); border-radius: 14px 14px 4px 14px; }
+  .is-ai .bubble { border: 1px solid var(--mos-color-info-border); border-radius: 14px 14px 14px 4px; background: var(--mos-color-info-soft); }
+  .sources { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.15rem 0 0; padding: 0; list-style: none; }
+  /* Concentric corners, as on the app chips below. */
+  .tool-chip {
+    --chip-inset: 0.2rem;
+    --chip-icon-radius: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: var(--chip-inset) 0.6rem var(--chip-inset) var(--chip-inset);
+    border: 1px dashed var(--mos-color-surface-border);
+    border-radius: calc(var(--chip-icon-radius) + var(--chip-inset));
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--mos-color-text-muted);
+  }
+  .tool-chip .mos-app-icon { width: 1.25rem; height: 1.25rem; border: 0; border-radius: var(--chip-icon-radius); }
+  .tool-app { font-weight: 800; color: var(--mos-color-text); }
+  .tool-chip .dot { opacity: 0.7; }
+
+  .vignette-bar .chip-ico { flex: none; fill: none; stroke: var(--mos-color-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feature-list { flex: 1; display: grid; align-content: start; margin: 0; padding: 0; list-style: none; }
+  .feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--mos-space-3);
+    padding: var(--mos-space-3) 0.95rem;
+  }
+  .feature-item + .feature-item { border-top: var(--mos-border-hairline); }
+  .feature-item .mos-app-icon { width: 2rem; height: 2rem; border-radius: 0.5rem; }
+  .feature-text { display: grid; gap: 0.15rem; min-width: 0; font-size: 0.86rem; line-height: 1.45; color: var(--mos-color-text-muted); }
+  .feature-text strong { color: var(--mos-color-text); font-weight: 700; }
+
+  @media (min-width: 40rem) {
+    .ai-facts .fact { white-space: nowrap; }
+  }
+
+  @media (max-width: 900px) {
+    .ai-cards { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: var(--mos-space-4); }
+    .ai-card { grid-row: auto; display: flex; flex-direction: column; }
+    .ai-figure { order: -1; }
+  }
+
+  @media (max-width: 40rem) {
+    .ai-figure { padding-block: var(--mos-space-4); }
+    .ai-title { padding-top: 1.1rem; font-size: 1.15rem; }
+    .chat { padding: var(--mos-space-3); }
+    .turn { max-width: 94%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ai-title .arrow { transition: none; }
+  }
+</style>

@@ -73,7 +73,7 @@ function fakeMemos({ answerMs = 0 } = {}) {
   return { calls, fetchImpl, tools };
 }
 
-async function harness({ answerMs = 0, now = () => new Date() } = {}) {
+async function harness({ answerMs = 0, host = () => 'home.example.net', now = () => new Date() } = {}) {
   const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-'));
   const store = new SuiteManagerStore(stateDir);
   const secretDir = path.join(stateDir, 'app-secrets');
@@ -101,7 +101,7 @@ async function harness({ answerMs = 0, now = () => new Date() } = {}) {
     fetchImpl: memos.fetchImpl,
     now,
     secretDir,
-    suiteAddress: { readOrNull: () => ({ host: 'home.example.net', scheme: 'https' }) },
+    suiteAddress: { readOrNull: () => ({ host: host(), scheme: 'https' }) },
   });
   await connections.setSourceToken('memos', APP_TOKEN);
   const gateway = new AiGateway({ connections });
@@ -371,6 +371,25 @@ test('the HTTP edge refuses plain HTTP, browser origins, unknown clients and bat
 
   assert.equal((await h.rpc(token, 'initialize', { protocolVersion: '2025-11-25' })).body.result.protocolVersion, '2025-11-25');
   assert.equal((await h.rpc(token, 'resources/list', {})).body.error.code, -32601);
+});
+
+test('a direct assistant keeps the address it was given until it calls at the new one or gets a new token', async (t) => {
+  let host = 'home.example.net';
+  const h = await harness({ host: () => host });
+  t.after(h.close);
+  const { client, token } = h.connections.createClient({ name: 'Claude Code', preset: 'other' });
+  const issuedUrl = () => h.connections.aiStore.clientById(client.id).issuedUrl;
+  assert.equal(issuedUrl(), 'https://home.example.net/ai/mcp');
+
+  host = 'suite.example.com';
+  await h.rpc(token, 'tools/list', {});
+  assert.equal(issuedUrl(), 'https://home.example.net/ai/mcp');
+  await h.post({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: {} }, { Authorization: `Bearer ${token}`, 'X-Forwarded-Host': 'suite.example.com' });
+  assert.equal(issuedUrl(), 'https://suite.example.com/ai/mcp');
+
+  host = 'other.example.org';
+  h.connections.rotateClientToken(client.id);
+  assert.equal(issuedUrl(), 'https://other.example.org/ai/mcp');
 });
 
 test('only a direct route can be created today, and the MCP address needs HTTPS', async (t) => {

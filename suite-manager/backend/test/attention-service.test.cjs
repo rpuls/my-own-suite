@@ -84,7 +84,7 @@ test('a refused ChatGPT tunnel and an app with no token are named under AI assis
   await h.service.issues();
   h.later(GRACE_MS);
   const { ai } = await h.service.overview();
-  assert.deepEqual(ai.issues.map((issue) => issue.text), ['ChatGPT needs to be set up again', 'Memos needs a token']);
+  assert.deepEqual(ai.issues.map((issue) => issue.text), ['ChatGPT cannot reach your suite', 'Memos needs a token']);
   assert.equal(ai.issues[0].assistant, 'ChatGPT');
   assert.deepEqual([ai.connected, ai.lastUsed], [2, { at: '2026-11-22T11:00:00Z', by: 'Claude Code' }]);
 });
@@ -117,10 +117,26 @@ test('a source that cannot answer leaves its own tile unknown and the rest intac
   assert.deepEqual([overview.apps.running, overview.apps.total], [2, 2]);
 });
 
+test('a refused tunnel says nothing while ChatGPT is turned off', async () => {
+  const h = harness({ clients: [{ enabled: false, id: 'cg', lastUsedAt: null, levels: {}, name: 'ChatGPT' }], tunnel: { clientId: 'cg', state: 'refused' } });
+  await h.service.issues();
+  h.later(GRACE_MS);
+  const { ai } = await h.service.overview();
+  assert.deepEqual([ai.issues, ai.connected], [[], 0]);
+});
+
 test('the diagnostics summary adds only the problems it does not already report in its own words', () => {
   const trouble = summarizeTrouble({ attention: [
-    { detail: 'and cannot reach your apps until then.', inDiagnostics: true, text: 'ChatGPT needs to be set up again' },
+    { detail: 'Remove it and add it again in Settings.', inDiagnostics: true, text: 'ChatGPT cannot reach your suite' },
     { detail: 'and did not start again.', inDiagnostics: false, text: 'Memos stopped' },
   ] });
-  assert.deepEqual(trouble, ['ChatGPT needs to be set up again and cannot reach your apps until then.']);
+  assert.deepEqual(trouble, ['ChatGPT cannot reach your suite. Remove it and add it again in Settings.']);
+});
+
+test('a lowercase detail finishes the issue text, and an issue without one is its text alone', () => {
+  const trouble = summarizeTrouble({ attention: [
+    { detail: 'and did not start again.', inDiagnostics: true, text: 'Memos stopped' },
+    { detail: null, inDiagnostics: true, text: 'The backup did not run.' },
+  ] });
+  assert.deepEqual(trouble, ['Memos stopped and did not start again.', 'The backup did not run.']);
 });

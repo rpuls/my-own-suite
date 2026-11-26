@@ -1,0 +1,25 @@
+---
+// The direction drawings that open the AI pages, each captioned with the Settings card it belongs to.
+// Two are stacked, never chained.
+import AiDirectionPicture from './AiDirectionPicture.astro'
+import AiSectionIcon from './AiSectionIcon.astro'
+import { AI_SIDES } from '../lib/ai-apps'
+import type { AiDirection } from '../lib/ai-drawing'
+
+interface Props {
+  directions: AiDirection[]
+}
+const { directions } = Astro.props
+---
+
+<div class:list={['ai-figure', 'not-content', { 'is-stack': directions.length > 1 }]}>
+  {directions.map((direction) => (
+    <figure class="ai-figure-item">
+      <AiDirectionPicture direction={direction} size="lg" />
+      <figcaption>
+        <AiSectionIcon name={AI_SIDES[direction].icon} />
+        <span>Settings → <strong>{AI_SIDES[direction].card}</strong></span>
+      </figcaption>
+    </figure>
+  ))}
+</div>

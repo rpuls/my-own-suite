@@ -14,3 +14,11 @@ export const ISSUES_URL = communityLinks.issues;
 // and cannot serve these pages itself, so they are absolute links out.
 const MOS_SITE_URL = 'https://myownsuite.org';
 export const TERMS_URL = `${MOS_SITE_URL}/docs/terms/`;
+export const AI_GUIDE_URL = `${MOS_SITE_URL}/docs/guides/ai/`;
+export const AI_ASSISTANTS_GUIDE_URL = `${MOS_SITE_URL}/docs/guides/ai-assistants/`;
+export const AI_IN_APPS_GUIDE_URL = `${MOS_SITE_URL}/docs/guides/ai-in-your-apps/`;
+export const AI_VALUES_REFERENCE_URL = `${MOS_SITE_URL}/docs/reference/manifest/#the-ai-service-namespace`;
+
+export function appPrivacyUrl(packageId: string) {
+  return `${MOS_SITE_URL}/docs/apps/${encodeURIComponent(packageId)}/#privacy-assessment`;
+}

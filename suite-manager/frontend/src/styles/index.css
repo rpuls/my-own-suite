@@ -3214,6 +3214,8 @@ button.suite-updates-change-head {
 .suite-select { appearance: none; padding-right: 2.2rem; background: linear-gradient(45deg, transparent 50%, var(--mos-color-text) 50%) right 0.95rem center / 0.42rem 0.42rem no-repeat, linear-gradient(135deg, var(--mos-color-text) 50%, transparent 50%) right 0.68rem center / 0.42rem 0.42rem no-repeat, var(--mos-color-surface-strong); }
 .suite-textarea { min-height: 6rem; resize: vertical; }
 .suite-control-help { min-height: 1.15rem; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.35; }
+.suite-control-help.is-warning { color: var(--mos-color-warning); }
+.suite-control-help.is-error { color: var(--mos-color-danger); }
 .suite-form-wide { grid-column: 1 / -1; }
 .suite-advanced pre { padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--mos-text-small); line-height: 1.5; }
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
@@ -3223,9 +3225,13 @@ button.suite-updates-change-head {
 .suite-dialog-header { display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); padding: var(--suite-dialog-pad) var(--suite-dialog-pad) 0; }
 .suite-dialog-header h2 { margin: 0; }
 .suite-dialog-body { display: grid; flex: 1 1 auto; align-content: start; gap: var(--suite-dialog-gap); min-height: 0; padding: var(--suite-dialog-gap) var(--suite-dialog-pad); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.suite-dialog-body:last-child { padding-bottom: var(--suite-dialog-pad); }
+.suite-dialog-body:last-child, .suite-dialog-body:has(+ .suite-dialog-footer.is-empty) { padding-bottom: var(--suite-dialog-pad); }
 .suite-dialog-body > * { min-width: 0; }
 .suite-dialog-footer { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: var(--mos-space-2); padding: 0 var(--suite-dialog-pad) var(--suite-dialog-pad); }
+.suite-dialog-status { display: flex; flex: 0 1 auto; align-items: center; gap: var(--mos-space-2); min-width: 0; margin-right: auto; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); line-height: 1.4; }
+/* An empty footer stays mounted so its status region exists before its first message. */
+.suite-dialog-footer.is-empty { padding: 0; }
+@media (max-width: 34rem) { .suite-dialog-status { flex: 1 0 100%; margin-right: 0; } }
 .suite-stepper { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--mos-space-2); margin: 0; padding: 0; list-style: none; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); font-weight: 700; }
 .suite-stepper li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-pill); background: transparent; color: inherit; }
 .suite-stepper li .suite-icon, .suite-stepper li .suite-spinner { width: 1rem; height: 1rem; }
@@ -4394,74 +4400,115 @@ button.suite-bk-group {
 
 /* Settings → AI assistants. The panel sections own the inset; these only
    space what sits inside one assistant's apps and one app's tools. */
-.suite-ai-privacy {
-  display: flex;
-  gap: var(--mos-space-2);
-  align-items: center;
-  margin: 0;
-}
-
+/* An expanded assistant starts at its name, past the avatar column; a phone has no room for the indent. */
 .suite-ai-grants {
+  position: relative;
   display: grid;
   gap: var(--mos-space-5);
-  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad) calc(var(--mos-panel-pad) + 3rem);
 }
 
 .suite-ai-grants > p {
   margin: 0;
 }
 
-/* The two AI direction pictures. Mint is the suite and blue the AI in both;
-   the arrow takes the colour of whichever side asks. */
-.suite-ai-art-suite,
-.suite-ai-art-ai {
-  stroke-width: 2.5;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
+/* Model ids are long and unbroken. */
+.suite-ai-service-meta {
+  overflow-wrap: anywhere;
 }
 
-.suite-ai-art-suite {
-  fill: var(--mos-color-accent-soft);
-  stroke: var(--mos-color-accent);
+/* The reload hint's live region stays in place while empty, so the hint is announced, but takes no room. */
+.suite-ai-grants > .suite-ai-reload:empty {
+  position: absolute;
 }
 
-.suite-ai-art-mark {
+.suite-ai-limits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3) var(--mos-space-5);
+}
+
+.suite-ai-limits > p {
+  flex: 1 1 18rem;
+  max-width: 26rem;
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: 0.84375rem;
+  line-height: 1.5;
+}
+
+.suite-ai-limits-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mos-space-2) var(--mos-space-4);
+}
+
+@media (max-width: 34rem) {
+  .suite-ai-grants {
+    padding-left: var(--mos-panel-pad);
+  }
+}
+
+.suite-ai-door {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-ai-door > p {
+  margin: 0;
+}
+
+.suite-ai-header-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--mos-space-2);
+}
+
+@media (max-width: 34rem) {
+  .suite-ai-header-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.suite-inline-disclosure-body {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding: 0 var(--mos-panel-pad) var(--mos-panel-pad);
+}
+
+.suite-inline-disclosure-body > p {
+  margin: 0;
+}
+
+.suite-inline-disclosure-body .mos-secret-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.suite-ai-wait {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-2);
+}
+
+.suite-ai-wait > .suite-spinner,
+.suite-ai-wait > .suite-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15em;
+}
+
+.suite-ai-wait > span {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-ai-wait.is-connected {
   color: var(--mos-color-accent);
-}
-
-.suite-ai-art-ai {
-  fill: var(--mos-color-info-soft);
-  stroke: var(--mos-color-info);
-}
-
-.suite-ai-art-spark {
-  fill: var(--mos-color-info);
-}
-
-.suite-ai-art-beam,
-.suite-ai-art-head {
-  fill: none;
-  stroke: var(--mos-color-info);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.5;
-}
-
-.suite-ai-art-out .suite-ai-art-beam,
-.suite-ai-art-out .suite-ai-art-head {
-  stroke: var(--mos-color-accent);
-}
-
-.suite-ai-art-beam {
-  stroke-width: 3;
-  stroke-dasharray: 0.01 8;
-}
-
-.suite-ai-art text {
-  fill: var(--mos-color-text-muted);
-  font-size: 10px;
-  font-weight: var(--mos-weight-semibold);
-  text-anchor: middle;
 }
 
 .suite-ai-client-name {
@@ -4485,11 +4532,6 @@ button.suite-bk-group {
 .suite-ai-secret {
   display: grid;
   gap: var(--mos-space-1);
-}
-
-.suite-ai-secret.is-multiline .mos-secret-value {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .suite-ai-token-step {

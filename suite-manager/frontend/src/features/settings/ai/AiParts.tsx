@@ -1,18 +1,23 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 
-import { ActionMenu, Avatar, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput } from '../../../components/ui';
+import { ActionMenu, AdvancedPanel, Avatar, DestinationLine, Dialog, DisclosureRow, Icon, Notice, PanelItem, Row, RowSwitch, RowTrailing, Rows, Segmented, TextInput, type AdvancedFact } from '../../../components/ui';
 import { whenWords } from '../../../lib/dates';
+import { navigateOnClick } from '../../../lib/navigation';
 import { avatarOf, sourceIconUrl } from '../../ai-activity/timeline';
-import { ChatGptSteps, ConnectInstructions, PrivacyLine, TunnelStatus } from './AddAssistantDialog';
+import { AddressField, AssistantDestination, ChatGptSteps, ConnectDetails, TunnelStatus } from './AddAssistantDialog';
+import { appHelp, clientMeta, contactWhen, holdsOldAddress, levelLabel, needsToken, oldAddressHelp, reloadHint, tokenHelp, tunnelBroken } from './assistant-words';
 import {
-  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, LEVEL_WORDS, levelOf, toolAllowed,
-  TUNNEL_WORDS, type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type AiTunnel, type OfferedKind,
+  customizedTools, isOffered, KIND_GROUPS, LEVEL_OPTIONS, levelOf, toolAllowed,
+  type AiClient, type AiException, type AiLevel, type AiSource, type AiTool, type AiTunnel, type OfferedKind,
 } from './model';
 
+const DASHBOARD_HISTORY_PATH = '/suite-manager/customize#history';
+const AI_ACTIVITY_PATH = '/suite-manager/ai-activity';
+
 export type ClientActions = {
-  onAccept: (tool: string) => void;
+  onAccept: (sourceId: string, tool: string) => void;
   onDefaultLevel: (level: AiLevel) => void;
-  onException: (tool: string, exception: AiException | null) => void;
+  onException: (sourceId: string, tool: string, exception: AiException | null) => void;
   onLevel: (sourceId: string, level: AiLevel) => void;
   onSourceToken: (sourceId: string, token: string) => Promise<string>;
   onRemove: () => void;
@@ -22,53 +27,18 @@ export type ClientActions = {
   onToggleEnabled: () => void;
 };
 
-const LEVEL_LABEL: Record<AiLevel, string> = Object.fromEntries(LEVEL_OPTIONS.map((option) => [option.value, option.label])) as Record<AiLevel, string>;
+// Where a failed change is reported: under the app's control, in its Customize dialog, or under the row's own buttons.
+export type FailureSpot = `level:${string}` | 'row' | `tools:${string}`;
 
 function needsReview(tool: AiTool) {
   return isOffered(tool) && tool.review !== 'pinned';
 }
 
-function lowerFirst(text: string) {
-  return text.charAt(0).toLowerCase() + text.slice(1);
+function FailedChange({ message }: { message: string | undefined }) {
+  return message ? <Notice title="Could not change this" variant="error"><p>{message}</p></Notice> : null;
 }
 
-// A tunnel OpenAI refuses after it has worked: whatever the reason, the fix is to set it up again.
-function tunnelBroken(client: AiClient, tunnel: AiTunnel | null) {
-  return tunnel?.state === 'refused' && Boolean(client.lastUsedAt);
-}
-
-function clientMeta(client: AiClient, sources: AiSource[], tunnel: AiTunnel | null) {
-  if (!client.enabled) return 'Turned off · settings kept';
-  if (tunnelBroken(client, tunnel)) return `Not working · last used ${lowerFirst(whenWords(client.lastUsedAt!))}`;
-  if (tunnel && tunnel.state !== 'connected') return TUNNEL_WORDS[tunnel.state];
-  const shared = sources.filter((source) => levelOf(client, source.id) !== 'off').map((source) => `${source.name}: ${LEVEL_WORDS[levelOf(client, source.id)]}`);
-  const what = shared.length ? shared : ['nothing shared yet'];
-  return client.lastUsedAt
-    ? [...what, `used ${lowerFirst(whenWords(client.lastUsedAt))}`].join(' · ')
-    : ['Not connected yet', ...what].join(' · ');
-}
-
-function needsToken(source: AiSource) {
-  return Boolean(source.token && !source.token.configured);
-}
-
-function levelHelp(source: AiSource, level: AiLevel) {
-  if (!source.running) return `${source.name} is stopped, so an AI cannot use it right now.`;
-  if (source.builtin) {
-    return {
-      act: 'Can check your apps, restart one that is stuck, and arrange your dashboard. Every dashboard change can be undone under Customize.',
-      off: 'Cannot see your apps or your dashboard.',
-      see: 'Can check how your apps are doing and look at your dashboard.',
-    }[level];
-  }
-  if (level === 'off') return `Cannot use ${source.name}.`;
-  const allowed = source.tools.filter(isOffered).filter((tool) => (level === 'act' ? true : tool.kind === 'read'));
-  const notes = [...new Set(allowed.map((tool) => tool.note).filter(Boolean))].join(' ');
-  const verb = level === 'act' ? 'Can look things up and make changes, up to 30 an hour,' : 'Can look things up';
-  return `${verb} in ${source.name}.${notes ? ` ${notes}` : ''}`;
-}
-
-// The first time an app is opened to any AI, it has to give MOS an access token once.
+// The first time an app is opened to any assistant, it gives MOS an access token once.
 // Asked here, at the moment it matters, rather than as a field of its own.
 function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave: (token: string) => Promise<string>; source: AiSource }) {
   const [draft, setDraft] = useState('');
@@ -85,16 +55,16 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 
   const tokenPage = source.token?.tokenPageUrl;
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
-    <Notice title={`Enable AI access for ${source.name}`} variant="info">
-      <p>{source.name} keeps its own sign-in, so it needs to give MOS an access token once. {source.token?.hint || `Create an access token in ${source.name}.`} Then paste the token here.</p>
+    <Notice title={`Connect ${source.name} once`} variant="info">
+      <p>{source.name} has its own sign-in, so MOS needs a {source.name} access token to reach it for your assistants. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
       {tokenPage ? <p><a className="mos-link" href={tokenPage} rel="noreferrer" target="_blank">Create the token in {source.name}<Icon name="external" /></a></p> : null}
-      <p>The token stays on your suite and is never given to an AI. MOS passes on only what you allow here.</p>
+      <p>The token stays on your suite. No assistant ever sees it.</p>
     </Notice>
     <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
     {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
     <div className="suite-ai-token-actions">
       <button className="mos-btn mos-btn-ghost" disabled={saving} onClick={onCancel} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking...' : 'Save'}</button>
+      <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking…' : 'Save'}</button>
     </div>
   </form>;
 }
@@ -102,98 +72,167 @@ function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave:
 type SetupChoice = 'off' | 'setup';
 const SETUP_OPTIONS: Array<{ label: string; value: SetupChoice }> = [{ label: 'Off', value: 'off' }, { label: 'Set up', value: 'setup' }];
 
-// Until the app has given MOS a token, the switch offers only Set up, so it never shows
-// a level that cannot take effect; the levels appear once the token is accepted.
 export function AppName({ id, name }: { id: string; name: string }) {
   return <span className="suite-ai-source-name"><img alt="" height="28" src={sourceIconUrl(id)} width="28" />{name}</span>;
 }
 
-function SourceLevel({ busy, client, onCustomize, onLevel, onSourceToken, source }: {
-  busy: boolean;
+// Suite Manager's level covers every app, so its help says so.
+const BUILTIN_HELP: Record<AiLevel, ReactNode> = {
+  off: 'Cannot check how your apps are doing, read their logs, or see your dashboard or AI activity.',
+  see: 'Can check how every app is doing, read every app\'s recent logs to look into a problem, look at your dashboard, and see what your AI assistants did. Logs can name your files and the people who use your apps, also in apps set to Off here. Passwords and keys MOS knows are masked.',
+  act: <>Can also restart any app and rearrange your dashboard, including removing links. MOS keeps the last 20 dashboard versions under <a className="mos-link" href={DASHBOARD_HISTORY_PATH}>History</a>, so recent changes can be undone.</>,
+};
+
+function SourceLabel({ client, source }: { client: AiClient; source: AiSource }) {
+  return <>
+    <AppName id={source.id} name={source.name} />
+    {customizedTools(client, source).length ? <> <span className="mos-pill">Custom</span></> : null}
+  </>;
+}
+
+// Until the app has given MOS a token, the switch offers only Set up, so it never shows
+// a level that cannot take effect; the levels appear once the token is accepted.
+function TokenLevel({ client, disabled, onSourceToken, source }: { client: AiClient; disabled: boolean; onSourceToken: (token: string) => Promise<string>; source: AiSource }) {
+  const [settingUp, setSettingUp] = useState(false);
+  return <>
+    <Row help={tokenHelp(source, levelOf(client, source.id))} label={<SourceLabel client={client} source={source} />}>
+      <Segmented<SetupChoice> disabled={disabled} label={`${source.name} for ${client.name}`} onChange={(choice) => setSettingUp(choice === 'setup')} options={SETUP_OPTIONS} value={settingUp ? 'setup' : 'off'} />
+    </Row>
+    {settingUp ? <TokenStep onCancel={() => setSettingUp(false)} onSave={onSourceToken} source={source} /> : null}
+  </>;
+}
+
+function SourceLevel({ client, disabled, failure, onCustomize, onLevel, onSourceToken, source }: {
   client: AiClient;
+  disabled: boolean;
+  failure: string | undefined;
   onCustomize: () => void;
   onLevel: (level: AiLevel) => void;
   onSourceToken: (token: string) => Promise<string>;
   source: AiSource;
 }) {
-  const [settingUp, setSettingUp] = useState(false);
-  const level = levelOf(client, source.id);
-  const locked = needsToken(source);
-  useEffect(() => { if (!locked) setSettingUp(false); }, [locked]);
+  if (needsToken(source)) return <><TokenLevel client={client} disabled={disabled} onSourceToken={onSourceToken} source={source} /><FailedChange message={failure} /></>;
 
-  const custom = customizedTools(client, source).length > 0;
-  const offered = source.tools.some(isOffered);
-  const lostToken = locked && level !== 'off';
-  const label = <>
-    <AppName id={source.id} name={source.name} />
-    {custom ? <> <span className="mos-pill">Custom</span></> : null}
-    {source.tools.some(needsReview) ? <> <span className="mos-pill mos-pill-warning">Needs review</span></> : null}
-    {lostToken ? <> <span className="mos-pill mos-pill-warning">Needs a token</span></> : null}
+  const level = levelOf(client, source.id);
+  const help = source.builtin ? BUILTIN_HELP[level] : appHelp(client, source);
+  const customize = source.tools.some(isOffered)
+    ? <button aria-label={`Customize ${source.name} for ${client.name}`} className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button>
+    : undefined;
+  return <>
+    <Row aside={customize} help={help} label={<SourceLabel client={client} source={source} />}>
+      <Segmented<AiLevel> disabled={disabled} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
+    </Row>
+    <FailedChange message={failure} />
   </>;
-  if (locked) {
-    const help = lostToken
-      ? `${source.name} no longer accepts the token MOS has, so no AI can use it right now. Set it up again to continue.`
-      : `Needs one step in ${source.name} before an AI can use it.`;
-    return <>
-      <Row help={help} label={label}>
-        <Segmented<SetupChoice> disabled={busy} label={`${source.name} for ${client.name}`} onChange={(choice) => setSettingUp(choice === 'setup')} options={SETUP_OPTIONS} value={settingUp ? 'setup' : 'off'} />
-      </Row>
-      {settingUp ? <TokenStep onCancel={() => setSettingUp(false)} onSave={onSourceToken} source={source} /> : null}
-    </>;
-  }
-  const help = <>{levelHelp(source, level)}{offered ? <> <button className="mos-link suite-link-button" onClick={onCustomize} type="button">Customize</button></> : null}</>;
-  return <Row help={help} label={label}>
-    <Segmented<AiLevel> disabled={busy} label={`${source.name} for ${client.name}`} onChange={onLevel} options={LEVEL_OPTIONS} value={level} />
-  </Row>;
 }
 
-export function ClientItem({ actions, busy, changed, client, expanded, onToggle, sources, tunnel }: {
+function offeredTools(client: AiClient, source: AiSource) {
+  if (!client.enabled || !source.running || needsToken(source)) return 0;
+  return source.tools.filter((tool) => isOffered(tool) && tool.review === 'pinned' && toolAllowed(client, source.id, tool)).length;
+}
+
+function shortDate(at: string) {
+  return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function connectionFacts(client: AiClient, sources: AiSource[], mcpUrl: string | null, tunnel: AiTunnel | null): AdvancedFact[] {
+  const viaTunnel = client.route === 'tunnel';
+  const offered = sources.map((source) => ({ count: offeredTools(client, source), name: source.name })).filter((entry) => entry.count);
+  const total = offered.reduce((sum, entry) => sum + entry.count, 0);
+  const lastRequest = client.lastUsedAt ? ` · last request ${contactWhen(client.lastUsedAt)}` : '';
+  return [
+    { label: 'Route', value: viaTunnel ? `OpenAI tunnel (${tunnel?.tunnelId ?? 'not set up'})` : 'Direct (bearer token)' },
+    ...(!viaTunnel && mcpUrl ? [{ code: true, label: 'MCP address', value: mcpUrl }] : []),
+    { label: 'Transport', value: `Streamable HTTP · POST, JSON · ${viaTunnel ? 'key in X-MOS-Gateway-Key' : 'bearer token in Authorization'}` },
+    { label: 'Tools offered', value: [String(total), offered.map((entry) => `${entry.name} ${entry.count}`).join(', ')].filter(Boolean).join(' · ') },
+    { label: viaTunnel ? 'Gateway key' : 'Token', value: `Created ${shortDate(client.createdAt)}${lastRequest}` },
+  ];
+}
+
+function BrokenTunnel({ client, onRemove }: { client: AiClient; onRemove: () => void }) {
+  return <Notice title={`${client.name} cannot reach your suite`} variant="warning">
+    <p>OpenAI stopped accepting the tunnel MOS keeps open for {client.name}. Remove {client.name} here, then add it again with a new tunnel and key. The MOS plugin in {client.name} can stay as it is.</p>
+    <p><button className="mos-btn mos-btn-secondary" onClick={onRemove} type="button">Remove {client.name}</button></p>
+  </Notice>;
+}
+
+function RowFooter({ busy, client, onToggleEnabled }: { busy: boolean; client: AiClient; onToggleEnabled: () => void }) {
+  const activityPath = `${AI_ACTIVITY_PATH}?assistant=${encodeURIComponent(client.id)}`;
+  return <>
+    {client.route === 'tunnel' ? <DestinationLine variant="internet">What {client.name} reads is sent to OpenAI.</DestinationLine> : null}
+    <div className="suite-ai-limits">
+      <p>Up to 30 changes an hour. Tools that delete your data or share it are never offered.</p>
+      <span className="suite-ai-limits-actions">
+        {client.lastUsedAt ? <a className="mos-link" href={activityPath} onClick={navigateOnClick(activityPath)}>See what {client.name} did<Icon name="arrow-right" /></a> : null}
+        <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onToggleEnabled} type="button">{client.enabled ? 'Turn off' : 'Turn on'} {client.name}</button>
+      </span>
+    </div>
+  </>;
+}
+
+function rowPills(client: AiClient, sources: AiSource[], tunnel: AiTunnel | null, mcpUrl: string | null) {
+  const unreachable = tunnelBroken(client, tunnel) || (client.route === 'direct' && !mcpUrl);
+  const reviewWaiting = sources.some((source) => levelOf(client, source.id) !== 'off' && source.tools.some(needsReview));
+  const pills = [unreachable ? 'Not working' : null, !unreachable && holdsOldAddress(client, mcpUrl) ? 'Old address' : null, reviewWaiting ? 'Needs review' : null].filter(Boolean);
+  return pills.length ? <>{pills.map((pill, index) => <span key={pill}>{index ? ' ' : null}<span className="mos-pill mos-pill-warning">{pill}</span></span>)}</> : undefined;
+}
+
+export function ClientItem({ actions, busy, changed, client, expanded, failures, mcpUrl, onToggle, sources, tunnel }: {
   actions: ClientActions;
   busy: boolean;
   changed: boolean;
   client: AiClient;
   expanded: boolean;
+  failures: Partial<Record<FailureSpot, string>>;
+  mcpUrl: string | null;
   onToggle: () => void;
   sources: AiSource[];
   tunnel: AiTunnel | null;
 }) {
   const [customizing, setCustomizing] = useState('');
   const [choosingDefault, setChoosingDefault] = useState(false);
-  const reviewWaiting = sources.some((source) => levelOf(client, source.id) !== 'off' && source.tools.some(needsReview));
+  const [showingAddress, setShowingAddress] = useState(false);
+  const broken = tunnelBroken(client, tunnel);
+  const oldAddress = holdsOldAddress(client, mcpUrl);
   const menu = <ActionMenu ariaLabel={`More for ${client.name}`} disabled={busy} items={[
-    ...(client.route === 'direct' ? [{ label: 'New token', onSelect: actions.onRotate }] : []),
-    { label: 'Apps you add later…', onSelect: () => setChoosingDefault(true) },
+    ...(oldAddress ? [{ label: 'Show the new address', onSelect: () => setShowingAddress(true) }] : []),
+    ...(client.route === 'direct' && mcpUrl ? [{ label: 'Make a new token', onSelect: actions.onRotate }] : []),
+    { label: 'For apps you install later…', onSelect: () => setChoosingDefault(true) },
     { label: client.enabled ? 'Turn off' : 'Turn on', onSelect: actions.onToggleEnabled },
     { label: 'Remove', onSelect: actions.onRemove },
   ]} />;
   const customizeSource = sources.find((source) => source.id === customizing);
+  const turnOnTunnel = tunnel?.state === 'off' ? <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={actions.onStartTunnel} type="button">Turn on the tunnel</button> : undefined;
 
   return <PanelItem flush quiet={!client.enabled}>
-    <DisclosureRow expanded={expanded} label={`${expanded ? 'Hide' : 'Show'} what ${client.name} may use`} onToggle={onToggle} trailing={<>
-      {tunnelBroken(client, tunnel) ? <span className="mos-pill mos-pill-warning">Needs to be set up again</span> : null}
-      {reviewWaiting ? <span className="mos-pill mos-pill-warning">Needs review</span> : null}
-      {menu}
-    </>}>
-      <span className="suite-source-main">
-        <strong className="suite-ai-client-name">{client.name}<Avatar {...avatarOf(client.name)} small /></strong>
-        <span className="suite-meta">{clientMeta(client, sources, tunnel)}</span>
-      </span>
+    <DisclosureRow aside={rowPills(client, sources, tunnel, mcpUrl)} expanded={expanded} lead={<Avatar {...avatarOf(client.name)} />} onToggle={onToggle} trailing={menu}>
+      <strong>{client.name}</strong>
+      <span className="suite-meta">{clientMeta(client, sources, tunnel)}</span>
+      {oldAddress ? <span className="suite-meta">{oldAddressHelp(client)}</span> : null}
     </DisclosureRow>
     {expanded ? <div className="suite-ai-grants">
-      {tunnelBroken(client, tunnel) ? <Notice title={`${client.name} needs to be set up again`} variant="warning">
-        <p>OpenAI no longer lets {client.name} reach your suite, so it cannot use your apps. Remove {client.name} here and add it again to set it up anew. Your {client.name} connector stays as it is.</p>
-      </Notice> : tunnel && tunnel.state !== 'connected' ? <>
-        <TunnelStatus tunnel={tunnel} />
-        {tunnel.state === 'off' ? <p><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={actions.onStartTunnel} type="button">Turn on the tunnel</button></p> : null}
-      </> : null}
+      {broken ? <BrokenTunnel client={client} onRemove={actions.onRemove} /> : tunnel && tunnel.state !== 'connected' ? <TunnelStatus action={turnOnTunnel} tunnel={tunnel} /> : null}
       {tunnel && !client.lastUsedAt ? <ChatGptSteps /> : null}
-      {sources.length ? <Rows>
-        {sources.map((source) => <SourceLevel busy={busy} client={client} key={source.id} onCustomize={() => setCustomizing(source.id)} onLevel={(level) => actions.onLevel(source.id, level)} onSourceToken={(token) => actions.onSourceToken(source.id, token)} source={source} />)}
-      </Rows> : <p className="suite-meta">None of your installed apps can be used by an AI yet.</p>}
-      {changed ? <p className="suite-meta">{client.name} may need to reload its tool list to see the change.</p> : null}
+      <Rows>
+        {sources.map((source) => <SourceLevel
+          client={client}
+          disabled={busy || broken}
+          failure={failures[`level:${source.id}`]}
+          key={source.id}
+          onCustomize={() => setCustomizing(source.id)}
+          onLevel={(level) => actions.onLevel(source.id, level)}
+          onSourceToken={(token) => actions.onSourceToken(source.id, token)}
+          source={source}
+        />)}
+      </Rows>
+      <p className="suite-meta suite-ai-reload" role="status">{changed ? reloadHint(client) : null}</p>
+      <RowFooter busy={busy} client={client} onToggleEnabled={actions.onToggleEnabled} />
+      <FailedChange message={failures.row} />
+      <AdvancedPanel facts={connectionFacts(client, sources, mcpUrl, tunnel)} reveal="technical-mode" summary="Connection details" />
     </div> : null}
-    {customizeSource ? <CustomizeDialog actions={actions} busy={busy} client={client} onClose={() => setCustomizing('')} source={customizeSource} /> : null}
+    {customizeSource ? <CustomizeDialog actions={actions} busy={busy} client={client} failure={failures[`tools:${customizeSource.id}`]} onClose={() => setCustomizing('')} source={customizeSource} /> : null}
     {choosingDefault ? <DefaultLevelDialog busy={busy} client={client} onChange={actions.onDefaultLevel} onClose={() => setChoosingDefault(false)} /> : null}
+    {showingAddress && mcpUrl ? <NewAddressDialog client={client} mcpUrl={mcpUrl} onClose={() => setShowingAddress(false)} /> : null}
   </PanelItem>;
 }
 
@@ -206,8 +245,8 @@ function ToolSwitch({ busy, client, onAccept, onException, source, tool }: {
   tool: AiTool & { kind: OfferedKind };
 }) {
   if (tool.review !== 'pinned') {
-    return <Row help={`Changed in a ${source.name} update. It stays off until you accept it.`} label={<>{tool.title} <span className="mos-pill mos-pill-warning">Needs review</span></>}>
-      <RowTrailing><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onAccept} type="button">Accept</button></RowTrailing>
+    return <Row help={`Changed in a ${source.name} update. It stays off for every assistant until you accept it.`} label={<>{tool.title} <span className="mos-pill mos-pill-warning">Needs review</span></>}>
+      <RowTrailing><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onAccept} type="button">Accept for every assistant</button></RowTrailing>
     </Row>;
   }
   const allowed = toolAllowed(client, source.id, tool);
@@ -227,22 +266,22 @@ function ToolSwitch({ busy, client, onAccept, onException, source, tool }: {
 }
 
 function neverOfferedLine(source: AiSource) {
-  const never = source.tools.filter((tool) => !isOffered(tool)).map((tool) => lowerFirst(tool.title));
+  const never = source.tools.filter((tool) => !isOffered(tool)).map((tool) => tool.title.charAt(0).toLowerCase() + tool.title.slice(1));
   return never.length
-    ? `Never offered to an AI: ${never.join(', ')}, and anything else that deletes or shares with others.`
-    : 'Never offered to an AI: anything that deletes or shares with others.';
+    ? `Never offered to an AI: ${never.join(', ')}, and anything else that deletes your data or shares it.`
+    : 'Never offered to an AI: anything that deletes your data or shares it.';
 }
 
-function CustomizeDialog({ actions, busy, client, onClose, source }: { actions: ClientActions; busy: boolean; client: AiClient; onClose: () => void; source: AiSource }) {
-  const level = levelOf(client, source.id);
+function CustomizeDialog({ actions, busy, client, failure, onClose, source }: { actions: ClientActions; busy: boolean; client: AiClient; failure: string | undefined; onClose: () => void; source: AiSource }) {
+  const level = levelLabel(levelOf(client, source.id));
   const title = `${source.name} for ${client.name}`;
   const offered = source.tools.filter(isOffered);
   return <Dialog
     footer={<>
-      <button className="mos-btn mos-btn-ghost" disabled={busy || !customizedTools(client, source).length} onClick={() => actions.onReset(source.id)} type="button">Reset to {LEVEL_LABEL[level]}</button>
+      <button className="mos-btn mos-btn-ghost" disabled={busy || !customizedTools(client, source).length} onClick={() => actions.onReset(source.id)} type="button">Reset to {level}</button>
       <button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>
     </>}
-    header={<div><h2>{title}</h2><p className="suite-meta">Set to {LEVEL_LABEL[level]}. Change single tools here.</p></div>}
+    header={<div><h2>{title}</h2><p className="suite-meta">Set to {level}. Change single tools here.</p></div>}
     onClose={onClose}
     title={title}
   >
@@ -256,26 +295,30 @@ function CustomizeDialog({ actions, busy, client, onClose, source }: { actions: 
             busy={busy}
             client={client}
             key={tool.name}
-            onAccept={() => actions.onAccept(tool.name)}
-            onException={(exception) => actions.onException(tool.name, exception)}
+            onAccept={() => actions.onAccept(source.id, tool.name)}
+            onException={(exception) => actions.onException(source.id, tool.name, exception)}
             source={source}
             tool={tool}
           />)}</Rows>
         </div>;
       })}
-      {source.error ? <Notice title={`MOS could not read what ${source.name} offers`} variant="warning"><p>{source.error}</p></Notice> : null}
+      <FailedChange message={failure} />
+      {source.error ? <p className="suite-meta">MOS cannot reach {source.name}&apos;s tools right now, so no assistant can use them. {source.error}</p> : null}
       <p className="suite-meta">{neverOfferedLine(source)}</p>
     </div>
   </Dialog>;
 }
 
 function DefaultLevelDialog({ busy, client, onChange, onClose }: { busy: boolean; client: AiClient; onChange: (level: AiLevel) => void; onClose: () => void }) {
-  return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>} onClose={onClose} title="Apps you add later">
-    <Rows>
-      <Row help={`What ${client.name} may do in an app you install from now on. Apps you already have keep their own setting.`} label="Start new apps as">
-        <Segmented<AiLevel> disabled={busy} label={`Apps added later for ${client.name}`} onChange={onChange} options={LEVEL_OPTIONS} value={client.defaultLevel} />
-      </Row>
-    </Rows>
+  return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>} onClose={onClose} title="For apps you install later">
+    <div className="suite-settings-form">
+      <p>Choose what {client.name} may do in apps you install from now on. Off unless you change it.</p>
+      <Rows>
+        <Row help="Apps you already have keep their own setting." label="Start new apps as">
+          <Segmented<AiLevel> disabled={busy} label={`Apps installed later for ${client.name}`} onChange={onChange} options={LEVEL_OPTIONS} value={client.defaultLevel} />
+        </Row>
+      </Rows>
+    </div>
   </Dialog>;
 }
 
@@ -291,13 +334,13 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
-      <button className="mos-btn mos-btn-primary" disabled={busy || !draft.trim()} form="suite-ai-source-token" type="submit">{busy ? 'Checking...' : 'Save'}</button>
+      <button className="mos-btn mos-btn-primary" disabled={busy || !draft.trim()} form="suite-ai-source-token" type="submit">{busy ? 'Checking…' : 'Save'}</button>
     </>}
     onClose={() => { if (!busy) onClose(); }}
-    title={configured ? `Replace the ${source.name} token` : `Enable AI access for ${source.name}`}
+    title={configured ? `Replace the ${source.name} token` : `Connect ${source.name} once`}
   >
     <form className="suite-settings-form" id="suite-ai-source-token" onSubmit={submit}>
-      <p>{source.name} keeps its own sign-in, so it needs to give MOS an access token once. The token stays on your suite and is never given to an AI. MOS passes on only what you allow here.</p>
+      <p>{source.name} has its own sign-in, so MOS needs a {source.name} access token to reach it for your assistants. The token stays on your suite. No assistant ever sees it.</p>
       <TextInput autoComplete="new-password" autoFocus helperText={source.token?.hint || undefined} label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
       {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
     </form>
@@ -307,14 +350,24 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
 export function NewTokenDialog({ client, mcpUrl, onClose, token }: { client: AiClient; mcpUrl: string; onClose: () => void; token: string }) {
   return <Dialog footer={<button className="mos-btn mos-btn-primary" onClick={onClose} type="button">Done</button>} onClose={onClose} title={`New token for ${client.name}`}>
     <div className="suite-settings-form">
-      <p>The old token no longer works. Set {client.name} up again with this one.</p>
-      <ConnectInstructions mcpUrl={mcpUrl} token={token} />
-      <PrivacyLine />
+      <p>The old token no longer works. Paste this one into {client.name}&apos;s MCP settings.</p>
+      <ConnectDetails mcpUrl={mcpUrl} token={token} />
+      <AssistantDestination />
     </div>
   </Dialog>;
 }
 
-export function RemoveClientDialog({ busy, client, onClose, onRemove }: { busy: boolean; client: AiClient; onClose: () => void; onRemove: () => void }) {
+function NewAddressDialog({ client, mcpUrl, onClose }: { client: AiClient; mcpUrl: string; onClose: () => void }) {
+  return <Dialog onClose={onClose} title={`New address for ${client.name}`}>
+    <div className="suite-settings-form">
+      <p>Your suite moved. Replace the address in {client.name}; the token stays the same.</p>
+      <AddressField mcpUrl={mcpUrl} />
+      <AssistantDestination />
+    </div>
+  </Dialog>;
+}
+
+export function RemoveClientDialog({ busy, client, error, onClose, onRemove }: { busy: boolean; client: AiClient; error: string; onClose: () => void; onRemove: () => void }) {
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
@@ -323,7 +376,10 @@ export function RemoveClientDialog({ busy, client, onClose, onRemove }: { busy: 
     onClose={() => { if (!busy) onClose(); }}
     title={`Remove ${client.name}?`}
   >
-    <p>{client.name} can no longer reach your apps through MOS, and what it may use is forgotten. Anything it already did in your apps stays, and so does its history under AI activity. To pause it instead, turn it off.</p>
+    <div className="suite-settings-form">
+      <p>{client.name} can no longer reach your apps through MOS, and what it may use is forgotten. Anything it already did with your apps stays, and so does its history under AI activity. To pause it instead, turn it off.</p>
+      {error ? <Notice title={`${client.name} could not be removed`} variant="error"><p>{error}</p></Notice> : null}
+    </div>
   </Dialog>;
 }
 
@@ -331,3 +387,4 @@ export function tokenLine(source: AiSource) {
   if (!source.token?.configured) return `AI access is not enabled yet: ${source.name} needs to give MOS an access token.`;
   return source.token.verifiedAt ? `Accepted by ${source.name}. Last checked: ${whenWords(source.token.verifiedAt)}.` : 'Token saved.';
 }
+

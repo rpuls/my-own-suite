@@ -301,6 +301,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'homepage-checkpoints',
     'ai-activity-repeats',
     'ai-services',
+    'ai-client-issued-url',
   ]);
   upgraded.close();
 });

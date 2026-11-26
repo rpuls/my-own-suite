@@ -27,7 +27,7 @@ export type TimelineRequest = {
   steps: TimelineStep[];
 };
 
-export type TimelineDay = { changes: number; key: string; requests: TimelineRequest[]; title: string };
+export type TimelineDay = { actions: number; changes: number; key: string; requests: TimelineRequest[]; title: string };
 
 const PAST_TENSE: Record<string, string> = {
   add: 'Added', change: 'Changed', check: 'Checked', create: 'Created', delete: 'Deleted', download: 'Downloaded',
@@ -40,8 +40,8 @@ const PAST_TENSE: Record<string, string> = {
 const REFUSAL_WORDS: Partial<Record<AiOutcome, string>> = {
   'limit-reached': 'Over 30 changes in an hour, so nothing happened',
   'needs-review': 'Waiting for your review, so nothing happened',
-  'never-offered': 'Never offered to an AI, so nothing happened',
-  'not-allowed': 'Not allowed for this AI, so nothing happened',
+  'never-offered': 'Never offered to an assistant, so nothing happened',
+  'not-allowed': 'Not allowed for this assistant, so nothing happened',
   'too-large': 'Too large to pass on, so nothing happened',
 };
 
@@ -117,7 +117,7 @@ export function timelineOf(entries: AiActivityEntry[], now = new Date()): Timeli
     const at = new Date(entry.at).getTime();
     let day = days.at(-1);
     if (!day || day.key !== dayKey(entry.at)) {
-      day = { changes: 0, key: dayKey(entry.at), requests: [], title: dayTitle(entry.at, now) };
+      day = { actions: 0, changes: 0, key: dayKey(entry.at), requests: [], title: dayTitle(entry.at, now) };
       days.push(day);
       request = null;
     }
@@ -131,6 +131,7 @@ export function timelineOf(entries: AiActivityEntry[], now = new Date()): Timeli
     const next = request.steps[0];
     if (next && next.text === step.text && next.tone === step.tone && next.detail === step.detail && !step.undoable) next.count += step.count;
     else request.steps.unshift(step);
+    day.actions += step.count;
     if (step.tone === 'change') day.changes += step.count;
   }
   return days;

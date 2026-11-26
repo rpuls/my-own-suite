@@ -54,7 +54,7 @@ class AiGateway {
       send(response, 403, { error: 'Browser pages cannot use this address.' });
       return;
     }
-    const client = this.connections.authenticate(presentedToken(request));
+    const client = this.connections.authenticate(presentedToken(request), request.headers['x-forwarded-host'] ?? request.headers.host ?? null);
     if (!client) {
       this.connections.recordRejectedClient(Date.now() - started);
       send(response, 401, { error: 'Unknown AI. Connect it in My Own Suite under Settings → AI assistants.' }, { 'WWW-Authenticate': 'Bearer' });

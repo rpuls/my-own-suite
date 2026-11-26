@@ -1,0 +1,12 @@
+---
+// The suite's house with the MOS mark, as AiDirectionPicture.astro draws it on either side of the arrow.
+import { AI_PICTURE, SUITE_MARK } from '../lib/ai-drawing'
+
+const { core, dots, place, rays } = SUITE_MARK
+---
+
+<path class="s" d={AI_PICTURE.house} />
+<svg class="mark" viewBox="0 0 100 100" {...place}>
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="6.5"><path d={rays} /><rect {...core} /></g>
+  <g fill="currentColor">{dots.map(([cx, cy]) => <circle cx={cx} cy={cy} r="13" />)}</g>
+</svg>

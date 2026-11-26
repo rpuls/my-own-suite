@@ -1,7 +1,12 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
+import { AI_DIRECTION_WORDS, AI_ICON_PATHS, AI_PICTURE, AI_PICTURE_VIEWBOX, SUITE_MARK, type AiDirection, type AiIconName, type AiPictureSize } from './ai-drawing';
 
-export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'check' | 'chevron-right' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+export type IconName = 'alert' | 'apps' | 'arrow-right' | 'backup' | 'braces' | 'chat-spark' | 'check' | 'chevron-right' | 'chip-spark' | 'cloud-bucket' | 'cloud-sparkle' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'download' | 'external' | 'eye' | 'eye-off' | 'file' | 'folder' | 'globe' | 'hard-drive' | 'home' | 'info' | 'key' | 'lock' | 'mail' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'search' | 'settings' | 'shield' | 'sign-out' | 'sparkle' | 'update' | 'upload' | 'usb-drive' | 'usb-stick' | 'x';
+
+function aiIcon(name: AiIconName) {
+  return <>{AI_ICON_PATHS[name].map((d) => <path d={d} key={d} />)}</>;
+}
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -10,8 +15,10 @@ export function Icon({ name }: { name: IconName }) {
     'arrow-right': <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     braces: <><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1" /><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" /></>,
+    'chat-spark': aiIcon('chat-spark'),
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
+    'chip-spark': aiIcon('chip-spark'),
     'cloud-bucket': <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6l1.8 12.2c.3 1.6 3 2.8 6.2 2.8s5.9-1.2 6.2-2.8L20 6" /><path d="M5.2 11c1.4 1.1 3.9 1.8 6.8 1.8s5.4-.7 6.8-1.8" /></>,
     'cloud-sparkle': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="m12 10.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>,
     'cloud-storage': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="M12 12v5" /><path d="m9.5 14.5 2.5-2.5 2.5 2.5" /></>,
@@ -26,6 +33,7 @@ export function Icon({ name }: { name: IconName }) {
     folder: <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" /></>,
     'hard-drive': <><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z" /><path d="M2 12h20" /><path d="M6 16h.01M10 16h.01" /></>,
+    home: <><path d="M3.5 11 12 4l8.5 7" /><path d="M5.5 9.5V19a1 1 0 0 0 1 1H10v-5.5h4V20h3.5a1 1 0 0 0 1-1V9.5" /></>,
     info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     lock: <><rect height="11" rx="2" width="16" x="4" y="11" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
@@ -82,6 +90,58 @@ export function AppConnect({ size = 'md', source, target }: { size?: 'md' | 'sm'
   </svg>;
 }
 
+function SuiteHouse() {
+  const { core, dots, place, rays } = SUITE_MARK;
+  return <>
+    <path className="s" d={AI_PICTURE.house} />
+    <svg className="mark" viewBox="0 0 100 100" {...place}>
+      <g fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="6.5"><path d={rays} /><rect {...core} /></g>
+      <g fill="currentColor">{dots.map(([cx, cy]) => <circle cx={cx} cy={cy} key={`${cx} ${cy}`} r="13" />)}</g>
+    </svg>
+  </>;
+}
+
+function AiChat() {
+  return <><path className="a" d={AI_PICTURE.chat} /><path className="spark" d={AI_PICTURE.chatSpark} /></>;
+}
+
+function AiCloud() {
+  return <g transform={AI_PICTURE.cloudFit}><path className="a" d={AI_PICTURE.cloud} /><path className="spark" d={AI_PICTURE.cloudSpark} /></g>;
+}
+
+// Who asks whom: a chat reaching into the suite, or the suite reaching out to an AI service. The site's
+// twin is AiDirectionPicture.astro. AppConnect draws app-to-app integration; the two never sit side by side.
+export function AiDirectionPicture({ direction, size }: { direction: AiDirection; size: AiPictureSize }) {
+  const inward = direction === 'in';
+  const { label, parties } = AI_DIRECTION_WORDS[direction];
+  return <svg aria-label={label} className={`mos-ai-pic is-${direction} is-${size}`} role="img" viewBox={AI_PICTURE_VIEWBOX[size]}>
+    {inward ? <AiChat /> : <SuiteHouse />}
+    <path className="beam" d={AI_PICTURE.beam} />
+    <path className="head" d={AI_PICTURE.head} />
+    <g transform={AI_PICTURE.answerer}>{inward ? <SuiteHouse /> : <AiCloud />}</g>
+    {size === 'lg' ? parties.map((party, index) => <text key={party} x={AI_PICTURE.labelX[index]} y={AI_PICTURE.labelY}>{party}</text>) : null}
+  </svg>;
+}
+
+export type Place = 'home' | 'internet' | 'private';
+
+const PLACE_ICON: Record<Place | 'depends', IconName> = { depends: 'info', home: 'home', internet: 'globe', private: 'lock' };
+
+// Where data goes, in one muted sentence. The house, lock and globe mean a place; `depends` names none.
+export function DestinationLine({ children, variant }: { children: ReactNode; variant: Place | 'depends' }) {
+  return <p className={`mos-destination is-${variant}`}><Icon name={PLACE_ICON[variant]} /><span>{children}</span></p>;
+}
+
+// Decorative: the row's own words name the place.
+export function PlaceTile({ place }: { place: Place }) {
+  return <span aria-hidden="true" className={`mos-place-tile is-${place}`}><Icon name={PLACE_ICON[place]} /></span>;
+}
+
+// Decorative, in a Row label: the label's own words name the subject.
+export function IconTile({ icon }: { icon: IconName }) {
+  return <span aria-hidden="true" className="mos-icon-tile"><Icon name={icon} /></span>;
+}
+
 export function Drawer({ children, onClose, open, title }: { children: ReactNode; onClose: () => void; open: boolean; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -108,8 +168,10 @@ export function Drawer({ children, onClose, open, title }: { children: ReactNode
   );
 }
 
-export function TextInput({ helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: ReactNode; label: string }) {
-  return <label className="suite-control"><span className="suite-field-label">{label}</span><input className="suite-input" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+// `helperTone` "error" is for a value that cannot work and blocks the form; "warning" for one that may not.
+export function TextInput({ helperText, helperTone = 'muted', label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: ReactNode; helperTone?: 'error' | 'muted' | 'warning'; label: string }) {
+  const help = helperText ? <span className={`suite-control-help${helperTone === 'muted' ? '' : ` is-${helperTone}`}`} role={helperTone === 'error' ? 'alert' : undefined}>{helperText}</span> : null;
+  return <label className="suite-control"><span className="suite-field-label">{label}</span><input className="suite-input" {...props} />{help}</label>;
 }
 
 // A field with the one action that acts on it. Only the input and the button
@@ -201,21 +263,23 @@ export function ChoiceRow({ accent = false, children, disabled = false, icon, on
 // A row that opens to more: icon first, chevron last, and the whole row one
 // hit target. The head button stretches over the row; anything that acts on the
 // row goes in `trailing`, above it rather than inside a button. Its look is
-// .mos-disclosure in the branding stylesheet.
-export function DisclosureRow({ aside, children, disabled = false, expanded, icon, label, onToggle, trailing }: {
+// .mos-disclosure in the branding stylesheet. A state pill goes in `aside`, so it is announced with the row.
+export function DisclosureRow({ aside, children, disabled = false, expanded, icon, label, lead, onToggle, trailing }: {
   aside?: ReactNode;
   children: ReactNode;
   disabled?: boolean;
   expanded: boolean;
-  icon?: IconName;
   // The button's accessible name where its content does not say what it opens.
   label?: string;
   onToggle: () => void;
   trailing?: ReactNode;
-}) {
+} & (
+  | { icon?: IconName; lead?: undefined }
+  | { icon?: undefined; lead: ReactNode }
+)) {
   return <div className={`mos-disclosure${expanded ? ' is-expanded' : ''}${disabled ? ' is-disabled' : ''}`}>
     <button aria-expanded={expanded} aria-label={label} className="mos-disclosure-head" disabled={disabled} onClick={onToggle} type="button">
-      {icon ? <span className="mos-disclosure-icon"><Icon name={icon} /></span> : null}
+      {lead ? <span className="mos-disclosure-lead">{lead}</span> : icon ? <span className="mos-disclosure-icon"><Icon name={icon} /></span> : null}
       <span className="mos-disclosure-body">{children}</span>
       {aside ? <span className="mos-disclosure-aside">{aside}</span> : null}
     </button>
@@ -321,27 +385,60 @@ export function Panel({ children, className, density = 'regular' }: {
 // icon as the page's own index. Only a titled head (`heading`) shows it.
 export const SectionIcon = createContext<IconName | null>(null);
 
-export function PanelHead({ actions, children, heading, title }: {
+// A titled head keeps its actions on the title row; `figure` sits beside them, or on its own line when narrow.
+export function PanelHead({ actions, children, figure, heading, title }: {
   actions?: ReactNode;
   children?: ReactNode;
+  figure?: ReactNode;
   heading?: 'h2' | 'h3';
   title: ReactNode;
 }) {
-  const Heading = heading;
   const icon = useContext(SectionIcon);
-  const titled = Heading ? <Heading className="mos-card-title">{title}</Heading> : null;
-  return <div className="mos-panel-head">
-    <div>
-      {titled && icon ? <div className="mos-panel-head-title"><span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span>{titled}</div> : titled ?? <p className="mos-eyebrow">{title}</p>}
-      {children}
+  const actionSlot = actions ? <div className="mos-panel-head-actions">{actions}</div> : null;
+  const figureSlot = figure ? <div className="mos-panel-head-figure">{figure}</div> : null;
+  if (!heading) {
+    return <div className="mos-panel-head">
+      <div><p className="mos-eyebrow">{title}</p>{children}</div>
+      {figureSlot}
+      {actionSlot}
+    </div>;
+  }
+  const Heading = heading;
+  // Focusable from code, so a closing dialog or a link from another card can land here.
+  const titled = <Heading className="mos-card-title" tabIndex={-1}>{title}</Heading>;
+  return <div className={`mos-panel-head mos-panel-head-titled${figure ? ' has-figure' : ''}`}>
+    <div className="mos-panel-head-grid">
+      <div className="mos-panel-head-title">{icon ? <span aria-hidden="true" className="mos-panel-head-icon"><Icon name={icon} /></span> : null}{titled}</div>
+      {figureSlot}
+      {actionSlot}
+      {children ? <div className="mos-panel-head-text">{children}</div> : null}
     </div>
-    {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}
   </div>;
+}
+
+// A detail inside a dialog that opens in place, one construction for every such disclosure.
+export function InlineDisclosure({ children, summary }: { children: ReactNode; summary: string }) {
+  const [open, setOpen] = useState(false);
+  return <Panel density="tight">
+    <PanelList>
+      <PanelItem flush>
+        <DisclosureRow expanded={open} onToggle={() => setOpen(!open)}><strong>{summary}</strong></DisclosureRow>
+        {open ? <div className="suite-inline-disclosure-body">{children}</div> : null}
+      </PanelItem>
+    </PanelList>
+  </Panel>;
+}
+
+// The line after a head's lead that names the exact technical term, for the reader who wants it.
+export function PanelHeadHood({ children }: { children: ReactNode }) {
+  return <p className="mos-panel-head-hood"><strong>Under the hood:</strong> {children}</p>;
 }
 
 // The one look a settings card's head action has, so no card picks its own
 // colour, size or icon. A guard test keeps raw buttons out of those heads.
-export function PanelHeadButton({ children, disabled, href, onClick }: {
+export function PanelHeadButton({ accessibleLabel, children, disabled, href, onClick }: {
+  // Must contain the visible word, such as "Add an AI assistant" for Add.
+  accessibleLabel?: string;
   children: ReactNode;
   disabled?: boolean;
   href?: string;
@@ -349,8 +446,8 @@ export function PanelHeadButton({ children, disabled, href, onClick }: {
 }) {
   const className = 'mos-btn mos-btn-secondary';
   return href
-    ? <a className={className} href={href}>{children}</a>
-    : <button className={className} disabled={disabled} onClick={onClick} type="button">{children}</button>;
+    ? <a aria-label={accessibleLabel} className={className} href={href}>{children}</a>
+    : <button aria-label={accessibleLabel} className={className} disabled={disabled} onClick={onClick} type="button">{children}</button>;
 }
 
 // A full-bleed strip that comments on the section next to it — a fact that
@@ -409,7 +506,8 @@ export function Rows({ children, lead = false }: { children: ReactNode; lead?: b
   return <div className={`mos-rows${lead ? ' mos-rows-lead' : ''}`}>{children}</div>;
 }
 
-export function Row({ children, help, helpTone = 'muted', label, layout = 'inline' }: {
+export function Row({ aside, children, help, helpTone = 'muted', label, layout = 'inline' }: {
+  aside?: ReactNode;
   children?: ReactNode;
   help?: ReactNode;
   helpTone?: 'invalid' | 'muted' | 'permanent';
@@ -419,9 +517,10 @@ export function Row({ children, help, helpTone = 'muted', label, layout = 'inlin
   // switch or a button, stays inline.
   layout?: 'inline' | 'stacked';
 }) {
+  const helpLine = help ? <p className={`mos-row-help${helpTone === 'permanent' ? ' mos-row-help-permanent' : ''}${helpTone === 'invalid' ? ' mos-row-invalid' : ''}`} role={helpTone === 'invalid' ? 'alert' : undefined}>{help}</p> : null;
   return <div className={`mos-row${layout === 'stacked' ? ' mos-row-stacked' : ''}`}>
     <div className="mos-row-main"><span className="mos-row-label">{label}</span>{children}</div>
-    {help ? <p className={`mos-row-help${helpTone === 'permanent' ? ' mos-row-help-permanent' : ''}${helpTone === 'invalid' ? ' mos-row-invalid' : ''}`} role={helpTone === 'invalid' ? 'alert' : undefined}>{help}</p> : null}
+    {aside ? <div className="mos-row-foot">{helpLine}<span className="mos-row-aside">{aside}</span></div> : helpLine}
   </div>;
 }
 
@@ -680,7 +779,30 @@ function keepFocusInside(container: HTMLElement, event: KeyboardEvent) {
   }
 }
 
-export function Dialog({ children, className, dismissible = true, footer, header, onClose, title }: { children: ReactNode; className?: string; dismissible?: boolean; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
+// Back to the opener, or its panel's heading when the opener is gone; skipped when focus is already somewhere.
+// A menu item gives focus back to its kebab before it opens a dialog, so the kebab is the opener.
+function focusReturn(opener: Element | null) {
+  const heading = opener?.closest('.mos-panel')?.querySelector<HTMLElement>('.mos-panel-head .mos-card-title') ?? null;
+  return () => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    if (document.activeElement !== opener && heading?.isConnected) heading.focus();
+  };
+}
+
+export function Dialog({ children, className, dismissible = true, footer, header, onClose, status, title }: {
+  children: ReactNode;
+  className?: string;
+  dismissible?: boolean;
+  footer?: ReactNode;
+  header?: ReactNode;
+  onClose: () => void;
+  // A wait or result beside the actions, announced politely. Pass it, even as null, from the first
+  // render: a live region that appears with its message is often not read out.
+  status?: ReactNode;
+  title: string;
+}) {
+  const [restoreFocus] = useState(() => focusReturn(document.activeElement));
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
@@ -698,8 +820,11 @@ export function Dialog({ children, className, dismissible = true, footer, header
       if (event.key === 'Tab' && dialogRef.current) keepFocusInside(dialogRef.current, event);
     };
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      restoreFocus();
+    };
+  }, [restoreFocus]);
   // Every dialog is header, body and optional footer; only the body scrolls,
   // and only vertically, so the title, × and actions never leave the screen.
   //
@@ -715,7 +840,7 @@ export function Dialog({ children, className, dismissible = true, footer, header
   // `position: fixed` centres it on the panel instead of the screen and its
   // frost blurs nothing. Screen-centred and frosted is the only correct result.
   return createPortal(
-    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && pressedBackdropRef.current && dismissibleRef.current && !editedRef.current) onCloseRef.current(); }} onPointerDown={(event) => { pressedBackdropRef.current = event.target === event.currentTarget; }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} onChange={() => { editedRef.current = true; }} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div><div className="suite-dialog-body">{children}</div>{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
+    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && pressedBackdropRef.current && dismissibleRef.current && !editedRef.current) onCloseRef.current(); }} onPointerDown={(event) => { pressedBackdropRef.current = event.target === event.currentTarget; }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} onChange={() => { editedRef.current = true; }} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div><div className="suite-dialog-body">{children}</div>{footer || status !== undefined ? <div className={`suite-dialog-footer${footer || status ? '' : ' is-empty'}`}>{status !== undefined ? <div className="suite-dialog-status" role="status">{status}</div> : null}{footer}</div> : null}</section></div>,
     document.body,
   );
 }
@@ -765,7 +890,7 @@ export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ar
     <button aria-expanded={Boolean(anchor)} aria-haspopup="menu" aria-label={ariaLabel} className="suite-icon-button" disabled={disabled} onClick={toggle} ref={buttonRef} title={ariaLabel} type="button"><Icon name="more" /></button>
     {anchor ? createPortal(
       <div className="mos-overlay suite-actions-popover" ref={menuRef} role="menu" style={{ right: anchor.right, top: anchor.top }}>
-        {items.map((item) => <button key={item.label} onClick={() => { setAnchor(null); item.onSelect(); }} role="menuitem" type="button">{item.label}</button>)}
+        {items.map((item) => <button key={item.label} onClick={() => { buttonRef.current?.focus(); setAnchor(null); item.onSelect(); }} role="menuitem" type="button">{item.label}</button>)}
       </div>,
       document.body,
     ) : null}
@@ -809,4 +934,12 @@ export function Spinner() {
 // A line of text still on its way, inside a .mos-pending panel; width is its expected share of the row.
 export function PendingLine({ width = '70%' }: { width?: string }) {
   return <span aria-hidden="true" className="mos-pending-line" style={{ '--mos-pending-width': width } as CSSProperties} />;
+}
+
+// A list row still on its way: a round mark where a who will lead it, the place tile's square where a where will.
+export function PendingRow({ lead, name, meta }: { lead: 'avatar' | 'tile'; meta: string; name: string }) {
+  return <PanelItem className="mos-pending-row">
+    <span aria-hidden="true" className={`mos-pending-mark mos-pending-lead is-${lead}`} />
+    <span className="mos-pending-lines"><PendingLine width={name} /><PendingLine width={meta} /></span>
+  </PanelItem>;
 }

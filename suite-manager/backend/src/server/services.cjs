@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { PUBLIC_CLOUD_FRONT_DOORS } = require('../../../../infrastructure/control-plane-runtime.cjs');
+const { PUBLIC_CLOUD_FRONT_DOORS, hostingTrack } = require('../../../../infrastructure/control-plane-runtime.cjs');
 const { AiConnectionsService } = require('../ai/ai-connections-service.cjs');
 const { ChatGptTunnel } = require('../ai/chatgpt-tunnel.cjs');
 const { AiGateway } = require('../ai/ai-gateway.cjs');
@@ -193,6 +193,7 @@ function createServices({
   // appUrls is built further down; it is read only once a request arrives.
   const aiServices = new AiServices({
     appPackages,
+    hostingTrack: hostingTrack(frontDoor),
     restartApp: (packageId) => appPackages.restartPackageRuntime(packageId, { ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),
     secretDir: appPackages.secretDir,
     serviceStore: new AiServiceStore(setup.store),

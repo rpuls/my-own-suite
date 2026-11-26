@@ -1,0 +1,115 @@
+---
+title: Use your apps from your AI chat
+description: Connect an AI assistant that can add a server, or ChatGPT, and choose per app what it may see and do. Tools that delete your data or share it are never offered.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+import AiFigure from '../../../../components/AiFigure.astro'
+import AiToolList from '../../../../components/AiToolList.astro'
+
+<AiFigure directions={['in']} />
+
+Ask your AI chat to look things up in your notes and documents, or to make changes for you. You decide, per assistant and per app, what it may see and do.
+
+:::note[Under the hood]
+Your suite is one MCP server at `https://<your suite>/ai/mcp`, for Suite Manager and every app that offers tools. Any MCP client connects with a bearer token of its own; ChatGPT connects through OpenAI's tunnel to the same server.
+:::
+
+## What an assistant can do here
+
+<AiToolList />
+
+## What it means for your privacy
+
+- **It is a door you open yourself:** no AI can use your apps until you add it here and set an app above Off.
+- **What an assistant reads goes to whoever runs its AI model:** usually an AI company, even when the program is installed on your computer. Only a model that runs on a computer of your own keeps it off any AI company's servers.
+- **ChatGPT:** what it reads is sent to OpenAI, through a connection your server keeps open to it.
+- **App tokens, such as Memos's, stay on your suite.** No assistant ever sees them.
+- **AI activity records which action an assistant tried and whether it ran,** never what was read or written.
+
+## Limits that always hold
+
+- **Tools that delete your data or share it are never offered.**
+- **At most 30 changes an hour for each assistant.**
+- **Only the tools MOS reviewed for each app are offered;** anything else an app's server lists is dropped. A new tool from an app update follows the level you chose, by the kind MOS reviewed for it. A tool whose description or inputs changed stays off for every assistant until you accept it under **Customize**.
+- **Nothing waits for your approval mid-chat:** anything that would need it is not offered.
+- **Changes overwrite what was there.** Recent dashboard changes can be undone under **History**, which keeps the last 20 versions; an assistant's own changes count towards those 20. Changes in other apps cannot be undone from MOS.
+- **What an assistant reads can contain instructions written by someone else,** like a letter you scanned. MOS marks it as data, but a model can still follow it within what you allowed, so give **See and do** only where that would be acceptable.
+
+## What you need
+
+- Your suite's **HTTPS address** (**Settings → Suite address**), and **an AI assistant that lets you add a server with an address and a token**: coding assistants, and chat programs installed on a computer. If your AI chat asks you to sign in to add a server, it cannot connect yet; most AI chats on a phone or tablet cannot.
+- Or **ChatGPT**, with an account on the OpenAI platform; it works without an HTTPS address, and you set it up on a computer.
+
+:::note[Under the hood]
+Remote MCP over Streamable HTTP (protocol 2025-03-26 or newer), JSON responses, a bearer token in the `Authorization` header. Static bearer tokens only: no OAuth, so clients that connect only through OAuth sign-in cannot connect. A client that connects from its company's servers rather than from your computer needs your suite's address to be reachable from the internet. Requests from a web page in a browser are refused.
+:::
+
+## Connect with an address and a token
+
+<Steps>
+
+1. **Settings → AI assistants → Add → With an address and a token.**
+
+2. Name it after the program and the computer it runs on, then press **Create token**.
+
+3. In the program, add your suite where it lists MCP servers (some call them connectors, tools or integrations): paste the address and the token, the header, or the setup block. **The token is shown once; keep it like a password.**
+
+   For Claude Code, one command does it:
+
+   ```sh wrap
+   claude mcp add --transport http mos <address> --header "Authorization: Bearer <token>"
+   ```
+
+4. Wait for "connected"; it changes by itself.
+
+5. Choose apps: **Off**, **See**, or **See and do**.
+
+</Steps>
+
+## Connect ChatGPT
+
+**Set it up on a computer: the last step is in ChatGPT on the web.**
+
+ChatGPT cannot reach your suite directly, so MOS runs OpenAI's tunnel client and keeps a connection open out to OpenAI. Nothing new is opened to the internet. What ChatGPT reads is sent to OpenAI.
+
+<Steps>
+
+1. On the OpenAI platform, create a tunnel and an API key: **Restricted**, with **Tunnels: Read and Use**.
+
+2. **Settings → AI assistants → Add → ChatGPT, through OpenAI's tunnel**, and paste both.
+
+3. In ChatGPT on the web: **Settings → Plugins → + → Add custom MCP server**. Name it **MOS**, set **Connection** to **Tunnel**, and choose **No authentication**. The tunnel is the lock, and MOS still checks every call against what you allowed.
+
+4. In a chat, mention **@MOS**. After you allow more, press **Refresh tools** in the plugin's settings.
+
+</Steps>
+
+## Off, See, See and do
+
+| Level | In that app, the assistant |
+| --- | --- |
+| **Off** | Cannot use the app's own tools |
+| **See** | Looks things up |
+| **See and do** | Also adds and changes things |
+
+Suite Manager's level covers every app: at **See** it can read every app's recent logs, at **See and do** it can restart any app. **Customize** allows or blocks single tools, also for an app at Off. **"For apps you install later"**, in an assistant's menu, sets what a new app starts as (Off unless you change it).
+
+## Apps that keep their own sign-in
+
+Memos asks for its own access token the first time you open it to any assistant. The token stays on your suite. No assistant ever sees it.
+
+## See what it did
+
+**AI activity** (start page → AI activity) shows what your assistants did. Actions close together share one card, and repeats are counted. It records which action an assistant tried and whether it ran or was refused, never what was read or written, and keeps it up to 90 days. A dashboard change carries an **Undo** link.
+
+## When something is wrong
+
+- **"Waiting for … to connect" does not change:** the address or token was not saved in the program, it cannot reach your suite's HTTPS address, or it cannot add a server by address and token at all. **A program that runs inside a browser tab cannot connect.**
+- **"Needs review":** an app update changed a tool; accept it under **Customize**.
+- **"Not working" (ChatGPT):** remove ChatGPT and add it again with a new tunnel.
+- **"Not working" (others):** your suite has no HTTPS address now; set one up again.
+- **"Old address":** your suite moved; give the assistant the new address from its menu.
+- **"MOS cannot reach Memos's tools":** for Memos, its token was revoked; set it up again.
+- **Paperless-ngx stops working with assistants if its admin password is changed or two-factor sign-in is turned on for the admin.**
+- **An app is stopped:** no AI can use it until it runs again; your choice is kept.
