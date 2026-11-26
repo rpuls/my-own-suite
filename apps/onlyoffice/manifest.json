@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "appVersion": "9.3.1",
   "minimumMosVersion": "0.24.0",
   "packageFiles": [

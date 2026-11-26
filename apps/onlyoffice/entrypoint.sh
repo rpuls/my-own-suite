@@ -56,7 +56,8 @@ ai_settings() {
   url="$(json_string "$MOS_AI_BASE_URL")"
   key="$(json_string "${MOS_AI_API_KEY:-}")"
   model="$(json_string "$MOS_AI_MODEL")"
-  printf '{"providers":{"My Own Suite":{"name":"My Own Suite","url":%s,"key":%s,"models":[{"id":%s,"name":%s}]}},' "$url" "$key" "$model" "$model"
+  # The plugin reads each provider model's endpoints (1 is chat completions) and crashes silently without them.
+  printf '{"providers":{"My Own Suite":{"name":"My Own Suite","url":%s,"key":%s,"models":[{"id":%s,"name":%s,"endpoints":[1],"options":{}}]}},' "$url" "$key" "$model" "$model"
   printf '"models":[{"id":%s,"name":%s,"provider":"My Own Suite","capabilities":1}],' "$model" "$model"
   printf '"actions":{"Chat":{"model":%s},"Summarization":{"model":%s},"Translation":{"model":%s},"TextAnalyze":{"model":%s}}}' "$model" "$model" "$model" "$model"
 }

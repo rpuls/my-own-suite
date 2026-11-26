@@ -58,8 +58,8 @@
     "onlyoffice": {
       "appVersion": "9.3.1",
       "minimumMosVersion": "0.24.0",
-      "packageDigest": "sha256:a0e992022282d851649fb0c59ead2143e39d8ac08db80c2e7218ab850378e8e7",
-      "packageVersion": "0.2.8",
+      "packageDigest": "sha256:5e5318cd3ab4f24318a72128415442012a2975a4913795108f2be94e69a1698c",
+      "packageVersion": "0.2.9",
       "path": "apps/onlyoffice",
       "privacy": {
         "posture": "privacy-configured",
