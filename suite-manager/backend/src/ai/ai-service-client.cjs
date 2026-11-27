@@ -6,7 +6,9 @@
 
 const { CodedError } = require('../../../../shared/coded-error.cjs');
 
-const TIMEOUT_MS = 30_000;
+const LIST_TIMEOUT_MS = 30_000;
+// A model server loads a model on its first question, which can take a minute or more.
+const ASK_TIMEOUT_MS = 120_000;
 const MAX_MODELS = 500;
 
 class AiServiceError extends CodedError {
@@ -30,17 +32,18 @@ async function providerMessage(response) {
 }
 
 async function request(baseUrl, path, { apiKey, body, fetchImpl }) {
+  const timeoutMs = body ? ASK_TIMEOUT_MS : LIST_TIMEOUT_MS;
   let response;
   try {
     response = await fetchImpl(`${baseUrl}${path}`, {
       body: body ? JSON.stringify(body) : undefined,
       headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       method: body ? 'POST' : 'GET',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     throw new AiServiceError('AI_SERVICE_UNREACHABLE', error?.name === 'TimeoutError'
-      ? `${hostOf(baseUrl)} did not answer within ${TIMEOUT_MS / 1000} seconds. A model that is still loading can take longer, so test again in a minute.`
+      ? `${hostOf(baseUrl)} did not answer within ${timeoutMs / 1000} seconds. Check that its model is loaded and that the computer is not too busy.`
       : `MOS could not reach ${hostOf(baseUrl)}. Check the address, and that the computer running it is on.`, 502);
   }
   if (response.ok) return response;

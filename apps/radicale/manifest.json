@@ -2,11 +2,12 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.5.7",
+  "version": "0.6.0",
   "appVersion": "3.9.2",
-  "minimumMosVersion": "0.20.0",
+  "minimumMosVersion": "0.24.0",
   "packageFiles": [
-    "entrypoint.sh"
+    "entrypoint.sh",
+    "mcp-server.py"
   ],
   "update": {
     "backupRequired": false,
@@ -65,6 +66,7 @@
       "summary": "Radicale runs entirely on your own MOS server with no telemetry, storing calendar and contact collections in a local data volume.",
       "notes": [
         "Use a strong app password because Radicale is exposed on its own authenticated app address.",
+        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Radicale as the user you set up and reaches nothing else. An event it adds invites no one, and it deletes nothing.",
         "Back up the data volume before relying on it for important calendars or contacts.",
         "Client apps may still sync data to device or vendor backups depending on your phone or desktop settings."
       ]
@@ -111,6 +113,19 @@
           "bytes": 32,
           "encoding": "base64url"
         }
+      },
+      {
+        "id": "aiKey",
+        "type": "password",
+        "label": "Key MOS uses for AI access",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated key for AI access",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
       }
     ]
   },
@@ -137,6 +152,15 @@
         "requires": {
           "cpuCores": 0.1,
           "memoryMb": 128
+        }
+      },
+      "mcp": {
+        "dockerfile": "Dockerfile.mcp",
+        "internalPort": 8100,
+        "env": {
+          "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
+          "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "MOS_AI_KEY": "${secret.aiKey}"
         }
       }
     }
@@ -178,6 +202,19 @@
   "health": {
     "type": "http",
     "url": "http://radicale:5232/"
+  },
+  "exports": {
+    "mcp": {
+      "type": "mcp-server",
+      "interfaceVersion": 1,
+      "protocol": "mcp-streamable-http",
+      "service": "mcp",
+      "path": "/mcp",
+      "auth": {
+        "kind": "package-secret",
+        "secret": "aiKey"
+      }
+    }
   },
   "onboarding": {
     "title": "Connect your calendar",

@@ -4,6 +4,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { readsAiService } from '../e2e/support/catalog.mjs';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const e2eRoot = path.join(repoRoot, 'test', 'e2e');
 const SKIPPED_DIRS = new Set(['node_modules', 'playwright-report', 'playwright-report-hyperv', 'results', 'screenshots', 'test-results']);
@@ -49,7 +51,8 @@ test('every catalog app ships an E2E module with a journey and a verify', async 
     for (const hook of APP_HOOKS) assert.equal(typeof module?.[hook], 'function', `apps/${manifest.id}/e2e/index.mjs has no ${hook}()`);
     const offersAiTools = fs.existsSync(path.join(repoRoot, 'apps', manifest.id, 'ai-tools.json'));
     if (offersAiTools) assert.equal(typeof module.ai, 'function', `apps/${manifest.id} offers AI tools, so its e2e module needs an ai()`);
-    for (const optional of ['ai', 'aiToken', 'landed', 'masks', 'secrets', 'setupValue']) {
+    if (readsAiService(manifest)) assert.equal(typeof module.aiService, 'function', `apps/${manifest.id} reads \${ai.*}, so its e2e module needs an aiService()`);
+    for (const optional of ['ai', 'aiService', 'aiToken', 'landed', 'masks', 'secrets', 'setupValue']) {
       if (optional in module) assert.equal(typeof module[optional], 'function', `apps/${manifest.id}/e2e ${optional} should be a function`);
     }
     for (const [shot, rank] of Object.entries(module.showcase || {})) {

@@ -27,6 +27,7 @@ export const STEPS = {
   app: { arg: 'app', budgetMinutes: 20, describe: "Open the app from its Homepage tile and run the app's own journey." },
   verify: { arg: 'app', budgetMinutes: 12, describe: "Run the app's own check that what its journey made is still there." },
   ai: { arg: 'app', budgetMinutes: 8, https: true, describe: "Connect a scripted assistant through the AI gateway with See and do for the app: it must be offered exactly the tools the app's ai-tools.json offers, and the app's own AI checks must call every one." },
+  'ai-service': { arg: 'app', budgetMinutes: 20, describe: "Add a fake AI service on this machine in Settings and turn it on for the app, which restarts it; the app's own module makes the app ask it something as a user would, the request must reach it with the model and key, and the app is turned off and the service removed again." },
   update: { arg: 'app', budgetMinutes: 30, describe: 'Review and apply the update the app is offered, and wait until the new version runs.' },
   lifecycle: { arg: 'app', budgetMinutes: 15, describe: 'Stop the app, start it again, and wait until it runs.' },
   tiles: { arg: 'none', budgetMinutes: 6, describe: 'Every installed app tile on Homepage leads to that app on the current address.' },
@@ -63,6 +64,7 @@ export function appGroup(app, catalog = []) {
 
 const each = (step, apps) => apps.map((id) => `${step}:${id}`);
 const offeringAi = (apps, catalog) => apps.filter((id) => catalog.find((item) => item.id === id)?.offersAiTools);
+const readingAiService = (apps, catalog) => apps.filter((id) => catalog.find((item) => item.id === id)?.readsAiService);
 
 function installTogether(group) {
   return [...each('install', group), ...(group.length > 1 ? ['connect'] : []), ...each('app', group)];
@@ -75,8 +77,8 @@ export const NAMED_PATHS = {
   },
   'app-cycle': {
     app: true,
-    describe: 'One app on a clean lab: back up, install, use it, restore, and prove the restore removed it.',
-    build: (app) => ['reset', 'owner', 'homepage', 'backup', `install:${app}`, `app:${app}`, 'tiles', 'routes', 'restore', 'homepage-check', `absent:${app}`, 'network', 'cleanup'],
+    describe: 'One app on a clean lab: back up, install, use it and its AI features, restore, and prove the restore removed it.',
+    build: (app, catalog = []) => ['reset', 'owner', 'homepage', 'backup', `install:${app}`, `app:${app}`, ...each('ai-service', readingAiService([app], catalog)), 'tiles', 'routes', 'restore', 'homepage-check', `absent:${app}`, 'network', 'cleanup'],
   },
   'app-dr': {
     app: true,
@@ -141,6 +143,7 @@ export const NAMED_PATHS = {
         ...plain.map((id) => `verify:${id}`),
         ...secure.map((id) => `app:${id}`),
         ...each('ai', offeringAi(apps, catalog)),
+        ...each('ai-service', readingAiService(apps, catalog)),
         'tiles', 'routes', 'diagnostics',
         'restore', 'homepage-check', `installed:${first}`, 'cleanup',
       ];
@@ -148,7 +151,7 @@ export const NAMED_PATHS = {
   },
 };
 
-const STEPS_NEEDING_HTTPS = new Set(['install', 'app', 'verify', 'update', 'lifecycle']);
+const STEPS_NEEDING_HTTPS = new Set(['install', 'app', 'verify', 'ai-service', 'update', 'lifecycle']);
 const STEPS_WITH_DESTINATION = new Set(['backup', 'restore']);
 
 // A plain backup or restore goes where the lab keeps its backups: the bucket, on a lab with no backup disk.

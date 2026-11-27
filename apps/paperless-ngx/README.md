@@ -88,4 +88,11 @@ Because Paperless never changes an existing superuser's password on start, an ad
 
 ## AI Features
 
-Paperless' AI suggestions and document chat are inactive by default and MOS neither sets nor exposes their variables. They are not env-only: `AIConfig` reads `ApplicationConfiguration` first and falls back to `settings`, so an owner turns them on inside Paperless under Settings, choosing an OpenAI-compatible or Ollama backend and supplying their own model, endpoint and key. Doing so sends document text to whatever endpoint they configure, which is outside this package's privacy review; `paperless/network.py` pins every such URL to a vetted public IP and refuses private, loopback and link-local addresses unless `PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS` is set.
+MOS wires Paperless' AI suggestions and document chat to the AI service the owner turns on for Paperless under **Settings → AI in your apps**, through `${ai.*}`:
+
+- `PAPERLESS_AI_ENABLED`, `PAPERLESS_AI_LLM_ENDPOINT`, `PAPERLESS_AI_LLM_API_KEY` (only with a key) and `PAPERLESS_AI_LLM_MODEL`: the service's address, key and chat model. `PAPERLESS_AI_LLM_BACKEND=openai-like` is always set and does nothing while AI is off.
+- `PAPERLESS_AI_LLM_EMBEDDING_BACKEND=openai-like` and `PAPERLESS_AI_LLM_EMBEDDING_MODEL`: only when the service has a search model. `get_embedding_model` then sends embeddings to `PAPERLESS_AI_LLM_ENDPOINT`, the same service, since no separate embedding endpoint is set. Without a search model the embedding backend is unset, so `AIConfig.llm_index_enabled` is false: the nightly `llmindex_index` task skips, and no Hugging Face model is downloaded.
+
+With the service off, MOS leaves every `${ai.*}` variable out, `PAPERLESS_AI_ENABLED` stays at its `NO` default, and Paperless calls no AI service. Values the owner sets inside Paperless under Settings still win, because `AIConfig` reads `ApplicationConfiguration` before the environment.
+
+`PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS` defaults to `true` in 3.5.1, which a model on the owner's own network needs, so MOS leaves it alone. `paperless/network.py` still pins each AI request to the address it resolved, so DNS rebinding cannot redirect it.

@@ -45,6 +45,13 @@ const DASHBOARD_OPERATION = {
 };
 
 const TOOLS = {
+  suite_status: {
+    kind: 'read',
+    title: 'See how the suite is doing',
+    says: "How this My Own Suite server is doing, as its start page shows it: apps, AI assistants, updates, backups and storage, each with what needs the owner's attention and where it is fixed. Start here when the owner asks whether all is well.",
+    run: async ({ attention }) => reply(statusText(await attention.overview())),
+  },
+
   list_apps: {
     kind: 'read',
     title: 'List apps',
@@ -224,12 +231,34 @@ function dashboardFailed(error) {
   return reply(error?.message || 'The dashboard could not be changed.', true);
 }
 
+function issueLines(tile) {
+  return (tile?.issues || []).map((issue) => `  - ${issue.text}${issue.detail ? ` ${issue.detail}` : ''} (since ${String(issue.since).slice(0, 16)}Z)`);
+}
+
+function gigabytes(bytes) {
+  return `${Math.round(bytes / 1e9)} GB`;
+}
+
+// One line per start page tile, then its problems; a tile MOS could not read says so.
+function statusText({ ai, apps, backups, storage, updates }) {
+  const unread = (name) => `${name}: could not be read right now.`;
+  const lines = [
+    `Apps: ${apps.running} of ${apps.total} running.`, ...issueLines(apps),
+    `AI assistants: ${ai.connected} connected${ai.lastUsed ? `, last used ${String(ai.lastUsed.at).slice(0, 16)}Z by ${ai.lastUsed.by}` : ''}.`, ...issueLines(ai),
+    updates ? `Updates: ${updates.available ? `${updates.available} is available` : 'up to date'}${updates.checkedAt ? `, checked ${String(updates.checkedAt).slice(0, 16)}Z` : ''}.` : unread('Updates'), ...issueLines(updates),
+    backups ? `Backups: last ${backups.lastAt ? `${String(backups.lastAt).slice(0, 16)}Z` : 'never'}${backups.nextAt ? `, next ${String(backups.nextAt).slice(0, 16)}Z` : ', none scheduled'}.` : unread('Backups'), ...issueLines(backups),
+    storage ? `Storage: ${storage.places} connected besides the system drive${storage.systemFreeBytes === null ? '' : `, ${gigabytes(storage.systemFreeBytes)} free on the system drive`}.` : unread('Storage'), ...issueLines(storage),
+  ];
+  const problems = [apps, ai, updates, backups, storage].reduce((count, tile) => count + (tile?.issues?.length || 0), 0);
+  return [problems ? `${problems} thing${problems === 1 ? ' needs' : 's need'} attention.` : 'All is well.', ...lines].join('\n');
+}
+
 function activityLine(entry) {
   const repeats = entry.repeats > 1 ? ` · ${entry.repeats} times` : '';
   return `${String(entry.at).slice(0, 16)}Z · ${entry.clientName || 'a removed assistant'} · ${entry.sourceName || 'unknown app'} · ${entry.toolTitle || entry.tool} · ${entry.outcome}${repeats}`;
 }
 
-function createMosTools({ ai, appPackages, diagnostics, homepage, runtimeUrls, store }) {
+function createMosTools({ ai, appPackages, attention, diagnostics, homepage, runtimeUrls, store }) {
   const installed = () => store.getAppInstances().filter((instance) => instance.status === 'installed');
   const matches = (wanted) => {
     const needle = String(wanted || '').trim().toLowerCase();
@@ -238,6 +267,7 @@ function createMosTools({ ai, appPackages, diagnostics, homepage, runtimeUrls, s
   const context = {
     ai,
     appPackages,
+    attention,
     diagnostics,
     findAnyApp: (wanted) => store.getAppInstances().find(matches(wanted)) || null,
     findApp: (wanted) => installed().find(matches(wanted)) || null,

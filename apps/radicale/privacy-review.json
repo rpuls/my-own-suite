@@ -4,8 +4,8 @@
   "reviewedAt": "2026-11-19T12:00:00.000Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.5.7",
-    "packageDigest": "sha256:065a538b26b6fe832cd05032ffa38417cf545a0ee541eb392269cb03a3e0a127",
+    "packageVersion": "0.6.0",
+    "packageDigest": "sha256:9a17dcc2356703b3fbf5c305adc0d2d294604a836a3aeaaaa8da8c8ffa8d2b42",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -38,7 +38,7 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, RADICALE_CALENDAR_DISPLAYNAME, and the owner's optional MOS_SMTP_* email relay values into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables, and none of the UID, GID, or RADICALE_CONFIG_* variables the image's own entrypoint acts on.",
+      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, RADICALE_CALENDAR_DISPLAYNAME, and the owner's optional MOS_SMTP_* email relay values into the radicale service and mounts one local data volume; the mcp service gets only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD and the generated MOS_AI_KEY, and mounts nothing. Neither sets any analytics, update-check, external-service, or telemetry variable, nor any of the UID, GID, or RADICALE_CONFIG_* variables the image's own entrypoint acts on.",
       "source": "apps/radicale/manifest.json"
     },
     {
@@ -96,6 +96,11 @@
       "type": "configured",
       "claim": "MOS wires Radicale's [hook] email notifications to the shared, optional MOS email relay. Radicale can email the attendees of a calendar event when it changes; the entrypoint writes this [hook] configuration only when the owner has set a relay under Settings → Email relay, and removes it when they have not, so Radicale sends no mail by default. When set, notices go through the owner's own chosen provider. This is the narrowest of Radicale's outbound features — attendee notices only — and is separate from the authentication backends above; MOS never uses the relay itself. Radicale 3.9.1 adds opt-in iTIP scheduling messages to the email hook; it is off by default (itip_enabled = False), MOS does not set it, and the 3.9.1.1 package logs itip_enabled=False when a relay is configured, so the hook keeps sending only the attendee notices described here. Radicale 3.9.2 changes only logging in the email hook.",
       "source": "apps/radicale/entrypoint.sh, apps/radicale/manifest.json, and the email hook's startup log in the built 3.9.1.1 package image"
+    },
+    {
+      "type": "configured",
+      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned docker-radicale image, runs only the package's own mcp-server.py on the Python standard library under the image's radicale user, and its only outbound connection is CalDAV and CardDAV to http://radicale:5232 on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It signs in as the Radicale user from the install form, and offers listing calendars and events, searching contacts, adding an event and moving or renaming a single event. An event it adds carries no ATTENDEE or ORGANIZER, and it refuses to change an event that has an ATTENDEE, so it never sets off the email hook's attendee notices; it has no tool that deletes anything or changes a contact.",
+      "source": "apps/radicale/mcp-server.py, apps/radicale/Dockerfile.mcp and apps/radicale/manifest.json"
     },
     {
       "type": "observed",
@@ -162,6 +167,7 @@
   },
   "openQuestions": [
     "The 2026-07-31, 2026-10-06, 2026-10-25, 2026-11-15 and 2026-11-19 packet captures covered minutes of provisioning, active use, and restarts; outbound behaviour on longer timers than that window is excluded by the code and build-definition review rather than by observation. The lab E2E network step, which reads DNS inside the container, last ran on 2026-10-05 against an earlier package version and has not yet run against 3.8.3, 3.9.1 or 3.9.2.",
+    "No packet capture has yet covered the mcp service; that its only connection is to the radicale service rests on the review of mcp-server.py, which opens no other address.",
     "CalDAV/CardDAV client apps may copy synced calendar and contact data into device or vendor cloud backups depending on each client's settings, which is outside the server package's control.",
     "The package provisions a single bootstrap Radicale user; multi-user authentication, password rotation, and DAV auto-discovery are future package work not covered by this review."
   ]

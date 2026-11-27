@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "list_calendars": {
+      "kind": "read",
+      "title": "See calendars and address books"
+    },
+    "list_events": {
+      "kind": "read",
+      "title": "See events"
+    },
+    "search_contacts": {
+      "kind": "read",
+      "title": "Search contacts"
+    },
+    "add_event": {
+      "kind": "add",
+      "title": "Add an event",
+      "note": "A new event never invites anyone."
+    },
+    "change_event": {
+      "kind": "change",
+      "title": "Move or rename an event",
+      "note": "Only events that do not repeat and have no one else invited. Nothing is deleted."
+    }
+  }
+}

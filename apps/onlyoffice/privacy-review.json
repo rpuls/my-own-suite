@@ -5,7 +5,7 @@
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.2.9",
-    "packageDigest": "sha256:5e5318cd3ab4f24318a72128415442012a2975a4913795108f2be94e69a1698c",
+    "packageDigest": "sha256:fbf52a3300ea6f5b64312e538aaff592936cbbe9bb0fab5b7ac20cf9b0275f32",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -102,7 +102,7 @@
     },
     {
       "type": "configured",
-      "claim": "The package ships ONLYOFFICE's AI plugin 3.0.8 inside its image and wires it to an AI service the owner adds under Settings → AI services and turns on for ONLYOFFICE by its own switch. Until then the MOS_AI_* variables are left out of the container, the entrypoint removes the plugin and any aiSettings from local.json, and the editor shows no AI Tools. Once turned on, the entrypoint writes that one service as the server-wide aiSettings provider, so users cannot add providers of their own. The editor then sends each AI request to the Document Server's own /ai-proxy, which relays it only to a URL that starts with that provider's address and adds the key itself, so the key never reaches the browser and the plugin's fallback proxy at plugins-services.onlyoffice.com is not used. The text a user asks about goes to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text.",
+      "claim": "The package ships ONLYOFFICE's AI plugin 3.0.8 inside its image and wires it to an AI service the owner adds under Settings → AI in your apps and turns on for ONLYOFFICE by its own switch. Until then the MOS_AI_* variables are left out of the container, the entrypoint removes the plugin and any aiSettings from local.json, and the editor shows no AI Tools. Once turned on, the entrypoint writes that one service as the server-wide aiSettings provider, so users cannot add providers of their own. The editor then sends each AI request to the Document Server's own /ai-proxy, which relays it only to a URL that starts with that provider's address and adds the key itself, so the key never reaches the browser and the plugin's fallback proxy at plugins-services.onlyoffice.com is not used. The text a user asks about goes to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text.",
       "source": "apps/onlyoffice/manifest.json, apps/onlyoffice/entrypoint.sh; ONLYOFFICE/server DocService/sources/ai/aiProxyHandler.js at v9.3.1; sdkjs-plugins/content/ai/scripts/engine/engine.js at onlyoffice.github.io 689547aa716c",
       "retrievedAt": "2026-11-25"
     }

@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-06T23:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.3",
-    "packageDigest": "sha256:5901a2e5e41b9994693a46a4c6315eaa0e1978abc74aeb47e8ad747b706c8c4b",
+    "packageVersion": "0.4.0",
+    "packageDigest": "sha256:a319a7209a61c7da7164549fbba7039ecd81025880712b683ff5624164c379d2",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -58,6 +58,11 @@
       "type": "configured",
       "claim": "Only the seafile web service is published through a single app route; seafile-mysql and seafile-valkey expose no route and stay on the package-internal Docker network, so metadata and cache traffic remains inside the package.",
       "source": "apps/seafile/manifest.json and apps/seafile/README.md"
+    },
+    {
+      "type": "configured",
+      "claim": "The mcp service, which offers the owner's AI read-only tools to list libraries, find files by name and read text files, has no route and no volume. Only Suite Manager reaches it, with the aiKey secret MOS generates, and it signs in to Seafile as the configured admin. Its server uses only the Python standard library and connects to nothing but http://seafile on the package network, downloads included; encrypted libraries are left out and no tool writes, deletes, shares or creates links.",
+      "source": "apps/seafile/manifest.json, apps/seafile/mcp-server.py and apps/seafile/ai-tools.json"
     },
     {
       "type": "configured",

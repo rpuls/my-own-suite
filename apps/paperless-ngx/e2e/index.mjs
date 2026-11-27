@@ -108,6 +108,24 @@ export default {
     });
   },
 
+  // The filing suggestions the document page's AI button asks for, on the document the journey
+  // uploaded: Paperless sends its text to the AI service and offers the model's answer as its title.
+  async aiService({ ai, env, page, state, step }) {
+    if (!state.reference) throw new Error('Paperless aiService needs the document its journey uploaded (run app:paperless-ngx first, or carry it in with --continue).');
+    await step('sign in', () => signIn(page, env));
+    const id = await documentId(page, state.title);
+    await step('ask the AI service for filing suggestions', async () => {
+      const answer = await page.evaluate(async (document) => {
+        const response = await fetch(`/api/documents/${document}/ai_suggestions/`, { headers: { Accept: 'application/json' } });
+        return { status: response.status, text: await response.text() };
+      }, id);
+      expect(answer.status, `Paperless answered: ${answer.text.slice(0, 300)}`).toBe(200);
+      expect(JSON.parse(answer.text).title, "the suggested title is the model's answer").toBe(ai.reply);
+    });
+    const sentText = ai.received().some((request) => request.kind === 'chat' && JSON.stringify(request.body).includes(state.reference));
+    expect(sentText, "the document's text reached the AI service").toBe(true);
+  },
+
   async verify({ env, page, shot, state, step, url }) {
     if (!state.title) throw new Error('Paperless verify needs the document its journey uploaded (run app:paperless-ngx first, or carry it in with --continue).');
     await step('sign in', () => signIn(page, env));

@@ -167,6 +167,15 @@ test('destinations are grouped per app, split around its update, and held to its
   assert.match(report, /\| `models\.example\.org` \| server \| web \| app:notes \| ✓ \|  \| no, before the update only \|/u);
 });
 
+test('a host the owner pointed an app at, such as its AI service, is expected and says so', () => {
+  const browser = [{ at: 1021, host: '192.0.2.7', page: 'http://notes.mos.test/', step: 2, type: 'fetch', url: 'http://192.0.2.7:47311/v1/chat/completions' }];
+  const apps = summarize({ appIds, appsByRouteHost: new Map([['notes', 'notes']]), browser, expectations: { notes: { browser: [], server: [] } }, ownerChosen: new Set(['192.0.2.7']), suites: new Set(['mos.test']), timeline });
+  const [destination] = apps.find((app) => app.id === 'notes').destinations;
+  assert.equal(destination.expected, true);
+  assert.deepEqual(problemsIn({ apps, checks: [], server: { status: 'on' } }), []);
+  assert.match(renderReport({ apps, checks: [], label: 'ai', problems: [], server: { status: 'on', target: 'mos@lab' } }), /`192\.0\.2\.7` \| browser .* \| chosen by the owner \|/u);
+});
+
 test('a run without a lab shell says so instead of reporting silence', () => {
   const problems = problemsIn({ apps: [], checks: [], server: { reason: 'there is no root shell on the lab.', status: 'off' } });
   assert.deepEqual(problems, ['The server capture is off: there is no root shell on the lab.']);

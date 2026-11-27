@@ -208,6 +208,7 @@ function createServices({
       builtin: createMosTools({
         ai: { activity: (query) => aiConnections.activity(query), clients: () => aiConnections.aiStore.listClients() },
         appPackages,
+        attention: { overview: () => services.attention.overview() },
         diagnostics: { read: (topic, options) => createDiagnostics(services).read(topic, options) },
         homepage: homepageConfig,
         runtimeUrls: (packageId) => ({ ...appUrls.publicUrlOf(packageId), publicUrlFor: appUrls.publicUrls() }),

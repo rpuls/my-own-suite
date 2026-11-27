@@ -1,4 +1,5 @@
 import { ai } from './ai.mjs';
+import { aiService } from './ai-service.mjs';
 import { absent, app, connect, install, installed, lifecycle, routes, tiles, update, verify } from './apps.mjs';
 import { backup, cleanup, driveAway, driveFound, eraseOtherArchive, renameStorage, restore, takeover } from './backups.mjs';
 import { compare } from './compare.mjs';
@@ -17,6 +18,7 @@ import { platformUpdate } from './platform.mjs';
 export const MODULES = {
   absent,
   ai,
+  'ai-service': aiService,
   app,
   backup,
   cleanup,

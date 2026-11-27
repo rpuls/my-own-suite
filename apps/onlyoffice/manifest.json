@@ -81,7 +81,7 @@
         "MOS sets METRICS_ENABLED=false so the server's optional StatsD metrics stay off.",
         "MOS sets PLUGINS_ENABLED=false, so the server no longer downloads its default plugins from the ONLYOFFICE marketplace on GitHub every time it starts.",
         "No ONLYOFFICE account or license server is contacted; the Community Edition enforces its limits locally.",
-        "AI Tools appear in the editor only after you turn ONLYOFFICE on under Settings → AI services. Your server then sends the text you ask the AI about to the AI service you chose there, and to nothing else.",
+        "AI Tools appear in the editor only after you turn ONLYOFFICE on under Settings → AI in your apps. Your server then sends the text you ask the AI about to the AI service you chose there, and to nothing else.",
         "Opening documents that reference external images or links, or enabling editor plugins, can still make the server reach out to third-party sites."
       ]
     },

@@ -5,6 +5,12 @@ import { pathToFileURL } from 'node:url';
 import { repoRoot } from './env.mjs';
 
 const appsDir = path.join(repoRoot, 'apps');
+const AI_REFERENCE = /\$\{ai\.[^}]+\}/u;
+
+// An app turns AI features on from an AI service the owner chose when its manifest reads ${ai.*}.
+export function readsAiService(manifest) {
+  return Object.values(manifest.resources?.services || {}).some((service) => Object.values(service?.env || {}).some((value) => AI_REFERENCE.test(String(value))));
+}
 
 export function appModulePath(id) {
   return path.join(appsDir, id, 'e2e', 'index.mjs');
@@ -23,6 +29,7 @@ export function catalogApps() {
         id: manifest.id,
         name: manifest.name,
         needsHttps: manifest.requirements?.https === true,
+        readsAiService: readsAiService(manifest),
         offersAiTools: Object.values(manifest.exports || {}).some((item) => item?.type === 'mcp-server'),
         keepsFilesOnDrive: Array.isArray(manifest.storage?.folders) && manifest.storage.folders.length > 0,
         provides: Object.values(manifest.exports || {}).map((item) => item.type),

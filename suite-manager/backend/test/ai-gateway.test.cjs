@@ -22,6 +22,13 @@ const { createMosTools } = require('../src/ai/mos-tools.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 
 const APP_TOKEN = 'memos-pat-secret';
+const OVERVIEW = {
+  ai: { connected: 1, issues: [], lastUsed: null },
+  apps: { issues: [{ detail: 'and did not start again.', since: '2026-09-01T11:00:00.000Z', text: 'Memos stopped' }], running: 1, total: 2 },
+  backups: null,
+  storage: { issues: [], places: 1, systemFreeBytes: 38e9 },
+  updates: { available: null, checkedAt: '2026-09-01T10:00:00.000Z', issues: [] },
+};
 const MANIFEST = {
   exports: {
     mcp: {
@@ -87,6 +94,7 @@ async function harness({ answerMs = 0, host = () => 'home.example.net', now = ()
     builtin: createMosTools({
       ai: { activity: (query) => connections.activity(query), clients: () => connections.aiStore.listClients() },
       appPackages: { refreshPackageRuntimeStatus: async () => ({}), restartPackageRuntime: async (packageId) => { restarts.push(packageId); } },
+      attention: { overview: async () => OVERVIEW },
       diagnostics: { read: async (topic, { app }) => { diagnosticReads.push([topic, app]); return `the ${topic} section`; } },
       runtimeUrls: () => ({}),
       store: appStore,
@@ -244,7 +252,7 @@ test('Suite Manager lists apps and the dashboard at See and restarts an app at S
   t.after(h.close);
   const { client, token } = h.newClient('Claude Code');
   h.connections.setLevel(client.id, 'mos', 'see');
-  assert.deepEqual(await h.listed(token), ['mos_ai_activity', 'mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_diagnostics', 'mos_list_apps']);
+  assert.deepEqual(await h.listed(token), ['mos_ai_activity', 'mos_check_app', 'mos_dashboard_get', 'mos_dashboard_history', 'mos_diagnostics', 'mos_list_apps', 'mos_suite_status']);
   const apps = (await h.call(token, 'mos_list_apps')).content[0].text;
   assert.match(apps, /^<untrusted-data source="Suite Manager">/u);
   assert.match(apps, /"app": "memos"/u);
@@ -399,4 +407,16 @@ test('only a direct route can be created today, and the MCP address needs HTTPS'
   const at = (scheme) => new AiConnectionsService({ suiteAddress: { readOrNull: () => ({ host: 'home.example.net', scheme }) } }).mcpUrl();
   assert.equal(at('https'), 'https://home.example.net/ai/mcp');
   assert.equal(at('http'), null);
+});
+
+test('an assistant at See reads how the suite is doing, as the start page shows it', async (t) => {
+  const h = await harness();
+  t.after(h.close);
+  const { client, token } = h.newClient('Claude Code');
+  h.connections.setLevel(client.id, 'mos', 'see');
+  const status = (await h.call(token, 'mos_suite_status')).content[0].text;
+  assert.match(status, /1 thing needs attention\./u);
+  assert.match(status, /Apps: 1 of 2 running\.\n {2}- Memos stopped and did not start again\. \(since 2026-09-01T11:00Z\)/u);
+  assert.match(status, /Backups: could not be read right now\./u);
+  assert.match(status, /Storage: 1 connected besides the system drive, 38 GB free on the system drive\./u);
 });

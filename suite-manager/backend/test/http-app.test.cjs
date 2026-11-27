@@ -267,6 +267,14 @@ test('App package catalog API requires authentication and exposes safe manifest 
         secret: true,
         type: 'password',
       },
+      {
+        generated: true,
+        id: 'aiKey',
+        label: 'Key MOS uses for AI access',
+        required: true,
+        secret: true,
+        type: 'password',
+      },
     ]);
     assert.equal(radicale.homepage.widget.type, 'calendar');
     assert.equal(radicale.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
@@ -597,8 +605,8 @@ test('app integration connect materializes provider exports into consumer runtim
     // two meet on.
     assert.deepEqual(calls.at(-1), ['connectNetwork', {
       holderPackageId: 'seafile',
-      holderServiceCount: 3,
-      holderServices: ['seafile-mysql', 'seafile-valkey', 'seafile'],
+      holderServiceCount: 4,
+      holderServices: ['seafile-mysql', 'seafile-valkey', 'seafile', 'mcp'],
       joinerPackageId: 'onlyoffice',
       joinerServiceCount: 1,
       joinerServices: ['onlyoffice'],
@@ -721,7 +729,7 @@ test('Seafile install renders multi-service projections with internal services u
 
     assert.equal(installed.status, 200);
     assert.equal(instance.packageId, 'seafile');
-    assert.deepEqual(compose.services.map((service) => service.id).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
+    assert.deepEqual(compose.services.map((service) => service.id).sort(), ['mcp', 'seafile', 'seafile-mysql', 'seafile-valkey']);
     assert.deepEqual(caddy.routes, [{
       host: 'seafile',
       reverseProxy: `127.0.0.1:${loopbackPortFor('seafile', 'seafile')}`,
@@ -733,7 +741,7 @@ test('Seafile install renders multi-service projections with internal services u
     assert.equal(compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_MYSQL_DB_PASSWORD, '${secret.mysqlUserPassword}');
     assert.equal(compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_SERVER_HOSTNAME, '${app.host}');
     assert.equal(instance.config.find((item) => item.key === 'adminPassword').value, undefined);
-    assert.equal(instance.config.filter((item) => item.secret).length, 4);
+    assert.equal(instance.config.filter((item) => item.secret).length, 5);
     assert.doesNotMatch(installed.body, /seafile-admin-pass/u);
 
     const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/apply-runtime', {

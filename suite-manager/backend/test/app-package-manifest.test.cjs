@@ -86,7 +86,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
 
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
-  assert.equal(radicale.manifest.setup.fields.length, 4);
+  assert.equal(radicale.manifest.setup.fields.length, 5);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
     generated: Boolean(field.generated),
@@ -98,6 +98,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
     { generated: false, id: 'calendarName', required: true, secret: false, type: 'text' },
     { generated: false, id: 'adminPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'icalToken', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'aiKey', required: true, secret: true, type: 'password' },
   ]);
   assert.equal(radicale.manifest.homepage.widget.type, 'calendar');
   assert.equal(radicale.manifest.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
@@ -119,14 +120,14 @@ test('Seafile package is discoverable and declares a multi-service core package 
 
   assert.ok(seafile);
   assert.equal(seafile.manifest.name, 'Seafile');
-  assert.deepEqual(Object.keys(seafile.manifest.resources.services).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
+  assert.deepEqual(Object.keys(seafile.manifest.resources.services).sort(), ['mcp', 'seafile', 'seafile-mysql', 'seafile-valkey']);
   assert.equal(seafile.manifest.routes.length, 1);
   assert.equal(seafile.manifest.routes[0].service, 'seafile');
   assert.equal(seafile.manifest.health.url, 'http://seafile:80/api2/ping/');
   assert.deepEqual(seafile.manifest.resources.services.seafile.volumes, ['data:/shared']);
   assert.deepEqual(seafile.manifest.resources.services['seafile-mysql'].volumes, ['mysql-data:/var/lib/mysql']);
   assert.equal(seafile.manifest.resources.services['seafile-valkey'].internalPort, 6379);
-  assert.equal(seafile.manifest.setup.fields.length, 5);
+  assert.equal(seafile.manifest.setup.fields.length, 6);
   assert.deepEqual(seafile.manifest.setup.fields.map((field) => ({
     id: field.id,
     generated: Boolean(field.generated),
@@ -139,6 +140,7 @@ test('Seafile package is discoverable and declares a multi-service core package 
     { generated: true, id: 'mysqlRootPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'mysqlUserPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'jwtPrivateKey', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'aiKey', required: true, secret: true, type: 'password' },
   ]);
   assert.equal(seafile.manifest.exports.filePlatform.type, 'document-platform');
   assert.equal(seafile.manifest.integrations.documentEditor.accepts[0].type, 'document-editor');

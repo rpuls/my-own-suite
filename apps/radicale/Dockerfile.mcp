@@ -1,0 +1,10 @@
+# The MCP server MOS offers an owner's AI for Radicale. It reuses the pinned
+# Radicale image for its Python, so it adds no image of its own to download.
+FROM tomsquest/docker-radicale@sha256:cc586f75ec709d45d15dfbf20e53bab99e85ee5a4d7beafc7bbf852b2f07a2da
+
+COPY mcp-server.py /opt/mos/mcp-server.py
+RUN chmod 0644 /opt/mos/mcp-server.py
+# The Radicale image's own check probes port 5232, which this service does not serve.
+HEALTHCHECK --interval=30s --timeout=5s CMD ["python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8100), 3)"]
+USER 2999:2999
+ENTRYPOINT ["python3", "/opt/mos/mcp-server.py"]

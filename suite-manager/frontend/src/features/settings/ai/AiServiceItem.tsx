@@ -69,7 +69,7 @@ function StatusBand(props: Parameters<typeof PanelBand>[0]) {
 
 // The state comes only from the last test MOS ran; Settings runs one when it opens and the last is over 15 minutes old.
 function TestOutcome({ busy, checking, onTest, service, tested, testing, users }: { busy: boolean; checking: boolean; onTest: () => void; service: AiService; tested: AiServiceTest | null; testing: boolean; users: AiServiceApp[] }) {
-  if (testing || checking) return <StatusBand busy note="This can take up to 30 seconds." title={`Testing ${service.name}…`} tone="info" />;
+  if (testing || checking) return <StatusBand busy note="A model that still has to load can take a minute or two." title={`Testing ${service.name}…`} tone="info" />;
   const button = (words: string) => <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={onTest} type="button">{words}</button>;
   if (service.test.error) {
     return <Notice title={testFailedTitle(service)} variant="warning">
