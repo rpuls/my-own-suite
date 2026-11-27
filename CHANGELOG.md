@@ -21,6 +21,7 @@ Suite Manager shows these entries on its update screen, and `npm run release:che
   - **Compatibility:** app packages read the service through the new `${ai.*}` manifest values, and a package using them must set `minimumMosVersion` to `0.24.0`. Turning an app on or off restarts it. The service's key is kept as a secret file and rides in backups. Paperless-ngx is the first app to use it: package 0.4.3 turns on its document suggestions and chat with your documents when you switch it on.
 - **Your Homepage dashboard keeps its last 20 versions.** Every change, whether made in Customize, by an app install, or by an AI, is saved under Customize → History, where you can go back to an earlier version or delete the ones you no longer need.
 - **Suite Manager and your Homepage dashboard follow your device's light or dark mode.** Settings → Appearance lets you pick Auto, Light or Dark instead, kept per browser.
+  - **Compatibility:** every platform update now rewrites Homepage's `custom.css` and `custom.js`, which used to be copied only at install, so hand edits to those two files on the server are replaced. Your dashboard YAML is untouched.
 - **Memos joins the catalog for quick notes and checklists.** A private Google Keep for the household: write a line, tag it, tick off lists, and find notes again by tag or day. MOS installs it with sign-up turned off, so open it straight after installing to create your admin account, then add the rest of the household from its settings.
 
 ### Changed

@@ -104,6 +104,7 @@ const {
 const dryRun = process.argv.includes('--dry-run');
 // The repo-built Caddy, which carries the Cloudflare DNS module the packaged one lacks.
 const CADDY_BINARY = '/usr/local/libexec/mos/caddy';
+const HOMEPAGE_PLATFORM_FILES = ['custom.css', 'custom.js'];
 
 function log(message) {
   process.stdout.write(`[mos:reconcile] ${message}\n`);
@@ -567,6 +568,10 @@ function main() {
       }
     }
     if (!dryRun) fs.writeFileSync(homepageSeedMarker, '');
+  }
+  // The YAML above is the owner's from then on; the styling is the platform's, so every update brings it.
+  for (const name of HOMEPAGE_PLATFORM_FILES) {
+    writeFile(path.join(stateRoot, 'homepage/config', name), fs.readFileSync(path.join(mosRoot, 'infrastructure/homepage', name), 'utf8'), 0o644);
   }
 
   // Docker's units are not MOS-owned, so its gate is a drop-in. The socket is
