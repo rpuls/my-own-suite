@@ -53,7 +53,9 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     // gates here. Sign-in hands over to Homepage on its own, the gates do not — navigate either way.
     await settleAfterSignIn(page);
     await acceptTermsIfPending(page);
-    await saveHandoverIfPending(page);
+    // Sign-in can land on Homepage with a handover still owed, which only Suite Manager shows.
+    await page.goto(entryUrl);
+    await settleSuiteManager(page);
     await gotoHomeDashboard(page, entryUrl);
     await expectSignedInApi(page, entryUrl);
     return;
@@ -66,10 +68,14 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     await expect(page.getByRole('heading', { name: /Before you start/iu })).toBeVisible({ timeout: 30000 });
     await acceptTermsIfPending(page);
   }
-  // The handover page paints only after its secrets load, so wait for it or for Suite Manager before deciding.
+  await settleSuiteManager(page);
+  await gotoHomeDashboard(page, entryUrl);
+  await expectSignedInApi(page, entryUrl);
+}
+
+// The handover page paints only after its secrets load, so wait for it or for Suite Manager before deciding.
+async function settleSuiteManager(page) {
   const handover = page.getByRole('heading', { name: /^(Save your (server login|recovery key)|Suite Manager cannot open yet)/u });
   await expect(handover.or(page.getByRole('button', { name: 'Open navigation menu' }))).toBeVisible({ timeout: 30000 });
   await saveHandoverIfPending(page);
-  await gotoHomeDashboard(page, entryUrl);
-  await expectSignedInApi(page, entryUrl);
 }

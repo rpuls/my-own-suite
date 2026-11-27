@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "list_libraries": {
+      "kind": "read",
+      "title": "See your libraries"
+    },
+    "search_files": {
+      "kind": "read",
+      "title": "Find files by name"
+    },
+    "read_file": {
+      "kind": "read",
+      "title": "Read a text file"
+    }
+  }
+}

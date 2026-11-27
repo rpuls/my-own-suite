@@ -5,7 +5,7 @@
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.2.9",
-    "packageDigest": "sha256:5e5318cd3ab4f24318a72128415442012a2975a4913795108f2be94e69a1698c",
+    "packageDigest": "sha256:5a5f32f915fddbf02ed6ee3596fb2b655b6cf90f3c10f2c16b98f2d2323eec3e",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -102,9 +102,15 @@
     },
     {
       "type": "configured",
-      "claim": "The package ships ONLYOFFICE's AI plugin 3.0.8 inside its image and wires it to an AI service the owner adds under Settings → AI services and turns on for ONLYOFFICE by its own switch. Until then the MOS_AI_* variables are left out of the container, the entrypoint removes the plugin and any aiSettings from local.json, and the editor shows no AI Tools. Once turned on, the entrypoint writes that one service as the server-wide aiSettings provider, so users cannot add providers of their own. The editor then sends each AI request to the Document Server's own /ai-proxy, which relays it only to a URL that starts with that provider's address and adds the key itself, so the key never reaches the browser and the plugin's fallback proxy at plugins-services.onlyoffice.com is not used. The text a user asks about goes to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text.",
+      "claim": "The package ships ONLYOFFICE's AI plugin 3.0.8 inside its image and wires it to an AI service the owner adds under Settings → AI in your apps and turns on for ONLYOFFICE by its own switch. Until then the MOS_AI_* variables are left out of the container, the entrypoint removes the plugin and any aiSettings from local.json, and the editor shows no AI Tools. Once turned on, the entrypoint writes that one service as the server-wide aiSettings provider, so users cannot add providers of their own. The editor then sends each AI request to the Document Server's own /ai-proxy, which relays it only to a URL that starts with that provider's address and adds the key itself, so the key never reaches the browser and the plugin's fallback proxy at plugins-services.onlyoffice.com is not used. The text a user asks about goes to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text.",
       "source": "apps/onlyoffice/manifest.json, apps/onlyoffice/entrypoint.sh; ONLYOFFICE/server DocService/sources/ai/aiProxyHandler.js at v9.3.1; sdkjs-plugins/content/ai/scripts/engine/engine.js at onlyoffice.github.io 689547aa716c",
       "retrievedAt": "2026-11-25"
+    },
+    {
+      "type": "observed",
+      "claim": "With an AI service turned on, a question asked in the editor's AI chat reached the service from the server, carrying the key MOS gave it, and no request for it left the browser. The server capture over install, the AI switch, the restart and the chat found no DNS lookup or connection from the Document Server to any public address, so plugins-services.onlyoffice.com and the marketplace were not contacted.",
+      "source": "MOS E2E on the HP lab, steps install:onlyoffice ai-service:onlyoffice network against a stand-in AI service, run 20261127-031641 (network/report.md, ai-service/onlyoffice.json)",
+      "retrievedAt": "2026-11-27"
     }
   ],
   "outbound": [],
@@ -149,7 +155,7 @@
   },
   "openQuestions": [
     "Document content transits and is temporarily held by the Document Server during editing; the exact retention and cleanup of cached documents in the data volume was not independently verified for this version.",
-    "The AI plugin's requests were traced in its source and the server's, not captured on a running server; a capture with an AI service turned on is still owed.",
+    "The 2026-11-27 AI capture used a stand-in service and one chat question; the plugin's other AI actions, such as summarizing or translating a selection, were traced in source rather than captured.",
     "External resources referenced inside documents, and optional editor plugins, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent.",
     "The 2026-10-05 captures covered install, start-up and the welcome page. Documents edited through a connected app were not captured, so requests driven by document content, such as external images, remain documented rather than observed."
   ]

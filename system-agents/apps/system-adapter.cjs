@@ -36,7 +36,9 @@ const HEALTH_TIMEOUT_MS = 15 * 60_000;
 // Base images are fetched before the build, on a clock of their own: a multi-GB
 // first download on a fresh or restored machine is not a build that hung.
 const BASE_IMAGE_PULL_TIMEOUT_MS = 40 * 60_000;
-const BUILD_TIMEOUT_MS = 5 * 60_000;
+// Each layer on a multi-GB base is committed in full: ONLYOFFICE's eleven steps took over five
+// minutes on a 4-CPU cloud server (2026-11-27).
+const BUILD_TIMEOUT_MS = 15 * 60_000;
 // Docker restarts a crashed container after a delay that doubles from 100 ms, so ten restarts
 // outlast a neighbouring database's first start by far, and a crash loop is told in minutes.
 const CRASH_LOOP_RESTARTS = 10;

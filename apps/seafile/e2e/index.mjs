@@ -208,6 +208,17 @@ export default {
     await shot('library');
   },
 
+  async ai({ call, expect, state, step }) {
+    if (!state.upload) throw new Error('Seafile ai needs the file its journey uploaded (run app:seafile first, or carry it in with --continue).');
+    await step('see the library the journey made', async () => {
+      expect((await call('list_libraries')).text).toContain(`"${state.library}"`);
+    });
+    await step('find the uploaded file by name and read it', async () => {
+      expect((await call('search_files', { query: state.upload.name.replace(/\.txt$/u, '') })).text).toContain(`/${state.upload.name}`);
+      expect((await call('read_file', { library: state.library, path: `/${state.upload.name}` })).text).toContain(state.upload.content.trim());
+    });
+  },
+
   async verify({ connected, env, freshPage, page, shot, state, step, url }) {
     if (!state.library) throw new Error('Seafile verify needs the library its journey made (run app:seafile first, or carry it in with --continue).');
     await step('sign in', () => signIn(page, env));

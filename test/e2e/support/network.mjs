@@ -19,7 +19,7 @@ const LOCAL_SUFFIXES = ['.arpa', '.internal', '.lan', '.local', '.localdomain'];
 const START_SLACK_S = 5;
 // A container being stopped loses its network while its control still runs.
 const CONTROL_LIFETIME_S = 2;
-const APP_STEPS = new Set(['app', 'verify']);
+const APP_STEPS = new Set(['ai-service', 'app', 'verify']);
 const script = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'netcap.sh'), 'utf8').replaceAll('\r', '');
 
 const PACKET = /^(\d+\.\d+) (?:(\S+) +\S+ +)?IP (\d+\.\d+\.\d+\.\d+)\.(\d+) > (\d+\.\d+\.\d+\.\d+)\.(\d+): (.*)$/u;
@@ -117,7 +117,8 @@ function watchContext(context, network, ctx) {
 export async function startNetworkCapture(ctx) {
   const dir = path.join(ctx.resultsDir, 'network');
   fs.mkdirSync(dir, { recursive: true });
-  const network = { browser: [], dir, suites: new Set([suiteBase(ctx.env.baseURL)]) };
+  // Hosts the owner pointed an app at, such as an AI service added in Settings: no review can list them.
+  const network = { browser: [], dir, ownerChosen: new Set(), suites: new Set([suiteBase(ctx.env.baseURL)]) };
   network.server = await startServerCapture(ctx.env.labShell, dir);
   network.watch = (context) => watchContext(context, network, ctx);
   network.watch(ctx.page.context());
@@ -269,7 +270,7 @@ function stepAt(timeline, at) {
 
 // Each app's destinations by channel and host: where they came from, in which steps, and
 // whether they were seen before its update, after it, or both.
-export function summarize({ appIds, appsByRouteHost = new Map(), browser = [], expectations = {}, log, suites, timeline = [], toLocal = (at) => at }) {
+export function summarize({ appIds, appsByRouteHost = new Map(), browser = [], expectations = {}, log, ownerChosen = new Set(), suites, timeline = [], toLocal = (at) => at }) {
   const search = new Set(log?.search || []);
   const ownAddresses = new Set(log?.addresses || []);
   const controlAddresses = new Set((log?.controls || []).map((control) => control.address));
@@ -296,8 +297,9 @@ export function summarize({ appIds, appsByRouteHost = new Map(), browser = [], e
     const group = groups.get(owner);
     const key = `${event.channel} ${event.host}`;
     if (!group.destinations.has(key)) {
-      const allowed = (expectations[owner]?.[event.channel] || []).some((pattern) => matchesHost(event.host, pattern));
-      group.destinations.set(key, { channel: event.channel, count: 0, example: event.url || null, expected: owner === 'platform' ? null : allowed, first: event.at, from: new Set(), host: event.host, phases: new Set(), ports: new Set(), steps: new Set() });
+      const chosen = ownerChosen.has(event.host);
+      const allowed = chosen || (expectations[owner]?.[event.channel] || []).some((pattern) => matchesHost(event.host, pattern));
+      group.destinations.set(key, { channel: event.channel, chosen, count: 0, example: event.url || null, expected: owner === 'platform' ? null : allowed, first: event.at, from: new Set(), host: event.host, phases: new Set(), ports: new Set(), steps: new Set() });
     }
     const destination = group.destinations.get(key);
     destination.count += 1;
@@ -337,6 +339,7 @@ function shortSource(from, id) {
 
 function listedLabel(item) {
   if (item.expected === null) return '';
+  if (item.chosen) return 'chosen by the owner';
   if (item.expected) return 'yes';
   return item.phases.every((phase) => phase === 'before') ? 'no, before the update only' : '**no**';
 }
@@ -394,7 +397,7 @@ export async function writeNetworkReport(ctx) {
   const log = network.server.status === 'on' && fs.existsSync(logFile) ? parseServerLog(fs.readFileSync(logFile, 'utf8')) : null;
   const { clock } = network.server;
   const toLocal = clock ? (at) => at - clock.lab + clock.local : (at) => at;
-  const apps = summarize({ appIds, appsByRouteHost, browser: network.browser, expectations: expectationsFrom(reviewsFor(appIds)), log, suites: network.suites, timeline: ctx.timeline, toLocal });
+  const apps = summarize({ appIds, appsByRouteHost, browser: network.browser, expectations: expectationsFrom(reviewsFor(appIds)), log, ownerChosen: network.ownerChosen, suites: network.suites, timeline: ctx.timeline, toLocal });
   const checks = log ? controlChecks(log, serverEvents(log)).map((check) => ({ ...check, at: toLocal(check.at) })) : [];
   const problems = problemsIn({ apps, checks, server: network.server });
   const label = ctx.plan.label || ctx.runId;

@@ -15,6 +15,7 @@ const catalog = [
   { hasModule: true, id: 'secure-c', needsHttps: true },
   { hasModule: false, id: 'unfinished', needsHttps: false },
   { hasModule: true, id: 'notes-e', needsHttps: false, offersAiTools: true },
+  { hasModule: true, id: 'office-f', needsHttps: false, readsAiService: true },
 ];
 
 const tokens = (plan) => plan.steps.map((step) => step.token);
@@ -73,6 +74,16 @@ test('apps that offer tools to an AI get their AI checks after their update and 
   assert.deepEqual(full.filter((token) => token.startsWith('ai:')), ['ai:notes-e']);
   assert.ok(full.indexOf('ai:notes-e') > full.indexOf('app:notes-e'));
   assert.ok(full.indexOf('ai:notes-e') > full.indexOf('dns01'));
+});
+
+test('apps that read an AI service get the ai-service step after their journey in @app-cycle and @full', () => {
+  const cycle = tokens(resolvePath(['@app-cycle', 'office-f'], catalog));
+  assert.ok(cycle.indexOf('ai-service:office-f') > cycle.indexOf('app:office-f'));
+  assert.ok(cycle.indexOf('ai-service:office-f') < cycle.indexOf('restore'), 'the restore that follows removes the app it was turned on for');
+  assert.ok(!tokens(resolvePath(['@app-cycle', 'plain-a'], catalog)).some((token) => token.startsWith('ai-service:')));
+  const full = tokens(resolvePath(['@full'], catalog));
+  assert.deepEqual(full.filter((token) => token.startsWith('ai-service:')), ['ai-service:office-f']);
+  assert.ok(full.indexOf('ai-service:office-f') > full.indexOf('app:office-f'));
 });
 
 test('an app that works over http gets no dns01', () => {

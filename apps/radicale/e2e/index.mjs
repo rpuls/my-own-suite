@@ -56,10 +56,13 @@ async function expectItem(page, env, url, entry, line) {
   expect(await response.text()).toContain(line);
 }
 
+const eventDay = '2026-10-12';
+
 function eventIcs(uid, summary) {
+  const day = eventDay.replaceAll('-', '');
   return [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MOS//E2E//EN', 'BEGIN:VEVENT',
-    `UID:${uid}`, 'DTSTAMP:20261005T080000Z', 'DTSTART:20261012T090000Z', 'DTEND:20261012T100000Z',
+    `UID:${uid}`, 'DTSTAMP:20261005T080000Z', `DTSTART:${day}T090000Z`, `DTEND:${day}T100000Z`,
     `SUMMARY:${summary}`, 'END:VEVENT', 'END:VCALENDAR', '',
   ].join('\r\n');
 }
@@ -106,6 +109,36 @@ export default {
     await expect(collectionCard(page, calendar.title)).toContainText(/1 item/iu, { timeout: 30000 });
     await expect(collectionCard(page, addressBook.title)).toContainText(/1 item/iu, { timeout: 30000 });
     await shot('collections');
+  },
+
+  // The journey's calendar, event and contact, read by a scripted assistant that
+  // then adds an event and moves and renames it.
+  async ai({ call, expect, state, step }) {
+    if (!state.calendar) throw new Error('Radicale ai needs the collections its journey made (run app:radicale first, or carry it in with --continue).');
+    const stamp = Date.now().toString(36);
+    const day = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    let eventId;
+    await step('see the calendars, the journey\'s event and its contact', async () => {
+      expect((await call('list_calendars')).text).toContain(state.calendar.title);
+      const journeyEvent = state.calendar.line.replace(/^SUMMARY:/u, '');
+      expect((await call('list_events', { calendar: state.calendar.title, end: eventDay, start: eventDay, time_zone: 'UTC' })).text).toContain(journeyEvent);
+      const contact = state.addressBook.line.replace(/^FN:/u, '');
+      expect((await call('search_contacts', { query: contact })).text).toContain(contact);
+    });
+    await step('add an event, then move and rename it', async () => {
+      const added = await call('add_event', { start: `${day} 09:00`, time_zone: 'UTC', title: `MOS E2E assistant ${stamp}` });
+      expect(added.text).toContain('09:00-10:00');
+      eventId = /id (\S+\.ics)/u.exec(added.text)?.[1];
+      expect(eventId, 'the added event names its id').toBeTruthy();
+      const changed = await call('change_event', { event_id: eventId, start: `${day} 10:30`, time_zone: 'UTC', title: `MOS E2E assistant moved ${stamp}` });
+      expect(changed.text).toContain('10:30-11:30');
+      const listed = await call('list_events', { end: day, query: stamp, start: day, time_zone: 'UTC' });
+      expect(listed.text).toContain(`MOS E2E assistant moved ${stamp}`);
+      expect(listed.text).toContain(eventId);
+    });
+    await step('a repeating event is left alone', async () => {
+      expect((await call('change_event', { event_id: 'default-calendar/mos-welcome.ics', title: 'Renamed' })).isError).toBe(true);
+    });
   },
 
   async verify({ env, page, shot, state, step, url }) {

@@ -382,3 +382,56 @@ test('the file prints one section per topic, in the order of the topic list', ()
   assert.ok(positions.every((position) => position > 0));
   assert.deepEqual([...positions].sort((left, right) => left - right), positions);
 });
+
+function aiFacts({ testError = null } = {}) {
+  return {
+    connections: {
+      clients: [{ defaultLevel: 'off', enabled: true, id: 'c1', lastUsedAt: null, levels: { 'paperless-ngx': 'see' }, name: 'Claude Code', route: 'direct' }],
+      mcpUrl: 'https://home.mos.example.com/ai/mcp',
+      sources: [{ error: 'MOS could not read the tools Paperless-ngx offers: refused', id: 'paperless-ngx', name: 'Paperless-ngx', running: true, token: null, tools: [] }],
+    },
+    services: {
+      apps: [{ name: 'ONLYOFFICE', running: true, serviceId: 's1' }, { name: 'Paperless-ngx', running: true, serviceId: null }],
+      services: [{ baseUrl: 'http://192.168.1.20:1234/v1', embeddingModel: null, id: 's1', keyConfigured: false, model: 'qwen3', name: 'LM Studio', place: 'home', test: { at: '2026-09-01T11:00:00.000Z', error: testError } }],
+    },
+    tunnel: null,
+    unread: [],
+  };
+}
+
+test('the AI section names each service with its last test and the apps that ask it', () => {
+  const { text } = buildSupportBundle({ ai: aiFacts(), collection: healthyCollection(), now, secrets: ['x'] });
+  assert.match(text, /\nAI\n/u);
+  assert.match(text, /LM Studio {2}http:\/\/192\.168\.1\.20:1234\/v1 {2}\(home\)/u);
+  assert.match(text, /last test 2026-09-01T11:00:00\.000Z answered/u);
+  assert.match(text, /asked by ONLYOFFICE/u);
+  assert.match(text, /Apps with AI features left off: Paperless-ngx/u);
+  assert.match(text, /Claude Code {2}direct · on/u);
+});
+
+test('a service that failed its test is trouble only while an app asks it', () => {
+  const failing = aiFacts({ testError: 'did not answer within 120 seconds' });
+  assert.ok(summarizeTrouble({ ai: failing }).some((line) => line.startsWith('AI service LM Studio, which ONLYOFFICE asks, did not answer')));
+  failing.services.apps[0].serviceId = null;
+  assert.ok(!summarizeTrouble({ ai: failing }).some((line) => line.startsWith('AI service')));
+});
+
+test('an app whose tools cannot be read is trouble once an assistant may use it', () => {
+  const facts = aiFacts();
+  assert.ok(summarizeTrouble({ ai: facts }).some((line) => line.startsWith('Assistants may use Paperless-ngx, but MOS could not read')));
+  facts.connections.clients[0].levels = {};
+  assert.ok(!summarizeTrouble({ ai: facts }).some((line) => line.startsWith('Assistants may use')));
+});
+
+test('the ai topic asks for AI facts, and the host topic does not', async () => {
+  let asked = 0;
+  const context = {
+    agent: { collect: async () => healthyCollection() },
+    aiFacts: async () => { asked += 1; return aiFacts(); },
+    secretDir: fs.mkdtempSync(path.join(os.tmpdir(), 'mos-ai-topic-')),
+    store: { getAddressChange: () => ({}), getAppInstances: () => [], latestFailedAppOperation: () => null },
+  };
+  assert.match(await readTopic('ai', context), /asked by ONLYOFFICE/u);
+  await readTopic('host', context);
+  assert.equal(asked, 1);
+});

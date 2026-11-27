@@ -70,8 +70,9 @@ function issueSentence({ detail, text }) {
   return /^[A-Z]/u.test(detail) ? `${text}. ${detail}` : `${text} ${detail}`;
 }
 
-function summarizeTrouble({ apps = [], attention = [], catalog = null, collection = {}, drives = null, platform = {} }) {
+function summarizeTrouble({ ai = null, apps = [], attention = [], catalog = null, collection = {}, drives = null, platform = {} }) {
   const trouble = attention.filter((issue) => issue.inDiagnostics).map(issueSentence);
+  trouble.push(...aiTrouble(ai));
   if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
   // A catalog that will not refresh is quiet by design — the app list and its
   // update offers fall back to the packages this MOS version shipped with — so
@@ -306,6 +307,56 @@ function containerLines(containers) {
 // support flow is an owner who cannot describe their problem attaching this to a
 // message; a single .txt survives every channel that mangles or blocks archives,
 // and the person reading it — increasingly an AI agent — needs no unpacking step.
+// The tunnel and missing app tokens already reach the summary as attention issues.
+function aiTrouble(ai) {
+  if (!ai) return [];
+  const trouble = [];
+  for (const service of ai.services?.services || []) {
+    const askers = (ai.services.apps || []).filter((app) => app.serviceId === service.id).map((app) => app.name);
+    if (service.test.error && askers.length) trouble.push(`AI service ${service.name}, which ${askers.join(', ')} ${askers.length === 1 ? 'asks' : 'ask'}, did not answer its last test at ${service.test.at}: ${service.test.error}`);
+  }
+  const allowed = (source) => (ai.connections?.clients || []).some((client) => client.enabled && (client.levels[source.id] || client.defaultLevel) !== 'off');
+  for (const source of ai.connections?.sources || []) {
+    if (source.error && source.running && allowed(source)) trouble.push(`Assistants may use ${source.name}, but ${source.error}`);
+  }
+  if (ai.unread?.length) trouble.push(`Some AI information could not be read: ${ai.unread.join(', ')}.`);
+  return trouble;
+}
+
+function aiServiceLines(services) {
+  if (!services) return ['  not read'];
+  if (!services.services.length) return ['  none added'];
+  return services.services.flatMap((service) => {
+    const askers = services.apps.filter((app) => app.serviceId === service.id).map((app) => `${app.name}${app.running ? '' : ' (stopped)'}`);
+    const test = !service.test.at ? 'never tested' : `${service.test.at} ${service.test.error ? `did not answer: ${service.test.error}` : 'answered'}`;
+    return [
+      `  ${service.name}  ${service.baseUrl}  (${service.place})`,
+      `    model ${service.model} · search model ${service.embeddingModel || 'none'} · API key ${service.keyConfigured ? 'saved' : 'none'}`,
+      `    last test ${test}`,
+      `    asked by ${askers.join(', ') || 'no app'}`,
+    ];
+  });
+}
+
+function aiLines(ai) {
+  if (!ai) return 'not collected';
+  const { connections, services, tunnel } = ai;
+  const off = (services?.apps || []).filter((app) => !app.serviceId).map((app) => app.name);
+  const clients = connections?.clients || [];
+  const levelsOf = (client) => Object.entries(client.levels).map(([id, level]) => `${id} ${level}`).join(', ') || 'none';
+  return [
+    'AI services apps ask:',
+    ...aiServiceLines(services),
+    `Apps with AI features left off: ${off.join(', ') || 'none'}`,
+    '',
+    `Assistants (MCP address ${connections?.mcpUrl || 'none, the suite has no HTTPS address'}):`,
+    ...(!connections ? ['  not read'] : clients.length ? clients.map((client) => `  ${client.name}  ${client.route} · ${client.enabled ? 'on' : 'off'} · last used ${client.lastUsedAt || 'never'} · default ${client.defaultLevel} · levels ${levelsOf(client)}${tunnel?.clientId === client.id ? ` · tunnel ${tunnel.state}` : ''}`) : ['  none connected']),
+    '',
+    'Apps assistants can use:',
+    ...(connections?.sources || []).map((source) => `  ${source.name}  ${source.running ? 'running' : 'stopped'} · ${source.tools.length} tools${source.token ? ` · token ${source.token.configured ? 'given' : 'missing'}` : ''}${source.error ? ` · ${source.error}` : ''}`),
+  ].join('\n');
+}
+
 function troubleText({ trouble }) {
   return trouble.length
     ? trouble.map((line) => `  • ${line}`).join('\n')
@@ -405,9 +456,16 @@ const TOPICS = {
     says: 'My Own Suite containers with their state and recent logs. With app, only that app\'s containers.',
     title: 'CONTAINERS',
   },
+  ai: {
+    agent: [],
+    render: ({ ai }) => aiLines(ai),
+    says: 'AI services apps ask, with their last test and which apps ask them; connected assistants with their levels and ChatGPT tunnel; and the apps assistants can use, with any error reading their tools.',
+    title: 'AI',
+  },
 };
 
 function buildSupportBundle({
+  ai = null,
   apps = [],
   attention = [],
   catalog = null,
@@ -419,8 +477,8 @@ function buildSupportBundle({
   secrets = [],
 } = {}) {
   const createdAt = now().toISOString();
-  const trouble = summarizeTrouble({ apps, attention, catalog, collection, drives, platform });
-  const facts = { apps, catalog, collection, drives, homeHost, platform, trouble };
+  const trouble = summarizeTrouble({ ai, apps, attention, catalog, collection, drives, platform });
+  const facts = { ai, apps, catalog, collection, drives, homeHost, platform, trouble };
 
   const body = [
 `MY OWN SUITE — DIAGNOSTICS
@@ -469,6 +527,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
 // empty list none); `app` narrows the apps and their containers to one package.
 async function gatherFacts({
   agent,
+  aiFacts = null,
   app = null,
   attention = [],
   appAgent = null,
@@ -505,6 +564,7 @@ async function gatherFacts({
   }));
 
   return {
+    ai: await Promise.resolve().then(() => aiFacts?.()).catch(() => ({ unread: ['AI settings'] })) ?? null,
     apps,
     attention,
     catalog: catalogStatus,
@@ -545,19 +605,34 @@ async function assembleSupportBundle({ now = () => new Date(), secretDir, ...con
 
 // One topic for an AI: the same section the file prints, gathered from only the
 // collectors it needs, and masked with the same secrets.
-async function readTopic(topicId, { app = null, secretDir, ...context }) {
+async function readTopic(topicId, { aiFacts = null, app = null, secretDir, ...context }) {
   const topic = TOPICS[topicId];
   if (!topic) throw Object.assign(new Error(`No diagnostics topic is called "${String(topicId).slice(0, 40)}". Topics: ${Object.keys(TOPICS).join(', ')}.`), { code: 'DIAGNOSTICS_UNKNOWN_TOPIC' });
-  const facts = await gatherFacts({ ...context, app, collectors: topic.agent === 'all' ? null : topic.agent });
+  // Reading assistants' tools asks each app, so only the topics that print AI wait for it.
+  const needsAi = topicId === 'ai' || topicId === 'summary';
+  const facts = await gatherFacts({ ...context, aiFacts: needsAi ? aiFacts : null, app, collectors: topic.agent === 'all' ? null : topic.agent });
   const text = section(topic.title, topic.render({ ...facts, trouble: summarizeTrouble({ ...facts, collection: facts.collection ?? {} }) }));
   return redactValuesWithReport(text, collectRedactionSecrets({ secretDir })).text;
 }
 
 // The one way in for both readers of diagnostics: the download button and the AI
 // tool. Everything is read when asked, so neither ever sees a stale answer.
-function createDiagnostics({ appAgent, appPackages, attention, catalogService, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
+// Each AI part answers on its own, so one that fails leaves the others readable.
+async function readAiFacts({ aiConnections, aiServices, chatGptTunnel }) {
+  const unread = [];
+  const read = (name, value) => Promise.resolve().then(value).catch(() => { unread.push(name); return null; });
+  const [services, connections, tunnel] = await Promise.all([
+    read('AI services', () => aiServices?.status()),
+    read('assistants', () => aiConnections?.status()),
+    read('ChatGPT tunnel', () => chatGptTunnel?.status()),
+  ]);
+  return { connections, services, tunnel, unread };
+}
+
+function createDiagnostics({ aiConnections, aiServices, appAgent, appPackages, attention, catalogService, chatGptTunnel, diagnosticsAgent, frontDoor, homeHost, setup, suiteAddress, updates }) {
   const context = async () => ({
     agent: diagnosticsAgent,
+    aiFacts: () => readAiFacts({ aiConnections, aiServices, chatGptTunnel }),
     appAgent,
     attention: await Promise.resolve().then(() => attention?.issues() ?? []).catch(() => []),
     catalogStatus: catalogService.status(),

@@ -8,6 +8,7 @@ import { catalogApps, loadAppModule, requireAppModule } from '../support/catalog
 import { appDrive } from '../support/drive.mjs';
 import { fixtureMaker } from '../support/fixtures.mjs';
 import { waitForHomepageAvailable } from '../support/homepage.mjs';
+import { runOnLab } from '../support/lab-shell.mjs';
 import {
   appRunning,
   closeAppDetails,
@@ -211,6 +212,14 @@ async function openApp(ctx, id, module) {
   };
 }
 
+// A variable the app's containers run with, read as root on the lab, for a journey that has to
+// stand in for another app it trusts by a secret MOS generated for both.
+async function serverEnv(ctx, id, name) {
+  const output = await runOnLab(ctx.env.labShell, `for name in $(docker ps --format '{{.Names}}' | grep -E '^mos-app-${id}(-|$)'); do docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name"; done`);
+  const line = output.split('\n').find((item) => item.startsWith(`${name}=`));
+  return line ? line.slice(name.length + 1).trim() : null;
+}
+
 function appContext(ctx, id, module, opened, freshContexts) {
   const state = ctx.state(id);
   return {
@@ -230,6 +239,7 @@ function appContext(ctx, id, module, opened, freshContexts) {
     make: fixtureMaker(ctx, id),
     owner: ctx.env.owner,
     page: opened.page,
+    serverEnv: (name) => serverEnv(ctx, id, name),
     setup: state.setup || {},
     async shot(name, { page = opened.page, ...options } = {}) {
       const mask = module.masks ? await module.masks(page) : [];
@@ -255,13 +265,14 @@ async function describeAppPages(ctx, id, pages) {
   return lines.join('');
 }
 
-async function runAppHook(ctx, id, hook) {
+// A step's own additions to what the hook gets, such as the AI service the `ai-service` step runs.
+export async function runAppHook(ctx, id, hook, extra = {}) {
   const module = await requireAppModule(id);
   if (typeof module[hook] !== 'function') throw new Error(`apps/${id}/e2e/index.mjs exports no ${hook}().`);
   const opened = await openApp(ctx, id, module);
   const freshContexts = [];
   try {
-    await module[hook](appContext(ctx, id, module, opened, freshContexts));
+    await module[hook]({ ...appContext(ctx, id, module, opened, freshContexts), ...extra });
   } catch (error) {
     const appPages = new Set([opened.page, ...opened.page.context().pages().filter((item) => item !== ctx.page), ...freshContexts.flatMap((context) => context.pages())]);
     error.message += await describeAppPages(ctx, id, [...appPages]);

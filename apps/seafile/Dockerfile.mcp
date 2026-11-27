@@ -1,0 +1,9 @@
+# The MCP server MOS offers an owner's AI for Seafile. It reuses the pinned
+# Seafile image for its Python, so it adds no image of its own to download.
+FROM seafileltd/seafile-mc@sha256:b0c90832126bf432db908449f1bb450211e6bbf75a2193bab3399e2a9636eccf
+
+COPY mcp-server.py /opt/mos/mcp-server.py
+RUN chmod 0644 /opt/mos/mcp-server.py
+HEALTHCHECK --interval=30s --timeout=5s CMD ["python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8100), 3)"]
+USER 1000:1000
+ENTRYPOINT ["python3", "/opt/mos/mcp-server.py"]

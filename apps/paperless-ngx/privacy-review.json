@@ -5,7 +5,7 @@
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.4.4",
-    "packageDigest": "sha256:64646da5ce2c208d6d5e32473b18bef77e4ac377d42d3c35bf5af0a623c0d209",
+    "packageDigest": "sha256:7d0053424d245bf6f10e3ea941b6f9f277259e4d800f94e0e20d148e073b209e",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -106,7 +106,7 @@
     },
     {
       "type": "documented",
-      "claim": "The two features that would send document content to a third party are off unless the owner configures them. PAPERLESS_AI_ENABLED defaults to NO, so AI suggestions and the document chat are inactive and no LLM endpoint, model or API key is set. PAPERLESS_REMOTE_OCR_ENGINE is unset, so cloud OCR through Azure AI is inactive. MOS sets neither variable and exposes neither in its install form, so reaching an external AI or OCR service requires the owner to add configuration that the MOS package does not provide.",
+      "claim": "The two features that would send document content to a third party are off unless the owner configures them. PAPERLESS_AI_ENABLED defaults to NO, so AI suggestions and the document chat are inactive and no LLM endpoint, model or API key is set. PAPERLESS_REMOTE_OCR_ENGINE is unset, so cloud OCR through Azure AI is inactive, and MOS neither sets it nor exposes it in its install form. MOS sets the AI variables only for an AI service the owner turns on for Paperless, as a later claim describes.",
       "source": "src/paperless/settings/__init__.py AI_ENABLED, LLM_BACKEND and REMOTE_OCR_ENGINE at v3.0.5, and apps/paperless-ngx/manifest.json",
       "retrievedAt": "2026-08-11"
     },
@@ -118,7 +118,7 @@
     },
     {
       "type": "documented",
-      "claim": "Where the app does accept an owner-supplied URL, it defends the operator's own network against it. src/paperless/network.py resolves every outbound hostname, refuses the request if it resolves to a private, loopback, link-local, multicast or unspecified address unless internal access is explicitly allowed, and then connects to the vetted IP while preserving the original Host header and TLS SNI so the pinning cannot be defeated by DNS rebinding. This governs the AI, embedding and remote-OCR endpoints. It is a deliberate anti-SSRF design rather than an egress allow-list, and this review records it as a point in the package's favour.",
+      "claim": "Where the app does accept an owner-supplied URL, it defends the operator's own network against it. src/paperless/network.py resolves every outbound hostname, refuses the request if it resolves to a private, loopback, link-local, multicast or unspecified address unless internal access is explicitly allowed, and then connects to the vetted IP while preserving the original Host header and TLS SNI so the pinning cannot be defeated by DNS rebinding. This governs the AI, embedding and remote-OCR endpoints. At v3.5.1 PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS defaults to true, so the AI and embedding endpoints may be on a private address, which a model on the owner's own network needs; the pinning to the resolved address still applies. It is a deliberate anti-SSRF design rather than an egress allow-list, and this review records it as a point in the package's favour.",
       "source": "src/paperless/network.py at v3.0.5",
       "retrievedAt": "2026-08-11"
     },
@@ -146,7 +146,7 @@
     },
     {
       "type": "configured",
-      "claim": "MOS wires Paperless's AI settings (PAPERLESS_AI_ENABLED, PAPERLESS_AI_LLM_ENDPOINT, the key and the models) to an AI service the owner adds under Settings → AI services and turns on for Paperless by its own switch. Until then they are left out of the container, PAPERLESS_AI_ENABLED stays at its false default, and Paperless calls no AI service. Once turned on, Paperless sends the text of the documents it suggests for, indexes or answers questions about to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text. MOS never calls the service on Paperless's behalf beyond the owner's own test from Settings.",
+      "claim": "MOS wires Paperless's AI settings (PAPERLESS_AI_ENABLED, PAPERLESS_AI_LLM_ENDPOINT, the key and the models) to an AI service the owner adds under Settings → AI in your apps and turns on for Paperless by its own switch. Until then they are left out of the container, PAPERLESS_AI_ENABLED stays at its false default, and Paperless calls no AI service. Once turned on, Paperless sends the text of the documents it suggests for, indexes or answers questions about to the address the owner entered, which may be a model on the owner's own network or a provider on the internet that then handles that text. MOS never calls the service on Paperless's behalf beyond the owner's own test from Settings.",
       "source": "apps/paperless-ngx/manifest.json and src/paperless_ai/client.py, src/paperless_ai/embedding.py at v3.5.1"
     },
     {
@@ -207,7 +207,7 @@
     },
     {
       "type": "documented",
-      "claim": "Paperless-ngx 3.4.2 to 3.5.1 adds no outbound endpoint. The set of http(s) hosts in the server's Python source and in the compiled en-US web client is identical in the two pinned images, and RemoteVersionView remains the only hardcoded fetch. The changed server files are the tag hierarchy rewrite that replaces django-treenode, bulk edits handed to the Celery worker, Markdown notes, a manual workflow trigger, a daily local task that deletes expired sessions, row locking for first-user signup, permission fixes for tag deletion and the config view, and the ALLOWED_HOSTS default. The one network-related change is in the optional AI embedding code: a Hugging Face embedding model already cached under data/hf_cache now loads with local_files_only instead of checking the Hub, which only narrows egress for an owner who has turned AI on, which MOS does not. A search for sentry, posthog, matomo and google-analytics finds no library. The dependency changes are django-allauth 65.20.1 to 65.21.1, python-dotenv 1.2.4 and the removal of django-treenode.",
+      "claim": "Paperless-ngx 3.4.2 to 3.5.1 adds no outbound endpoint. The set of http(s) hosts in the server's Python source and in the compiled en-US web client is identical in the two pinned images, and RemoteVersionView remains the only hardcoded fetch. The changed server files are the tag hierarchy rewrite that replaces django-treenode, bulk edits handed to the Celery worker, Markdown notes, a manual workflow trigger, a daily local task that deletes expired sessions, row locking for first-user signup, permission fixes for tag deletion and the config view, and the ALLOWED_HOSTS default. The one network-related change is in the optional AI embedding code: a Hugging Face embedding model already cached under data/hf_cache now loads with local_files_only instead of checking the Hub, which only narrows egress for an owner who has turned AI on. MOS never configures Hugging Face embeddings: with a search model it sets the openai-like backend, and without one the index is off. A search for sentry, posthog, matomo and google-analytics finds no library. The dependency changes are django-allauth 65.20.1 to 65.21.1, python-dotenv 1.2.4 and the removal of django-treenode.",
       "source": "diff of /usr/src/paperless/src and /etc/s6-overlay between the pinned 3.4.2 (sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84) and 3.5.1 (sha256:8508853b8a0f8394074260957d0be186c8c64f346973b24a7583de4580f306b9) images, and the v3.5.0 and v3.5.1 release notes",
       "url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v3.5.0",
       "retrievedAt": "2026-11-19"
@@ -262,12 +262,12 @@
     "The client-side result rests on the reviewer watching the browser network panel during the session rather than on a retained HAR. No artifact exists to re-analyse, so unlike the server-side capture it cannot be revisited if the finding is later challenged, and nothing is claimed about request headers, cookies or bodies. Capturing and keeping a HAR would close this.",
     "The capture was taken over loopback, so browser requests carried localhost as their origin. A deployment reached through a public domain would send that domain in Referer and Origin headers to any external host it contacted; no external host was contacted, so nothing was observed leaving, but the reasoning is an inference from the absence of destinations rather than a measurement against a domain-based install.",
     "The packet capture attached about three seconds after the containers started. Database migrations, superuser creation and the application's own startup all fall inside the window, since Paperless takes considerably longer than that to answer, but the first few seconds of container life are not covered.",
-    "Features an owner can add after installation are outside this result: mail accounts, which would connect to an IMAP server every ten minutes; AI suggestions and document chat through an OpenAI-compatible service or Ollama; remote OCR through Azure AI; and documents deposited into the consume volume by a scanner. MOS configures none of them and exposes none in its install form, and the review deliberately does not disable them."
+    "Features an owner can add after installation are outside this result: mail accounts, which would connect to an IMAP server every ten minutes; remote OCR through Azure AI; and documents deposited into the consume volume by a scanner. MOS configures none of them and exposes none in its install form, and the review deliberately does not disable them. AI suggestions and document chat are covered above: MOS turns them on only for the AI service the owner chooses, and no capture with an AI service turned on has been taken yet."
   ],
   "security": [
     {
       "type": "documented",
-      "claim": "GHSA-c8f3-pqr2-rr24 (moderate, CVSS 4.3) let an AI classification workflow processing an ownerless document send other users' private document titles and excerpts to the configured AI provider; it is fixed in 3.3.2 and only reachable when an owner has turned AI on, which MOS does not. 3.3.4 also updates Pillow, which reads every uploaded image and builds every thumbnail, and aiohttp for upstream-reported vulnerabilities; this package runs 3.3.4.",
+      "claim": "GHSA-c8f3-pqr2-rr24 (moderate, CVSS 4.3) let an AI classification workflow processing an ownerless document send other users' private document titles and excerpts to the configured AI provider; it is fixed in 3.3.2 and only reachable when an owner has turned AI on for Paperless. 3.3.4 also updates Pillow, which reads every uploaded image and builds every thumbnail, and aiohttp for upstream-reported vulnerabilities; this package runs 3.3.4.",
       "source": "Paperless-ngx security advisories and the v3.3.2 and v3.3.4 release notes",
       "url": "https://github.com/paperless-ngx/paperless-ngx/security/advisories/GHSA-c8f3-pqr2-rr24",
       "retrievedAt": "2026-10-25"

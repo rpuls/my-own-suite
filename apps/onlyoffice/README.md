@@ -5,7 +5,7 @@
 - `ALLOW_META_IP_ADDRESS`: Keeps metadata-address callbacks disabled.
 - `METRICS_ENABLED`: Set to `false` so the Document Server's optional StatsD metrics emitter stays off (upstream default is also `false`).
 - `PLUGINS_ENABLED`: Set to `false`. The upstream default `true` makes the image's start script run `documentserver-pluginsmanager.sh` at every start, which downloads the default plugin list from `onlyoffice.github.io` and the plugins from GitHub releases. The Community image carries only the marketplace plugin itself; the AI plugin below is the only one this package adds.
-- `MOS_AI_BASE_URL`, `MOS_AI_API_KEY`, `MOS_AI_MODEL`: The AI service the owner turned on for ONLYOFFICE under **Settings → AI services**, from `${ai.*}`. Absent until then; see **AI Tools**.
+- `MOS_AI_BASE_URL`, `MOS_AI_API_KEY`, `MOS_AI_MODEL`: The AI service the owner turned on for ONLYOFFICE under **Settings → AI in your apps**, from `${ai.*}`. Absent until then; see **AI Tools**.
 - `JWT_ENABLED`: Enables JWT protection.
 - `JWT_SECRET`: Stable provider-instance JWT secret shared with connected document platforms through MOS integration grants.
 - `SECURE_LINK_SECRET`: Stable nginx secure-link secret for `/cache/files/...` URLs.
