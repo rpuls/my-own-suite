@@ -1,7 +1,8 @@
 """The tools MOS offers an owner's AI for Radicale, as a small MCP server.
 
-Only MOS calls it, with the key MOS generated for this package. It acts as the
-Radicale user MOS set up, and reaches nothing but Radicale's CalDAV and CardDAV.
+Only MOS calls it, with the key MOS generated for this package. It signs in with
+MOS's own Radicale login, reads and writes the owner's collections, and reaches
+nothing but Radicale's CalDAV and CardDAV.
 """
 
 import base64
@@ -21,8 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SERVER = os.environ.get("RADICALE_URL", "http://radicale:5232").rstrip("/")
-USERNAME = os.environ.get("RADICALE_ADMIN_USERNAME", "")
-PASSWORD = os.environ.get("RADICALE_ADMIN_PASSWORD", "")
+OWNER = os.environ.get("RADICALE_ADMIN_USERNAME", "")
+SERVICE_USERNAME = os.environ.get("RADICALE_SERVICE_USERNAME", "")
+SERVICE_PASSWORD = os.environ.get("RADICALE_SERVICE_PASSWORD", "")
 MOS_KEY = os.environ.get("MOS_AI_KEY", "")
 PORT = int(os.environ.get("PORT", "8100"))
 
@@ -68,8 +70,8 @@ def stamp(moment):
 
 class Radicale:
     def __init__(self):
-        self.auth = "Basic " + base64.b64encode(f"{USERNAME}:{PASSWORD}".encode()).decode()
-        self.home = f"/{urllib.parse.quote(USERNAME, safe='')}/"
+        self.auth = "Basic " + base64.b64encode(f"{SERVICE_USERNAME}:{SERVICE_PASSWORD}".encode()).decode()
+        self.home = f"/{urllib.parse.quote(OWNER, safe='')}/"
         self.zone = None
 
     def send(self, method, path, body=None, headers=None):
@@ -83,8 +85,8 @@ class Radicale:
         except urllib.error.HTTPError as error:
             if error.code in (401, 403):
                 raise ToolError(
-                    "Radicale did not accept the sign-in MOS set up. If the Radicale password was "
-                    "changed outside MOS, MOS can no longer reach your calendars."
+                    "Radicale did not let MOS's own sign-in in. Restarting Radicale from MOS "
+                    "sets that sign-in up again."
                 ) from None
             if error.code == 404:
                 raise ToolError("Radicale has no calendar or event at that id. list_events shows the ids it has.") from None

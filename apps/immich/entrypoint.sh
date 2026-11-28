@@ -54,20 +54,27 @@ then
   cp "$BASE_CONFIG" "$RUNTIME_CONFIG" 2>/dev/null || true
 fi
 
-# Immich creates its administrator and external libraries only through its API,
-# so a background job does it once the server answers: the administrator from
-# the login chosen at install, a Photos library over the folder MOS mounted from
-# the owner's drive, and a scan of it on every start. Failures are logged and
-# retried at the next start; they never hold the server back.
-MOS_PHOTOS_PATH=/media/photos node <<'JS' &
+# Immich creates its administrator and external libraries only through its API.
+# MOS forgets the administrator password once the health check first passes, so
+# the steps that need it (signing up the administrator and making an API key)
+# run first on a server only loopback can reach. A background job then uses the
+# key for a Photos library over the folder MOS mounted from the owner's drive,
+# and a scan of it on every start.
+START=/usr/src/app/server/bin/start.sh
+KEY_FILE=/usr/src/app/upload/.mos-api-key
+
+run_step() {
+  MOS_STEP=$1 MOS_SERVER_PID=$2 MOS_KEY_FILE="$KEY_FILE" MOS_PHOTOS_PATH=/media/photos node <<'JS'
 const fs = require('fs');
-const api = 'http://localhost:2283/api';
-const keyFile = '/usr/src/app/upload/.mos-api-key';
+const api = 'http://127.0.0.1:2283/api';
+const keyFile = process.env.MOS_KEY_FILE;
+const server = Number(process.env.MOS_SERVER_PID);
 const email = process.env.MOS_ADMIN_EMAIL || '';
 const password = process.env.MOS_ADMIN_PASSWORD || '';
 const photos = process.env.MOS_PHOTOS_PATH;
 const log = (message) => console.log(`MOS: ${message}`);
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const running = () => { try { process.kill(server, 0); return true; } catch { return false; } };
 
 async function call(method, path, body, headers = {}) {
   const response = await fetch(`${api}${path}`, {
@@ -81,7 +88,7 @@ async function call(method, path, body, headers = {}) {
 }
 
 async function serverAnswers() {
-  for (let attempt = 0; attempt < 600; attempt += 1) {
+  for (let attempt = 0; attempt < 600 && running(); attempt += 1) {
     try { if ((await call('GET', '/server/ping')).res === 'pong') return true; } catch {}
     await sleep(2000);
   }
@@ -90,12 +97,7 @@ async function serverAnswers() {
 
 // An API key outlives the owner changing their password, which the login from
 // install would not.
-async function apiKey() {
-  try {
-    const kept = fs.readFileSync(keyFile, 'utf8').trim();
-    await call('GET', '/users/me', undefined, { 'x-api-key': kept });
-    return kept;
-  } catch {}
+async function makeAdministratorAndKey() {
   const { isInitialized } = await call('GET', '/server/config');
   if (!isInitialized) {
     await call('POST', '/auth/admin-sign-up', { email, name: email.split('@')[0], password });
@@ -108,7 +110,12 @@ async function apiKey() {
   if (!isInitialized) await call('PUT', `/admin/users/${session.userId}`, { shouldChangePassword: false }, auth);
   const { secret } = await call('POST', '/api-keys', { name: 'MOS', permissions: ['all'] }, auth);
   fs.writeFileSync(keyFile, secret, { mode: 0o600 });
-  return secret;
+}
+
+async function keptKey() {
+  const kept = fs.readFileSync(keyFile, 'utf8').trim();
+  await call('GET', '/users/me', undefined, { 'x-api-key': kept });
+  return kept;
 }
 
 async function scanPhotos(key) {
@@ -123,18 +130,62 @@ async function scanPhotos(key) {
   log('asked Immich to scan the Photos library');
 }
 
-(async () => {
-  if (!await serverAnswers()) return log('Immich did not answer; setup is retried at the next start');
-  let key;
-  try { key = await apiKey(); } catch (error) {
-    return log(`could not sign in with the administrator login from install (${error.message}); the Photos library is left as it is`);
-  }
-  if (!fs.existsSync(photos)) return;
-  try { await scanPhotos(key); } catch (error) { log(`could not set up the Photos library (${error.message}); retried at the next start`); }
-})();
-JS
+const steps = {
+  // Without an administrator the real start would offer Immich's sign-up to
+  // anyone, so that failure stops the container and MOS keeps the password.
+  async 'set-up'() {
+    if (!await serverAnswers()) { log('Immich did not answer during first-run setup'); return 1; }
+    try { await makeAdministratorAndKey(); } catch (error) {
+      const { isInitialized } = await call('GET', '/server/config').catch(() => ({}));
+      if (!isInitialized) { log(`could not create the administrator (${error.message}); retried at the next start`); return 1; }
+      log(`could not sign in with the administrator login from install (${error.message}); the Photos library is left as it is`);
+    }
+    return 0;
+  },
+  async photos() {
+    if (!await serverAnswers()) { log('Immich did not answer; the Photos library is retried at the next start'); return 0; }
+    let key;
+    try { key = await keptKey(); } catch { log(`Immich refused the API key in ${keyFile}; the Photos library is left as it is`); return 0; }
+    if (!fs.existsSync(photos)) return 0;
+    try { await scanPhotos(key); } catch (error) { log(`could not set up the Photos library (${error.message}); retried at the next start`); }
+    return 0;
+  },
+};
 
-# The base image starts via `tini -- /bin/bash -c start.sh`; start.sh (on PATH at
-# /usr/src/app/server/bin) sets up mimalloc, ffmpeg lib paths, secrets and the
-# threadpool before exec'ing node. Hand off to it unchanged.
-exec /usr/src/app/server/bin/start.sh "$@"
+steps[process.env.MOS_STEP]().then((code) => { process.exitCode = code; });
+JS
+}
+
+# Immich's main process does not stop its api worker, which would keep the port,
+# so the private server runs in its own process group and the whole group stops.
+stop_group() {
+  kill -TERM -- "-$1" 2>/dev/null || true
+  wait "$1" || true
+  for _ in $(seq 1 30); do kill -0 -- "-$1" 2>/dev/null || return 0; sleep 1; done
+  kill -KILL -- "-$1" 2>/dev/null || true
+}
+
+set_up_privately() {
+  local server outcome=0
+  IMMICH_HOST=127.0.0.1 setsid "$START" "$@" &
+  server=$!
+  trap 'stop_group "$server"; exit 143' TERM INT
+  run_step set-up "$server" || outcome=1
+  stop_group "$server"
+  trap - TERM INT
+  return "$outcome"
+}
+
+if [ ! -s "$KEY_FILE" ]; then
+  if [ -n "${MOS_ADMIN_PASSWORD:-}" ]; then
+    set_up_privately "$@" || exit 1
+  else
+    echo "MOS: no API key in $KEY_FILE and no administrator password to make one; the Photos library is left as it is"
+  fi
+fi
+
+# The base image starts via `tini -- /bin/bash -c start.sh`; start.sh sets up
+# mimalloc, ffmpeg lib paths, secrets and the threadpool before exec'ing node.
+# Hand off to it unchanged; exec keeps this PID, which the photos step watches.
+[ -s "$KEY_FILE" ] && run_step photos $$ &
+exec "$START" "$@"

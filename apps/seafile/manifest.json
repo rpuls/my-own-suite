@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "appVersion": "13.0.28",
   "minimumMosVersion": "0.24.0",
   "packageFiles": [
@@ -81,7 +81,7 @@
       "summary": "Seafile Community Edition runs on your own server with no telemetry enabled by default, storing your files and metadata in local MOS volumes.",
       "notes": [
         "Only the Seafile web service is exposed through Caddy; MySQL and Valkey stay internal to the package network.",
-        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Seafile as the admin you set up, only reads, and reaches nothing else.",
+        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It holds no password: the first time you let an assistant into Seafile, MOS signs in with your password once and keeps only the Seafile token that returns. It only reads, and reaches nothing but Seafile.",
         "External integrations such as email (SMTP), ONLYOFFICE editing, object storage, LDAP, and SSO are off by default and only reach outside your server if you enable them.",
         "ONLYOFFICE document editing is enabled only after an explicit MOS integration connection.",
         "Back up the Seafile and MySQL volumes before relying on this package for important files."
@@ -110,7 +110,8 @@
         "label": "Seafile admin password",
         "required": true,
         "secret": true,
-        "redactedLabel": "Seafile admin password"
+        "redactedLabel": "Seafile admin password",
+        "forgetAfterStart": true
       },
       {
         "id": "mysqlRootPassword",
@@ -222,7 +223,6 @@
         "internalPort": 8100,
         "env": {
           "SEAFILE_ADMIN_EMAIL": "${config.adminEmail}",
-          "SEAFILE_ADMIN_PASSWORD": "${secret.adminPassword}",
           "MOS_AI_KEY": "${secret.aiKey}"
         }
       }
@@ -260,7 +260,8 @@
       "path": "/mcp",
       "auth": {
         "kind": "package-secret",
-        "secret": "aiKey"
+        "secret": "aiKey",
+        "signIn": "/sign-in"
       }
     }
   },

@@ -172,14 +172,19 @@ function resolveConfigTemplate(value, configRows, { ai = null, app = {}, include
 // ${ai.*} follows the same rule one value at a time: a variable that reads an AI
 // value MOS does not have is left out, so an app with no service, or a service
 // with no key or search model, sees those variables unset.
+// A materialized variable that reads a secret MOS no longer holds, such as one it
+// forgot after the first start, is left out too rather than shipped as literal text.
 function renderEnvironment(environment, configRows, options = {}) {
-  const { ai = null, smtp = null } = options;
+  const { ai = null, includeSecrets = false, smtp = null } = options;
   const relayUnconfigured = smtp instanceof Map && smtp.get('configured') !== 'true';
   const missingAiValue = (value) => ai instanceof Map
     && [...String(value).matchAll(/\$\{ai\.([a-z][A-Za-z0-9]*)\}/gu)].some(([, key]) => !ai.get(key));
+  const heldKeys = new Set((configRows || []).map((row) => row.key));
+  const missingSecret = (value) => includeSecrets
+    && [...String(value).matchAll(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu)].some(([, key]) => !heldKeys.has(key));
   return Object.fromEntries(
     Object.entries(environment || {})
-      .filter(([, value]) => !(relayUnconfigured && /\$\{smtp\./u.test(String(value))) && !missingAiValue(value))
+      .filter(([, value]) => !(relayUnconfigured && /\$\{smtp\./u.test(String(value))) && !missingAiValue(value) && !missingSecret(value))
       .map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
   );
 }

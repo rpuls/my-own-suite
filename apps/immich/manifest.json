@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "appVersion": "3.4.1",
-  "minimumMosVersion": "0.23.0",
+  "minimumMosVersion": "0.24.0",
   "architectures": [
     "amd64"
   ],
@@ -145,6 +145,7 @@
         "label": "Immich administrator password. If Immich is already set up, your current Immich password.",
         "required": true,
         "secret": true,
+        "forgetAfterStart": true,
         "redactedLabel": "Immich administrator password"
       },
       {

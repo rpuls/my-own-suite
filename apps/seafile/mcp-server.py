@@ -1,7 +1,9 @@
 """The tools MOS offers an owner's AI for Seafile, as a small MCP server.
 
-Only MOS calls it, with the key MOS generated for this package. It signs in to
-Seafile as the admin MOS set up, only reads, and reaches nothing but Seafile.
+Only MOS calls it, with the key MOS generated for this package. It never holds a
+password: MOS passes the owner's password to /sign-in once, gets the owner's
+Seafile API token back, and sends that token with every call. It only reads, and
+reaches nothing but Seafile.
 """
 
 import hmac
@@ -16,7 +18,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SEAFILE = os.environ.get("SEAFILE_URL", "http://seafile").rstrip("/")
 EMAIL = os.environ.get("SEAFILE_ADMIN_EMAIL", "")
-PASSWORD = os.environ.get("SEAFILE_ADMIN_PASSWORD", "")
 MOS_KEY = os.environ.get("MOS_AI_KEY", "")
 PORT = int(os.environ.get("PORT", "8100"))
 
@@ -26,40 +27,39 @@ READ_LIMIT = 2_000_000
 TEXT_PAGE = 12_000
 SEARCH_LIMIT = 50
 LIBRARY_TTL = 60
-# Seafile counts failed sign-ins toward a captcha on the admin's own login, so a refused one waits.
-SIGN_IN_BACKOFF = 300
+WRONG_PASSWORD = "Unable to login with provided credentials."
 
 
 class ToolError(Exception):
     pass
 
 
-REFUSED = (
-    "Seafile did not accept the admin sign-in MOS set up. If the admin password was "
-    "changed in Seafile, or two-factor sign-in was turned on, MOS can no longer reach your files."
-)
+class SignInRefused(ToolError):
+    pass
+
+
+# MOS reads this from a tool result and asks the owner to sign in again.
+SIGN_IN_REFUSED = {"myownsuite.org/sign-in": "refused"}
 
 
 class Seafile:
     def __init__(self):
-        self.token = None
-        self.lock = threading.Lock()
         self.libraries = None
-        self.refused_at = None
+        self.request = threading.local()
 
-    def sign_in(self):
-        if self.refused_at and time.monotonic() - self.refused_at < SIGN_IN_BACKOFF:
-            raise ToolError(REFUSED)
-        body = urllib.parse.urlencode({"username": EMAIL, "password": PASSWORD}).encode()
+    def exchange(self, password):
+        """The owner's Seafile API token, or None when Seafile refuses the password."""
+        body = urllib.parse.urlencode({"username": EMAIL, "password": password}).encode()
         try:
-            answer = self.send("POST", "/api2/auth-token/", body, {"Content-Type": "application/x-www-form-urlencoded"})
+            return self.send("POST", "/api2/auth-token/", body, {"Content-Type": "application/x-www-form-urlencoded"})["token"]
         except urllib.error.HTTPError as error:
-            if error.code in (400, 401, 403):
-                self.refused_at = time.monotonic()
-                raise ToolError(REFUSED) from None
-            raise
-        self.refused_at = None
-        self.token = answer["token"]
+            if error.code != 400:
+                raise
+            reasons = json.loads(error.read().decode("utf-8", "replace") or "{}").get("non_field_errors") or []
+        # Two-factor sign-in, a disabled or a frozen account: no other password would help.
+        if reasons and WRONG_PASSWORD not in reasons:
+            raise ToolError(f"Seafile refused the sign-in for {EMAIL}: {' '.join(reasons)}")
+        return None
 
     def send(self, method, path, body=None, headers=None, limit=None):
         request = urllib.request.Request(f"{SEAFILE}{path}", data=body, method=method)
@@ -71,42 +71,38 @@ class Seafile:
         return data if limit else json.loads(data.decode("utf-8") or "null")
 
     def call(self, path, limit=None, missing="Seafile has no file or library there."):
-        for attempt in (1, 2):
-            with self.lock:
-                if not self.token:
-                    self.sign_in()
-                token = self.token
-            try:
-                return self.send("GET", path, headers={"Authorization": f"Token {token}"}, limit=limit)
-            except urllib.error.HTTPError as error:
-                if error.code == 401 and attempt == 1:
-                    with self.lock:
-                        self.token = None
-                    continue
-                if error.code == 404:
-                    raise ToolError(missing) from None
-                if error.code == 403:
-                    raise ToolError("The Seafile admin account may not read that.") from None
-                if error.code == 429:
-                    raise ToolError("Seafile asks to slow down. Try again in a minute.") from None
-                detail = error.read().decode("utf-8", "replace")[:300]
-                raise ToolError(f"Seafile refused that (HTTP {error.code}): {detail}") from None
-            except urllib.error.URLError:
-                raise ToolError("Seafile is not answering right now. Try again in a minute.") from None
-        raise ToolError("Seafile did not accept MOS's sign-in.")
+        token = getattr(self.request, "token", None)
+        if not token:
+            raise SignInRefused("My Own Suite has not signed in to Seafile yet.")
+        try:
+            return self.send("GET", path, headers={"Authorization": f"Token {token}"}, limit=limit)
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                raise SignInRefused("Seafile no longer accepts the sign-in My Own Suite had.") from None
+            if error.code == 404:
+                raise ToolError(missing) from None
+            if error.code == 403:
+                raise ToolError("The Seafile admin account may not read that.") from None
+            if error.code == 429:
+                raise ToolError("Seafile asks to slow down. Try again in a minute.") from None
+            detail = error.read().decode("utf-8", "replace")[:300]
+            raise ToolError(f"Seafile refused that (HTTP {error.code}): {detail}") from None
+        except urllib.error.URLError:
+            raise ToolError("Seafile is not answering right now. Try again in a minute.") from None
 
     def get(self, path, **query):
         return self.call(f"{path}?{urllib.parse.urlencode(query)}" if query else path)
 
-    # The admin's libraries, own and shared, refreshed once a minute.
-    def library_list(self):
-        if self.libraries and time.monotonic() - self.libraries[0] < LIBRARY_TTL:
-            return self.libraries[1]
+    # The admin's libraries, own and shared, refreshed once a minute and kept only for the token that listed them.
+    def library_list(self, fresh=False):
+        token = getattr(self.request, "token", None)
+        if not fresh and self.libraries and self.libraries[1] == token and time.monotonic() - self.libraries[0] < LIBRARY_TTL:
+            return self.libraries[2]
         seen = {}
         for repo in self.get("/api/v2.1/repos/").get("repos") or []:
             seen.setdefault(repo["repo_id"], repo)
-        self.libraries = (time.monotonic(), list(seen.values()))
-        return self.libraries[1]
+        self.libraries = (time.monotonic(), token, list(seen.values()))
+        return self.libraries[2]
 
     def readable_libraries(self):
         return [repo for repo in self.library_list() if not repo.get("encrypted")]
@@ -152,7 +148,8 @@ def owner(repo):
 
 
 def list_libraries(_args):
-    libraries = seafile.library_list()
+    # Always asked of Seafile, so a sign-in it no longer accepts shows here at once.
+    libraries = seafile.library_list(fresh=True)
     readable = sorted(seafile.readable_libraries(), key=lambda repo: repo["repo_name"].casefold())
     lines = [f'"{repo["repo_name"]}" · id {repo["repo_id"]} · {owner(repo)} · {size(repo.get("size"))} · changed {day(repo.get("last_modified"))}' for repo in readable]
     if not lines:
@@ -256,6 +253,8 @@ def call_tool(params):
     try:
         answer = TOOLS[name][0](params.get("arguments") or {})
         return {"content": [{"type": "text", "text": answer}], "isError": False}
+    except SignInRefused as error:
+        return {"content": [{"type": "text", "text": str(error)}], "isError": True, "_meta": SIGN_IN_REFUSED}
     except ToolError as error:
         return {"content": [{"type": "text", "text": str(error)}], "isError": True}
     except (KeyError, TypeError, ValueError):
@@ -298,26 +297,50 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.reply(405, {"error": "Send MCP messages with POST."})
 
+    def read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > BODY_LIMIT:
+            raise OverflowError
+        return json.loads(self.rfile.read(length) or b"null")
+
     def do_POST(self):
-        if self.path.split("?")[0] != "/mcp":
+        route = self.path.split("?")[0]
+        if route not in ("/mcp", "/sign-in"):
             return self.reply(404, {"error": "Not found."})
         if not self.authorised():
             return self.reply(401, {"error": "Only My Own Suite may call this server."})
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > BODY_LIMIT:
-            return self.reply(413, {"error": "Too large."})
         try:
-            message = json.loads(self.rfile.read(length) or b"null")
+            message = self.read_json()
+        except OverflowError:
+            return self.reply(413, {"error": "Too large."})
         except ValueError:
             return self.reply(400, {"error": {"code": -32700, "message": "Not JSON."}, "id": None, "jsonrpc": "2.0"})
+        if route == "/sign-in":
+            return self.sign_in(message)
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             return self.reply(400, {"error": {"code": -32600, "message": "Not a JSON-RPC 2.0 request."}, "id": None, "jsonrpc": "2.0"})
         if message.get("id") is None:
             return self.reply(202)
+        seafile.request.token = self.headers.get("X-MOS-App-Token") or None
         try:
             return self.reply(200, {"id": message["id"], "jsonrpc": "2.0", "result": answer(message)})
         except LookupError:
             return self.reply(200, {"error": {"code": -32601, "message": f"Unsupported method {str(message.get('method'))[:64]}."}, "id": message["id"], "jsonrpc": "2.0"})
+
+    # The password is used for this one exchange and never kept.
+    def sign_in(self, message):
+        password = message.get("password") if isinstance(message, dict) else None
+        if not isinstance(password, str) or not password:
+            return self.reply(400, {"error": "Send the password as {\"password\": ...}."})
+        try:
+            token = seafile.exchange(password)
+        except ToolError as error:
+            return self.reply(403, {"error": str(error)})
+        except (urllib.error.URLError, ValueError):
+            return self.reply(503, {"error": "Seafile is not answering right now. Try again in a minute."})
+        if not token:
+            return self.reply(401, {"error": f"Seafile did not accept that password for {EMAIL}."})
+        return self.reply(200, {"token": token})
 
     def log_message(self, *_args):
         pass

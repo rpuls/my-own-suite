@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, Icon, IconTile, Notice, Row, RowAction, RowTrailing, Rows } from '../../../components/ui';
 import { lowerFirst, whenWords } from '../../../lib/dates';
 import { SourceTokenDialog } from './AiParts';
-import { aiRequest, aiServiceRequest, LEVEL_OPTIONS, levelOf, type AiClient, type AiService, type AiServiceApp, type AiServicesStatus, type AiSource, type AiStatus } from './model';
+import { aiRequest, aiServiceRequest, LEVEL_OPTIONS, levelOf, saveSourceAccess, type AiClient, type AiService, type AiServiceApp, type AiServicesStatus, type AiSource, type AiStatus } from './model';
 import { placeWords } from './service-words';
 
 const ASSISTANTS_PATH = '/suite-manager/settings#set-ai';
@@ -91,20 +91,29 @@ export function AiAppAccess({ packageId }: { packageId: string }) {
 
   const tokenPath = source ? `/sources/${encodeURIComponent(source.id)}/token` : '';
   const savedAt = source?.token?.verifiedAt;
+  const signIn = Boolean(source?.token?.signIn);
+  const accessLabel = signIn ? `${source?.name} sign-in` : `${source?.name} access token`;
+  // Assistants keep their levels when an app drops MOS's sign-in, so this is where it is asked for again.
+  const accessLost = Boolean(source?.token && !source.token.configured && allowed.length);
   return <section className="suite-app-detail-section">
     <h3>AI</h3>
     <Rows lead>
       {source ? <AssistantsRow allowed={allowed} source={source} /> : null}
-      {source?.token?.configured ? <Row help={savedAt ? `Saved ${lowerFirst(whenWords(savedAt))}.` : 'Saved.'} label={`${source.name} access token`}>
+      {source?.token?.configured ? <Row help={savedAt ? `${signIn ? 'Signed in' : 'Saved'} ${lowerFirst(whenWords(savedAt))}.` : 'Saved.'} label={accessLabel}>
         <RowTrailing>
-          <RowAction disabled={busy} icon="key" label={`Replace the ${source.name} token`} onClick={() => { setError(''); setReplacing(true); }} />
+          <RowAction disabled={busy} icon="key" label={signIn ? `Sign in to ${source.name} again` : `Replace the ${source.name} token`} onClick={() => { setError(''); setReplacing(true); }} />
           <RowAction danger disabled={busy} icon="x" label={`Remove the ${source.name} token`} onClick={() => { setError(''); setRemoving(true); }} />
+        </RowTrailing>
+      </Row> : null}
+      {source && accessLost ? <Row help={`${source.name} no longer lets MOS in, so no assistant can use it right now.`} label={accessLabel}>
+        <RowTrailing>
+          <RowAction disabled={busy} icon="key" label={signIn ? `Sign in to ${source.name} again` : `Add a ${source.name} token`} onClick={() => { setError(''); setReplacing(true); }} />
         </RowTrailing>
       </Row> : null}
       {serviceApp && services ? <ServiceRow app={serviceApp} services={services.services} /> : null}
     </Rows>
     {error && !replacing ? <Notice title="Something went wrong" variant="error"><p>{error}</p></Notice> : null}
-    {replacing && source ? <SourceTokenDialog busy={busy} error={error} onClose={() => setReplacing(false)} onSave={(token) => void change(() => aiRequest('PUT', tokenPath, 'The token could not be saved.', { token }), 'The token could not be saved.')} source={source} /> : null}
+    {replacing && source ? <SourceTokenDialog busy={busy} error={error} onClose={() => setReplacing(false)} onSave={(secret) => void change(() => saveSourceAccess(source, secret), 'MOS could not connect to the app.')} source={source} /> : null}
     {removing && source ? <RemoveTokenDialog allowed={allowed} busy={busy} onClose={() => setRemoving(false)} onRemove={() => void change(() => aiRequest('DELETE', tokenPath, 'The token could not be removed.'), 'The token could not be removed.')} source={source} /> : null}
   </section>;
 }

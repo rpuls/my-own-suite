@@ -4,8 +4,8 @@
   "reviewedAt": "2026-11-19T12:00:00.000Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.6.0",
-    "packageDigest": "sha256:cf03d286a1e4e4b663fd1b7afe52e03bce842a431e4484e6a03d4dac2f363d5b",
+    "packageVersion": "0.6.1",
+    "packageDigest": "sha256:1e05e07c9a0af415e8e08e570085e60c82cca04027a198047dd4b70fa2311c8e",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -38,12 +38,12 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, RADICALE_CALENDAR_DISPLAYNAME, and the owner's optional MOS_SMTP_* email relay values into the radicale service and mounts one local data volume; the mcp service gets only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD and the generated MOS_AI_KEY, and mounts nothing. Neither sets any analytics, update-check, external-service, or telemetry variable, nor any of the UID, GID, or RADICALE_CONFIG_* variables the image's own entrypoint acts on.",
+      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD (on the first start only: the field is forgetAfterStart, so MOS deletes it once Radicale is healthy), RADICALE_SERVICE_USERNAME and RADICALE_SERVICE_PASSWORD (MOS's own generated Radicale login), RADICALE_CALENDAR_DISPLAYNAME, and the owner's optional MOS_SMTP_* email relay values into the radicale service and mounts one local data volume; the mcp service gets only RADICALE_ADMIN_USERNAME, the RADICALE_SERVICE_* login and the generated MOS_AI_KEY, never the owner's password, and mounts nothing. Neither sets any analytics, update-check, external-service, or telemetry variable, nor any of the UID, GID, or RADICALE_CONFIG_* variables the image's own entrypoint acts on.",
       "source": "apps/radicale/manifest.json"
     },
     {
       "type": "configured",
-      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user, a default calendar collection named from the locally supplied RADICALE_CALENDAR_DISPLAYNAME value, and one locally generated all-day starter event on the local data volume; no upstream account or service is contacted during provisioning, and the starter event contains no identifying data beyond a random UID and the install date.",
+      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user, MOS's own mos-service login, a default calendar collection named from the locally supplied RADICALE_CALENDAR_DISPLAYNAME value, and one locally generated all-day starter event on the local data volume; no upstream account or service is contacted during provisioning, and the starter event contains no identifying data beyond a random UID and the install date.",
       "source": "apps/radicale/entrypoint.sh"
     },
     {
@@ -69,7 +69,7 @@
     },
     {
       "type": "documented",
-      "claim": "Radicale 3.8.0 and 3.8.1 add collection sharing by token or map, sharing by group, a [group] backend, and a /.mobileconfig profile; 3.8.2 adds a free/busy view (GET ?view=freebusy, a WebUI link to it, and an 'f' rights permission). Sharing and groups default to off ([sharing] type and [group] type are none), the package entrypoint writes only [auth] and [hook], and the image's default rights are owner_only, so no collection or free/busy view is reachable without the owner's password. /.mobileconfig and the free/busy view are generated on the server for the signed-in user and contact nothing. 3.9.0 adds a property-locking permission and 3.9.1 adds map-based sharing to self, an 'S' rights permission, and a free/busy view that returns one VEVENT per busy period; in 3.9.1 [sharing] type and [group] type still default to none and [rights] type to owner_only, and the image's config sets none of them. 3.9.2 adds no sharing, group or rights feature and leaves those defaults unchanged.",
+      "claim": "Radicale 3.8.0 and 3.8.1 add collection sharing by token or map, sharing by group, a [group] backend, and a /.mobileconfig profile; 3.8.2 adds a free/busy view (GET ?view=freebusy, a WebUI link to it, and an 'f' rights permission). Sharing and groups default to off ([sharing] type and [group] type are none), the package entrypoint writes only [auth], [rights] and [hook], and its from_file rights are the default owner_only rules plus MOS's own mos-service login on the owner's collections, so no collection or free/busy view is reachable without the owner's password or that generated login, which MOS keeps redacted and hands only to the package's containers and the internal iCal bridge. /.mobileconfig and the free/busy view are generated on the server for the signed-in user and contact nothing. 3.9.0 adds a property-locking permission and 3.9.1 adds map-based sharing to self, an 'S' rights permission, and a free/busy view that returns one VEVENT per busy period; in 3.9.1 [sharing] type and [group] type still default to none and [rights] type to owner_only, and the image's config sets none of them. 3.9.2 adds no sharing, group or rights feature and leaves those defaults unchanged.",
       "source": "Radicale 3.9.2 radicale/config.py and CHANGELOG.md; the 3.9.2.0 image's /config/config; apps/radicale/entrypoint.sh",
       "url": "https://github.com/Kozea/Radicale/blob/v3.9.2/CHANGELOG.md",
       "retrievedAt": "2026-11-19"
@@ -99,7 +99,7 @@
     },
     {
       "type": "configured",
-      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned docker-radicale image, runs only the package's own mcp-server.py on the Python standard library under the image's radicale user, and its only outbound connection is CalDAV and CardDAV to http://radicale:5232 on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It signs in as the Radicale user from the install form, and offers listing calendars and events, searching contacts, adding an event and moving or renaming a single event. An event it adds carries no ATTENDEE or ORGANIZER, and it refuses to change an event that has an ATTENDEE, so it never sets off the email hook's attendee notices; it has no tool that deletes anything or changes a contact.",
+      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned docker-radicale image, runs only the package's own mcp-server.py on the Python standard library under the image's radicale user, and its only outbound connection is CalDAV and CardDAV to http://radicale:5232 on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It signs in with MOS's generated mos-service login, which reaches only the install-form user's calendars and address books and may not delete or replace a whole collection, and offers listing calendars and events, searching contacts, adding an event and moving or renaming a single event. An event it adds carries no ATTENDEE or ORGANIZER, and it refuses to change an event that has an ATTENDEE, so it never sets off the email hook's attendee notices; it has no tool that deletes anything or changes a contact.",
       "source": "apps/radicale/mcp-server.py, apps/radicale/Dockerfile.mcp and apps/radicale/manifest.json"
     },
     {

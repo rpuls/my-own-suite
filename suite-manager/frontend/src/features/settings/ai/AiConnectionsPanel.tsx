@@ -6,7 +6,7 @@ import { navigateOnClick } from '../../../lib/navigation';
 import { ADDRESS_SETTINGS_PATH, AddAssistantDialog } from './AddAssistantDialog';
 import { ClientItem, NewTokenDialog, RemoveClientDialog, type ClientActions, type FailureSpot } from './AiParts';
 import { examplePrompts, headLead } from './assistant-words';
-import { aiRequest, levelOf, nameList, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
+import { aiRequest, levelOf, nameList, saveSourceAccess, type AiClient, type AiException, type AiLevel, type AiSource, type AiStatus, type IssuedToken } from './model';
 
 const REFRESH_MS = 15_000;
 // While the connect dialog waits for the assistant's first contact.
@@ -199,12 +199,14 @@ export function AiConnectionsPanel() {
       onAccept: (sourceId, tool) => void change(`tools:${sourceId}`, 'The tool could not be accepted.', () => aiRequest('POST', `/tools/${encodeURIComponent(tool)}/accept`, 'The tool could not be accepted.')),
       onException: (sourceId, tool, exception: AiException | null) => void change(`tools:${sourceId}`, 'The tool could not be changed.', () => aiRequest('PUT', clientPath(client, `/exceptions/${encodeURIComponent(tool)}`), 'The tool could not be changed.', { exception })),
       onLevel: (sourceId: string, level: AiLevel) => void change(`level:${sourceId}`, 'The setting could not be changed.', () => aiRequest('PUT', levelPath(sourceId), 'The setting could not be changed.', { level })),
-      onSourceToken: async (sourceId, token) => {
+      onSourceToken: async (sourceId, secret) => {
+        const source = sources.find((candidate) => candidate.id === sourceId);
+        if (!source) return 'That app is no longer installed.';
         try {
-          setStatus(await aiRequest('PUT', `/sources/${encodeURIComponent(sourceId)}/token`, 'The token could not be saved.', { token }));
+          setStatus(await saveSourceAccess(source, secret));
           return '';
         } catch (caught) {
-          return errorText(caught, 'The token could not be saved.');
+          return errorText(caught, 'MOS could not connect to the app.');
         }
       },
       // Apps that follow the default keep what they had: only apps installed later take the new default.

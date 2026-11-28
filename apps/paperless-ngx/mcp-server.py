@@ -1,7 +1,9 @@
 """The tools MOS offers an owner's AI for Paperless-ngx, as a small MCP server.
 
-Only MOS calls it, with the key MOS generated for this package. It signs in to
-Paperless as the admin MOS set up, and reaches nothing but the Paperless API.
+Only MOS calls it, with the key MOS generated for this package. It never holds a
+password: MOS passes the owner's password to /sign-in once, gets the owner's
+Paperless API token back, and sends that token with every call. It reaches nothing
+but the Paperless API.
 """
 
 import base64
@@ -18,7 +20,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("PAPERLESS_API", "http://paperless:8000/api").rstrip("/")
 USERNAME = os.environ.get("PAPERLESS_ADMIN_USER", "")
-PASSWORD = os.environ.get("PAPERLESS_ADMIN_PASSWORD", "")
 MOS_KEY = os.environ.get("MOS_AI_KEY", "")
 PORT = int(os.environ.get("PORT", "8100"))
 
@@ -37,25 +38,28 @@ class ToolError(Exception):
     pass
 
 
+class SignInRefused(ToolError):
+    pass
+
+
+# MOS reads this from a tool result and asks the owner to sign in again.
+SIGN_IN_REFUSED = {"myownsuite.org/sign-in": "refused"}
+
+
 class Paperless:
     def __init__(self):
-        self.token = None
-        self.lock = threading.Lock()
         self.labels = {}
+        self.request = threading.local()
 
-    def sign_in(self):
-        body = urllib.parse.urlencode({"username": USERNAME, "password": PASSWORD}).encode()
+    def exchange(self, password):
+        """The owner's Paperless API token, or None when Paperless refuses the password."""
+        body = urllib.parse.urlencode({"username": USERNAME, "password": password}).encode()
         try:
-            answer = self.send("POST", "/token/", body, {"Content-Type": "application/x-www-form-urlencoded"})
+            return self.send("POST", "/token/", body, {"Content-Type": "application/x-www-form-urlencoded"})["token"]
         except urllib.error.HTTPError as error:
             if error.code in (400, 401, 403):
-                raise ToolError(
-                    "Paperless did not accept the admin sign-in MOS set up. If the admin password "
-                    "was changed in Paperless, or two-factor sign-in was turned on, MOS can no longer "
-                    "reach your documents."
-                ) from None
+                return None
             raise
-        self.token = answer["token"]
 
     def send(self, method, path, body=None, headers=None):
         request = urllib.request.Request(f"{API}{path}", data=body, method=method)
@@ -72,29 +76,24 @@ class Paperless:
         return json.loads(text) if text else None
 
     def call(self, method, path, payload=None):
+        token = getattr(self.request, "token", None)
+        if not token:
+            raise SignInRefused("My Own Suite has not signed in to Paperless yet.")
+        headers = {"Authorization": f"Token {token}"}
         body = None if payload is None else json.dumps(payload).encode()
-        for attempt in (1, 2):
-            with self.lock:
-                if not self.token:
-                    self.sign_in()
-                token = self.token
-            headers = {"Authorization": f"Token {token}"}
-            if body is not None:
-                headers["Content-Type"] = "application/json"
-            try:
-                return self.send(method, path, body, headers)
-            except urllib.error.HTTPError as error:
-                if error.code == 401 and attempt == 1:
-                    with self.lock:
-                        self.token = None
-                    continue
-                if error.code == 404:
-                    raise ToolError("Paperless has no document with that number.") from None
-                detail = error.read().decode("utf-8", "replace")[:300]
-                raise ToolError(f"Paperless refused that (HTTP {error.code}): {detail}") from None
-            except urllib.error.URLError:
-                raise ToolError("Paperless is not answering right now. Try again in a minute.") from None
-        raise ToolError("Paperless did not accept MOS's sign-in.")
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        try:
+            return self.send(method, path, body, headers)
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                raise SignInRefused("Paperless no longer accepts the sign-in My Own Suite had.") from None
+            if error.code == 404:
+                raise ToolError("Paperless has no document with that number.") from None
+            detail = error.read().decode("utf-8", "replace")[:300]
+            raise ToolError(f"Paperless refused that (HTTP {error.code}): {detail}") from None
+        except urllib.error.URLError:
+            raise ToolError("Paperless is not answering right now. Try again in a minute.") from None
 
     def get(self, path, **query):
         query = {key: value for key, value in query.items() if value is not None}
@@ -321,6 +320,8 @@ def call_tool(params):
     try:
         answer = TOOLS[name][0](params.get("arguments") or {})
         return {"content": [{"type": "text", "text": answer}], "isError": False}
+    except SignInRefused as error:
+        return {"content": [{"type": "text", "text": str(error)}], "isError": True, "_meta": SIGN_IN_REFUSED}
     except ToolError as error:
         return {"content": [{"type": "text", "text": str(error)}], "isError": True}
     except (KeyError, TypeError, ValueError):
@@ -363,26 +364,48 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.reply(405, {"error": "Send MCP messages with POST."})
 
+    def read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > BODY_LIMIT:
+            raise OverflowError
+        return json.loads(self.rfile.read(length) or b"null")
+
     def do_POST(self):
-        if self.path.split("?")[0] != "/mcp":
+        route = self.path.split("?")[0]
+        if route not in ("/mcp", "/sign-in"):
             return self.reply(404, {"error": "Not found."})
         if not self.authorised():
             return self.reply(401, {"error": "Only My Own Suite may call this server."})
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > BODY_LIMIT:
-            return self.reply(413, {"error": "Too large."})
         try:
-            message = json.loads(self.rfile.read(length) or b"null")
+            message = self.read_json()
+        except OverflowError:
+            return self.reply(413, {"error": "Too large."})
         except ValueError:
             return self.reply(400, {"error": {"code": -32700, "message": "Not JSON."}, "id": None, "jsonrpc": "2.0"})
+        if route == "/sign-in":
+            return self.sign_in(message)
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             return self.reply(400, {"error": {"code": -32600, "message": "Not a JSON-RPC 2.0 request."}, "id": None, "jsonrpc": "2.0"})
         if message.get("id") is None:
             return self.reply(202)
+        paperless.request.token = self.headers.get("X-MOS-App-Token") or None
         try:
             return self.reply(200, {"id": message["id"], "jsonrpc": "2.0", "result": answer(message)})
         except LookupError:
             return self.reply(200, {"error": {"code": -32601, "message": f"Unsupported method {str(message.get('method'))[:64]}."}, "id": message["id"], "jsonrpc": "2.0"})
+
+    # The password is used for this one exchange and never kept.
+    def sign_in(self, message):
+        password = message.get("password") if isinstance(message, dict) else None
+        if not isinstance(password, str) or not password:
+            return self.reply(400, {"error": "Send the password as {\"password\": ...}."})
+        try:
+            token = paperless.exchange(password)
+        except (urllib.error.URLError, ToolError):
+            return self.reply(503, {"error": "Paperless is not answering right now. Try again in a minute."})
+        if not token:
+            return self.reply(401, {"error": f"Paperless did not accept that password for {USERNAME}."})
+        return self.reply(200, {"token": token})
 
     def log_message(self, *_args):
         pass

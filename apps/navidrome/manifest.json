@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "navidrome",
   "name": "Navidrome",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "appVersion": "0.64.2",
-  "minimumMosVersion": "0.23.0",
+  "minimumMosVersion": "0.24.0",
   "architectures": [
     "amd64",
     "arm64"
@@ -120,6 +120,7 @@
         "label": "Navidrome administrator password",
         "required": true,
         "secret": true,
+        "forgetAfterStart": true,
         "redactedLabel": "Navidrome administrator password"
       },
       {

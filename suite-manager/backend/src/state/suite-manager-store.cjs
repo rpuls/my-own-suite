@@ -1451,6 +1451,11 @@ class SuiteManagerStore {
     }
   }
 
+  deleteAppConfigRows({ instanceId, keys }) {
+    const remove = this.database.prepare('DELETE FROM app_instance_config WHERE instance_id = ? AND key = ?');
+    for (const key of keys) remove.run(instanceId, key);
+  }
+
   replaceAppProjections({ at, instanceId, projections }) {
     for (const projection of projections) {
       this.database.prepare(`

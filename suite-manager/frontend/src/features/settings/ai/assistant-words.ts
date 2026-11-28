@@ -112,6 +112,11 @@ export function appHelp(client: AiClient, source: AiSource) {
 }
 
 export function tokenHelp(source: AiSource, level: AiLevel) {
+  if (source.token?.signIn) {
+    return level === 'off'
+      ? `Needs your ${source.name} password once before an assistant can use it.`
+      : `${source.name} no longer accepts the sign-in MOS had, so no assistant can use it right now. Set it up again to continue.`;
+  }
   return level === 'off'
     ? `Needs one step in ${source.name} before an assistant can use it.`
     : `MOS no longer has a ${source.name} token, so no assistant can use ${source.name} right now. Set it up again to continue.`;

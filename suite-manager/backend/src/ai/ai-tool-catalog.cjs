@@ -42,10 +42,19 @@ function mcpExportOf(manifest, aiTools) {
     packageSecret,
     path: found.path,
     service: found.service,
+    signIn: packageSecret && typeof found.auth.signIn === 'string' ? found.auth.signIn : null,
     tokenPage: typeof found.auth?.tokenPage === 'string' ? found.auth.tokenPage : null,
     tools: new Map(tools),
     verifyTool: typeof found.auth?.verifyTool === 'string' ? found.auth.verifyTool : null,
   };
+}
+
+function readTrimmed(secretDir, secretPath) {
+  try {
+    return readSecretValue(secretDir, secretPath).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function toolPrefixOf(packageId) {
@@ -109,16 +118,23 @@ class AiToolCatalog {
   }
 
   tokenOf(source) {
-    if (!source.instance) return null;
-    try {
-      return readSecretValue(this.secretDir, this.tokenPath(source)).trim() || null;
-    } catch {
-      return null;
-    }
+    return source.instance ? readTrimmed(this.secretDir, this.tokenPath(source)) : null;
+  }
+
+  // The token the app itself gave MOS for the owner, pasted or got by signing in once.
+  // Null path for an app MOS reaches with its own key alone.
+  ownerTokenPath(source) {
+    if (!source.instance || (source.mcp.packageSecret && !source.mcp.signIn)) return null;
+    return secretFilePath(this.secretDir, source.instance.id, APP_TOKEN_KEY);
+  }
+
+  ownerTokenOf(source) {
+    const tokenPath = this.ownerTokenPath(source);
+    return tokenPath ? readTrimmed(this.secretDir, tokenPath) : null;
   }
 
   tokenConfiguredAt(source) {
-    try { return fs.statSync(this.tokenPath(source)).mtime.toISOString(); } catch { return null; }
+    try { return fs.statSync(this.ownerTokenPath(source)).mtime.toISOString(); } catch { return null; }
   }
 
   forget(sourceId = null) {

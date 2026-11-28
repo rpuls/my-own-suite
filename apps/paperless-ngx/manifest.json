@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "appVersion": "3.5.1",
   "minimumMosVersion": "0.24.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
@@ -84,7 +84,7 @@
       "summary": "Paperless-ngx stores and processes your documents on your own server. Text recognition runs locally in the container, and the optional AI and cloud-OCR features are off unless you configure them yourself.",
       "notes": [
         "Only the Paperless web service is reachable through Caddy; the Valkey broker stays internal to the package network.",
-        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Paperless as the admin you set up and reaches nothing else.",
+        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It holds no password: the first time you let an assistant into Paperless, MOS signs in with your password once and keeps only the Paperless token that returns. It reaches nothing but Paperless.",
         "Optional remote OCR through Azure AI and optional AI suggestions through an OpenAI-compatible service or Ollama are disabled by default, and MOS does not configure them.",
         "MOS turns off Paperless' own update check, which would contact GitHub, because MOS handles app updates itself.",
         "Documents, thumbnails and the search index live in package-owned MOS volumes; back them up before relying on this package for records you cannot scan again."
@@ -114,7 +114,8 @@
         "label": "Paperless admin password",
         "required": true,
         "secret": true,
-        "redactedLabel": "Paperless admin password"
+        "redactedLabel": "Paperless admin password",
+        "forgetAfterStart": true
       },
       {
         "id": "secretKey",
@@ -208,7 +209,6 @@
         "internalPort": 8100,
         "env": {
           "PAPERLESS_ADMIN_USER": "${config.adminUsername}",
-          "PAPERLESS_ADMIN_PASSWORD": "${secret.adminPassword}",
           "MOS_AI_KEY": "${secret.aiKey}"
         }
       }
@@ -246,7 +246,8 @@
       "path": "/mcp",
       "auth": {
         "kind": "package-secret",
-        "secret": "aiKey"
+        "secret": "aiKey",
+        "signIn": "/sign-in"
       }
     }
   },

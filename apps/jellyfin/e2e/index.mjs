@@ -19,10 +19,8 @@ async function api(page, setup, path, { method = 'GET' } = {}) {
   }, { client: CLIENT, method, name: setup.adminName, password: setup.adminPassword, path });
 }
 
-// The package finishes Jellyfin's setup a few seconds after it first answers, and a
-// page opened in between keeps showing the first-run wizard until it is reloaded.
-// The same for a page opened while Jellyfin restarts onto a returning drive, which
-// says "Server Unavailable" until reloaded.
+// A page opened while Jellyfin restarts onto a returning drive says "Server
+// Unavailable" until it is reloaded.
 async function reloadUntil(page, pattern, message) {
   await expect.poll(async () => {
     if (pattern.test(await page.locator('body').innerText().catch(() => ''))) return true;

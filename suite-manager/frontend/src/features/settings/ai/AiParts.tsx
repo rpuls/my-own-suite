@@ -38,30 +38,50 @@ function FailedChange({ message }: { message: string | undefined }) {
   return message ? <Notice title="Could not change this" variant="error"><p>{message}</p></Notice> : null;
 }
 
+// An app that signs in once asks for the owner's app password; any other asks for a pasted token.
+function accessWords(source: AiSource) {
+  return source.token?.signIn
+    ? {
+      autoComplete: 'current-password',
+      label: `Your ${source.name} password`,
+      refused: `${source.name} did not accept that password`,
+      stays: `MOS signs in to ${source.name} once and keeps only the access token ${source.name} gives back. Your password is not stored, and no assistant ever sees the token.`,
+      why: `${source.name} has its own sign-in, so MOS signs in once to reach it for your assistants.`,
+    }
+    : {
+      autoComplete: 'new-password',
+      label: `${source.name} access token`,
+      refused: `${source.name} did not accept that token`,
+      stays: 'The token stays on your suite. No assistant ever sees it.',
+      why: `${source.name} has its own sign-in, so MOS needs a ${source.name} access token to reach it for your assistants. ${source.token?.hint || `Create an access token in ${source.name}.`}`,
+    };
+}
+
 // The first time an app is opened to any assistant, it gives MOS an access token once.
 // Asked here, at the moment it matters, rather than as a field of its own.
-function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave: (token: string) => Promise<string>; source: AiSource }) {
+function TokenStep({ onCancel, onSave, source }: { onCancel: () => void; onSave: (secret: string) => Promise<string>; source: AiSource }) {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const words = accessWords(source);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!draft.trim()) return;
     setSaving(true);
-    setError(await onSave(draft.trim()));
+    setError(await onSave(draft));
     setSaving(false);
   }
 
-  const tokenPage = source.token?.tokenPageUrl;
+  const tokenPage = source.token?.signIn ? null : source.token?.tokenPageUrl;
   return <form className="suite-ai-token-step" onSubmit={(event) => void submit(event)}>
     <Notice title={`Connect ${source.name} once`} variant="info">
-      <p>{source.name} has its own sign-in, so MOS needs a {source.name} access token to reach it for your assistants. {source.token?.hint || `Create an access token in ${source.name}.`}</p>
+      <p>{words.why}</p>
       {tokenPage ? <p><a className="mos-link" href={tokenPage} rel="noreferrer" target="_blank">Create the token in {source.name}<Icon name="external" /></a></p> : null}
-      <p>The token stays on your suite. No assistant ever sees it.</p>
+      <p>{words.stays}</p>
     </Notice>
-    <TextInput autoComplete="new-password" autoFocus label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
-    {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
+    <TextInput autoComplete={words.autoComplete} autoFocus label={words.label} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
+    {error ? <Notice title={words.refused} variant="error"><p>{error}</p></Notice> : null}
     <div className="suite-ai-token-actions">
       <button className="mos-btn mos-btn-ghost" disabled={saving} onClick={onCancel} type="button">Cancel</button>
       <button className="mos-btn mos-btn-primary" disabled={saving || !draft.trim()} type="submit">{saving ? 'Checking…' : 'Save'}</button>
@@ -322,13 +342,15 @@ function DefaultLevelDialog({ busy, client, onChange, onClose }: { busy: boolean
   </Dialog>;
 }
 
-export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { busy: boolean; error: string; onClose: () => void; onSave: (token: string) => void; source: AiSource }) {
+export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { busy: boolean; error: string; onClose: () => void; onSave: (secret: string) => void; source: AiSource }) {
   const [draft, setDraft] = useState('');
   const configured = Boolean(source.token?.configured);
+  const words = accessWords(source);
+  const title = source.token?.signIn ? `Sign in to ${source.name}` : configured ? `Replace the ${source.name} token` : `Connect ${source.name} once`;
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (draft.trim()) onSave(draft.trim());
+    if (draft.trim()) onSave(draft);
   }
 
   return <Dialog
@@ -337,12 +359,12 @@ export function SourceTokenDialog({ busy, error, onClose, onSave, source }: { bu
       <button className="mos-btn mos-btn-primary" disabled={busy || !draft.trim()} form="suite-ai-source-token" type="submit">{busy ? 'Checking…' : 'Save'}</button>
     </>}
     onClose={() => { if (!busy) onClose(); }}
-    title={configured ? `Replace the ${source.name} token` : `Connect ${source.name} once`}
+    title={title}
   >
     <form className="suite-settings-form" id="suite-ai-source-token" onSubmit={submit}>
-      <p>{source.name} has its own sign-in, so MOS needs a {source.name} access token to reach it for your assistants. The token stays on your suite. No assistant ever sees it.</p>
-      <TextInput autoComplete="new-password" autoFocus helperText={source.token?.hint || undefined} label={`${source.name} access token`} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
-      {error ? <Notice title={`${source.name} did not accept that token`} variant="error"><p>{error}</p></Notice> : null}
+      <p>{words.why} {words.stays}</p>
+      <TextInput autoComplete={words.autoComplete} autoFocus label={words.label} onChange={(event) => setDraft(event.target.value)} type="password" value={draft} />
+      {error ? <Notice title={words.refused} variant="error"><p>{error}</p></Notice> : null}
     </form>
   </Dialog>;
 }

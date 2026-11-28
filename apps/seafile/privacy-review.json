@@ -4,8 +4,8 @@
   "reviewedAt": "2026-10-06T23:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.0",
-    "packageDigest": "sha256:fab70646ed4cbbc6960de77bfae952f5bae7d89aeceed34bde512aa2cd6f21ec",
+    "packageVersion": "0.4.1",
+    "packageDigest": "sha256:02aac1f31a613884a1f811e533b8f55c66e43527fe38ba8eff4886e115d48b6e",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -61,7 +61,7 @@
     },
     {
       "type": "configured",
-      "claim": "The mcp service, which offers the owner's AI read-only tools to list libraries, find files by name and read text files, has no route and no volume. Only Suite Manager reaches it, with the aiKey secret MOS generates, and it signs in to Seafile as the configured admin. Its server uses only the Python standard library and connects to nothing but http://seafile on the package network, downloads included; encrypted libraries are left out and no tool writes, deletes, shares or creates links.",
+      "claim": "The mcp service, which offers the owner's AI read-only tools to list libraries, find files by name and read text files, has no route and no volume. Only Suite Manager reaches it, with the aiKey secret MOS generates. It holds no password: the first time the owner lets an assistant into Seafile, Suite Manager posts the owner's Seafile password to its /sign-in once, which exchanges it at /api2/auth-token/ for the admin's own API token, and Suite Manager keeps only that token. Its server uses only the Python standard library and connects to nothing but http://seafile on the package network, downloads included; encrypted libraries are left out and no tool writes, deletes, shares or creates links.",
       "source": "apps/seafile/manifest.json, apps/seafile/mcp-server.py and apps/seafile/ai-tools.json"
     },
     {

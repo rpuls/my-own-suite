@@ -44,6 +44,7 @@ const {
   runtimeHealthFor,
   runtimeRouteApplied,
   secretFilePath,
+  setupFields,
   writeSecretFile,
 } = require('./app-package-internals.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
@@ -382,10 +383,23 @@ class AppPackageService {
       },
     });
 
+    // Started again at once, so the forgotten value leaves the running container too.
+    if (this.forgetStartedSecrets(instance, manifest)) return this.applyPackageRuntime(packageId, requestContext, options);
     return {
       agent: result,
       instance: this.publicView(this.store.getAppInstanceByPackageId(packageId)),
     };
+  }
+
+  // A secret the package marks forgetAfterStart is for the app's first start only:
+  // once a start has passed the health check, MOS deletes its copy.
+  forgetStartedSecrets(instance, manifest) {
+    const forgettable = new Set(setupFields(manifest).filter((field) => field.secret === true && field.forgetAfterStart === true).map((field) => field.id));
+    const keys = this.store.getAppConfig(instance.id).map((row) => row.key).filter((key) => forgettable.has(key));
+    if (!keys.length) return false;
+    this.store.deleteAppConfigRows({ instanceId: instance.id, keys });
+    for (const key of keys) fs.rmSync(secretFilePath(this.secretDir, instance.id, key), { force: true });
+    return true;
   }
 
   async connectPackages({ consumerPackageId, providerCapabilityId, providerPackageId, requestContext = {}, slotId }) {

@@ -275,6 +275,14 @@ test('App package catalog API requires authentication and exposes safe manifest 
         secret: true,
         type: 'password',
       },
+      {
+        generated: true,
+        id: 'servicePassword',
+        label: 'Password MOS signs in to Radicale with',
+        required: true,
+        secret: true,
+        type: 'password',
+      },
     ]);
     assert.equal(radicale.homepage.widget.type, 'calendar');
     assert.equal(radicale.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
@@ -680,7 +688,8 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_PASSWORD, '${secret.adminPassword}');
     assert.equal(caddy.routes[0].internalIcalBridge.path, '/__mos/ical/${secret.icalToken}');
-    assert.equal(caddy.routes[0].internalIcalBridge.basicAuth.password, '${secret.adminPassword}');
+    assert.equal(caddy.routes[0].internalIcalBridge.basicAuth.username, 'mos-service');
+    assert.equal(caddy.routes[0].internalIcalBridge.basicAuth.password, '${secret.servicePassword}');
     assert.equal(homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
     assert.equal(compose.services[0].internalPort, 5232);
     assert.equal(compose.services[0].loopbackPort, radicalePort);
@@ -693,13 +702,15 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     });
 
     assert.equal(applied.status, 200);
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2, 'the first start is followed by one without the forgotten password');
+    assert.equal('RADICALE_ADMIN_PASSWORD' in calls[1].compose.services[0].environment, false);
     assert.equal(calls[0].appHost, 'radicale.test');
     assert.equal(calls[0].publicUrl, 'https://radicale.test/');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_PASSWORD, password);
     assert.match(calls[0].caddy.routes[0].internalIcalBridge.path, /^\/__mos\/ical\/[A-Za-z0-9_-]{40,}$/u);
-    assert.equal(calls[0].caddy.routes[0].internalIcalBridge.basicAuth.password, password);
+    assert.match(calls[0].caddy.routes[0].internalIcalBridge.basicAuth.password, /^[A-Za-z0-9_-]{40,}$/u);
+    assert.notEqual(calls[0].caddy.routes[0].internalIcalBridge.basicAuth.password, password);
     assert.equal(calls[0].health.target, `http://127.0.0.1:${radicalePort}/`);
     assert.doesNotMatch(applied.body, new RegExp(password, 'u'));
     assert.doesNotMatch(applied.body, new RegExp(calls[0].caddy.routes[0].internalIcalBridge.path.split('/').at(-1), 'u'));
@@ -750,7 +761,8 @@ test('Seafile install renders multi-service projections with internal services u
     });
 
     assert.equal(applied.status, 200);
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2, 'the first start is followed by one without the forgotten password');
+    assert.equal('INIT_SEAFILE_ADMIN_PASSWORD' in calls[1].compose.services.find((service) => service.id === 'seafile').environment, false);
     assert.equal(calls[0].appHost, 'seafile.test');
     assert.equal(calls[0].compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_SERVER_HOSTNAME, '${app.host}');
     assert.equal(calls[0].compose.services.find((service) => service.id === 'seafile').environment.INIT_SEAFILE_ADMIN_PASSWORD, 'seafile-admin-pass');

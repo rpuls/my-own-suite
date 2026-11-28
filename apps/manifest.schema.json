@@ -221,6 +221,10 @@
                   "encoding": { "enum": ["base64url", "hex"] }
                 },
                 "description": "MOS generates the value at install instead of asking the owner."
+              },
+              "forgetAfterStart": {
+                "type": "boolean",
+                "description": "For a secret the app needs only to set itself up, such as its first administrator's password. Once the first start passes the health check, MOS deletes the value and starts the app again with the variable unset. Only a service's env may reference it."
               }
             }
           }

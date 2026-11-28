@@ -86,7 +86,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
 
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
-  assert.equal(radicale.manifest.setup.fields.length, 5);
+  assert.equal(radicale.manifest.setup.fields.length, 6);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
     generated: Boolean(field.generated),
@@ -99,6 +99,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
     { generated: false, id: 'adminPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'icalToken', required: true, secret: true, type: 'password' },
     { generated: true, id: 'aiKey', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'servicePassword', required: true, secret: true, type: 'password' },
   ]);
   assert.equal(radicale.manifest.homepage.widget.type, 'calendar');
   assert.equal(radicale.manifest.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');

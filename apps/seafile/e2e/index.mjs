@@ -169,6 +169,10 @@ export default {
     return [{ label: 'admin password', value: adminPassword(env) }];
   },
 
+  aiPassword({ env }) {
+    return adminPassword(env);
+  },
+
   async landed({ page }) {
     await expect(page.locator('body')).toContainText(/Seafile|Email|Password|Log in|Libraries/iu, { timeout: 90000 });
   },

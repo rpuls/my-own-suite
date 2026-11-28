@@ -106,6 +106,9 @@ function validateSetupSemantics(manifest, errors) {
     if (field.type === 'boolean' && field.default !== undefined && !['false', 'true'].includes(field.default)) {
       errors.push(`${prefix}.default must be "true" or "false" for a boolean field.`);
     }
+    if (field.forgetAfterStart !== undefined && (typeof field.forgetAfterStart !== 'boolean' || (field.forgetAfterStart && field.secret !== true))) {
+      errors.push(`${prefix}.forgetAfterStart is true or false, and only a secret field can be forgotten.`);
+    }
   }
 }
 
@@ -265,7 +268,8 @@ function templateRulesFor(manifest) {
   const configIds = new Set(fields.filter((field) => field.secret !== true).map((field) => String(field.id)));
   const secretIds = new Set(fields.filter((field) => field.secret === true).map((field) => String(field.id)));
   const exportIds = new Set(Object.keys(isRecord(manifest.exports) ? manifest.exports : {}));
-  return { configIds, exportIds, secretIds };
+  const forgottenIds = new Set(fields.filter((field) => field.secret === true && field.forgetAfterStart === true).map((field) => String(field.id)));
+  return { configIds, exportIds, forgottenIds, secretIds };
 }
 
 function checkTemplateString(value, location, rules, errors) {
@@ -284,6 +288,8 @@ function checkTemplateString(value, location, rules, errors) {
       errors.push(`${location.label} references \${config.${rest}}, which is not a declared non-secret setup field.`);
     } else if (namespace === 'secret' && !rules.secretIds.has(rest)) {
       errors.push(`${location.label} references \${secret.${rest}}, which is not a declared secret setup field.`);
+    } else if (namespace === 'secret' && rules.forgottenIds?.has(rest) && !location.serviceEnv) {
+      errors.push(`${location.label} references \${secret.${rest}}, which MOS forgets after the first start, so only a service's env may read it.`);
     } else if (namespace === 'app' && !APP_KEYS.has(rest)) {
       errors.push(`${location.label} references \${app.${rest}}; supported app keys are ${[...APP_KEYS].sort().join(', ')}.`);
     } else if (namespace === 'owner' && !OWNER_KEYS.has(rest)) {
@@ -340,7 +346,7 @@ function validateTemplates(manifest, errors) {
   for (const [serviceId, service] of Object.entries(services)) {
     if (!isRecord(service) || !isRecord(service.env)) continue;
     for (const [key, value] of Object.entries(service.env)) {
-      checkTemplateString(value, { allowed: serviceEnv, label: `resources.services.${serviceId}.env.${key}` }, rules, errors);
+      checkTemplateString(value, { allowed: serviceEnv, label: `resources.services.${serviceId}.env.${key}`, serviceEnv: true }, rules, errors);
     }
   }
 
@@ -406,7 +412,7 @@ const MCP_PATH_PATTERN = /^\/[A-Za-z0-9._~/-]{0,200}$/u;
 // itself, so no owner ever has to type it and no AI ever sees it.
 function validatePackageSecretAuth(manifest, auth, prefix, errors) {
   const field = setupFieldsOf(manifest).find((candidate) => candidate?.id === auth.secret);
-  if (!field || field.secret !== true || !isRecord(field.generated)) {
+  if (!field || field.secret !== true || !isRecord(field.generated) || field.forgetAfterStart === true) {
     errors.push(`${prefix}.auth.secret must name a generated secret setup field.`);
   }
 }
@@ -427,6 +433,9 @@ function validateMcpExport(manifest, capability, prefix, errors) {
   }
   if (capability.auth.kind === 'package-secret') {
     validatePackageSecretAuth(manifest, capability.auth, prefix, errors);
+    if (capability.auth.signIn !== undefined && (typeof capability.auth.signIn !== 'string' || !MCP_PATH_PATTERN.test(capability.auth.signIn) || capability.auth.signIn.split('/').includes('..'))) {
+      errors.push(`${prefix}.auth.signIn must be an absolute path such as /sign-in when present.`);
+    }
     return;
   }
   if (capability.auth.hint !== undefined && (!hasText(capability.auth.hint) || capability.auth.hint.length > 200)) {

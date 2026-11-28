@@ -4,6 +4,10 @@ const { CodedError } = require('../../../../shared/coded-error.cjs');
 
 const UPSTREAM_PROTOCOL_VERSION = '2025-11-25';
 const DEFAULT_TIMEOUT_MS = 50_000;
+// A package that signs the owner in once gets the app's token back on every call in this header.
+const APP_TOKEN_HEADER = 'X-MOS-App-Token';
+// A tool result carrying this in _meta says the app refused that token.
+const SIGN_IN_META = 'myownsuite.org/sign-in';
 
 class McpUpstreamError extends CodedError {
   constructor(code, message) {
@@ -27,7 +31,7 @@ function messageFromEventStream(text, id) {
 
 let nextId = 1;
 
-async function callMcp({ fetchImpl = fetch, method, params = {}, timeoutMs = DEFAULT_TIMEOUT_MS, token = null, url }) {
+async function callMcp({ appToken = null, fetchImpl = fetch, method, params = {}, timeoutMs = DEFAULT_TIMEOUT_MS, token = null, url }) {
   const id = nextId++;
   const headers = {
     Accept: 'application/json, text/event-stream',
@@ -35,6 +39,7 @@ async function callMcp({ fetchImpl = fetch, method, params = {}, timeoutMs = DEF
     'MCP-Protocol-Version': UPSTREAM_PROTOCOL_VERSION,
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (appToken) headers[APP_TOKEN_HEADER] = appToken;
   let response;
   try {
     response = await fetchImpl(url, {
@@ -61,6 +66,28 @@ async function callMcp({ fetchImpl = fetch, method, params = {}, timeoutMs = DEF
   return message.result;
 }
 
+// The package exchanges the owner's password for the app's token. Null when the app refused the password.
+async function signInUpstream({ fetchImpl = fetch, key, password, url }) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      body: JSON.stringify({ password }),
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      method: 'POST',
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new McpUpstreamError('AI_APP_UNREACHABLE', 'The app did not answer.');
+  }
+  if (response.status === 401) return null;
+  let answer = null;
+  try { answer = await response.json(); } catch { /* handled below */ }
+  if (!response.ok || typeof answer?.token !== 'string' || !answer.token.trim()) {
+    throw new McpUpstreamError('AI_APP_BAD_ANSWER', String(answer?.error || `The app could not sign in (HTTP ${response.status}).`));
+  }
+  return answer.token.trim();
+}
+
 async function listAllTools(options) {
   const tools = [];
   let cursor;
@@ -73,4 +100,4 @@ async function listAllTools(options) {
   return tools;
 }
 
-module.exports = { McpUpstreamError, callMcp, listAllTools, messageFromEventStream };
+module.exports = { APP_TOKEN_HEADER, McpUpstreamError, SIGN_IN_META, callMcp, listAllTools, messageFromEventStream, signInUpstream };

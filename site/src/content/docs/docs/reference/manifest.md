@@ -31,6 +31,7 @@ The **baseline** is generation 1 as locked in MOS 0.17.0: every package must set
 | [`storage`](#folders-on-the-owners-drive-storage) | 0.23.0 | Folders the app reads from a drive the owner picks, created and mounted by MOS. |
 | [`${ai.*}`](#the-ai-service-namespace) | 0.24.0 | The AI service the owner chose for the app, projected into an app that has AI features. |
 | [`catalog.aiFeatures`](#the-ai-service-namespace) | 0.24.0 | One sentence on what the app does with that AI service, shown beside its switch and on the site. |
+| [`setup.fields[].forgetAfterStart`](#setup-fields-setupfields) | 0.24.0 | A secret MOS uses for the app's first start and then deletes, such as the owner's first app password. |
 
 ## A complete minimal manifest
 
@@ -148,6 +149,7 @@ The install form, as data. Each field:
 | `redactedLabel` | Label shown in place of a secret's value. |
 | `default` | Prefill for non-secret fields. The **only** place `${owner.name}` / `${owner.email}` may appear. |
 | `generated` | `{ "kind": "random", "bytes": 16–128, "encoding": "base64url" \| "hex" }` — MOS generates the value at install; the owner is never prompted. |
+| `forgetAfterStart` | Optional boolean, on a secret the app needs only to set itself up, such as its first administrator's password. MOS passes it on the first start. Once that start passes the health check, MOS deletes its copy and starts the app again with the variable unset, and every later start leaves it unset. So the package must finish using it before its health check can pass, and must start cleanly without it. Only a service's `env` may reference it. |
 
 ## Catalog metadata (`catalog`)
 
@@ -317,6 +319,7 @@ An app that serves an [MCP](https://modelcontextprotocol.io/) server can offer i
 | `service`, `path` | The service and the absolute path its MCP endpoint answers on. MOS calls it on the service's own port inside the server, and publishes that port for itself when no route reaches the service; a `url` is refused, so an export can never point MOS somewhere else. |
 | `auth.kind` | `owner-token`: the app only answers a signed-in user, so the owner creates a token in the app once and MOS keeps it. `package-secret`: the package ships its own MCP service, and MOS presents a key it generated, so the owner does nothing. Neither is ever given to an AI. |
 | `auth.secret` | With `package-secret`. The id of a generated secret setup field; MOS sends it as `Authorization: Bearer <value>`, and the package passes the same `${secret.<id>}` to its MCP service. |
+| `auth.signIn` | Optional, with `package-secret`, for a package whose MCP service needs the owner's own app token. An absolute path on the same service. The first time the owner lets an assistant into the app, MOS asks for their app password and posts `{"password": ...}` to it once, with the same key; it answers `{"token": ...}`, or `401` for a wrong password. MOS keeps only the token and sends it on every call as `X-MOS-App-Token`. A tool result whose `_meta` holds `"myownsuite.org/sign-in": "refused"` makes MOS drop the token and ask the owner to sign in again. |
 | `auth.hint` | Optional, with `owner-token`. One sentence, at most 200 characters, telling the owner where the app makes that token. |
 | `auth.tokenPage` | Optional. The path inside the app where tokens are made, starting with `/`. MOS's **Open** button lands there. |
 | `auth.verifyTool` | Optional. A tool MOS calls with a pasted token before saving it, so a wrong token is refused on the spot. |

@@ -21,7 +21,8 @@ export type AiSource = {
   id: string;
   name: string;
   running: boolean;
-  token: null | { tokenPageUrl: string | null; configured: boolean; hint: string | null; verifiedAt: string | null };
+  // signIn: MOS gets the app's token by signing in with the owner's app password once.
+  token: null | { tokenPageUrl: string | null; configured: boolean; hint: string | null; signIn: boolean; verifiedAt: string | null };
   tools: AiTool[];
 };
 
@@ -88,6 +89,14 @@ async function request<T>(url: string, method: Method, fallback: string, body?: 
 
 export function aiRequest<T = AiStatus>(method: Method, path: string, fallback: string, body?: unknown): Promise<T> {
   return request<T>(`/suite-manager/api/settings/ai${path}`, method, fallback, body);
+}
+
+// A password for an app that signs in once, otherwise a pasted token. Passwords are sent as typed.
+export function saveSourceAccess(source: AiSource, secret: string) {
+  const path = `/sources/${encodeURIComponent(source.id)}`;
+  return source.token?.signIn
+    ? aiRequest('POST', `${path}/sign-in`, `MOS could not sign in to ${source.name}.`, { password: secret })
+    : aiRequest('PUT', `${path}/token`, 'The token could not be saved.', { token: secret.trim() });
 }
 
 export type AiService = {

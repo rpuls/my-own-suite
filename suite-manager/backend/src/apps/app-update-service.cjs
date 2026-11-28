@@ -518,12 +518,14 @@ class AppUpdateService {
       // Setup values the candidate newly requires are collected in the update
       // dialog and become config rows here. Only fields the instance does not
       // already hold are created, so an update never rotates a generated secret or
-      // overwrites a value the owner set.
+      // overwrites a value the owner set, nor asks again for one MOS forgot after the first start.
       const heldKeys = new Set(installedConfigRows.map((row) => row.key));
+      const installedFieldIds = new Set(setupFields(installedPackage.manifest).map((field) => field.id));
+      const forgotten = (field) => field.forgetAfterStart === true && installedFieldIds.has(field.id);
       addedConfig = createConfigRows({
         input: { config: isRecord(input.config) ? input.config : {} },
         instanceId: instance.id,
-        manifest: { ...candidate.manifest, setup: { ...candidate.manifest.setup, fields: setupFields(candidate.manifest).filter((field) => !heldKeys.has(field.id)) } },
+        manifest: { ...candidate.manifest, setup: { ...candidate.manifest.setup, fields: setupFields(candidate.manifest).filter((field) => !heldKeys.has(field.id) && !forgotten(field)) } },
         secretDir: this.secretDir,
       });
       const candidateConfig = [...installedConfigRows, ...addedConfig];
@@ -720,6 +722,11 @@ class AppUpdateService {
         snapshotPath: promoted.snapshotPath,
         homepageApplied: homepageWasApplied,
       });
+      // The committed update has started healthy, so a value the new package forgets after
+      // a start goes now. A failed restart is recorded on the app and never un-happens the update.
+      if (this.apps.forgetStartedSecrets(instance, candidate.manifest)) {
+        await this.apps.applyPackageRuntime(packageId, requestContext).catch(() => undefined);
+      }
       // Reconciled after the commit on purpose: reapplying a consumer re-applies
       // its stored projections, and only after completeAppUpdate do those
       // describe the runtime that is actually serving. Run before the commit,

@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+# MOS forgets the install password after the first start; with no account left, the
+# image would otherwise create the admin with its well-known fallback password.
+[ -n "${INIT_SEAFILE_ADMIN_PASSWORD:-}" ] || export INIT_SEAFILE_ADMIN_PASSWORD="$(head -c 24 /dev/urandom | base64)"
+
 SEAHUB_SETTINGS_FILE="/shared/seafile/conf/seahub_settings.py"
 SEAFDAV_SETTINGS_FILE="/shared/seafile/conf/seafdav.conf"
 

@@ -28,7 +28,7 @@ High performance self-hosted photo and video backup solution.
 | `JWT_SECRET` | Generated secret |
 | `PUBLIC_HOSTNAME` | Runtime app route |
 | `POSTGRES_INITDB_ARGS` | Enables data checksums for Immich database initialization |
-| `MOS_ADMIN_EMAIL`, `MOS_ADMIN_PASSWORD` | The administrator login from the two setup fields |
+| `MOS_ADMIN_EMAIL`, `MOS_ADMIN_PASSWORD` | The administrator login from the two setup fields. The password field is marked `forgetAfterStart`, so `MOS_ADMIN_PASSWORD` is set only until a start first passes the health check; every later start runs without it and uses the API key instead |
 | `MACHINE_LEARNING_MODEL_REVISION` | `v2` on `immich-machine-learning`: Immich's optimised model exports, all from Hugging Face. They are cached under `/cache/<task>/<model>/v2`, and models cached by an earlier package stay beside them unused |
 | `ORT_DISABLE_TELEMETRY` | `1`, baked into `Dockerfile.machine-learning`, so onnxruntime never sends usage telemetry to Microsoft |
 
@@ -40,13 +40,15 @@ Read-only means Immich can neither delete those photos nor write XMP sidecars be
 
 ## First Start
 
-`entrypoint.sh` runs a background job against `http://localhost:2283/api` once `/server/ping` answers:
+`entrypoint.sh` talks to `http://127.0.0.1:2283/api` once `/server/ping` answers. MOS restarts the container and forgets the password as soon as the health check passes, so when `/usr/src/app/upload/.mos-api-key` is missing and `MOS_ADMIN_PASSWORD` is set, the wrapper first runs a private start with `IMMICH_HOST=127.0.0.1`, which the health check cannot reach:
 
 1. On a server with no administrator, signs one up with `MOS_ADMIN_EMAIL` and `MOS_ADMIN_PASSWORD` and clears Immich's change-password-at-first-sign-in flag. On a server that already has one, signs in with them instead.
-2. Creates an API key named `MOS`, kept in `/usr/src/app/upload/.mos-api-key` (mode 0600), so later starts still work after the owner changes the password.
-3. If `/media/photos` is mounted, creates an external library named Photos over it unless one exists, and starts a scan of it. That runs on every start, and MOS restarts the container when the drive is plugged back in, so photos copied onto the drive elsewhere are found then.
+2. Creates an API key named `MOS`, kept in `/usr/src/app/upload/.mos-api-key` (mode 0600), so later starts work without the password, also after the owner changes it.
+3. Stops that server. It runs in its own process group, because Immich's main process does not stop its api worker, which would otherwise keep port 2283.
 
-A failed step is logged with a `MOS:` prefix and retried at the next start; it never holds the server back.
+If no administrator exists afterwards, the container exits instead of offering Immich's open sign-up, so health never passes and MOS keeps the password for the next attempt. If only the sign-in or the key fails, as on an existing server whose password has changed, the wrapper logs it and starts Immich without managing the Photos library. A start with neither the key nor the password logs one `MOS:` line and does the same.
+
+Immich then starts on the network, and a background job uses the key: if `/media/photos` is mounted, it creates an external library named Photos over it unless one exists, and starts a scan of it. That runs on every start, and MOS restarts the container when the drive is plugged back in, so photos copied onto the drive elsewhere are found then. A failed library step is logged with a `MOS:` prefix and retried at the next start; it never holds the server back.
 
 ## Health Check
 

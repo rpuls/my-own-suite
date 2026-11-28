@@ -112,6 +112,16 @@ function aiRoutes({ aiConnections, chatGptTunnel }) {
       },
     },
     {
+      method: 'POST',
+      pattern: /^\/settings\/ai\/sources\/([^/]+)\/sign-in$/u,
+      signIn: SIGN_IN,
+      bodyLimit: 8 * 1024,
+      handler: async ({ body, params: [sourceId], response }) => {
+        await aiConnections.signInToSource(sourceId, (await body())?.password);
+        await answerStatus(response);
+      },
+    },
+    {
       method: 'DELETE',
       pattern: /^\/settings\/ai\/sources\/([^/]+)\/token$/u,
       signIn: SIGN_IN,

@@ -36,9 +36,17 @@ function mcpClient(gateway, mcpUrl, token) {
   };
 }
 
-// An app that keeps its own sign-in gets its token from the app's module, once.
+// An app that keeps its own sign-in gets its token from the app's module, once, or
+// MOS signs in with the owner password the module knows.
 async function giveSourceToken(ctx, id, module, source, gateway) {
   if (!source.token || source.token.configured) return;
+  if (source.token.signIn) {
+    if (typeof module.aiPassword !== 'function') throw new Error(`apps/${id}/e2e/index.mjs exports no aiPassword(), and MOS signs in to ${source.name} with its owner's password.`);
+    await test.step(`sign MOS in to ${source.name} with the owner password`, async () => {
+      await apiJson(ctx.page, `${AI_API}/sources/${encodeURIComponent(id)}/sign-in`, send('POST', { password: module.aiPassword({ env: ctx.env }) }));
+    });
+    return;
+  }
   if (typeof module.aiToken !== 'function') throw new Error(`apps/${id}/e2e/index.mjs exports no aiToken(), and ${source.name} needs an access token from its owner.`);
   await test.step(`give MOS a ${source.name} access token`, async () => {
     const url = routeUrl(ctx.homeUrl, await packageById(ctx.page, id));

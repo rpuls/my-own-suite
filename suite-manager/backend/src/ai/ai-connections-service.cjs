@@ -7,7 +7,7 @@ const { CodedError } = require('../../../../shared/coded-error.cjs');
 const { writeSecretFile } = require('../apps/app-package-internals.cjs');
 const { APP_TOKEN_KEY, BUILTIN_SOURCE_ID, OFFERABLE_KINDS } = require('./ai-tool-catalog.cjs');
 const { LEVELS } = require('./ai-store.cjs');
-const { callMcp } = require('./mcp-upstream.cjs');
+const { SIGN_IN_META, callMcp, signInUpstream } = require('./mcp-upstream.cjs');
 
 const MAX_RESULT_CHARS = 256 * 1024;
 const MAX_ARGUMENT_BYTES = 64 * 1024;
@@ -137,14 +137,14 @@ class AiConnectionsService {
     for (const source of this.catalog.sources()) {
       const { error } = await this.catalog.toolsOf(source);
       const builtin = source.id === BUILTIN_SOURCE_ID;
-      const ownerToken = !builtin && !source.mcp.packageSecret;
+      const ownerToken = !builtin && (!source.mcp.packageSecret || source.mcp.signIn);
       sources.push({
         builtin,
         error,
         id: source.id,
         name: source.name,
         running: source.running,
-        token: !ownerToken ? null : { tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), configured: Boolean(this.catalog.tokenOf(source)), hint: source.mcp.hint, verifiedAt: this.catalog.tokenConfiguredAt(source) },
+        token: !ownerToken ? null : { configured: Boolean(this.catalog.ownerTokenOf(source)), hint: source.mcp.hint, signIn: Boolean(source.mcp.signIn), tokenPageUrl: this.tokenPageUrlFor(source.id, source.mcp.tokenPage), verifiedAt: this.catalog.tokenConfiguredAt(source) },
         tools: catalog.filter((entry) => entry.source.id === source.id).map(({ review, tool }) => ({
           description: tool.description,
           kind: tool.kind,
@@ -272,12 +272,13 @@ class AiConnectionsService {
   ownerTokenSource(sourceId) {
     const source = this.catalog.source(sourceId);
     if (!source?.instance) throw new AiConnectionsError('AI_SOURCE_NOT_FOUND', 'That app does not offer tools to an AI.', 404);
-    if (source.mcp.packageSecret) throw new AiConnectionsError('AI_TOKEN_NOT_NEEDED', `MOS lets AI into ${source.name} itself, so it needs no token.`, 409);
+    if (!this.catalog.ownerTokenPath(source)) throw new AiConnectionsError('AI_TOKEN_NOT_NEEDED', `MOS lets AI into ${source.name} itself, so it needs no token.`, 409);
     return source;
   }
 
   async setSourceToken(sourceId, rawToken) {
     const source = this.ownerTokenSource(sourceId);
+    if (source.mcp.signIn) throw new AiConnectionsError('AI_SIGN_IN_NEEDED', `Sign in with your ${source.name} password instead.`, 409);
     const token = String(rawToken ?? '').trim();
     if (!token || token.length > 4096 || /\s/u.test(token)) throw new AiConnectionsError('AI_TOKEN_INVALID', 'Paste the access token exactly as the app showed it.');
     if (source.mcp.verifyTool && source.running) {
@@ -308,9 +309,27 @@ class AiConnectionsService {
     }
   }
 
+  // The password goes to the app's own package once, for the app's token; MOS keeps only the token.
+  async signInToSource(sourceId, rawPassword) {
+    const source = this.ownerTokenSource(sourceId);
+    if (!source.mcp.signIn) throw new AiConnectionsError('AI_SIGN_IN_NOT_NEEDED', `${source.name} takes an access token, not a password.`, 409);
+    const password = typeof rawPassword === 'string' ? rawPassword : '';
+    if (!password || password.length > 1024) throw new AiConnectionsError('AI_PASSWORD_INVALID', `Type your ${source.name} password.`);
+    if (!source.running) throw new AiConnectionsError('AI_SOURCE_NOT_RUNNING', `${source.name} is not running right now.`, 409);
+    let token;
+    try {
+      token = await signInUpstream({ fetchImpl: this.fetchImpl, key: this.catalog.tokenOf(source), password, url: new URL(source.mcp.signIn, source.url).href });
+    } catch (error) {
+      throw new AiConnectionsError('AI_SIGN_IN_FAILED', `${source.name} could not sign in: ${error.message}`, 502);
+    }
+    if (!token) throw new AiConnectionsError('AI_PASSWORD_REJECTED', `${source.name} did not accept that password.`);
+    writeSecretFile(this.secretDir, source.instance.id, APP_TOKEN_KEY, token);
+    this.catalog.forget(source.id);
+  }
+
   removeSourceToken(sourceId) {
     const source = this.ownerTokenSource(sourceId);
-    fs.rmSync(this.catalog.tokenPath(source), { force: true });
+    fs.rmSync(this.catalog.ownerTokenPath(source), { force: true });
     this.catalog.forget(source.id);
   }
 
@@ -417,9 +436,15 @@ class AiConnectionsService {
       }
     }
     const token = this.catalog.tokenOf(source);
-    if (!token) return { outcome: 'failed', result: textResult(`${source.name} has not let My Own Suite in yet, or no longer does. The owner can fix this in My Own Suite, on the ${source.name} page under Apps.`, true) };
+    const appToken = source.mcp.signIn ? this.catalog.ownerTokenOf(source) : null;
+    if (!token || (source.mcp.signIn && !appToken)) return { outcome: 'failed', result: textResult(`${source.name} has not let My Own Suite in yet, or no longer does. The owner can fix this in My Own Suite, on the ${source.name} page under Apps.`, true) };
     try {
-      const result = await callMcp({ fetchImpl: this.fetchImpl, method: 'tools/call', params: { arguments: args, name: tool.upstreamName }, token, url: source.url });
+      const result = await callMcp({ appToken, fetchImpl: this.fetchImpl, method: 'tools/call', params: { arguments: args, name: tool.upstreamName }, token, url: source.url });
+      if (appToken && result?._meta?.[SIGN_IN_META] === 'refused') {
+        fs.rmSync(this.catalog.ownerTokenPath(source), { force: true });
+        this.catalog.forget(source.id);
+        return { outcome: 'failed', result: textResult(`${source.name} no longer accepts the sign-in My Own Suite had. The owner can sign in again in My Own Suite, on the ${source.name} page under Apps.`, true) };
+      }
       return { outcome: result?.isError ? 'tool-error' : 'ok', result: untrustedResult(source.name, result) };
     } catch {
       return { outcome: 'failed', result: textResult(`${source.name} did not answer. Try again later.`, true) };

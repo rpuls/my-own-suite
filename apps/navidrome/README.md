@@ -2,7 +2,7 @@
 
 ## Environment variables
 
-- `MOS_ADMIN_NAME`, `MOS_ADMIN_PASSWORD`: Administrator credentials from install. The wrapper creates the account through `/auth/createAdmin` while Navidrome listens only on loopback, then restarts it on the container network. Existing accounts are never reset; later changes belong in Navidrome.
+- `MOS_ADMIN_NAME`, `MOS_ADMIN_PASSWORD`: Administrator credentials from install. The wrapper creates the account through `/auth/createAdmin` while Navidrome listens only on loopback, then restarts it on the container network. The password field is marked `forgetAfterStart`: MOS forgets it once the health check first passes, which cannot happen before the account exists, and every later start finds the account in the database and starts without the password. Existing accounts are never reset; later changes belong in Navidrome.
 - `ND_DATAFOLDER=/data`, `ND_MUSICFOLDER=/music`: Database/cache and read-only music library.
 - `ND_SCANNER_SCHEDULE=@every 1m`: Finds files uploaded through MOS; startup scanning also finds files copied while the drive was disconnected.
 - `ND_ENABLEINSIGHTSCOLLECTOR=false`: Disables anonymous usage reporting.

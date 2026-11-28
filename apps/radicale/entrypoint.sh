@@ -2,10 +2,15 @@
 set -eu
 
 ADMIN_USER="${RADICALE_ADMIN_USERNAME:-}"
-ADMIN_PASS="${RADICALE_ADMIN_PASSWORD:-}"
+SERVICE_USER="${RADICALE_SERVICE_USERNAME:-}"
 
-if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_PASS" ]; then
-  echo "ERROR: Set RADICALE_ADMIN_USERNAME and RADICALE_ADMIN_PASSWORD."
+if [ -z "$ADMIN_USER" ] || [ -z "$SERVICE_USER" ] || [ -z "${RADICALE_SERVICE_PASSWORD:-}" ]; then
+  echo "ERROR: Set RADICALE_ADMIN_USERNAME, RADICALE_SERVICE_USERNAME and RADICALE_SERVICE_PASSWORD."
+  exit 1
+fi
+
+if [ "$ADMIN_USER" = "$SERVICE_USER" ]; then
+  echo "ERROR: The Radicale username '$ADMIN_USER' is reserved for MOS's own sign-in. Choose another username."
   exit 1
 fi
 
@@ -23,13 +28,20 @@ import configparser
 import datetime
 import json
 import os
+import re
+import sys
 import uuid
 from passlib.apache import HtpasswdFile
 
 config_path = "/config/config"
+rights_path = "/config/rights"
 users_path = "/data/users"
+collection_root = "/data/collections/collection-root"
 admin_user = os.environ["RADICALE_ADMIN_USERNAME"]
-admin_pass = os.environ["RADICALE_ADMIN_PASSWORD"]
+# Present only on the first start: MOS forgets the owner's password once Radicale is healthy.
+admin_pass = os.environ.get("RADICALE_ADMIN_PASSWORD") or None
+service_user = os.environ["RADICALE_SERVICE_USERNAME"]
+service_pass = os.environ["RADICALE_SERVICE_PASSWORD"]
 display_name = os.environ.get("RADICALE_CALENDAR_DISPLAYNAME", "").strip() or "My Calendar"
 
 cfg = configparser.ConfigParser()
@@ -40,6 +52,48 @@ if "auth" not in cfg:
 cfg["auth"]["type"] = "htpasswd"
 cfg["auth"]["htpasswd_filename"] = users_path
 cfg["auth"]["htpasswd_encryption"] = "bcrypt"
+
+
+def rights_literal(name):
+    # Radicale reads the rights file with interpolation and str.format before the regex.
+    return re.escape(name).replace("%", "%%").replace("{", "{{").replace("}", "}}")
+
+
+# Radicale's default owner_only rights, with MOS's own sign-in let into the owner's
+# calendars and address books first. It may never delete or replace a whole collection.
+owner, service = rights_literal(admin_user), rights_literal(service_user)
+with open(rights_path, "w", encoding="utf-8") as f:
+    f.write(f"""[mos-service-home]
+user: {service}
+collection: {owner}
+permissions: R
+
+[mos-service-collections]
+user: {service}
+collection: {owner}/[^/]+
+permissions: rwdo
+
+[mos-service-nothing-else]
+user: {service}
+collection: .*
+permissions:
+
+[root]
+user: .+
+collection:
+permissions: R
+
+[principal]
+user: .+
+collection: {{user}}
+permissions: RW
+
+[collections]
+user: .+
+collection: {{user}}/[^/]+
+permissions: rw
+""")
+cfg["rights"] = {"type": "from_file", "file": rights_path}
 
 # The owner's shared outbound email relay (${smtp.*}), projected in as MOS_SMTP_*.
 # Radicale's only email is the [hook] "email" type: when a calendar object with
@@ -71,14 +125,23 @@ with open(config_path, "w", encoding="utf-8") as f:
     cfg.write(f)
 
 ht = HtpasswdFile(users_path, new=not os.path.exists(users_path), default_scheme="bcrypt")
-if admin_user not in ht.users():
+if admin_user in ht.users():
+    print(f"Radicale admin user '{admin_user}' already exists")
+elif admin_pass:
     ht.set_password(admin_user, admin_pass)
-    ht.save()
     print(f"Created Radicale admin user '{admin_user}'")
 else:
-    print(f"Radicale admin user '{admin_user}' already exists")
+    print(f"ERROR: Radicale has no user '{admin_user}', and RADICALE_ADMIN_PASSWORD, needed once to create it, is not set.")
+    sys.exit(1)
 
-calendar_dir = f"/data/collections/collection-root/{admin_user}/default-calendar"
+if not ht.check_password(service_user, service_pass):
+    ht.set_password(service_user, service_pass)
+    print(f"Set the password of MOS's Radicale sign-in '{service_user}'")
+ht.save()
+# An existing principal stops Radicale logging a denied auto-create on each of its requests.
+os.makedirs(os.path.join(collection_root, service_user), exist_ok=True)
+
+calendar_dir = os.path.join(collection_root, admin_user, "default-calendar")
 props_path = os.path.join(calendar_dir, ".Radicale.props")
 os.makedirs(calendar_dir, exist_ok=True)
 if not os.path.exists(props_path):

@@ -4,8 +4,8 @@
   "reviewedAt": "2026-11-19T12:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.4",
-    "packageDigest": "sha256:7d0053424d245bf6f10e3ea941b6f9f277259e4d800f94e0e20d148e073b209e",
+    "packageVersion": "0.4.5",
+    "packageDigest": "sha256:a7eae842094fe55647945b3498fd8445f350de0a289a0c1f715fc4626f44ce75",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -129,7 +129,7 @@
     },
     {
       "type": "configured",
-      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned Paperless-ngx image, runs only the package's own mcp-server.py on the Python standard library, and its only outbound connection is to http://paperless:8000/api on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It signs in with the administrator account from the install form, and offers searching, reading, adding notes and changing how a document is filed; it has no tool that deletes or shares a document.",
+      "claim": "The mcp service is the MCP server MOS ships for AI access. It is built from the same pinned Paperless-ngx image, runs only the package's own mcp-server.py on the Python standard library, and its only outbound connection is to http://paperless:8000/api on the package network. It has no route: the host publishes it on loopback for Suite Manager alone, and it answers only requests carrying the key MOS generated for this install. It holds no password: the first time the owner lets an assistant into Paperless, Suite Manager posts the owner's Paperless password to its /sign-in once, which exchanges it at /api/token/ for the owner's own API token, and Suite Manager keeps only that token. It offers searching, reading, adding notes and changing how a document is filed; it has no tool that deletes or shares a document.",
       "source": "apps/paperless-ngx/mcp-server.py and apps/paperless-ngx/manifest.json"
     },
     {

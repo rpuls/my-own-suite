@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "appVersion": "3.9.2",
   "minimumMosVersion": "0.24.0",
   "packageFiles": [
@@ -65,8 +65,8 @@
     "privacy": {
       "summary": "Radicale runs entirely on your own MOS server with no telemetry, storing calendar and contact collections in a local data volume.",
       "notes": [
-        "Use a strong app password because Radicale is exposed on its own authenticated app address.",
-        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Radicale as the user you set up and reaches nothing else. An event it adds invites no one, and it deletes nothing.",
+        "Use a strong app password because Radicale is exposed on its own authenticated app address. MOS keeps it only until Radicale has first started, then forgets it.",
+        "The AI tools run in a separate mcp service that only Suite Manager can call, with a key MOS generates. It signs in to Radicale with a login MOS generates for it, never your password, and reaches only your calendars and address books. An event it adds invites no one, and it deletes nothing.",
         "Back up the data volume before relying on it for important calendars or contacts.",
         "Client apps may still sync data to device or vendor backups depending on your phone or desktop settings."
       ]
@@ -99,6 +99,7 @@
         "label": "Radicale password",
         "required": true,
         "secret": true,
+        "forgetAfterStart": true,
         "redactedLabel": "Radicale admin password"
       },
       {
@@ -126,6 +127,19 @@
           "bytes": 32,
           "encoding": "base64url"
         }
+      },
+      {
+        "id": "servicePassword",
+        "type": "password",
+        "label": "Password MOS signs in to Radicale with",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Radicale password for MOS",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
       }
     ]
   },
@@ -137,6 +151,8 @@
         "env": {
           "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
           "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "RADICALE_SERVICE_USERNAME": "mos-service",
+          "RADICALE_SERVICE_PASSWORD": "${secret.servicePassword}",
           "RADICALE_CALENDAR_DISPLAYNAME": "${config.calendarName}",
           "MOS_SMTP_HOST": "${smtp.host}",
           "MOS_SMTP_PORT": "${smtp.port}",
@@ -159,7 +175,8 @@
         "internalPort": 8100,
         "env": {
           "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
-          "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "RADICALE_SERVICE_USERNAME": "mos-service",
+          "RADICALE_SERVICE_PASSWORD": "${secret.servicePassword}",
           "MOS_AI_KEY": "${secret.aiKey}"
         }
       }
@@ -173,8 +190,8 @@
         "path": "/__mos/ical/${secret.icalToken}",
         "targetPath": "/${config.adminUsername}/default-calendar/?export",
         "basicAuth": {
-          "username": "${config.adminUsername}",
-          "password": "${secret.adminPassword}"
+          "username": "mos-service",
+          "password": "${secret.servicePassword}"
         }
       }
     }

@@ -1,7 +1,8 @@
 'use strict';
 
 // An app whose MCP server MOS ships itself, as Paperless-ngx does: MOS reaches
-// it with a key it generated at install, so the owner never handles a token.
+// it with a key it generated at install. Paperless also needs the owner's own
+// token, which MOS gets by signing in with the owner's password once.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -51,39 +52,93 @@ test('only an MCP service no route reaches is marked for loopback', () => {
   assert.ok(services(memos).every((service) => !('loopback' in service)));
 });
 
-async function harness() {
+const OWNER_PASSWORD = 'owner-paperless-password';
+
+// The package's MCP service as the tests need it: /sign-in trades the owner's
+// password for the app's token, and a call with a revoked token is refused.
+async function harness(manifest = paperless) {
   const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-ai-secret-'));
   const secretDir = path.join(stateDir, 'app-secrets');
   const instance = { displayNameSnapshot: 'Paperless-ngx', enabled: true, id: 'inst-paperless', packageId: 'paperless-ngx', status: 'installed' };
   writeSecretFile(secretDir, instance.id, 'aiKey', 'generated-ai-key');
   const presented = [];
-  const fetchImpl = async (_url, init) => {
+  const signIns = [];
+  const app = { token: 'app-token-1' };
+  const fetchImpl = async (url, init) => {
+    presented.push({ appToken: init.headers['X-MOS-App-Token'] ?? null, key: init.headers.Authorization });
+    if (new URL(url).pathname === '/sign-in') {
+      const { password } = JSON.parse(init.body);
+      signIns.push(password);
+      return password === OWNER_PASSWORD
+        ? new Response(JSON.stringify({ token: app.token }), { headers: { 'content-type': 'application/json' } })
+        : new Response(JSON.stringify({ error: 'Paperless did not accept that password.' }), { status: 401 });
+    }
     const message = JSON.parse(init.body);
-    presented.push(init.headers.Authorization);
+    const refused = (init.headers['X-MOS-App-Token'] ?? null) !== app.token;
     const result = message.method === 'tools/list'
       ? { tools: [{ description: 'Find documents.', inputSchema: { type: 'object' }, name: 'search_documents' }] }
-      : { content: [{ text: '#1 "car-insurance"', type: 'text' }] };
+      : refused
+        ? { _meta: { 'myownsuite.org/sign-in': 'refused' }, content: [{ text: 'Paperless no longer accepts the sign-in.', type: 'text' }], isError: true }
+        : { content: [{ text: '#1 "car-insurance"', type: 'text' }] };
     return new Response(JSON.stringify({ id: message.id, jsonrpc: '2.0', result }), { headers: { 'content-type': 'application/json' } });
   };
   const appStore = { getAppInstances: () => [instance] };
-  const catalog = new AiToolCatalog({ appPackages: { installedPackageFor: () => ({ aiTools: paperlessTools, manifest: paperless }) }, fetchImpl, secretDir, store: appStore });
+  const catalog = new AiToolCatalog({ appPackages: { installedPackageFor: () => ({ aiTools: paperlessTools, manifest }) }, fetchImpl, secretDir, store: appStore });
   const connections = new AiConnectionsService({ aiStore: new AiStore(new SuiteManagerStore(stateDir)), catalog, fetchImpl, secretDir });
-  return { connections, instance, presented, secretDir };
+  const { client } = connections.createClient({ name: 'LM Studio' });
+  connections.setLevel(client.id, 'paperless-ngx', 'see');
+  const search = () => connections.callTool(connections.aiStore.clientById(client.id), 'paperless_ngx_search_documents', { query: 'insurance' });
+  const paperlessSource = async () => (await connections.status()).sources.find((candidate) => candidate.id === 'paperless-ngx');
+  return { app, connections, instance, paperlessSource, presented, search, secretDir, signIns };
 }
 
-test('MOS presents its own key, asks the owner for no token, and never lets one replace it', async () => {
-  const h = await harness();
-  const source = (await h.connections.status()).sources.find((candidate) => candidate.id === 'paperless-ngx');
+test('a package MOS reaches with its own key alone asks the owner for nothing, and never lets a token replace that key', async () => {
+  const h = await harness(withAuth({ kind: 'package-secret', secret: 'aiKey' }));
+  const source = await h.paperlessSource();
   assert.equal(source.token, null);
   assert.deepEqual(source.tools.map((tool) => tool.name), ['paperless_ngx_search_documents']);
 
-  const { client } = h.connections.createClient({ name: 'LM Studio' });
-  h.connections.setLevel(client.id, 'paperless-ngx', 'see');
-  const result = await h.connections.callTool(h.connections.aiStore.clientById(client.id), 'paperless_ngx_search_documents', { query: 'insurance' });
-  assert.equal(result.isError, false);
-  assert.ok(h.presented.every((header) => header === 'Bearer generated-ai-key'));
+  h.app.token = null;
+  assert.equal((await h.search()).isError, false);
+  assert.ok(h.presented.every((call) => call.key === 'Bearer generated-ai-key' && call.appToken === null));
 
   await assert.rejects(h.connections.setSourceToken('paperless-ngx', 'pasted-token'), { code: 'AI_TOKEN_NOT_NEEDED' });
   assert.throws(() => h.connections.removeSourceToken('paperless-ngx'), { code: 'AI_TOKEN_NOT_NEEDED' });
+  await assert.rejects(h.connections.signInToSource('paperless-ngx', OWNER_PASSWORD), { code: 'AI_TOKEN_NOT_NEEDED' });
   assert.equal(fs.readFileSync(secretFilePath(h.secretDir, h.instance.id, 'aiKey'), 'utf8'), 'generated-ai-key');
+});
+
+test('Paperless asks for the owner password once, and MOS keeps only the token it gets back', async () => {
+  const h = await harness();
+  assert.deepEqual((await h.paperlessSource()).token, { configured: false, hint: null, signIn: true, tokenPageUrl: null, verifiedAt: null });
+  assert.equal((await h.search()).isError, true);
+
+  await assert.rejects(h.connections.signInToSource('paperless-ngx', 'wrong'), { code: 'AI_PASSWORD_REJECTED' });
+  await assert.rejects(h.connections.setSourceToken('paperless-ngx', 'pasted-token'), { code: 'AI_SIGN_IN_NEEDED' });
+  await h.connections.signInToSource('paperless-ngx', OWNER_PASSWORD);
+  assert.equal((await h.paperlessSource()).token.configured, true);
+
+  assert.equal((await h.search()).isError, false);
+  assert.deepEqual(h.presented.at(-1), { appToken: 'app-token-1', key: 'Bearer generated-ai-key' });
+  const stored = fs.readdirSync(path.join(h.secretDir, h.instance.id)).map((name) => fs.readFileSync(path.join(h.secretDir, h.instance.id, name), 'utf8'));
+  assert.ok(!stored.some((value) => value.includes(OWNER_PASSWORD)));
+});
+
+test('a token the app no longer accepts is dropped, so the owner is asked to sign in again', async () => {
+  const h = await harness();
+  await h.connections.signInToSource('paperless-ngx', OWNER_PASSWORD);
+  h.app.token = 'app-token-2';
+
+  const refused = await h.search();
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /sign in again/u);
+  assert.equal((await h.paperlessSource()).token.configured, false);
+
+  await h.connections.signInToSource('paperless-ngx', OWNER_PASSWORD);
+  assert.equal((await h.search()).isError, false);
+});
+
+test('a sign-in path must be a path on the package service itself', () => {
+  assert.match(exportErrors(withAuth({ kind: 'package-secret', secret: 'aiKey', signIn: 'http://elsewhere/sign-in' })).join('\n'), /auth.signIn must be an absolute path/u);
+  assert.match(exportErrors(withAuth({ kind: 'package-secret', secret: 'aiKey', signIn: '/../sign-in' })).join('\n'), /auth.signIn must be an absolute path/u);
 });
